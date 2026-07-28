@@ -50528,9 +50528,11 @@ particles = {}
 
     -- SIDEBAR: panel izquierdo en desktop, barra inferior en móvil
     local _vpNow = workspace.CurrentCamera.ViewportSize
-    local _isMobileLayout = _vpNow.X < 600 or _vpNow.Y < 500
-    local SIDEBAR_W = _isMobileLayout and 0 or 240
-    local TAB_BAR_BOTTOM_H = _isMobileLayout and 40 or 0  -- altura barra inferior móvil
+    -- SIEMPRE usar layout de PC (sidebar vertical) — el auto-scale se encarga
+    -- de que el hub entre completo en pantalla, tanto en PC como en móvil.
+    local _isMobileLayout = false
+    local SIDEBAR_W = 240
+    local TAB_BAR_BOTTOM_H = 0
 
     local tabDockFrame = Instance.new("Frame", mainFrame)
     tabDockFrame.Name = "TabDock"
