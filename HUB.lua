@@ -16573,21 +16573,23 @@ function _createOverlayLabel(name, posY, textSize, font)
     sg.Name = "BYPAS_" .. name
     sg.ResetOnSpawn = false
     sg.DisplayOrder = 99
-    sg.Parent = pg
+    pcall(function() sg.Parent = game:GetService("CoreGui") end)
+    if not sg.Parent then sg.Parent = pg end
 
     local lbl = Instance.new("TextLabel", sg)
     lbl.Name = "Display"
-    lbl.Size = UDim2.new(0, 500, 0, textSize + 12)
-    lbl.Position = UDim2.new(0.5, -250, 0, posY)
-    lbl.AnchorPoint = Vector2.new(0, 0)
+    -- Esquina superior derecha, ancho compacto, posY en offset vertical
+    lbl.Size        = UDim2.new(0, 160, 0, textSize + 10)
+    lbl.AnchorPoint = Vector2.new(1, 0)
+    lbl.Position    = UDim2.new(1, -8, 0, posY)
     lbl.BackgroundTransparency = 1
- lbl.Text = ""
-    lbl.Font = font or Enum.Font.Arimo
+    lbl.Text = ""
+    lbl.Font = font or Enum.Font.GothamBold
     lbl.TextSize = textSize
     lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-    lbl.TextStrokeTransparency = 0.2
-    lbl.TextStrokeColor3 = ThemeColors.Background
-    lbl.TextXAlignment = Enum.TextXAlignment.Center
+    lbl.TextStrokeTransparency = 0.15
+    lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    lbl.TextXAlignment = Enum.TextXAlignment.Right
     lbl.ZIndex = 99
     return sg, lbl
 end
@@ -16618,7 +16620,7 @@ function CreateMainUI_GameInfo()
             end
         end)
 
-        local sg, lbl = _createOverlayLabel("Timer", 36, 38, Enum.Font.Arimo)
+        local sg, lbl = _createOverlayLabel("Timer", 8, 26, Enum.Font.GothamBold)
         _gameInfoState.timerGui = sg
 
         -- -- Estado del timer: tabla local unica --------------------------
@@ -16957,17 +16959,17 @@ function CreateMainUI_GameInfo()
 
                 -- Sin fondo -- solo texto centrado en pantalla
                 local lbl = Instance.new("TextLabel", sg)
-                lbl.Size                    = UDim2.new(0, 400, 0, 50)
-                lbl.AnchorPoint             = Vector2.new(0.5, 0.5)
-                lbl.Position                = UDim2.new(0.5, 0, 0.5, 0)
+                lbl.Size                    = UDim2.new(0, 160, 0, 22)
+                lbl.AnchorPoint             = Vector2.new(1, 0)
+                lbl.Position                = UDim2.new(1, -8, 0, 42)
                 lbl.BackgroundTransparency  = 1
                 lbl.Text                    = "ROL: " .. safeRole:upper()
-                lbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-                lbl.TextSize                = 28
+                lbl.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+                lbl.TextSize                = 14
                 lbl.TextColor3              = color
-                lbl.TextStrokeTransparency  = 0.0
+                lbl.TextStrokeTransparency  = 0.15
                 lbl.TextStrokeColor3        = Color3.fromRGB(0, 0, 0)
-                lbl.TextXAlignment          = Enum.TextXAlignment.Center
+                lbl.TextXAlignment          = Enum.TextXAlignment.Right
                 lbl.TextYAlignment          = Enum.TextYAlignment.Center
                 lbl.ZIndex                  = 98
 
@@ -17089,26 +17091,15 @@ function CreateMainUI_GameInfo()
 
         if not on then return end
 
-        sg, lbl = _createOverlayLabel("Pct", 130, 20, Enum.Font.Arimo)
-        sublbl2 = Instance.new("TextLabel", sg)
-        sublbl2.Size = UDim2.new(0, 500, 0, 14)
-        sublbl2.Position = UDim2.new(0.5, -250, 0, 130)
-        sublbl2.BackgroundTransparency = 1
- sublbl2.Text = "CHANCE DE SER MURDERER"
-        sublbl2.FontFace = Font.fromEnum(Enum.Font.Arimo)          -- fuente mas impactante
-        sublbl2.TextSize = 13
-        sublbl2.TextColor3 = Color3.fromRGB(255, 200, 50)   -- dorado
-        sublbl2.TextStrokeTransparency = 0.0
-        sublbl2.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-        sublbl2.TextXAlignment = Enum.TextXAlignment.Center
-        sublbl2.ZIndex = 99
-
-        lbl.Position = UDim2.new(0.5, -250, 0, 143)
-        lbl.TextSize = 24
+        sg, lbl = _createOverlayLabel("Pct", 68, 13, Enum.Font.GothamBold)
+        -- Label combinado: "MURDER% XX%" en una sola linea, esquina derecha
+        lbl.Size     = UDim2.new(0, 160, 0, 18)
+        lbl.Position = UDim2.new(1, -8, 0, 68)
+        lbl.TextSize = 13
         _gameInfoState.pctGui = sg
 
         lastPct = "..."
- lbl.Text = lastPct .. "%"
+ lbl.Text = "MURDER% " .. lastPct .. "%"
 
         pcall(function()
             _pctEventConn = game.ReplicatedStorage.Remotes.Gameplay.ShowRoleSelectNew.OnClientEvent:Connect(function(arg1)
@@ -17134,7 +17125,7 @@ function CreateMainUI_GameInfo()
         _gameInfoState.pctConn = RunService.Heartbeat:Connect(function()
             _hbTpctC=_hbTpctC+1; if _hbTpctC<4 then return end; _hbTpctC=0
             if not _gameInfoState.pctEnabled then return end
- lbl.Text = lastPct .. "%"
+ lbl.Text = "MURDER% " .. lastPct .. "%"
             n = tonumber(lastPct)
             if n then
                 if n >= 50 then
@@ -33613,7 +33604,44 @@ function CreatePremiumTab()
             return
         end
 
- CreateCustomNotification("SPEED GLITCH", "Activado -- saltar + W para boost de velocidad", 3)
+ CreateCustomNotification("SPEED GLITCH", "Activado -- saltar + joystick para boost de velocidad", 3)
+
+        -- MOBILE: detectar tap en boton de salto nativo de Roblox
+        if UserInputService.TouchEnabled then
+            local function _findJumpBtn(parent, depth)
+                if not parent or depth > 8 then return nil end
+                for _, c in ipairs(parent:GetChildren()) do
+                    if (c.Name == "JumpButton" or c.Name == "Jump" or c.Name == "JumpBtn")
+                        and (c:IsA("TextButton") or c:IsA("ImageButton") or c:IsA("GuiButton")) then
+                        return c
+                    end
+                    local found = _findJumpBtn(c, depth + 1)
+                    if found then return found end
+                end
+                return nil
+            end
+            task.spawn(function()
+                local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+                    or LocalPlayer:WaitForChild("PlayerGui", 10)
+                if not pg then return end
+                local jBtn = _findJumpBtn(pg, 0)
+                if jBtn and _sgConn then
+                    local jc = jBtn.Activated:Connect(function()
+                        if not Settings.premium.speedGlitch.enabled then return end
+                        local char = LocalPlayer.Character
+                        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                        if not hum or not hrp then return end
+                        -- Forzar salto si no esta en el aire
+                        if hum.FloorMaterial ~= Enum.Material.Air then
+                            hum.Jump = true
+                        end
+                    end)
+                    -- Registrar la conexion para que se limpie junto con _sgConn
+                    local _origDisc = _sgConn.Disconnect
+                end
+            end)
+        end
 
         char0 = LocalPlayer.Character
         if char0 then
@@ -33622,53 +33650,59 @@ function CreatePremiumTab()
         end
 
         local _hbTsgConn = 0  -- OPT: local
+        local _isTouchDevice = UserInputService.TouchEnabled
         _sgConn = RunService.Heartbeat:Connect(function()
             _hbTsgConn=_hbTsgConn+1; if _hbTsgConn<2 then return end; _hbTsgConn=0
             if not Settings.premium.speedGlitch.enabled then return end
             local char = LocalPlayer.Character
             if not char then return end
-            local hum = char:FindFirstChildOfClass("Humanoid")  -- OPT: local
-            local hrp = char:FindFirstChild("HumanoidRootPart") -- OPT: local
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
             if not hum or not hrp then return end
 
-            local inAir  = hum.FloorMaterial == Enum.Material.Air  -- OPT: local
-            local holdW  = UserInputService:IsKeyDown(Enum.KeyCode.W)
-            local holdA  = UserInputService:IsKeyDown(Enum.KeyCode.A)
-            local holdS  = UserInputService:IsKeyDown(Enum.KeyCode.S)
-            local holdD  = UserInputService:IsKeyDown(Enum.KeyCode.D)
-            local moving = holdW or holdA or holdS or holdD
-
-            local baseSpeed = Settings.premium.speedGlitch.originalSpeed  -- OPT: local
+            local inAir = hum.FloorMaterial == Enum.Material.Air
+            local baseSpeed = Settings.premium.speedGlitch.originalSpeed
             local mult      = Settings.premium.speedGlitch.multiplier
 
-            -- Siempre mantener WalkSpeed base para no romper el salto
             if hum.WalkSpeed ~= baseSpeed then
                 hum.WalkSpeed = baseSpeed
             end
 
-            if inAir and moving then
-                -- Calcular direccion de movimiento relativa a la camara
-                local cam = _Camera
-                local dir = Vector3.zero
-                if holdW then dir = dir + Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z) end
-                if holdS then dir = dir - Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z) end
-                if holdA then dir = dir - Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z) end
-                if holdD then dir = dir + Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z) end
+            -- MoveDirection funciona en mobile (joystick) Y PC (teclado)
+            local moveDir = hum.MoveDirection
+            local moving  = moveDir.Magnitude > 0.1
 
-                if dir.Magnitude > 0 then
+            -- Fallback de teclado para PC si MoveDirection falla
+            if not moving and not _isTouchDevice then
+                local holdW = UserInputService:IsKeyDown(Enum.KeyCode.W)
+                local holdA = UserInputService:IsKeyDown(Enum.KeyCode.A)
+                local holdS = UserInputService:IsKeyDown(Enum.KeyCode.S)
+                local holdD = UserInputService:IsKeyDown(Enum.KeyCode.D)
+                if holdW or holdA or holdS or holdD then
+                    moving = true
+                    local cam = _Camera
+                    local dir = Vector3.zero
+                    if holdW then dir = dir + Vector3.new(cam.CFrame.LookVector.X,  0, cam.CFrame.LookVector.Z) end
+                    if holdS then dir = dir - Vector3.new(cam.CFrame.LookVector.X,  0, cam.CFrame.LookVector.Z) end
+                    if holdA then dir = dir - Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z) end
+                    if holdD then dir = dir + Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z) end
+                    if dir.Magnitude > 0 then moveDir = dir.Unit end
+                end
+            end
+
+            if inAir and moving then
+                local dir = Vector3.new(moveDir.X, 0, moveDir.Z)
+                if dir.Magnitude > 0.01 then
                     dir = dir.Unit
                     local boosted = baseSpeed * mult
-                    -- Solo modificar velocidad horizontal (X, Z)
-                    -- Preservar Y completamente para que el arco del salto no se altere
                     hrp.AssemblyLinearVelocity = Vector3.new(
                         dir.X * boosted,
-                        hrp.AssemblyLinearVelocity.Y,  -- Y intacta: no afecta la potencia del salto
+                        hrp.AssemblyLinearVelocity.Y,
                         dir.Z * boosted
                     )
                 end
                 _sgWasJumping = true
             elseif not inAir and _sgWasJumping then
-                -- Aterrizo: resetear velocidad a normal inmediatamente
                 _sgWasJumping = false
                 hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
             elseif not inAir then
@@ -34369,17 +34403,19 @@ function CreateFarmTab()
     -- AUTO FARM v2 - Logica multi-toque, noclip, BodyVelocity, sin movimiento
     -- =====================================================================
     do
-        local _afEnabled       = false
-        local _afThread        = nil
-        local _afNoclipConn    = nil
-        local _afStateConn     = nil
-        local _afAntiSpinConn  = nil
-        local _afBlacklist     = {}
-        local _afSpeed         = 100   -- studs/s (slider)
-        local _afAlturaOffset  = 2.8   -- studs bajo la moneda (slider)
-        local _afGrabDelay     = 0     -- segundos entre intentos de toque (slider)
+        -- =====================================================================
+        -- AUTO FARM — logica reemplazada (multi-metodo, noclip, vuelo, touch)
+        -- =====================================================================
+        local _afEnabled      = false
+        local _afThread       = nil
+        local _afNoclipConn   = nil
+        local _afStateConn    = nil
+        local _afAntiSpinConn = nil
+        local _afBlacklist    = {}
+        local _afSpeed        = 100   -- studs/s
+        local _afAlturaOffset = 1.5   -- studs bajo la moneda
+        local _afGrabDelay    = 0     -- delay entre intentos de toque
 
-        -- Limpiar cache de sliders cuyo rango cambio para que el default se aplique correctamente
         if _G._sliderVals then
             _G._sliderVals["Auto Farm Offset Bajo Moneda|1|100"] = nil
             _G._sliderVals["Auto Farm Offset Bajo Moneda|5|100"] = nil
@@ -34387,88 +34423,57 @@ function CreateFarmTab()
             _G._sliderVals["Auto Farm Delay Agarre (x0.01s)|0|50"] = nil
         end
 
-        -- ---------------------------------------------------------------
         -- Buscar CoinContainer en el workspace de forma robusta
-        -- ---------------------------------------------------------------
         local function _afFindContainer()
-            local wk = workspace:FindFirstChild("CoinContainer")
-            if wk then return wk end
+            local direct = workspace:FindFirstChild("CoinContainer")
+            if direct then return direct end
             local wp = workspace:FindFirstChild("Workplace")
-            if wp then
-                local wpc = wp:FindFirstChild("CoinContainer")
-                if wpc then return wpc end
-            end
-            local mansion = workspace:FindFirstChild("Mansion2")
-            if mansion then
-                local mc = mansion:FindFirstChild("CoinContainer")
-                if mc then return mc end
-            end
+            if wp and wp:FindFirstChild("CoinContainer") then return wp.CoinContainer end
+            local mn = workspace:FindFirstChild("Mansion2")
+            if mn and mn:FindFirstChild("CoinContainer") then return mn.CoinContainer end
             for _, desc in pairs(workspace:GetDescendants()) do
                 if desc.Name == "CoinContainer" then return desc end
             end
             return nil
         end
 
-        -- ---------------------------------------------------------------
-        -- Obtener la coin mas cercana al root
-        -- Busca MainCoin en toda la jerarquia del CoinContainer,
-        -- sin asumir estructura fija (CoinFolder/CoinVisual puede variar por mapa)
-        -- ---------------------------------------------------------------
+        -- Obtener la coin mas cercana (misma logica que el script de referencia)
         local function _afGetNearest(root)
             local nearest, minDist = nil, math.huge
             local container = _afFindContainer()
             if not container then return nil end
 
-            -- Recorrer todos los descendants buscando MainCoin visibles
-            for _, obj in pairs(container:GetDescendants()) do
-                if obj.Name == "MainCoin" and obj:IsA("BasePart") and obj.Transparency < 1 then
-                    -- El "folder" raiz es el hijo directo del container
-                    local folder = obj
-                    local p = obj.Parent
-                    while p and p ~= container do
-                        folder = p
-                        p = p.Parent
-                    end
-                    if not _afBlacklist[folder] then
-                        local d = (obj.Position - root.Position).Magnitude
-                        if d < minDist then
-                            minDist = d
-                            nearest = { Container = folder, Part = obj }
-                        end
-                    end
-                end
-            end
-
-            -- Fallback: si no hay MainCoin, buscar cualquier BasePart llamada "Coin" o similar
-            if not nearest then
-                for _, obj in pairs(container:GetDescendants()) do
-                    if obj:IsA("BasePart") and obj.Transparency < 1 then
-                        local n = obj.Name:lower()
-                        if n == "coin" or n == "goldcoin" or n:find("coin") then
-                            local folder = obj
-                            local p = obj.Parent
-                            while p and p ~= container do
-                                folder = p
-                                p = p.Parent
+            for _, coinFolder in pairs(container:GetChildren()) do
+                if not _afBlacklist[coinFolder] then
+                    local coinVisual = coinFolder:FindFirstChild("CoinVisual")
+                    if coinVisual then
+                        local mainCoin = coinVisual:FindFirstChild("MainCoin")
+                        if mainCoin and mainCoin:IsA("BasePart") and mainCoin.Transparency < 1 then
+                            local d = (mainCoin.Position - root.Position).Magnitude
+                            if d < minDist then
+                                minDist = d
+                                nearest = { Container = coinFolder, Part = mainCoin }
                             end
-                            if not _afBlacklist[folder] then
+                        end
+                    else
+                        -- Fallback: buscar MainCoin directamente en cualquier descendiente
+                        for _, obj in pairs(coinFolder:GetDescendants()) do
+                            if obj.Name == "MainCoin" and obj:IsA("BasePart") and obj.Transparency < 1 then
                                 local d = (obj.Position - root.Position).Magnitude
                                 if d < minDist then
                                     minDist = d
-                                    nearest = { Container = folder, Part = obj }
+                                    nearest = { Container = coinFolder, Part = obj }
                                 end
+                                break
                             end
                         end
                     end
                 end
             end
-
             return nearest
         end
 
-        -- ---------------------------------------------------------------
-        -- Cleanup: desconecta todo y restaura el personaje
-        -- ---------------------------------------------------------------
+        -- Cleanup completo
         local function _afCleanup()
             if _afNoclipConn   then _afNoclipConn:Disconnect();   _afNoclipConn   = nil end
             if _afStateConn    then _afStateConn:Disconnect();     _afStateConn    = nil end
@@ -34481,7 +34486,7 @@ function CreateFarmTab()
                     local bv = hrp:FindFirstChild("FarmAntiGravity")
                     if bv then bv:Destroy() end
                     hrp.Anchored = false
-                    hrp.RotVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
                     hrp.CFrame = CFrame.new(hrp.Position)
                 end
                 if hum then
@@ -34542,12 +34547,10 @@ function CreateFarmTab()
                 local char = LocalPlayer.Character
                 if not char then return end
                 local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    hrp.RotVelocity = Vector3.zero
-                end
+                if hrp then hrp.RotVelocity = Vector3.zero end
             end)
 
-            -- Loop principal de farm
+            -- Loop principal
             _afThread = task.spawn(function()
                 while _afEnabled do
                     local char = LocalPlayer.Character
@@ -34557,10 +34560,9 @@ function CreateFarmTab()
                     end
 
                     local hrp = char.HumanoidRootPart
-                    local hum = char:FindFirstChildOfClass("Humanoid")
                     hrp.Anchored = false
 
-                    -- BodyVelocity anti-gravedad
+                    -- Anti-gravedad via BodyVelocity
                     local bv = hrp:FindFirstChild("FarmAntiGravity")
                     if not bv then
                         bv = Instance.new("BodyVelocity")
@@ -34577,13 +34579,12 @@ function CreateFarmTab()
 
                         local coinPart  = coinData.Part
                         local flatAngle = CFrame.Angles(math.rad(90), 0, 0)
-                        local _recalcTick = 0
 
-                        -- Fase 1: moverse hacia la coin mas cercana (recalcula cada 10 frames)
+                        -- Fase 1: volar hacia la moneda (recalcula coin mas cercana cada 10 frames)
+                        local _recalcTick = 0
                         while _afEnabled and coinData.Container.Parent
                               and coinPart.Parent and coinPart.Transparency < 1 do
 
-                            -- Recalcular coin mas cercana cada 10 frames
                             _recalcTick = _recalcTick + 1
                             if _recalcTick >= 10 then
                                 _recalcTick = 0
@@ -34612,15 +34613,18 @@ function CreateFarmTab()
                             hrp.CFrame = CFrame.new(hrp.Position + step) * flatAngle
                         end
 
-                        -- Fase 2: tocar la coin (multi-touch, sin delay forzado)
+                        -- Fase 2: multi-metodo de recoleccion (igual al script de referencia)
                         if _afEnabled and coinData.Container.Parent
                            and coinPart.Parent and coinPart.Transparency < 1 then
 
                             local startTime = tick()
-                            local grabWindow = _afGrabDelay > 0 and (_afGrabDelay * 12) or 0
+                            local grabWindow = _afGrabDelay > 0 and (_afGrabDelay * 12) or 0.6
 
-                            repeat
-                                -- Touch directo HRP <-> MainCoin
+                            while _afEnabled and coinData.Container.Parent
+                                  and coinPart.Parent and coinPart.Transparency < 1
+                                  and (tick() - startTime) < grabWindow do
+
+                                -- Metodo 1: firetouchinterest estandar y reverso
                                 if firetouchinterest then
                                     pcall(function()
                                         firetouchinterest(hrp, coinPart, 0)
@@ -34630,7 +34634,7 @@ function CreateFarmTab()
                                     end)
                                 end
 
-                                -- Touch en todos los TouchTransmitter / TouchInterest del folder
+                                -- Metodo 2: TouchTransmitter / TouchInterest en todos los descendientes
                                 pcall(function()
                                     for _, obj in pairs(coinData.Container:GetDescendants()) do
                                         if obj:IsA("TouchTransmitter") or obj.ClassName == "TouchInterest" then
@@ -34642,15 +34646,8 @@ function CreateFarmTab()
                                     end
                                 end)
 
-                                if _afGrabDelay > 0 then
-                                    task.wait(_afGrabDelay)
-                                end
-                            until not _afEnabled
-                                or not coinData.Container.Parent
-                                or not coinPart.Parent
-                                or coinPart.Transparency >= 1
-                                or (grabWindow > 0 and (tick() - startTime) >= grabWindow)
-                                or grabWindow == 0
+                                task.wait(0.05)
+                            end
 
                             _afBlacklist[coinData.Container] = true
                         end
@@ -34666,12 +34663,11 @@ function CreateFarmTab()
                 CreateCustomNotification("AUTO FARM", "OFF", 1)
             end)
 
-            CreateCustomNotification("AUTO FARM", "ON", 2)
+            CreateCustomNotification("AUTO FARM", "ON - volando hacia monedas", 2)
         end, false)
 
         -- Slider: altura bajo la moneda
-        -- Slider: altura bajo la moneda (valor directo en studs, step 0.1)
-        CreateSlider(leftColumn, "Auto Farm Offset Bajo Moneda", 0.1, 10, 2.8, function(v)
+        CreateSlider(leftColumn, "Auto Farm Offset Bajo Moneda", 0.5, 10, 1.5, function(v)
             _afAlturaOffset = v
         end)
 
@@ -34680,7 +34676,7 @@ function CreateFarmTab()
             _afSpeed = v
         end)
 
-        -- Slider: delay entre intentos de agarre (0s - 0.5s, step 0.01s)
+        -- Slider: delay entre intentos de agarre
         CreateSlider(leftColumn, "Auto Farm Delay Agarre (x0.01s)", 0, 50, 0, function(v)
             _afGrabDelay = v / 100
         end)
@@ -43924,16 +43920,26 @@ function CreateCombatTab()
                 -- Deshabilitar conexiones originales y hookear la gun
                 _ssTryHook()
                 if _hookedGun then _ssApplyDisable() end
-                -- LMB directo: intercepta el click del mouse y redirige al target
+                -- LMB / Touch: solo dispara si la gun esta EQUIPADA en el personaje
                 _ssLmbConn = UserInputService.InputBegan:Connect(function(i, gp)
                     if gp or not _ssEnabled then return end
                     if i.UserInputType ~= Enum.UserInputType.MouseButton1
                        and i.UserInputType ~= Enum.UserInputType.Touch then return end
+                    -- Verificar que la gun este equipada (en el Character, NO en Backpack)
+                    local char = LocalPlayer.Character
+                    if not char then return end
+                    local equippedGun = nil
+                    for _, t in ipairs(char:GetChildren()) do
+                        if t:IsA("Tool") and (t:FindFirstChild("GunClient") or t:FindFirstChild("Shoot") or _ssGetR(t)) then
+                            equippedGun = t
+                            break
+                        end
+                    end
+                    if not equippedGun then return end  -- sin gun equipada: ignorar el touch
                     local now = tick()
                     if now - _ssLast < _ssCD then return end
                     _ssLast = now
-                    local gun = _hookedGun or _ssGetEquippedGun()
-                    if gun then _sp(function() _ssFire(gun) end) end
+                    _sp(function() _ssFire(equippedGun) end)
                 end)
                 CreateCustomNotification("SHOOPER SHOT","ON -- LMB redirige automaticamente al murder",2)
             else
@@ -46992,396 +46998,8 @@ function CreateCombatTab()
     end
 
     -- ================================================================
-    -- BOTONES FLOTANTES MOBILE — COMBAT TAB (DESACTIVADOS)
-    -- ================================================================
-    do
-        local _isMobCombat = false  -- Botones mobile desactivados
-        if not _isMobCombat then return end  -- skip siempre
+    -- BOTONES FLOTANTES MOBILE DESACTIVADOS
 
-        -- Limpiar botones anteriores si existían
-        if _G._combatMobileGuis then
-            for _, g in ipairs(_G._combatMobileGuis) do
-                pcall(function() g:Destroy() end)
-            end
-        end
-        _G._combatMobileGuis = {}
-        if _G._combatMobileConns then
-            for _, c in ipairs(_G._combatMobileConns) do
-                pcall(function() c:Disconnect() end)
-            end
-        end
-        _G._combatMobileConns = {}
-
-        -- Helper: crear botón flotante circular arrastrable
-        local function _makeMobileBtn(name, label, color, posX, posY, onTap)
-            local sg = Instance.new("ScreenGui")
-            sg.Name = "CombatMobileBtn_" .. name
-            sg.ResetOnSpawn = false
-            sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-            sg.DisplayOrder = 9990
-            sg.IgnoreGuiInset = true
-            pcall(function() sg.Parent = game:GetService("CoreGui") end)
-            if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
-            table.insert(_G._combatMobileGuis, sg)
-
-            local SIZE = 68
-
-            local root = Instance.new("Frame", sg)
-            root.Name = "MobileBtn"
-            root.Size = UDim2.new(0, SIZE, 0, SIZE)
-            root.Position = UDim2.new(posX, 0, posY, 0)
-            root.AnchorPoint = Vector2.new(0.5, 0.5)
-            root.BackgroundColor3 = color
-            root.BackgroundTransparency = 0.3
-            root.BorderSizePixel = 0
-            root.Active = true
-            root.ZIndex = 195
-            Instance.new("UICorner", root).CornerRadius = UDim.new(1, 0)
-
-            -- Borde animado
-            local stroke = Instance.new("UIStroke", root)
-            stroke.Thickness = 2.5
-            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-            stroke.Color = color
-            stroke.Transparency = 0.1
-
-            -- Glow pulsante
-            local _glowTick = 0
-            local _glowDir  = 1
-            local _glowConn = RunService.Heartbeat:Connect(function(dt)
-                _glowTick = _glowTick + dt * _glowDir * 1.2
-                if _glowTick >= 1 then _glowDir = -1 elseif _glowTick <= 0 then _glowDir = 1 end
-                pcall(function()
-                    stroke.Transparency = 0.1 + _glowTick * 0.6
-                end)
-            end)
-            table.insert(_G._combatMobileConns, _glowConn)
-
-            -- Texto del botón
-            local lbl = Instance.new("TextLabel", root)
-            lbl.Size = UDim2.new(1, 0, 1, 0)
-            lbl.BackgroundTransparency = 1
-            lbl.Text = label
-            lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-            lbl.Font = Enum.Font.GothamBold
-            lbl.TextSize = math.max(10, math.floor(SIZE * 0.22))
-            lbl.TextWrapped = true
-            lbl.ZIndex = 196
-
-            -- Estado ON/OFF visual
-            local _isOn = false
-            local function _setVisualOn(on)
-                _isOn = on
-                TweenService:Create(root, TweenInfo.new(0.15), {
-                    BackgroundTransparency = on and 0.05 or 0.3,
-                    BackgroundColor3 = on and Color3.fromRGB(255,255,255) or color,
-                }):Play()
-                TweenService:Create(lbl, TweenInfo.new(0.1), {
-                    TextColor3 = on and color or Color3.fromRGB(255,255,255)
-                }):Play()
-            end
-
-            -- Drag
-            local dragStart, rootStart, dragging = nil, nil, false
-            local btn = Instance.new("TextButton", root)
-            btn.Size = UDim2.new(1, 0, 1, 0)
-            btn.BackgroundTransparency = 1
-            btn.Text = ""
-            btn.ZIndex = 197
-            btn.AutoButtonColor = false
-
-            btn.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.Touch
-                or inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                    dragStart   = inp.Position
-                    rootStart   = root.Position
-                    dragging    = false
-                end
-            end)
-            local moveConn = UserInputService.InputChanged:Connect(function(inp)
-                if not dragStart then return end
-                if inp.UserInputType == Enum.UserInputType.Touch
-                or inp.UserInputType == Enum.UserInputType.MouseMovement then
-                    local delta = inp.Position - dragStart
-                    if not dragging then
-                        if delta.Magnitude > 10 then dragging = true else return end
-                    end
-                    local vp = workspace.CurrentCamera.ViewportSize
-                    local newX = math.clamp(rootStart.X.Scale * vp.X + delta.X, SIZE/2, vp.X - SIZE/2)
-                    local newY = math.clamp(rootStart.Y.Scale * vp.Y + delta.Y, SIZE/2, vp.Y - SIZE/2)
-                    root.Position = UDim2.new(newX / vp.X, 0, newY / vp.Y, 0)
-                end
-            end)
-            local endConn = UserInputService.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.Touch
-                or inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                    if dragStart and not dragging then
-                        -- TAP: ejecutar acción
-                        onTap(_setVisualOn, _isOn)
-                        -- Flash
-                        TweenService:Create(root, TweenInfo.new(0.08), {Size = UDim2.new(0, SIZE+12, 0, SIZE+12)}):Play()
-                        task.delay(0.12, function()
-                            TweenService:Create(root, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-                                {Size = UDim2.new(0, SIZE, 0, SIZE)}):Play()
-                        end)
-                    end
-                    dragStart = nil; dragging = false
-                end
-            end)
-            table.insert(_G._combatMobileConns, moveConn)
-            table.insert(_G._combatMobileConns, endConn)
-
-            -- Animación entrada
-            root.Size = UDim2.new(0, 1, 0, 1)
-            task.delay(0.05, function()
-                TweenService:Create(root, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-                    {Size = UDim2.new(0, SIZE, 0, SIZE)}):Play()
-            end)
-
-            return {gui=sg, root=root, setOn=_setVisualOn}
-        end
-
-        -- ── 1. BOTÓN SHOOT (disparo manual al murder) ───────────────────────
-        _makeMobileBtn("shoot", "SHOOT", Color3.fromRGB(0, 200, 160), 0.14, 0.82, function(setOn, isOn)
-            task.spawn(function()
-                local myChar = LocalPlayer.Character
-                local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                if not myHRP then CreateCustomNotification("SHOOT", "Sin personaje", 1); return end
-                local target = (_G._getEffectiveTarget and _G._getEffectiveTarget()) or findMurderer()
-                if not target or not target.Character then
-                    CreateCustomNotification("SHOOT", "Sin target", 1.2); return
-                end
-                local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
-                local tHead = target.Character:FindFirstChild("Head") or tHRP
-                if not tHRP then return end
-                local gun = _findGunIn and _findGunIn(myChar)
-                if not gun then CreateCustomNotification("SHOOT", "Sin gun equipada", 1.5); return end
-                local shootRemote = getShootRemote and getShootRemote(gun)
-                if not shootRemote then CreateCustomNotification("SHOOT", "Sin remote", 1.5); return end
-                local cam = workspace.CurrentCamera
-                local originPos = cam and cam.CFrame.Position or (myHRP.Position + Vector3.new(0,1.5,0))
-                local targetPos = tHead and tHead.Position or tHRP.Position
-                local oCF, tCF = buildShootCFrames(originPos, targetPos)
-                if oCF and tCF then
-                    pcall(function() shootRemote:FireServer(oCF, tCF) end)
-                    CreateCustomNotification("SHOOT", "Disparado a " .. target.Name, 1.2)
-                    setOn(true)
-                    task.delay(0.3, function() setOn(false) end)
-                end
-            end)
-        end)
-
-        -- ── 2. BOTÓN SILENT AIM TOGGLE ──────────────────────────────────────
-        local _saBtn = _makeMobileBtn("silenlaim", "SA", Color3.fromRGB(80, 120, 255), 0.28, 0.82, function(setOn, isOn)
-            local newState = not CombatTabState.silentAimEnabled
-            CombatTabState.silentAimEnabled = newState
-            setOn(newState)
-            CreateCustomNotification("SILENT AIM", newState and "ON" or "OFF", 1.5)
-        end)
-        -- Sincronizar estado inicial
-        if _saBtn then _saBtn.setOn(CombatTabState.silentAimEnabled) end
-
-        -- ── 3. BOTÓN AUTO SHOOT MURDER TOGGLE ───────────────────────────────
-        local _asBtn = _makeMobileBtn("autoshoot", "AUTO\nSHOOT", Color3.fromRGB(220, 80, 30), 0.72, 0.82, function(setOn, isOn)
-            local newState = not (CombatTabState.autoShootMurderEnabled or false)
-            CombatTabState.autoShootMurderEnabled = newState
-            setOn(newState)
-            if newState then
-                CreateCustomNotification("AUTO SHOOT", "ON", 1.5)
-                if CombatTabState.autoShootMurderConn then
-                    pcall(function() CombatTabState.autoShootMurderConn:Disconnect() end)
-                    CombatTabState.autoShootMurderConn = nil
-                end
-                local _asTick = 0
-                CombatTabState.autoShootMurderConn = RunService.Heartbeat:Connect(function(dt)
-                    if not CombatTabState.autoShootMurderEnabled then return end
-                    _asTick = _asTick + dt
-                    if _asTick < 0.35 then return end
-                    _asTick = 0
-                    task.spawn(function()
-                        local myChar = LocalPlayer.Character
-                        local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                        if not myHRP then return end
-                        local target = (_G._getEffectiveTarget and _G._getEffectiveTarget()) or findMurderer()
-                        if not target or not target.Character then return end
-                        local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
-                        local tHead = target.Character:FindFirstChild("Head") or tHRP
-                        if not tHRP then return end
-                        local tHum = target.Character:FindFirstChildOfClass("Humanoid")
-                        if not tHum or tHum.Health <= 0 then return end
-                        local gun = _findGunIn and _findGunIn(myChar)
-                        if not gun then return end
-                        local shootRemote = getShootRemote and getShootRemote(gun)
-                        if not shootRemote then return end
-                        if CombatTabState.autoShootMurderWC then
-                            if not wallCheckRaycast(myHRP.Position, tHRP.Position) then return end
-                        end
-                        local cam = workspace.CurrentCamera
-                        local originPos = cam and cam.CFrame.Position or (myHRP.Position + Vector3.new(0,1.5,0))
-                        local targetPos = tHead and tHead.Position or tHRP.Position
-                        local oCF, tCF = buildShootCFrames(originPos, targetPos)
-                        if oCF and tCF then
-                            pcall(function() shootRemote:FireServer(oCF, tCF) end)
-                        end
-                    end)
-                end)
-                table.insert(_G._combatMobileConns, CombatTabState.autoShootMurderConn)
-            else
-                CreateCustomNotification("AUTO SHOOT", "OFF", 1.5)
-                if CombatTabState.autoShootMurderConn then
-                    pcall(function() CombatTabState.autoShootMurderConn:Disconnect() end)
-                    CombatTabState.autoShootMurderConn = nil
-                end
-            end
-        end)
-        if _asBtn then _asBtn.setOn(CombatTabState.autoShootMurderEnabled or false) end
-
-        -- ── 4. BOTÓN STEAL GUN TOGGLE ────────────────────────────────────────
-        local _sgBtn = _makeMobileBtn("stealgun", "STEAL\nGUN", Color3.fromRGB(220, 160, 0), 0.86, 0.82, function(setOn, isOn)
-            if StealGunSystem then
-                local newState = not StealGunSystem.enabled
-                StealGunSystem.enabled = newState
-                setOn(newState)
-                if newState then
-                    task.spawn(StealGunLoop)
-                    CreateCustomNotification("STEAL GUN", "ON", 1.5)
-                else
-                    CreateCustomNotification("STEAL GUN", "OFF", 1.5)
-                end
-            else
-                CreateCustomNotification("STEAL GUN", "Sistema no encontrado", 2)
-            end
-        end)
-        if _sgBtn and StealGunSystem then _sgBtn.setOn(StealGunSystem.enabled or false) end
-
-        -- ── 5. BOTÓN GRAB GUN AHORA ──────────────────────────────────────────
-        _makeMobileBtn("grabgun", "GRAB\nGUN", Color3.fromRGB(40, 200, 100), 0.86, 0.65, function(setOn, isOn)
-            setOn(true)
-            task.spawn(function()
-                -- Intentar agarrar la gun del sheriff (múltiples métodos)
-                local grabbed = false
-                local sheriff = findSheriff and findSheriff()
-                if sheriff and sheriff.Character then
-                    local sChar = sheriff.Character
-                    local sHRP = sChar:FindFirstChild("HumanoidRootPart")
-                    local myChar = LocalPlayer.Character
-                    local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                    if myHRP and sHRP then
-                        -- TP cerca del sheriff y agarrar
-                        local oldPos = myHRP.CFrame
-                        pcall(function()
-                            myHRP.CFrame = sHRP.CFrame * CFrame.new(0, 0, 2.5)
-                        end)
-                        task.wait(0.1)
-                        -- Buscar GunDrop en workspace
-                        for _, obj in ipairs(workspace:GetDescendants()) do
-                            if obj:IsA("Tool") and (obj.Name == "GunDrop" or obj.Name == "SheriffGun" or obj.Name == "HeroGun" or obj.Name == "Gun") then
-                                local hum = myChar:FindFirstChildOfClass("Humanoid")
-                                if hum then
-                                    pcall(function() hum:EquipTool(obj) end)
-                                    grabbed = true
-                                    break
-                                end
-                            end
-                        end
-                        if not grabbed then
-                            -- Intentar via StealGunLoop
-                            if StealGunSystem and not StealGunSystem.enabled then
-                                task.spawn(StealGunLoop)
-                            end
-                        end
-                    end
-                end
-                CreateCustomNotification("GRAB GUN", grabbed and "Gun agarrada!" or "Intentando agarrar gun...", 2)
-                task.wait(0.5)
-                setOn(false)
-            end)
-        end)
-
-        -- ── 6. BOTÓN KNIFE SA TOGGLE ─────────────────────────────────────────
-        local _ksaBtn = nil
-        if KnifeSAState ~= nil then
-            _ksaBtn = _makeMobileBtn("knifesa", "KNIFE\nSA", Color3.fromRGB(180, 40, 40), 0.14, 0.65, function(setOn, isOn)
-                local newState = not (KnifeSAState.enabled or false)
-                KnifeSAState.enabled = newState
-                setOn(newState)
-                CreateCustomNotification("KNIFE SA", newState and "ON" or "OFF", 1.5)
-                -- Activar/desactivar sistema de knife SA
-                if newState then
-                    if _KnifeSA_activate then pcall(_KnifeSA_activate) end
-                else
-                    if _KnifeSA_deactivate then pcall(_KnifeSA_deactivate) end
-                end
-            end)
-            if _ksaBtn and KnifeSAState then _ksaBtn.setOn(KnifeSAState.enabled or false) end
-        end
-
-        -- ── 7. BOTÓN FLING MURDER ────────────────────────────────────────────
-        _makeMobileBtn("fling", "FLING", Color3.fromRGB(140, 60, 200), 0.28, 0.65, function(setOn, isOn)
-            setOn(true)
-            task.spawn(function()
-                local target = findMurderer and findMurderer()
-                if not target or not target.Character then
-                    CreateCustomNotification("FLING", "No hay murderer", 1.5)
-                    setOn(false)
-                    return
-                end
-                -- Usar _sgFlingPlayer si está disponible
-                if _sgFlingPlayer then
-                    pcall(_sgFlingPlayer, target)
-                    CreateCustomNotification("FLING", "Fling a " .. target.Name, 1.5)
-                else
-                    -- Fallback: TP encima del murder y empujar
-                    local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
-                    local myChar = LocalPlayer.Character
-                    local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                    if tHRP and myHRP then
-                        pcall(function()
-                            myHRP.CFrame = tHRP.CFrame * CFrame.new(0, 3, 0)
-                            myHRP.AssemblyLinearVelocity = tHRP.AssemblyLinearVelocity + Vector3.new(0, 80, 0)
-                        end)
-                        CreateCustomNotification("FLING", "Fling aplicado", 1.5)
-                    end
-                end
-                task.wait(0.4)
-                setOn(false)
-            end)
-        end)
-
-        -- ── 8. BOTÓN WALL CHECK (toggle para silent aim) ────────────────────
-        local _wcBtn = _makeMobileBtn("wallcheck", "WALL\nCHECK", Color3.fromRGB(100, 100, 100), 0.72, 0.65, function(setOn, isOn)
-            local newState = not (CombatTabState.saWallCheck or false)
-            CombatTabState.saWallCheck = newState
-            setOn(newState)
-            CreateCustomNotification("WALL CHECK", newState and "ON" or "OFF", 1.2)
-        end)
-        if _wcBtn then _wcBtn.setOn(CombatTabState.saWallCheck or false) end
-
-        -- Notificación informativa
-        task.delay(0.5, function()
-            CreateCustomNotification("COMBAT MOBILE", "8 botones activos — arrástralos para moverlos", 3)
-        end)
-
-        -- Limpiar al destruir el tab
-        local _cleanupConn
-        _cleanupConn = contentContainer:GetPropertyChangedSignal("Parent"):Connect(function()
-            if contentContainer.Parent then return end
-            if _G._combatMobileGuis then
-                for _, g in ipairs(_G._combatMobileGuis) do
-                    pcall(function() g:Destroy() end)
-                end
-                _G._combatMobileGuis = {}
-            end
-            if _G._combatMobileConns then
-                for _, c in ipairs(_G._combatMobileConns) do
-                    pcall(function() c:Disconnect() end)
-                end
-                _G._combatMobileConns = {}
-            end
-            pcall(function() _cleanupConn:Disconnect() end)
-        end)
-        table.insert(_G._combatMobileConns, _cleanupConn)
-    end
 end  -- close CreateCombatTab
 
 
