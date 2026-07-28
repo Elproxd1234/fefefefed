@@ -10774,10 +10774,14 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     sliderFill.ZIndex                 = 13
     Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
 
+    -- Thumb más grande en móvil para que sea fácil de tocar con el dedo
+    local _thumbSize = UserInputService.TouchEnabled and 26 or 18
+    local _thumbSizeHover = UserInputService.TouchEnabled and 30 or 22
+
     -- Thumb circular blanco
     local sliderThumb = Instance.new("ImageButton", sliderTrack)
     sliderThumb.Name                   = "SliderThumb"
-    sliderThumb.Size                   = UDim2.new(0, 18, 0, 18)
+    sliderThumb.Size                   = UDim2.new(0, _thumbSize, 0, _thumbSize)
     sliderThumb.AnchorPoint            = Vector2.new(0.5, 0.5)
     sliderThumb.Position               = UDim2.new(fillRatio, 0, 0.5, 0)
     sliderThumb.BackgroundColor3       = C_THUMB
@@ -10807,49 +10811,62 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
 
     applyValue(_initVal)
 
-    local function updateFromMouse()
-        local mx  = UserInputService:GetMouseLocation().X
+    local function updateFromInput(inputObj)
+        local mx
+        if inputObj and inputObj.UserInputType == Enum.UserInputType.Touch then
+            mx = inputObj.Position.X
+        else
+            mx = UserInputService:GetMouseLocation().X
+        end
         local tp  = sliderTrack.AbsolutePosition.X
         local ts  = sliderTrack.AbsoluteSize.X
         local pct = math.clamp((mx - tp) / math.max(ts, 1), 0, 1)
         applyValue(minVal + pct * (maxVal - minVal))
     end
 
+    local function updateFromMouse()
+        updateFromInput(nil)
+    end
+
     sliderThumb.MouseEnter:Connect(function()
         TweenService:Create(sliderThumb, TweenInfo.new(0.10),
-            {Size = UDim2.new(0, 22, 0, 22)}):Play()
+            {Size = UDim2.new(0, _thumbSizeHover, 0, _thumbSizeHover)}):Play()
     end)
     sliderThumb.MouseLeave:Connect(function()
         if not dragging then
             TweenService:Create(sliderThumb, TweenInfo.new(0.10),
-                {Size = UDim2.new(0, 18, 0, 18)}):Play()
+                {Size = UDim2.new(0, _thumbSize, 0, _thumbSize)}):Play()
         end
     end)
 
     sliderThumb.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             _G._sliderDragging = true
             TweenService:Create(sliderThumb, TweenInfo.new(0.08),
-                {Size = UDim2.new(0, 22, 0, 22)}):Play()
+                {Size = UDim2.new(0, _thumbSizeHover, 0, _thumbSizeHover)}):Play()
         end
     end)
     sliderTrack.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true; _G._sliderDragging = true; updateFromMouse()
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; _G._sliderDragging = true; updateFromInput(i)
         end
     end)
     local _c1 = UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
             dragging = false
             _G._sliderDragging = false
             TweenService:Create(sliderThumb, TweenInfo.new(0.10),
-                {Size = UDim2.new(0, 18, 0, 18)}):Play()
+                {Size = UDim2.new(0, _thumbSize, 0, _thumbSize)}):Play()
         end
     end)
     local _c2 = UserInputService.InputChanged:Connect(function(i)
-        if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
-            updateFromMouse()
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
+                      or i.UserInputType == Enum.UserInputType.Touch) then
+            updateFromInput(i)
         end
     end)
     container.AncestryChanged:Connect(function()
@@ -49318,14 +49335,16 @@ do
 
     local function _calcScale()
         local vp = workspace.CurrentCamera.ViewportSize
-        -- Escala máxima que cabe en ancho y en alto (con margen de 10px)
-        local scaleX = (vp.X - 10) / HUB_W
-        local scaleY = (vp.Y - 10) / HUB_H
-        -- Usar la escala más pequeña para que entre en ambas dimensiones
+        local isMobile = UserInputService.TouchEnabled
+        -- Margen mayor en móvil para evitar que se salga de pantalla
+        local marginX = isMobile and 20 or 10
+        local marginY = isMobile and 30 or 10
+        local scaleX = (vp.X - marginX) / HUB_W
+        local scaleY = (vp.Y - marginY) / HUB_H
         local scale  = math.min(scaleX, scaleY)
-        -- PC: nunca pasar de 1.0 (no agrandar)
-        -- Móvil: clamp mínimo 0.4 para que siempre sea legible
-        return math.clamp(scale, 0.4, 1.0)
+        -- PC: máximo 1.0 | Móvil: mínimo 0.30 para pantallas muy pequeñas
+        local minScale = isMobile and 0.30 or 0.5
+        return math.clamp(scale, minScale, 1.0)
     end
 
     local function _applyScale()
