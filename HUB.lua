@@ -34582,7 +34582,7 @@ function CreateFarmTab()
         local _afAntiSpinConn = nil
         local _afBlacklist    = {}
         local _afSpeed        = 100   -- studs/s
-        local _afAlturaOffset = 1.5   -- studs bajo la moneda
+        local _afAlturaOffset = 1.80  -- studs bajo la moneda
         local _afGrabDelay    = 0     -- delay entre intentos de toque
 
         if _G._sliderVals then
@@ -34686,9 +34686,13 @@ function CreateFarmTab()
                 return
             end
 
-            -- Noclip constante en Stepped
+            -- Noclip constante en Stepped (throttle: cada 6 frames para reducir lag)
+            local _afNoclipTick = 0
             _afNoclipConn = RunService.Stepped:Connect(function()
                 if not _afEnabled then return end
+                _afNoclipTick = _afNoclipTick + 1
+                if _afNoclipTick < 6 then return end
+                _afNoclipTick = 0
                 local char = LocalPlayer.Character
                 if not char then return end
                 for _, part in pairs(char:GetDescendants()) do
@@ -34698,9 +34702,13 @@ function CreateFarmTab()
                 end
             end)
 
-            -- PlatformStand + Physics state en Heartbeat
+            -- PlatformStand + Physics state en Heartbeat (throttle: cada 10 frames)
+            local _afStateTick = 0
             _afStateConn = RunService.Heartbeat:Connect(function()
                 if not _afEnabled then return end
+                _afStateTick = _afStateTick + 1
+                if _afStateTick < 10 then return end
+                _afStateTick = 0
                 local char = LocalPlayer.Character
                 if not char then return end
                 local hum = char:FindFirstChildOfClass("Humanoid")
