@@ -336,6 +336,20 @@ local function _serializeConfig()
             first = false
         end
     end
+    -- Guardar hubScale y hubOpacity de _hubSettings
+    if _G._hubSettings then
+        local hs = _G._hubSettings
+        if hs.hubScale and hs.hubScale ~= 100 then
+            if not first then parts[#parts+1] = "," end
+            parts[#parts+1] = string.format('"__hubScale":%d', math.floor(hs.hubScale))
+            first = false
+        end
+        if hs.hubOpacity and hs.hubOpacity ~= 15 then
+            if not first then parts[#parts+1] = "," end
+            parts[#parts+1] = string.format('"__hubOpacity":%d', math.floor(hs.hubOpacity))
+            first = false
+        end
+    end
     parts[#parts+1] = "}"
     return table.concat(parts)
 end
@@ -346,6 +360,10 @@ local function _deserializeConfig(json)
     -- Parser simple de JSON plano (solo booleans)
     for k, v in json:gmatch('"([^"]+)":%s*(true|false)') do
         result[k] = (v == "true")
+    end
+    -- Restaurar hubScale y hubOpacity guardados
+    for k, v in json:gmatch('"(__hub%a+)":(%d+)') do
+        result[k] = tonumber(v)
     end
     return result
 end
@@ -504,6 +522,15 @@ local function _loadConfig()
     -- Restaurar flag de auto-save desde el JSON
     if saved["Auto Save Config"] ~= nil then
         _G._autoSaveEnabled = saved["Auto Save Config"]
+    end
+    -- Restaurar hubScale y hubOpacity en _hubSettings (pueden existir ya o no)
+    if saved["__hubScale"] then
+        _G._hubSettings = _G._hubSettings or {}
+        _G._hubSettings.hubScale = saved["__hubScale"]
+    end
+    if saved["__hubOpacity"] then
+        _G._hubSettings = _G._hubSettings or {}
+        _G._hubSettings.hubOpacity = saved["__hubOpacity"]
     end
 end
 
@@ -24446,7 +24473,7 @@ instanceLoop = nil --[[empty loop removed]]
 -- el instanceLoop re-aplique todo en el proximo tick (~0.08s)
 -- ==================================================================
 function _vcRefreshAll()
-    -- Limpiar cache de chams para forzar re-aplicado
+    -- Limpiar cache de chams
     for player, ref in pairs(chamHighlight or {}) do
         pcall(function()
             if player and player.Character then
@@ -24468,7 +24495,15 @@ function _vcRefreshAll()
         pcall(function() if sb and sb.Parent then sb:Destroy() end end)
         boxSelect[player] = nil
     end
-    -- El instanceLoop se encarga de re-crear todo en el proximo tick
+    -- FIX: limpiar tambien ESP boards y highlights de todos los jugadores
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            pcall(removeBoard,     player)
+            pcall(removeHighlight, player)
+        end
+    end
+    -- Forzar tick inmediato del instanceLoop para re-aplicar
+    _G._forceInstanceTick = true
 end
 
 do
@@ -24491,11 +24526,27 @@ do
         ticker = ticker + dt
         -- LAG FIX: si no hay ningun visual activo, correr a 2s para no consumir CPU
         local _vs = VisualState
+        -- FIX: incluir hero/assassin/zombie/skeleton/tracer en el check de visuals activos
         local _anyVisual = _vs and (
-            (_vs.esp    and (_vs.esp.everyone    or _vs.esp.murderer    or _vs.esp.sheriff)) or
-            (_vs.cham   and (_vs.cham.everyone   or _vs.cham.murderer   or _vs.cham.sheriff  or _vs.cham.survivor or _vs.cham.dead)) or
-            (_vs.outline and (_vs.outline.everyone or _vs.outline.murderer or _vs.outline.sheriff)) or
-            (_vs.box    and (_vs.box.everyone    or _vs.box.murderer    or _vs.box.sheriff))
+            (_vs.esp    and (_vs.esp.everyone    or _vs.esp.murderer    or _vs.esp.sheriff
+                          or _vs.esp.hero        or _vs.esp.assassin    or _vs.esp.zombie
+                          or _vs.esp.survivor    or _vs.esp.dead        or _vs.esp.knife
+                          or _vs.esp.gun         or _vs.esp.coins       or _vs.esp.distance)) or
+            (_vs.cham   and (_vs.cham.everyone   or _vs.cham.murderer   or _vs.cham.sheriff
+                          or _vs.cham.hero       or _vs.cham.assassin   or _vs.cham.zombie
+                          or _vs.cham.survivor   or _vs.cham.dead       or _vs.cham.knife
+                          or _vs.cham.coins)) or
+            (_vs.outline and (_vs.outline.everyone or _vs.outline.murderer or _vs.outline.sheriff
+                          or _vs.outline.hero    or _vs.outline.assassin or _vs.outline.zombie
+                          or _vs.outline.survivor or _vs.outline.dead   or _vs.outline.knife)) or
+            (_vs.box    and (_vs.box.everyone    or _vs.box.murderer    or _vs.box.sheriff
+                          or _vs.box.hero        or _vs.box.assassin    or _vs.box.zombie
+                          or _vs.box.survivor    or _vs.box.dead        or _vs.box.knife)) or
+            (_vs.skeleton and (_vs.skeleton.everyone or _vs.skeleton.murderer or _vs.skeleton.sheriff
+                          or _vs.skeleton.hero   or _vs.skeleton.assassin or _vs.skeleton.zombie)) or
+            (_vs.tracer  and (_vs.tracer.everyone  or _vs.tracer.murderer  or _vs.tracer.sheriff
+                          or _vs.tracer.hero     or _vs.tracer.assassin  or _vs.tracer.zombie
+                          or _vs.tracer.knife    or _vs.tracer.gun       or _vs.tracer.droppedknife))
         )
         local _timeSinceRS   = tick() - (_G._roundStartTime or 0)
         local _isEarlyRound  = _timeSinceRS < 12
@@ -24925,15 +24976,9 @@ function CreateVisualsTab()
         _w(0.15)
         if not contentContainer or not contentContainer.Parent then return end
     end
-    ClearContent()
-    -- OPT: limpiar conexiones del tab anterior
-    pcall(function()
-        -- instanceLoop es el loop global de pintado de jugadores -- NO desconectar al abrir Visuals
-        if trackerConn        then trackerConn:Disconnect();        trackerConn        = nil end
-        if _radarConn         then _radarConn:Disconnect();         _radarConn         = nil end
-        local bps = BodyPartState
-        if bps and bps.connection then bps.connection:Disconnect(); bps.connection = nil end
-    end)
+    -- OPT: con cache de tabs, ClearContent() ya NO se llama aqui (el tab se construye una sola vez)
+    -- Solo limpiar conexiones que el tab propio pudo haber creado en ejecuciones anteriores
+    -- (trackerConn/_radarConn son conexiones del radar local, NO del instanceLoop global)
     _makeTwoColumns()
 
     _G.ESPState = _G.ESPState or {
@@ -26637,13 +26682,20 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Sin hover (toggle transparente)
     clickRow.MouseEnter:Connect(function() end)
     clickRow.MouseLeave:Connect(function() end)
-    -- Lgica de toggle
+    -- Logica de toggle
     local function doToggle()
         estado = not estado
         _G._toggleStates[nombre] = estado
         ApplyState(estado, true)
         PlayToggleSound(estado)
         if callback then callback(estado) end
+        -- FIX: forzar tick inmediato del instanceLoop para que los visuals
+        -- se apliquen o limpien en el proximo Heartbeat sin esperar el intervalo
+        _G._forceInstanceTick = true
+        -- FIX: al desactivar, forzar limpieza inmediata de todos los visuals
+        if not estado and _vcRefreshAll then
+            task.defer(_vcRefreshAll)
+        end
     end
 
     -- Auto-activar al cargar (misma logica que antes)
@@ -26702,7 +26754,7 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
             or lower:find("auto tp") or lower:find("auto teleport")
             or lower:find("auto farm") or lower:find("auto prestige")
             or lower:find("auto grab gun") or lower:find("auto equip gun")
-            or lower:find("coin aura") or lower:find("auto remove")
+            or lower:find("auto remove")
             or lower:find("dual knife") or lower:find("dual gun")
             or lower:find("invisible") or lower:find("xray")
             or lower:find("second life") or lower:find("skip death")
@@ -34490,84 +34542,6 @@ function CreateFarmTab()
     -- =====================================================================
     CreateSection(leftColumn, "", "COIN FARM", ThemeColors.Aurora2)
 
-    -- Coin Aura Farm
-    do
-        local _coinAuraEnabled = false
-        local _coinAuraConn    = nil
-
-        CreateAuroraToggle(leftColumn, "Coin Aura Farm", function(en)
-            _coinAuraEnabled = en
-            if _coinAuraConn then _coinAuraConn:Disconnect(); _coinAuraConn = nil end
-            if not en then
-                CreateCustomNotification("COIN AURA", "OFF", 1)
-                return
-            end
-            local _auraTick = 0
-            _coinAuraConn = RunService.Heartbeat:Connect(function()
-                if not _coinAuraEnabled then return end
-                _auraTick = _auraTick + 1; if _auraTick < 2 then return end; _auraTick = 0
-                local char = LocalPlayer.Character
-                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                if not hrp then return end
-                pcall(function()
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if obj:IsA("BasePart") and obj.Transparency < 1 then
-                            local n = obj.Name:lower()
-                            if n == "maincoin" or n == "coin" or n == "goldcoin" or n:find("coin") then
-                                if (obj.Position - hrp.Position).Magnitude < 60 then
-                                    if firetouchinterest then
-                                        firetouchinterest(hrp, obj, 0)
-                                        firetouchinterest(hrp, obj, 1)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end)
-            end)
-            CreateCustomNotification("COIN AURA", "ON", 2)
-        end, false)
-    end
-
-    -- TP To Coins
-    do
-        local _tpCoinsEnabled = false
-        local _tpCoinsConn    = nil
-
-        CreateAuroraToggle(leftColumn, "TP To Coins", function(en)
-            _tpCoinsEnabled = en
-            if _tpCoinsConn then _tpCoinsConn:Disconnect(); _tpCoinsConn = nil end
-            if not en then
-                CreateCustomNotification("TP COINS", "OFF", 1)
-                return
-            end
-            _tpCoinsConn = RunService.Heartbeat:Connect(function()
-                if not _tpCoinsEnabled then return end
-                local char = LocalPlayer.Character
-                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                if not hrp or not hum or hum.Health <= 0 then return end
-                pcall(function()
-                    local nearest, minDist = nil, math.huge
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if obj:IsA("BasePart") and obj.Transparency < 1 then
-                            local n = obj.Name:lower()
-                            if n == "maincoin" or n == "coin" or n == "goldcoin" or n:find("coin") then
-                                local d = (obj.Position - hrp.Position).Magnitude
-                                if d < minDist then minDist = d; nearest = obj end
-                            end
-                        end
-                    end
-                    if nearest and minDist > 1 then
-                        hrp.CFrame = CFrame.new(nearest.Position + Vector3.new(0, 3, 0))
-                    end
-                end)
-                task.wait(0.1)
-            end)
-            CreateCustomNotification("TP COINS", "ON", 2)
-        end, false)
-    end
-
     -- =====================================================================
     -- AUTO FARM v2 - Logica multi-toque, noclip, BodyVelocity, sin movimiento
     -- =====================================================================
@@ -35281,91 +35255,6 @@ function CreateFarmTab()
     -- =====================================================================
     CreateSection(leftColumn, "", "UNDER MAP FARM", ThemeColors.Aurora3)
 
-    do
-        local _umfEnabled  = false
-        local _umfPlatform = nil
-        local _umfThread   = nil
-
-        local function _destroyUMFPlat()
-            if _umfPlatform and _umfPlatform.Parent then
-                pcall(function() _umfPlatform:Destroy() end)
-            end
-            _umfPlatform = nil
-        end
-
-        -- Under Map Coin Farm
-        CreateAuroraToggle(leftColumn, "Under Map Coin Farm", function(en)
-            _umfEnabled = en
-            if _umfThread then task.cancel(_umfThread); _umfThread = nil end
-            _destroyUMFPlat()
-
-            if not en then
-                CreateCustomNotification("UNDER MAP", "OFF", 1)
-                return
-            end
-
-            _umfThread = task.spawn(function()
-                -- Crear plataforma invisible bajo el mapa
-                local char = LocalPlayer.Character
-                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                if not hrp then return end
-
-                -- TP bajo el mapa
-                local underPos = Vector3.new(hrp.Position.X, -50, hrp.Position.Z)
-                hrp.CFrame = CFrame.new(underPos)
-                task.wait(0.2)
-
-                -- Crear plataforma de soporte
-                _umfPlatform = Instance.new("Part")
-                _umfPlatform.Name      = "UMFPlatform"
-                _umfPlatform.Size      = Vector3.new(10, 1, 10)
-                _umfPlatform.Anchored  = true
-                _umfPlatform.CanCollide = true
-                _umfPlatform.Transparency = 1
-                _umfPlatform.Position  = underPos - Vector3.new(0, 3, 0)
-                _umfPlatform.Parent    = workspace
-
-                -- Reposicionar al jugador encima de la plataforma
-                task.wait(0.1)
-                hrp.CFrame = CFrame.new(underPos + Vector3.new(0, 2, 0))
-
-                CreateCustomNotification("UNDER MAP", "ON — bajo el mapa", 2)
-
-                -- Loop de farm de monedas bajo el mapa con aura
-                while _umfEnabled do
-                    local c = LocalPlayer.Character
-                    local h = c and c:FindFirstChild("HumanoidRootPart")
-                    if h then
-                        pcall(function()
-                            for _, obj in ipairs(workspace:GetDescendants()) do
-                                if obj:IsA("BasePart") and obj.Transparency < 1 then
-                                    local n = obj.Name:lower()
-                                    if n == "maincoin" or n == "coin" or n:find("coin") then
-                                        if firetouchinterest then
-                                            firetouchinterest(h, obj, 0)
-                                            firetouchinterest(h, obj, 1)
-                                        end
-                                    end
-                                end
-                            end
-                        end)
-                    end
-                    task.wait(0.05)
-                end
-            end)
-        end, false)
-
-        _makeTPButton("Salir de Under Map", function()
-            _destroyUMFPlat()
-            pcall(function()
-                local char = LocalPlayer.Character
-                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.CFrame = CFrame.new(0, 100, 0) end
-            end)
-            CreateCustomNotification("FARM", "Saliste del under map", 2)
-        end, leftColumn)
-    end
-
     -- =====================================================================
     -- AUTO PRESTIGE / XP FARM
     -- =====================================================================
@@ -35648,6 +35537,17 @@ function CreateExclusiveTab()
     local HS = _G._hubSettings
     local function _hs() return _G._hubSettings end
 
+    -- FIX ESCALA: re-aplicar UIScale guardada al abrir el tab Settings
+    -- (el UIScale del mainFrame puede haberse perdido si el hub se recreo)
+    pcall(function()
+        local savedScale = (_G._hubSettings.hubScale or 100) / 100
+        local sc = mainFrame:FindFirstChildOfClass("UIScale")
+        if not sc then sc = Instance.new("UIScale", mainFrame) end
+        if math.abs(sc.Scale - savedScale) > 0.001 then
+            sc.Scale = savedScale
+        end
+    end)
+
     -- ============================================================
     -- COLUMNA IZQUIERDA
     -- ============================================================
@@ -35891,7 +35791,7 @@ function CreateExclusiveTab()
     end)
 
     -- Escala del hub (slider 70-130%)
-    CreateSlider(visualSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 70, function(v)
+    CreateSlider(visualSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 100, function(v)
         _hs().hubScale = v
         pcall(function()
             local sc = mainFrame:FindFirstChildOfClass("UIScale")
