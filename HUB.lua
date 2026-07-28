@@ -9509,8 +9509,8 @@ function CreateCustomNotification(titleRaw, message, duration)
         -- Fondo principal (responsive para móvil)
         local _notifVP = workspace.CurrentCamera.ViewportSize
         local _notifIsMob = _notifVP.X < 600
-        local _notifW = _notifIsMob and math.min(math.floor(_notifVP.X * 0.92), 320) or 340
-        local _notifH = _notifIsMob and 75 or 90
+        local _notifW = _notifIsMob and math.min(math.floor(_notifVP.X * 0.55), 220) or 260
+        local _notifH = _notifIsMob and 60 or 72
         local mainFrame = Instance.new("Frame")
         mainFrame.Size = UDim2.new(0, _notifW, 0, _notifH)
         mainFrame.Position = UDim2.new(1, -8, 1, -50)
@@ -9533,8 +9533,8 @@ function CreateCustomNotification(titleRaw, message, duration)
 
         -- Icono checkmark verde
         local icon = Instance.new("ImageLabel")
-        icon.Size = UDim2.new(0, 36, 0, 36)
-        icon.Position = UDim2.new(0, 12, 0, 12)
+        icon.Size = UDim2.new(0, 26, 0, 26)
+        icon.Position = UDim2.new(0, 10, 0, 10)
         icon.BackgroundTransparency = 1
         icon.Image = "rbxassetid://6031094678"
         icon.ImageColor3 = ThemeColors.Primary
@@ -9542,27 +9542,27 @@ function CreateCustomNotification(titleRaw, message, duration)
 
         -- Titulo con RichText: "Overdrive H Says:"
         local titleLbl = Instance.new("TextLabel")
-        titleLbl.Size = UDim2.new(1, -65, 0, 25)
-        titleLbl.Position = UDim2.new(0, 55, 0, 12)
+        titleLbl.Size = UDim2.new(1, -55, 0, 20)
+        titleLbl.Position = UDim2.new(0, 46, 0, 8)
         titleLbl.BackgroundTransparency = 1
         titleLbl.RichText = true
         local _pr = ThemeColors.Primary
         local _phex = string.format("#%02X%02X%02X", math.floor(_pr.R*255), math.floor(_pr.G*255), math.floor(_pr.B*255))
         titleLbl.Text = '<font color="' .. _phex .. '">' .. tostring(titleRaw) .. '</font> <font color="#FFFFFF">Says:</font>'
-        titleLbl.TextSize = 19
+        titleLbl.TextSize = 13
         titleLbl.Font = Enum.Font.GothamMedium
         titleLbl.TextXAlignment = Enum.TextXAlignment.Left
         titleLbl.Parent = mainFrame
 
         -- Mensaje
         local descLbl = Instance.new("TextLabel")
-        descLbl.Size = UDim2.new(1, -65, 0, 35)
-        descLbl.Position = UDim2.new(0, 55, 0, 35)
+        descLbl.Size = UDim2.new(1, -55, 0, 28)
+        descLbl.Position = UDim2.new(0, 46, 0, 28)
         descLbl.BackgroundTransparency = 1
         descLbl.RichText = true
         descLbl.Text = tostring(message)
         descLbl.TextColor3 = Color3.fromRGB(190, 190, 190)
-        descLbl.TextSize = 13
+        descLbl.TextSize = 10
         descLbl.Font = Enum.Font.Gotham
         descLbl.TextWrapped = true
         descLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -9586,7 +9586,7 @@ function CreateCustomNotification(titleRaw, message, duration)
 
         -- Slide in (responsive)
         local tweenIn = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        local _notifTargetY = _notifIsMob and -(_notifH + 10) or -110
+        local _notifTargetY = _notifIsMob and -(_notifH + 10) or -85
         TweenService:Create(mainFrame, tweenIn, {Position = UDim2.new(1, -8, 1, _notifTargetY)}):Play()
 
         -- Barra se encoge durante 'duration' segundos
@@ -35716,7 +35716,7 @@ function CreateExclusiveTab()
     end)
 
     -- Escala del hub (slider 70-130%)
-    CreateSlider(visualSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 100, function(v)
+    CreateSlider(visualSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 70, function(v)
         _hs().hubScale = v
         pcall(function()
             local sc = mainFrame:FindFirstChildOfClass("UIScale")
@@ -47420,7 +47420,7 @@ minimizeBtn.TextSize = 18
 minimizeBtn.TextColor3 = Color3.fromRGB(255,255,255)
 minimizeBtn.AutoButtonColor = false
 minimizeBtn.BorderSizePixel = 0
-minimizeBtn.ZIndex = 10
+minimizeBtn.ZIndex = 999
 Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 8)
 
 minStroke = Instance.new("UIStroke", minimizeBtn)
@@ -49298,9 +49298,9 @@ do
         local scaleX = (vp.X - marginX) / HUB_W
         local scaleY = (vp.Y - marginY) / HUB_H
         local scale  = math.min(scaleX, scaleY)
-        -- PC: máximo 1.0 | Móvil: mínimo 0.30 para pantallas muy pequeñas
+        -- PC: máximo 0.70 (70%) | Móvil: mínimo 0.30 para pantallas muy pequeñas
         local minScale = isMobile and 0.30 or 0.5
-        return math.clamp(scale, minScale, 1.0)
+        return math.clamp(scale, minScale, 0.70)
     end
 
     local function _applyScale()
