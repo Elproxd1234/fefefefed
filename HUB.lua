@@ -49317,6 +49317,47 @@ glowBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 uiScale = Instance.new("UIScale", mainFrame)
 uiScale.Scale = 1
 
+-- ================================================================
+-- == AUTO SCALE SEGÚN DISPOSITIVO
+-- Calcula una escala proporcional al viewport para que toda la UI
+-- (texto, botones, iconos) se ajuste automáticamente en móvil.
+-- ================================================================
+do
+    local UIS_AS = game:GetService("UserInputService")
+    -- true si es móvil (táctil sin teclado físico)
+    local _isMobileDevice = UIS_AS.TouchEnabled and not UIS_AS.KeyboardEnabled
+
+    local function _calcScale()
+        local vp = workspace.CurrentCamera.ViewportSize
+        if _isMobileDevice then
+            -- Escala basada en el ancho de pantalla relativo a 390px (iPhone estándar)
+            -- Clampear entre 0.55 (pantallas muy pequeñas) y 0.85 (tablets)
+            local baseScale = math.clamp(vp.X / 390, 0.55, 0.85)
+            return baseScale
+        else
+            -- PC: escala 1:1 (tamaño original del hub)
+            return 1.0
+        end
+    end
+
+    -- Aplicar escala inicial
+    uiScale.Scale = _calcScale()
+
+    -- Reajustar si el usuario rota el dispositivo
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+        uiScale.Scale = _calcScale()
+    end)
+
+    if _isMobileDevice then
+        print("[ZerqonHUB] Móvil detectado — escala aplicada: " .. tostring(uiScale.Scale))
+    else
+        print("[ZerqonHUB] PC detectado — escala: 1.0")
+    end
+end
+-- ================================================================
+-- == FIN AUTO SCALE
+-- ================================================================
+
 -- FONDO SIMPLE: rbxassetid://93899674926078 dentro del hub
 -- stubs de compatibilidad requeridos por el resto del codigo
 local auroraBackground = nil
