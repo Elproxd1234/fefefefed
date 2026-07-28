@@ -46992,13 +46992,11 @@ function CreateCombatTab()
     end
 
     -- ================================================================
-    -- BOTONES FLOTANTES MOBILE — COMBAT TAB
-    -- Solo se crean si el dispositivo tiene TouchEnabled
-    -- Aparecen como botones circulares arrastrables en pantalla
+    -- BOTONES FLOTANTES MOBILE — COMBAT TAB (DESACTIVADOS)
     -- ================================================================
     do
-        local _isMobCombat = UserInputService.TouchEnabled
-        if not _isMobCombat then return end  -- skip en PC
+        local _isMobCombat = false  -- Botones mobile desactivados
+        if not _isMobCombat then return end  -- skip siempre
 
         -- Limpiar botones anteriores si existían
         if _G._combatMobileGuis then
