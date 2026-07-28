@@ -49105,20 +49105,28 @@ function abrirHub()
         _bg.ZIndex                 = 1
 
         -- Imagen principal centrada (rbxassetid://135253670455066)
+        -- Ajuste responsivo: en movil usar porcentaje de pantalla en vez de pixeles fijos
+        local _vp = workspace.CurrentCamera.ViewportSize
+        local _isMobileSplash = _vp.X < 600 or _vp.Y < 700
+        local _imgW = _isMobileSplash and math.floor(_vp.X * 0.92) or 540
+        local _imgH = _isMobileSplash and math.floor(_vp.Y * 0.75) or 700
+
         local _img = Instance.new("ImageLabel", _splashSG)
         _img.Image                  = "rbxassetid://135253670455066"
-        _img.Size                   = UDim2.new(0, 540, 0, 700)
+        _img.Size                   = UDim2.new(0, _imgW, 0, _imgH)
         _img.AnchorPoint            = Vector2.new(0.5, 0.5)
-        _img.Position               = UDim2.new(0.5, 0, 0.5, -30)
+        _img.Position               = UDim2.new(0.5, 0, 0.5, _isMobileSplash and -20 or -30)
         _img.BackgroundTransparency = 1
         _img.ScaleType              = Enum.ScaleType.Fit
         _img.ZIndex                 = 2
 
         -- Boton CONTINUAR
         local _btn = Instance.new("TextButton", _splashSG)
-        _btn.Size                   = UDim2.new(0, 220, 0, 50)
+        _btn.Size                   = UDim2.new(0, _isMobileSplash and 200 or 220, 0, _isMobileSplash and 44 or 50)
         _btn.AnchorPoint            = Vector2.new(0.5, 0.5)
-        _btn.Position               = UDim2.new(0.5, 0, 0.5, 380)
+        -- En movil el offset vertical se calcula en base al alto de pantalla
+        local _btnOffsetY = _isMobileSplash and math.floor(_vp.Y * 0.42) or 380
+        _btn.Position               = UDim2.new(0.5, 0, 0.5, _btnOffsetY)
         _btn.BackgroundColor3       = Color3.fromRGB(20, 20, 20)
         _btn.BorderSizePixel        = 0
         _btn.Text                   = "CONTINUAR"
@@ -49133,18 +49141,22 @@ function abrirHub()
 
         -- Bloquear la ejecucion hasta que el usuario presione CONTINUAR
         local _continued = false
-        _btn.MouseButton1Click:Connect(function()
+        local function _onContinuar()
+            if _continued then return end
             _continued = true
-            -- Animacion de fade out del splash
             local _ts = game:GetService("TweenService")
-            local _fade = _ts:Create(_bg, TweenInfo.new(0.3), {BackgroundTransparency = 1})
+            local _fade    = _ts:Create(_bg,  TweenInfo.new(0.3), {BackgroundTransparency = 1})
             local _fadeImg = _ts:Create(_img, TweenInfo.new(0.3), {ImageTransparency = 1})
             local _fadeBtn = _ts:Create(_btn, TweenInfo.new(0.3), {BackgroundTransparency = 1, TextTransparency = 1})
             _fade:Play(); _fadeImg:Play(); _fadeBtn:Play()
             task.delay(0.35, function()
                 pcall(function() _splashSG:Destroy() end)
             end)
-        end)
+        end
+        -- PC: click del mouse
+        _btn.MouseButton1Click:Connect(_onContinuar)
+        -- Movil: toque tactil (Activated funciona en ambos dispositivos)
+        _btn.Activated:Connect(_onContinuar)
 
         -- Esperar hasta que se presione CONTINUAR
         repeat task.wait(0.05) until _continued
