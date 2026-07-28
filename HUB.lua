@@ -35978,259 +35978,6 @@ function CreateExclusiveTab()
         CreateCustomNotification("SETTINGS", v > 0 and ("FPS cap: " .. v) or "FPS cap OFF", 1.5)
     end)
 
-    -- ================================================================
-    -- 🎨 COLOR PICKER — cambia el color primario del hub en tiempo real
-    -- ================================================================
-    do
-        local cpSec = CreateBorderedSectionGlobal(rightColumn, " 🎨 COLOR DEL HUB")
-
-        -- Titulo + descripcion
-        local cpTitle = Instance.new("TextLabel", cpSec)
-        cpTitle.Size = UDim2.new(1, -10, 0, 22)
-        cpTitle.BackgroundTransparency = 1
-        cpTitle.Text = "Elegir Color Principal"
-        cpTitle.TextColor3 = ThemeColors.TextPrimary
-        cpTitle.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        cpTitle.TextSize = 12
-        cpTitle.TextXAlignment = Enum.TextXAlignment.Left
-        cpTitle.ZIndex = 13
-
-        local cpSub = Instance.new("TextLabel", cpSec)
-        cpSub.Size = UDim2.new(1, -10, 0, 16)
-        cpSub.BackgroundTransparency = 1
-        cpSub.Text = "Cambia bindables, sliders, toggles y selectores"
-        cpSub.TextColor3 = ThemeColors.TextSecondary
-        cpSub.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        cpSub.TextSize = 10
-        cpSub.TextXAlignment = Enum.TextXAlignment.Left
-        cpSub.ZIndex = 13
-
-        -- Paleta de colores vibrantes predefinidos
-        local _colorPalette = {
-            -- Fila 1: Rojos y rosas
-            {r=255, g=30,  b=60,  name="Crimson"},
-            {r=255, g=80,  b=180, name="Hot Pink"},
-            {r=255, g=0,   b=128, name="Neon Magenta"},
-            {r=230, g=50,  b=50,  name="Red"},
-            {r=255, g=120, b=50,  name="Orange"},
-            {r=255, g=200, b=0,   name="Gold"},
-            {r=200, g=255, b=0,   name="Lime"},
-            -- Fila 2: Verdes y azules
-            {r=0,   g=255, b=80,  name="Neon Green"},
-            {r=0,   g=220, b=180, name="Emerald"},
-            {r=0,   g=255, b=220, name="Cyan Glow"},
-            {r=0,   g=200, b=255, name="Sky Blue"},
-            {r=30,  g=100, b=255, name="Electric Blue"},
-            {r=100, g=50,  b=255, name="Violet"},
-            {r=200, g=100, b=255, name="Purple"},
-            -- Fila 3: Especiales
-            {r=255, g=255, b=255, name="White"},
-            {r=180, g=180, b=180, name="Silver"},
-            {r=255, g=165, b=0,   name="Amber"},
-            {r=255, g=50,  b=150, name="Rose"},
-            {r=0,   g=255, b=160, name="Mint"},
-            {r=120, g=200, b=255, name="Ice"},
-            {r=255, g=80,  b=80,  name="Coral"},
-        }
-
-        -- Grid de swatches
-        local swGrid = Instance.new("Frame", cpSec)
-        swGrid.Size = UDim2.new(1, -8, 0, 90)
-        swGrid.BackgroundTransparency = 1
-        swGrid.BorderSizePixel = 0
-        local swUIGrid = Instance.new("UIGridLayout", swGrid)
-        swUIGrid.CellSize = UDim2.new(0, 28, 0, 28)
-        swUIGrid.CellPadding = UDim2.new(0, 4, 0, 4)
-        swUIGrid.SortOrder = Enum.SortOrder.LayoutOrder
-
-        -- Preview actual
-        local previewRow = Instance.new("Frame", cpSec)
-        previewRow.Size = UDim2.new(1, -8, 0, 32)
-        previewRow.BackgroundTransparency = 1
-        previewRow.BorderSizePixel = 0
-        local prLayout = Instance.new("UIListLayout", previewRow)
-        prLayout.FillDirection = Enum.FillDirection.Horizontal
-        prLayout.Padding = UDim.new(0, 8)
-        prLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-
-        local previewCircle = Instance.new("Frame", previewRow)
-        previewCircle.Size = UDim2.new(0, 24, 0, 24)
-        previewCircle.BackgroundColor3 = ThemeColors.Primary
-        previewCircle.BorderSizePixel = 0
-        Instance.new("UICorner", previewCircle).CornerRadius = UDim.new(1, 0)
-
-        local previewLbl = Instance.new("TextLabel", previewRow)
-        previewLbl.Size = UDim2.new(0, 160, 0, 24)
-        previewLbl.BackgroundTransparency = 1
-        previewLbl.Text = "Color actual: " .. (currentThemeName or "Custom")
-        previewLbl.TextColor3 = ThemeColors.TextPrimary
-        previewLbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        previewLbl.TextSize = 11
-        previewLbl.TextXAlignment = Enum.TextXAlignment.Left
-        previewLbl.ZIndex = 13
-
-        -- Sliders RGB
-        local _customR, _customG, _customB = ThemeColors.Primary.R*255, ThemeColors.Primary.G*255, ThemeColors.Primary.B*255
-
-        local function _applyCustomColor()
-            local r = math.floor(_customR)
-            local g = math.floor(_customG)
-            local b = math.floor(_customB)
-            local newColor = Color3.fromRGB(r, g, b)
-            -- Construir tema custom completo
-            local darken = function(c, factor)
-                return Color3.fromRGB(
-                    math.clamp(math.floor(c.R*255*factor), 0, 255),
-                    math.clamp(math.floor(c.G*255*factor), 0, 255),
-                    math.clamp(math.floor(c.B*255*factor), 0, 255)
-                )
-            end
-            local lighten = function(c, factor)
-                return Color3.fromRGB(
-                    math.clamp(math.floor(c.R*255*factor), 0, 255),
-                    math.clamp(math.floor(c.G*255*factor), 0, 255),
-                    math.clamp(math.floor(c.B*255*factor), 0, 255)
-                )
-            end
-            Themes["Custom Color"] = {
-                Primary         = newColor,
-                Secondary       = darken(newColor, 0.55),
-                Accent          = lighten(newColor, 1.3),
-                Background      = Color3.fromRGB(18, 18, 22),
-                BackgroundLight = Color3.fromRGB(28, 28, 36),
-                TextPrimary     = Color3.fromRGB(255, 255, 255),
-                TextSecondary   = lighten(newColor, 0.8),
-                Aurora1         = newColor,
-                Aurora2         = darken(newColor, 0.5),
-                Aurora3         = lighten(newColor, 1.2),
-                Aurora4         = darken(newColor, 0.35),
-            }
-            ApplyTheme("Custom Color")
-            previewCircle.BackgroundColor3 = newColor
-            previewLbl.Text = "RGB(" .. r .. "," .. g .. "," .. b .. ")"
-        end
-
-        -- Seccion sliders RGB
-        local rgbSec = Instance.new("Frame", cpSec)
-        rgbSec.Size = UDim2.new(1, -8, 0, 0)
-        rgbSec.AutomaticSize = Enum.AutomaticSize.Y
-        rgbSec.BackgroundTransparency = 1
-        rgbSec.BorderSizePixel = 0
-        local rgbLayout = Instance.new("UIListLayout", rgbSec)
-        rgbLayout.Padding = UDim.new(0, 4)
-
-        local function makeRGBSlider(parent, label, colorHex, initVal, onChange)
-            local row = Instance.new("Frame", parent)
-            row.Size = UDim2.new(1, 0, 0, 28)
-            row.BackgroundTransparency = 1
-            row.BorderSizePixel = 0
-
-            local lbl = Instance.new("TextLabel", row)
-            lbl.Size = UDim2.new(0, 22, 1, 0)
-            lbl.Position = UDim2.new(0, 0, 0, 0)
-            lbl.BackgroundTransparency = 1
-            lbl.Text = label
-            lbl.TextColor3 = colorHex
-            lbl.FontFace = Font.fromEnum(Enum.Font.Code)
-            lbl.TextSize = 11
-            lbl.ZIndex = 13
-
-            local track = Instance.new("Frame", row)
-            track.Size = UDim2.new(1, -60, 0, 6)
-            track.Position = UDim2.new(0, 26, 0.5, -3)
-            track.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-            track.BorderSizePixel = 0
-            Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-
-            local fill = Instance.new("Frame", track)
-            fill.Size = UDim2.new(initVal/255, 0, 1, 0)
-            fill.BackgroundColor3 = colorHex
-            fill.BorderSizePixel = 0
-            Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-            local thumb = Instance.new("Frame", track)
-            thumb.Size = UDim2.new(0, 14, 0, 14)
-            thumb.Position = UDim2.new(initVal/255, -7, 0.5, -7)
-            thumb.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-            thumb.BorderSizePixel = 0
-            Instance.new("UICorner", thumb).CornerRadius = UDim.new(1, 0)
-
-            local valLbl = Instance.new("TextLabel", row)
-            valLbl.Size = UDim2.new(0, 30, 1, 0)
-            valLbl.Position = UDim2.new(1, -30, 0, 0)
-            valLbl.BackgroundTransparency = 1
-            valLbl.Text = tostring(math.floor(initVal))
-            valLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-            valLbl.FontFace = Font.fromEnum(Enum.Font.Code)
-            valLbl.TextSize = 10
-            valLbl.ZIndex = 13
-
-            local dragging = false
-            local function updateSlider(input)
-                local relX = math.clamp(input.Position.X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
-                local frac = relX / track.AbsoluteSize.X
-                local val = math.floor(frac * 255)
-                fill.Size = UDim2.new(frac, 0, 1, 0)
-                thumb.Position = UDim2.new(frac, -7, 0.5, -7)
-                valLbl.Text = tostring(val)
-                onChange(val)
-                _applyCustomColor()
-            end
-            track.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                    dragging = true; updateSlider(inp)
-                end
-            end)
-            track.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-            end)
-            game:GetService("UserInputService").InputChanged:Connect(function(inp)
-                if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
-                    updateSlider(inp)
-                end
-            end)
-            return row
-        end
-
-        makeRGBSlider(rgbSec, "R", Color3.fromRGB(255, 80, 80), _customR, function(v) _customR = v end)
-        makeRGBSlider(rgbSec, "G", Color3.fromRGB(80, 255, 80), _customG, function(v) _customG = v end)
-        makeRGBSlider(rgbSec, "B", Color3.fromRGB(80, 160, 255), _customB, function(v) _customB = v end)
-
-        -- Crear swatches de colores vibrantes
-        for i, col in ipairs(_colorPalette) do
-            local sw = Instance.new("TextButton", swGrid)
-            sw.Size = UDim2.new(0, 28, 0, 28)
-            sw.BackgroundColor3 = Color3.fromRGB(col.r, col.g, col.b)
-            sw.BorderSizePixel = 0
-            sw.Text = ""
-            sw.AutoButtonColor = false
-            sw.LayoutOrder = i
-            sw.ZIndex = 13
-            Instance.new("UICorner", sw).CornerRadius = UDim.new(0, 6)
-            local swStroke = Instance.new("UIStroke", sw)
-            swStroke.Color = Color3.fromRGB(255, 255, 255)
-            swStroke.Thickness = 0
-            swStroke.Transparency = 1
-
-            sw.MouseEnter:Connect(function()
-                TweenService:Create(swStroke, TweenInfo.new(0.12), {Thickness = 2, Transparency = 0}):Play()
-                TweenService:Create(sw, TweenInfo.new(0.12), {BackgroundTransparency = 0.2}):Play()
-            end)
-            sw.MouseLeave:Connect(function()
-                TweenService:Create(swStroke, TweenInfo.new(0.12), {Thickness = 0, Transparency = 1}):Play()
-                TweenService:Create(sw, TweenInfo.new(0.12), {BackgroundTransparency = 0}):Play()
-            end)
-            sw.MouseButton1Click:Connect(function()
-                _customR = col.r; _customG = col.g; _customB = col.b
-                _applyCustomColor()
-                previewLbl.Text = col.name
-                CreateCustomNotification("COLOR", col.name .. " aplicado", 1.5)
-                TweenService:Create(swStroke, TweenInfo.new(0.1), {Thickness = 3, Transparency = 0}):Play()
-                task.wait(0.3)
-                TweenService:Create(swStroke, TweenInfo.new(0.2), {Thickness = 0, Transparency = 1}):Play()
-            end)
-        end
-    end
 
     -- ================================================================
     -- CREDITOS / AGRADECIMIENTOS
@@ -52084,6 +51831,234 @@ function CreateUseTab()
     -- ANIMATION SELECTOR
     -- ================================================================
     -- ================================================================
+
+    -- ================================================================
+    -- 🎨 COLOR DEL HUB — cambia colores de todo el hub en tiempo real
+    -- ================================================================
+    do
+        local cpSec = CreateBorderedSectionGlobal(rightColumn, " 🎨 COLOR DEL HUB")
+
+        local cpTitle = Instance.new("TextLabel", cpSec)
+        cpTitle.Size = UDim2.new(1, -10, 0, 22)
+        cpTitle.BackgroundTransparency = 1
+        cpTitle.Text = "Elegir Color Principal"
+        cpTitle.TextColor3 = ThemeColors.TextPrimary
+        cpTitle.FontFace = Font.fromEnum(Enum.Font.Arimo)
+        cpTitle.TextSize = 12
+        cpTitle.TextXAlignment = Enum.TextXAlignment.Left
+        cpTitle.ZIndex = 13
+
+        local cpSub = Instance.new("TextLabel", cpSec)
+        cpSub.Size = UDim2.new(1, -10, 0, 16)
+        cpSub.BackgroundTransparency = 1
+        cpSub.Text = "Cambia bindables, sliders, toggles y selectores"
+        cpSub.TextColor3 = ThemeColors.TextSecondary
+        cpSub.FontFace = Font.fromEnum(Enum.Font.Arimo)
+        cpSub.TextSize = 10
+        cpSub.TextXAlignment = Enum.TextXAlignment.Left
+        cpSub.ZIndex = 13
+
+        -- Preview del color actual
+        local previewRow = Instance.new("Frame", cpSec)
+        previewRow.Size = UDim2.new(1, -8, 0, 32)
+        previewRow.BackgroundTransparency = 1
+        previewRow.BorderSizePixel = 0
+        local prLayout = Instance.new("UIListLayout", previewRow)
+        prLayout.FillDirection = Enum.FillDirection.Horizontal
+        prLayout.Padding = UDim.new(0, 8)
+        prLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+
+        local previewCircle = Instance.new("Frame", previewRow)
+        previewCircle.Size = UDim2.new(0, 22, 0, 22)
+        previewCircle.BackgroundColor3 = ThemeColors.Primary
+        previewCircle.BorderSizePixel = 0
+        Instance.new("UICorner", previewCircle).CornerRadius = UDim.new(1, 0)
+
+        local previewLbl = Instance.new("TextLabel", previewRow)
+        previewLbl.Size = UDim2.new(0, 180, 0, 22)
+        previewLbl.BackgroundTransparency = 1
+        previewLbl.Text = "Actual: " .. (currentThemeName or "Default")
+        previewLbl.TextColor3 = ThemeColors.TextPrimary
+        previewLbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
+        previewLbl.TextSize = 11
+        previewLbl.TextXAlignment = Enum.TextXAlignment.Left
+        previewLbl.ZIndex = 13
+
+        -- Paleta de 21 colores vibrantes
+        local _colorPaletteUse = {
+            {r=255, g=30,  b=60,   name="Crimson"},
+            {r=255, g=80,  b=180,  name="Hot Pink"},
+            {r=255, g=0,   b=128,  name="Neon Magenta"},
+            {r=230, g=50,  b=50,   name="Red"},
+            {r=255, g=120, b=50,   name="Orange"},
+            {r=255, g=200, b=0,    name="Gold"},
+            {r=200, g=255, b=0,    name="Lime"},
+            {r=0,   g=255, b=80,   name="Neon Green"},
+            {r=0,   g=220, b=180,  name="Emerald"},
+            {r=0,   g=255, b=220,  name="Cyan Glow"},
+            {r=0,   g=200, b=255,  name="Sky Blue"},
+            {r=30,  g=100, b=255,  name="Electric Blue"},
+            {r=100, g=50,  b=255,  name="Violet"},
+            {r=200, g=100, b=255,  name="Purple"},
+            {r=255, g=255, b=255,  name="White"},
+            {r=180, g=180, b=180,  name="Silver"},
+            {r=255, g=165, b=0,    name="Amber"},
+            {r=255, g=50,  b=150,  name="Rose"},
+            {r=0,   g=255, b=160,  name="Mint"},
+            {r=120, g=200, b=255,  name="Ice"},
+            {r=255, g=80,  b=80,   name="Coral"},
+        }
+
+        -- Grid de swatches
+        local swGrid = Instance.new("Frame", cpSec)
+        swGrid.Size = UDim2.new(1, -8, 0, 96)
+        swGrid.BackgroundTransparency = 1
+        swGrid.BorderSizePixel = 0
+        local swUIGrid = Instance.new("UIGridLayout", swGrid)
+        swUIGrid.CellSize = UDim2.new(0, 30, 0, 30)
+        swUIGrid.CellPadding = UDim2.new(0, 4, 0, 4)
+        swUIGrid.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local _cpCustomR = ThemeColors.Primary.R * 255
+        local _cpCustomG = ThemeColors.Primary.G * 255
+        local _cpCustomB = ThemeColors.Primary.B * 255
+
+        local function _applyHubColor()
+            local r = math.clamp(math.floor(_cpCustomR), 0, 255)
+            local g = math.clamp(math.floor(_cpCustomG), 0, 255)
+            local b = math.clamp(math.floor(_cpCustomB), 0, 255)
+            local newColor = Color3.fromRGB(r, g, b)
+            Themes["Custom Color"] = {
+                Primary         = newColor,
+                Secondary       = Color3.fromRGB(math.floor(r*0.5), math.floor(g*0.5), math.floor(b*0.5)),
+                Accent          = Color3.fromRGB(math.clamp(math.floor(r*1.3),0,255), math.clamp(math.floor(g*1.3),0,255), math.clamp(math.floor(b*1.3),0,255)),
+                Background      = Color3.fromRGB(18, 18, 22),
+                BackgroundLight = Color3.fromRGB(28, 28, 36),
+                TextPrimary     = Color3.fromRGB(255, 255, 255),
+                TextSecondary   = Color3.fromRGB(math.clamp(math.floor(r*0.85),0,255), math.clamp(math.floor(g*0.85),0,255), math.clamp(math.floor(b*0.85),0,255)),
+                Aurora1         = newColor,
+                Aurora2         = Color3.fromRGB(math.floor(r*0.45), math.floor(g*0.45), math.floor(b*0.45)),
+                Aurora3         = Color3.fromRGB(math.clamp(math.floor(r*1.2),0,255), math.clamp(math.floor(g*1.2),0,255), math.clamp(math.floor(b*1.2),0,255)),
+                Aurora4         = Color3.fromRGB(math.floor(r*0.3), math.floor(g*0.3), math.floor(b*0.3)),
+            }
+            ApplyTheme("Custom Color")
+            previewCircle.BackgroundColor3 = newColor
+        end
+
+        for i, col in ipairs(_colorPaletteUse) do
+            local sw = Instance.new("TextButton", swGrid)
+            sw.Size = UDim2.new(0, 30, 0, 30)
+            sw.BackgroundColor3 = Color3.fromRGB(col.r, col.g, col.b)
+            sw.BorderSizePixel = 0
+            sw.Text = ""
+            sw.AutoButtonColor = false
+            sw.LayoutOrder = i
+            sw.ZIndex = 13
+            Instance.new("UICorner", sw).CornerRadius = UDim.new(0, 6)
+            local swStk = Instance.new("UIStroke", sw)
+            swStk.Color = Color3.fromRGB(255, 255, 255)
+            swStk.Thickness = 0
+            swStk.Transparency = 1
+
+            sw.MouseEnter:Connect(function()
+                TweenService:Create(swStk, TweenInfo.new(0.12), {Thickness=2.5, Transparency=0}):Play()
+                TweenService:Create(sw, TweenInfo.new(0.12), {BackgroundTransparency=0.25}):Play()
+            end)
+            sw.MouseLeave:Connect(function()
+                TweenService:Create(swStk, TweenInfo.new(0.12), {Thickness=0, Transparency=1}):Play()
+                TweenService:Create(sw, TweenInfo.new(0.12), {BackgroundTransparency=0}):Play()
+            end)
+            sw.MouseButton1Click:Connect(function()
+                _cpCustomR = col.r; _cpCustomG = col.g; _cpCustomB = col.b
+                _applyHubColor()
+                previewLbl.Text = "Actual: " .. col.name
+                CreateCustomNotification(" COLOR", col.name .. " aplicado", 1.5)
+                TweenService:Create(swStk, TweenInfo.new(0.1), {Thickness=3, Transparency=0}):Play()
+                task.wait(0.35)
+                TweenService:Create(swStk, TweenInfo.new(0.2), {Thickness=0, Transparency=1}):Play()
+            end)
+        end
+
+        -- Sliders RGB para color exacto
+        local rgbTitle = Instance.new("TextLabel", cpSec)
+        rgbTitle.Size = UDim2.new(1, -10, 0, 18)
+        rgbTitle.BackgroundTransparency = 1
+        rgbTitle.Text = "  Color exacto (RGB):"
+        rgbTitle.TextColor3 = ThemeColors.TextSecondary
+        rgbTitle.FontFace = Font.fromEnum(Enum.Font.Arimo)
+        rgbTitle.TextSize = 10
+        rgbTitle.TextXAlignment = Enum.TextXAlignment.Left
+        rgbTitle.ZIndex = 13
+
+        local rgbContainer = Instance.new("Frame", cpSec)
+        rgbContainer.Size = UDim2.new(1, -8, 0, 0)
+        rgbContainer.AutomaticSize = Enum.AutomaticSize.Y
+        rgbContainer.BackgroundTransparency = 1
+        rgbContainer.BorderSizePixel = 0
+        Instance.new("UIListLayout", rgbContainer).Padding = UDim.new(0, 5)
+
+        local function makeRGBSlider(parent, label, labelColor, initVal, onSet)
+            local row = Instance.new("Frame", parent)
+            row.Size = UDim2.new(1, 0, 0, 26)
+            row.BackgroundTransparency = 1; row.BorderSizePixel = 0
+
+            local lbl = Instance.new("TextLabel", row)
+            lbl.Size = UDim2.new(0, 18, 1, 0); lbl.BackgroundTransparency = 1
+            lbl.Text = label; lbl.TextColor3 = labelColor
+            lbl.FontFace = Font.fromEnum(Enum.Font.Code); lbl.TextSize = 11; lbl.ZIndex = 13
+
+            local track = Instance.new("Frame", row)
+            track.Size = UDim2.new(1, -56, 0, 6)
+            track.Position = UDim2.new(0, 22, 0.5, -3)
+            track.BackgroundColor3 = Color3.fromRGB(35, 35, 45); track.BorderSizePixel = 0
+            Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+
+            local fill = Instance.new("Frame", track)
+            fill.Size = UDim2.new(initVal/255, 0, 1, 0)
+            fill.BackgroundColor3 = labelColor; fill.BorderSizePixel = 0
+            Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+            local thumb = Instance.new("Frame", track)
+            thumb.Size = UDim2.new(0, 14, 0, 14)
+            thumb.Position = UDim2.new(initVal/255, -7, 0.5, -7)
+            thumb.BackgroundColor3 = Color3.fromRGB(255,255,255); thumb.BorderSizePixel = 0
+            Instance.new("UICorner", thumb).CornerRadius = UDim.new(1, 0)
+
+            local valLbl = Instance.new("TextLabel", row)
+            valLbl.Size = UDim2.new(0, 30, 1, 0)
+            valLbl.Position = UDim2.new(1, -30, 0, 0)
+            valLbl.BackgroundTransparency = 1; valLbl.Text = tostring(math.floor(initVal))
+            valLbl.TextColor3 = Color3.fromRGB(255,255,255)
+            valLbl.FontFace = Font.fromEnum(Enum.Font.Code); valLbl.TextSize = 10; valLbl.ZIndex = 13
+
+            local dragging = false
+            local UIS = game:GetService("UserInputService")
+            local function updatePos(input)
+                local relX = math.clamp(input.Position.X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
+                local frac = relX / track.AbsoluteSize.X
+                local val = math.floor(frac * 255)
+                fill.Size = UDim2.new(frac, 0, 1, 0)
+                thumb.Position = UDim2.new(frac, -7, 0.5, -7)
+                valLbl.Text = tostring(val)
+                onSet(val)
+                _applyHubColor()
+                previewLbl.Text = "RGB(" .. math.floor(_cpCustomR) .. "," .. math.floor(_cpCustomG) .. "," .. math.floor(_cpCustomB) .. ")"
+            end
+            track.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=true; updatePos(inp) end
+            end)
+            track.InputEnded:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=false end
+            end)
+            UIS.InputChanged:Connect(function(inp)
+                if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then updatePos(inp) end
+            end)
+        end
+
+        makeRGBSlider(rgbContainer, "R", Color3.fromRGB(255,80,80),  _cpCustomR, function(v) _cpCustomR=v end)
+        makeRGBSlider(rgbContainer, "G", Color3.fromRGB(80,255,100), _cpCustomG, function(v) _cpCustomG=v end)
+        makeRGBSlider(rgbContainer, "B", Color3.fromRGB(80,150,255), _cpCustomB, function(v) _cpCustomB=v end)
+    end
 
 end
 _animCurrentTrack = nil
