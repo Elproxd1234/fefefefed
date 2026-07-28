@@ -24982,6 +24982,11 @@ function CreateVisualsTab()
         _w(0.15)
         if not contentContainer or not contentContainer.Parent then return end
     end
+    -- FIX MOBILE: resetear _currentMainSectionFrame para que CreateAuroraToggle
+    -- use el parent correcto (inner del card) y no el frame del tab anterior.
+    -- CreateSection/CreateNeonSection lo setean pero nunca lo limpian, causando
+    -- que los toggles de Visuals se creen dentro de frames ocultos en movil.
+    _currentMainSectionFrame = nil
     -- OPT: con cache de tabs, ClearContent() ya NO se llama aqui (el tab se construye una sola vez)
     -- Solo limpiar conexiones que el tab propio pudo haber creado en ejecuciones anteriores
     -- (trackerConn/_radarConn son conexiones del radar local, NO del instanceLoop global)
