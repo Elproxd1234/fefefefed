@@ -18665,6 +18665,109 @@ function CreateMainTab()
             CreateCustomNotification("ANTI AFK", "ON -- kick por AFK desactivado", 2)
         end, _mp.afkThread ~= nil)
 
+        -- ============================================
+        -- ANTI STEAL GUN
+        -- ============================================
+        do
+            local _antiStealConn = nil
+            local _antiStealHandleConn = nil
+            local _antiStealEnabled = false
+
+            local function _stopAntiSteal()
+                if _antiStealConn then pcall(function() _antiStealConn:Disconnect() end); _antiStealConn = nil end
+                if _antiStealHandleConn then pcall(function() _antiStealHandleConn:Disconnect() end); _antiStealHandleConn = nil end
+            end
+
+            local function _hookGunHandle(gun)
+                if _antiStealHandleConn then
+                    pcall(function() _antiStealHandleConn:Disconnect() end)
+                    _antiStealHandleConn = nil
+                end
+                if not gun then return end
+                local handle = gun:FindFirstChild("Handle") or gun:FindFirstChildWhichIsA("BasePart")
+                if not handle then return end
+
+                -- Si el handle se mueve lejos de nosotros, recuperar la gun al backpack
+                _antiStealHandleConn = handle:GetPropertyChangedSignal("CFrame"):Connect(function()
+                    if not _antiStealEnabled then return end
+                    local myChar = LocalPlayer.Character
+                    local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                    if not myHRP then return end
+                    -- Si el handle está a más de 8 studs de nuestro HRP, alguien lo movió
+                    if (handle.Position - myHRP.Position).Magnitude > 8 then
+                        -- Teletransportar el handle de vuelta a nuestra posición
+                        pcall(function() handle.CFrame = myHRP.CFrame end)
+                        pcall(function() gun:PivotTo(myHRP.CFrame) end)
+                        -- También hacer firetouchinterest de nosotros con el handle para re-agarrarlo
+                        pcall(function()
+                            firetouchinterest(myHRP, handle, 0)
+                            task.wait(0.02)
+                            firetouchinterest(myHRP, handle, 1)
+                        end)
+                        CreateCustomNotification("ANTI STEAL", "Gun protegida!", 1.5)
+                    end
+                end)
+            end
+
+            local function _startAntiSteal()
+                _stopAntiSteal()
+                _antiStealEnabled = true
+
+                -- Hookear la gun actual si ya la tenemos
+                local myChar = LocalPlayer.Character
+                local myBP   = LocalPlayer.Backpack
+                local gun = (_findGunIn and _findGunIn(myChar)) or (_findGunIn and _findGunIn(myBP))
+                if gun then _hookGunHandle(gun) end
+
+                -- Monitorear si se añade una gun nueva al character o backpack
+                local function _onChildAdded(obj)
+                    if not _antiStealEnabled then return end
+                    if obj:IsA("Tool") then
+                        local n = obj.Name:lower()
+                        if obj.Name == "Gun" or obj.Name == "SheriffGun" or obj.Name == "HeroGun"
+                        or n:find("gun") or n:find("revolver") or n:find("pistol") then
+                            task.defer(function() _hookGunHandle(obj) end)
+                        end
+                    end
+                end
+
+                -- Conectar a character actual
+                if myChar then
+                    _antiStealConn = myChar.ChildAdded:Connect(_onChildAdded)
+                end
+
+                -- Reconectar al respawnear
+                LocalPlayer.CharacterAdded:Connect(function(char)
+                    if not _antiStealEnabled then return end
+                    if _antiStealConn then pcall(function() _antiStealConn:Disconnect() end) end
+                    _antiStealConn = char.ChildAdded:Connect(_onChildAdded)
+                    -- También monitorear backpack
+                    local bp = LocalPlayer:WaitForChild("Backpack", 5)
+                    if bp then
+                        bp.ChildAdded:Connect(function(obj) _onChildAdded(obj) end)
+                    end
+                end)
+
+                -- Monitorear backpack también
+                if myBP then
+                    myBP.ChildAdded:Connect(function(obj)
+                        if _antiStealEnabled then _onChildAdded(obj) end
+                    end)
+                end
+
+                CreateCustomNotification("ANTI STEAL GUN", "ON — gun protegida contra robo", 2)
+            end
+
+            CreateAuroraToggle(_protSection, "Anti Steal Gun", function(on)
+                if on then
+                    _startAntiSteal()
+                else
+                    _antiStealEnabled = false
+                    _stopAntiSteal()
+                    CreateCustomNotification("ANTI STEAL GUN", "OFF", 1.5)
+                end
+            end, false)
+        end
     end
 
     -- ============================================
@@ -49673,7 +49776,7 @@ particles = {}
     dragIcon.BackgroundTransparency = 1
     dragIcon.Text = ""
     dragIcon.TextTransparency = 1
-    dragIcon.ZIndex = 9   -- por debajo de los labels pero encima del fondo
+    dragIcon.ZIndex = 20  -- encima de labels (ZIndex 12) para capturar clicks
     dragIcon.AutoButtonColor = false
     dragIcon.Active = true
 
@@ -49694,15 +49797,23 @@ particles = {}
                 return Vector2.new(cx - mainFrame.AbsoluteSize.X * ap.X, cy - mainFrame.AbsoluteSize.Y * ap.Y)
             end
         end
-        dragIcon.MouseButton1Down:Connect(function()
+        local function _startDragIcon(pos)
             if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
-            local mPos = UserInputService:GetMouseLocation()
+            local mPos = pos or UserInputService:GetMouseLocation()
             local resolved = _resolvePos()
             mainFrame.AnchorPoint = Vector2.new(0, 0)
             mainFrame.Position = UDim2.new(0, resolved.X, 0, resolved.Y)
             _d = true
-            _dStart = mPos
+            _dStart = Vector3.new(mPos.X, mPos.Y, 0)
             _dFrameStart = resolved
+        end
+        dragIcon.MouseButton1Down:Connect(function()
+            _startDragIcon()
+        end)
+        dragIcon.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                _startDragIcon(Vector2.new(input.Position.X, input.Position.Y))
+            end
         end)
         _safeConnect(UserInputService.InputChanged, function(input)
             if not _d then return end
@@ -49745,8 +49856,8 @@ particles = {}
     do
         -- Drag via UserInputService global para evitar que hijos del header
         -- (ImageLabel, TextLabel, botones) intercepten el click
-        local function _mouseOverHeader()
-            local mPos = UserInputService:GetMouseLocation()
+        local function _mouseOverHeader(inputPos)
+            local mPos = inputPos or UserInputService:GetMouseLocation()
             local hPos = header.AbsolutePosition
             local hSiz = header.AbsoluteSize
             return mPos.X >= hPos.X and mPos.X <= hPos.X + hSiz.X
@@ -49761,7 +49872,7 @@ particles = {}
             if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
 
             -- Solo arrastrar si el click es dentro del header (no en toggles/sliders)
-            if not _mouseOverHeader() then return end
+            if not _mouseOverHeader(Vector2.new(input.Position.X, input.Position.Y)) then return end
             local mPos = UserInputService:GetMouseLocation()
             local fPos = mainFrame.AbsolutePosition
             local fSiz = mainFrame.AbsoluteSize
