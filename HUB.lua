@@ -47535,7 +47535,7 @@ minimizeBtn.MouseButton1Click:Connect(function()
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
                     uiScale.Scale = 0
-                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
                 end
                 -- NO llamar _reloadActiveTab: no es necesario y disparaba
                 -- la pantalla de disculpas del premium al reconstruir el tab.
@@ -47802,7 +47802,7 @@ closeBtn.MouseButton1Click:Connect(function()
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
                     uiScale.Scale = 0
-                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
                 end
                 -- NO llamar _reloadActiveTab: causaba el popup de premium
             else
@@ -49161,7 +49161,7 @@ function abrirHub()
         local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
         if uiScale then
             uiScale.Scale = 0
-            TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+            TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
         end
         -- FIX: recargar el tab activo para restaurar bindables y botones
         task.defer(function()
@@ -49289,22 +49289,22 @@ do
     local HUB_W = 730
     local HUB_H = 430
 
-    local function _calcScale()
+    -- HELPER GLOBAL: devuelve la escala correcta según viewport actual.
+    -- Todos los reopeners/animaciones deben animar HASTA este valor, no hasta 1.
+    _getTargetScale = function()
         local vp = workspace.CurrentCamera.ViewportSize
         local isMobile = UserInputService.TouchEnabled
-        -- Margen mayor en móvil para evitar que se salga de pantalla
         local marginX = isMobile and 20 or 10
         local marginY = isMobile and 30 or 10
         local scaleX = (vp.X - marginX) / HUB_W
         local scaleY = (vp.Y - marginY) / HUB_H
         local scale  = math.min(scaleX, scaleY)
-        -- PC: máximo 0.70 (70%) | Móvil: mínimo 0.30 para pantallas muy pequeñas
         local minScale = isMobile and 0.30 or 0.5
         return math.clamp(scale, minScale, 0.70)
     end
 
     local function _applyScale()
-        local s = _calcScale()
+        local s = _getTargetScale()
         uiScale.Scale = s
         -- Mantener el hub centrado en pantalla siempre
         mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -50970,7 +50970,7 @@ particles = {}
                             local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                             if uiScale then
                                 uiScale.Scale = 0
-                                TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+                                TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
                             end
                             task.defer(function()
                                 if _G._reloadActiveTab then pcall(_G._reloadActiveTab) end
@@ -51035,7 +51035,7 @@ particles = {}
                 mainFrame.Visible = true
                 mainFrame.BackgroundTransparency = 1
                 local _uiSF = mainFrame:FindFirstChildOfClass("UIScale")
-                if _uiSF then _uiSF.Scale = 1 end
+                if _uiSF then _uiSF.Scale = (_getTargetScale and _getTargetScale() or 0.70) end
                 if header then header.Position = UDim2.new(0, 0, 0, 0) end
                 if sidebar then sidebar.Position = UDim2.new(0, 0, 0, 32) end
             end)
@@ -51063,7 +51063,7 @@ particles = {}
             local _uiSR = mainFrame:FindFirstChildOfClass("UIScale")
             if _uiSR then _uiSR.Scale = 0 end
             if _uiSR then
-                TweenService:Create(_uiSR, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+                TweenService:Create(_uiSR, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
             end
             header.Position  = UDim2.new(0, 0, 0, 0)
             sidebar.Position = UDim2.new(0, 0, 0, 32)
@@ -51071,7 +51071,7 @@ particles = {}
             _G._hubReady = true
             mainFrame.BackgroundTransparency = 1
             if mainFrame:FindFirstChildOfClass("UIScale") then
-                mainFrame:FindFirstChildOfClass("UIScale").Scale = 1
+                mainFrame:FindFirstChildOfClass("UIScale").Scale = (_getTargetScale and _getTargetScale() or 0.70)
             end
             task.defer(function()
                 _G._tabContentActive = true
@@ -51307,7 +51307,7 @@ particles = {}
         if uiScaleEntry then uiScaleEntry.Scale = 0 end
         if uiScaleEntry then
             TweenService:Create(uiScaleEntry, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Scale = 1
+                Scale = (_getTargetScale and _getTargetScale() or 0.70)
             }):Play()
         end
         task.wait(0)
@@ -51324,7 +51324,7 @@ particles = {}
         mainFrame.Visible = true
         mainFrame.BackgroundTransparency = 1
         if mainFrame:FindFirstChildOfClass("UIScale") then
-            mainFrame:FindFirstChildOfClass("UIScale").Scale = 1
+            mainFrame:FindFirstChildOfClass("UIScale").Scale = (_getTargetScale and _getTargetScale() or 0.70)
         end
         print("3: Hub completamente visible")
         -- Auto-cargar el primer tab (MAIN) al iniciar
@@ -51340,7 +51340,7 @@ particles = {}
                 mainFrame.Visible = true
                 mainFrame.BackgroundTransparency = 1
                 local _uiS = mainFrame:FindFirstChildOfClass("UIScale")
-                if _uiS then _uiS.Scale = 1 end
+                if _uiS then _uiS.Scale = (_getTargetScale and _getTargetScale() or 0.70) end
                 if header then header.Position = UDim2.new(0, 0, 0, 0) end
                 if sidebar then sidebar.Position = UDim2.new(0, 0, 0, 32) end
             end)
