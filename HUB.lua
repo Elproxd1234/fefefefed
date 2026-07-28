@@ -50079,20 +50079,22 @@ particles = {}
         local stroke   = r and r.stroke
         local activeBar= r and r.activeBar
         local lbl2     = r and r.lbl2
+        local _tPrimary = ThemeColors and ThemeColors.Primary or Color3.fromRGB(255,255,255)
+        local _tText    = ThemeColors and ThemeColors.TextPrimary or Color3.fromRGB(255,255,255)
         if isActive then
-            -- Tab activa: fondo blanco semitransparente para destacar
-            TweenService:Create(btn, _ti_tab, {BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0.8}):Play()
-            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = Color3.fromRGB(255, 255, 255)}):Play() end
-            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(255,255,255)}):Play() end
-            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(255,255,255)}):Play() end
-            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(255, 255, 255)}):Play() end
+            -- Tab activa: fondo con color del tema semitransparente para destacar
+            TweenService:Create(btn, _ti_tab, {BackgroundColor3 = _tPrimary, BackgroundTransparency = 0.8}):Play()
+            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = _tPrimary}):Play() end
+            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = _tPrimary}):Play() end
+            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = _tPrimary}):Play() end
+            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = _tPrimary}):Play() end
         else
-            -- Tab inactiva: completamente transparente, borde blanco, texto blanco
+            -- Tab inactiva: completamente transparente, borde y texto con color del tema
             TweenService:Create(btn, _ti_tab, {BackgroundTransparency = 1}):Play()
-            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = Color3.fromRGB(255, 255, 255)}):Play() end
-            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(255,255,255)}):Play() end
+            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = _tText}):Play() end
+            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = _tText}):Play() end
             if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 1}):Play() end
-            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(255, 255, 255)}):Play() end
+            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = _tText}):Play() end
         end
     end
 
@@ -50320,12 +50322,14 @@ particles = {}
         local btnCorner = Instance.new("UICorner", btn)
         btnCorner.CornerRadius = UDim.new(0, 15)
 
-        -- Borde blanco permanente
+        -- Borde con color del tema (se actualiza con ThemeObjects)
         local btnStroke = Instance.new("UIStroke", btn)
-        btnStroke.Color = Color3.fromRGB(255, 255, 255)
+        btnStroke.Color = (ThemeColors and ThemeColors.Primary) or Color3.fromRGB(255, 255, 255)
         btnStroke.Thickness = 3
         btnStroke.Transparency = 0
         btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        -- FIX: registrar borde en ThemeObjects
+        table.insert(ThemeObjects, {obj=btnStroke, property="Color", colorKey="Primary"})
 
         -- Barra lateral izquierda (indicador activo)
         local activeBar = Instance.new("Frame", btn)
@@ -50333,7 +50337,7 @@ particles = {}
         activeBar.Size = UDim2.new(0, 3, 0.6, 0)
         activeBar.AnchorPoint = Vector2.new(0, 0.5)
         activeBar.Position = UDim2.new(0, 0, 0.5, 0)
-        activeBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        activeBar.BackgroundColor3 = (ThemeColors and ThemeColors.Primary) or Color3.fromRGB(255, 255, 255)
         activeBar.BackgroundTransparency = 1
         activeBar.BorderSizePixel = 0
         activeBar.ZIndex = 16
@@ -50362,12 +50366,14 @@ particles = {}
         lbl.Text = _isMobileLayout and tabNames[i]:sub(1,4) or tabNames[i]
         lbl.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
         lbl.TextSize = _isMobileLayout and 9 or 15
-        lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        lbl.TextColor3 = (ThemeColors and ThemeColors.TextPrimary) or Color3.fromRGB(255, 255, 255)
         lbl.TextXAlignment = Enum.TextXAlignment.Center
         lbl.TextTruncate = Enum.TextTruncate.AtEnd
         lbl.TextStrokeTransparency = 0.7
         lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
         lbl.ZIndex = 14
+        -- FIX: registrar label en ThemeObjects para que se actualice al cambiar tema
+        table.insert(ThemeObjects, {obj=lbl, property="TextColor3", colorKey="TextPrimary"})
         do
             local _tabKey = tabNames[i]:lower():gsub(" ", "_")
             table.insert(_LangObjects, {obj=lbl, key=_tabKey, prefix="", suffix=""})
@@ -52044,14 +52050,22 @@ function CreateUseTab()
                 _applyHubColor()
                 previewLbl.Text = "RGB(" .. math.floor(_cpCustomR) .. "," .. math.floor(_cpCustomG) .. "," .. math.floor(_cpCustomB) .. ")"
             end
+            local function _isTapOrClick(inp)
+                return inp.UserInputType == Enum.UserInputType.MouseButton1
+                    or inp.UserInputType == Enum.UserInputType.Touch
+            end
+            local function _isMoveOrDrag(inp)
+                return inp.UserInputType == Enum.UserInputType.MouseMovement
+                    or inp.UserInputType == Enum.UserInputType.Touch
+            end
             track.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=true; updatePos(inp) end
+                if _isTapOrClick(inp) then dragging=true; updatePos(inp) end
             end)
             track.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=false end
+                if _isTapOrClick(inp) then dragging=false end
             end)
             UIS.InputChanged:Connect(function(inp)
-                if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then updatePos(inp) end
+                if dragging and _isMoveOrDrag(inp) then updatePos(inp) end
             end)
         end
 
