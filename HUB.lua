@@ -31142,37 +31142,76 @@ function CreateWorldUI_ProximityPromptSection()
     subLbl2.TextColor3 = Color3.fromRGB(0, 190, 255)
     subLbl2.TextXAlignment = Enum.TextXAlignment.Left
 
-    _G._proxState = { instant = false, noLimit = false }
+    _G._proxState = _G._proxState or { instant = false, noLimit = false, hookConn = nil }
+    local PS = _G._proxState
 
-    CreateToggle(sec, "Instant Interact", false, function(on)
-        _G._proxState.instant = on
+    -- Helper: aplica el estado actual de Instant/NoLimit a un ProximityPrompt
+    local function _ppApply(v)
+        pcall(function()
+            if PS.instant  then v.HoldDuration = 0 end
+            if PS.noLimit  then v.MaxActivationDistance = 9999 end
+        end)
+    end
+
+    -- Hook workspace para aplicar a ProximityPrompts nuevos automaticamente
+    local function _ppStartHook()
+        if PS.hookConn then return end
+        PS.hookConn = workspace.DescendantAdded:Connect(function(v)
+            if v:IsA("ProximityPrompt") then
+                _ppApply(v)
+            end
+        end)
+    end
+
+    local function _ppStopHookIfUnneeded()
+        if not PS.instant and not PS.noLimit then
+            if PS.hookConn then PS.hookConn:Disconnect(); PS.hookConn = nil end
+        end
+    end
+
+    CreateToggle(sec, "Instant Interact", PS.instant, function(on)
+        PS.instant = on
         for _, v in ipairs(workspace:GetDescendants()) do
             if v:IsA("ProximityPrompt") then
-                v.HoldDuration = on and 0 or 1
+                pcall(function() v.HoldDuration = on and 0 or 1 end)
             end
         end
+        if on then _ppStartHook()
+        else _ppStopHookIfUnneeded() end
     end)
 
-    CreateToggle(sec, "No Interactions Distance Limit", false, function(on)
-        _G._proxState.noLimit = on
+    CreateToggle(sec, "No Interactions Distance Limit", PS.noLimit, function(on)
+        PS.noLimit = on
         for _, v in ipairs(workspace:GetDescendants()) do
             if v:IsA("ProximityPrompt") then
-                v.MaxActivationDistance = on and 9999 or 10
+                pcall(function() v.MaxActivationDistance = on and 9999 or 10 end)
             end
         end
+        if on then _ppStartHook()
+        else _ppStopHookIfUnneeded() end
     end)
 
     _makeTPButton("Fire All Interactions", function()
+        local count = 0
         for _, v in ipairs(workspace:GetDescendants()) do
-            if v:IsA("ProximityPrompt") then
-                pcall(function()
-                    game:GetService("ProximityPromptService"):PromptTriggered(v, LocalPlayer)
-                end)
-                pcall(function() v.Triggered:Fire(LocalPlayer) end)
+            if v:IsA("ProximityPrompt") and v.Enabled then
+                -- fireproximityprompt es el metodo mas compatible (PC y mobile)
+                local ok = pcall(function() fireproximityprompt(v) end)
+                if not ok then
+                    -- fallback para executors que no tienen fireproximityprompt
+                    pcall(function()
+                        game:GetService("ProximityPromptService"):TriggerPrompt(v)
+                    end)
+                    pcall(function() v.Triggered:Fire(LocalPlayer) end)
+                end
+                count = count + 1
             end
         end
-        CreateCustomNotification("PROXIMITY", "Fired all interactions!", 2)
+        CreateCustomNotification("PROXIMITY", "Fired " .. count .. " interactions!", 2)
     end, sec)
+
+    -- Restaurar hook si ya estaban activos al reabrir el tab
+    if PS.instant or PS.noLimit then _ppStartHook() end
 end
 
 -- ==============================================================
@@ -32521,12 +32560,16 @@ function CreateWorldTab()
             if _G._tpVotingMap.conn then pcall(function() _G._tpVotingMap.conn:Disconnect() end) _G._tpVotingMap.conn = nil end
             _G._tpVotingMap.enabled = false
         end
-        -- ProximityPrompts -- resetear al estado default
+        -- ProximityPrompts -- resetear al estado default SOLO si los toggles estan apagados
         pcall(function()
-            for _, v in ipairs(workspace:GetDescendants()) do
-                if v:IsA("ProximityPrompt") then
-                    v.HoldDuration = 1
-                    v.MaxActivationDistance = 10
+            local _ps = _G._proxState
+            -- Si instant o noLimit siguen activos, NO resetear (el usuario los quiere activos)
+            if not (_ps and (_ps.instant or _ps.noLimit)) then
+                for _, v in ipairs(workspace:GetDescendants()) do
+                    if v:IsA("ProximityPrompt") then
+                        v.HoldDuration = 1
+                        v.MaxActivationDistance = 10
+                    end
                 end
             end
         end)
@@ -34192,18 +34235,46 @@ function CreatePremiumTab()
         -- FIX: en MM2 la Gun vive en workspace.NombreJugador.Gun (no como Tool hijo directo del char raiz)
         -- Se usa _findGun() que ya maneja la busqueda correcta, y se escucha ChildAdded en el char de workspace
         if not _skinState._charConn then
+            -- FIX MOBILE: en celu la gun llega via DescendantAdded del workspace,
+            -- no necesariamente como ChildAdded del char. Usamos DescendantAdded
+            -- para capturar cualquier Tool que aparezca (gun en char o en workspace).
+            local function _scTryApplyGun()
+                if not _skinState.enabled then return end
+                task.wait(0.15)
+                local gun = _findGun and _findGun()
+                if gun then _scApply(gun, _scGetSkin(), true) end
+            end
+
             local function _scSetupListener(char)
+                -- Listener en el char (PC y algunos mobile)
                 char.ChildAdded:Connect(function(child)
-                    if _skinState.enabled then
-                        task.wait(0.15)
-                        local gun = _findGun and _findGun()
-                        if gun then _scApply(gun, _scGetSkin(), true) end
+                    if child:IsA("Tool") then
+                        task.spawn(_scTryApplyGun)
                     end
                 end)
+                -- Listener en DescendantAdded del workspace (mobile / MM2 gun model)
+                -- Solo re-aplicar si es una Tool que puede ser la gun
+                workspace.DescendantAdded:Connect(function(obj)
+                    if not _skinState.enabled then return end
+                    if obj:IsA("Tool") then
+                        local n = obj.Name:lower()
+                        if n:find("gun") or n == "gun" or n:find("sheriff") or n:find("revolver") then
+                            task.spawn(_scTryApplyGun)
+                        end
+                    end
+                end)
+                -- Re-check extra con delay por si la gun tarda en cargarse en mobile
+                task.delay(0.5, _scTryApplyGun)
+                task.delay(1.2, _scTryApplyGun)
             end
+
             local _scChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             _scSetupListener(_scChar)
-            _skinState._charConn = LocalPlayer.CharacterAdded:Connect(_scSetupListener)
+            _skinState._charConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
+                -- Re-aplicar al respawnear (importante en mobile donde el char se recarga lento)
+                _skinState.origData = {}  -- limpiar origData del char anterior
+                _scSetupListener(newChar)
+            end)
         end
 
         -- -- UI --------------------------------------------------
@@ -34278,14 +34349,21 @@ function CreatePremiumTab()
                     break
                 end
             end
-            -- [Dual Gun automatico por skin desactivado]
-            -- -------------------------------------------------------------
+            -- FIX MOBILE: activar siempre, incluso si no hay gun ahora mismo.
+            -- El listener de DescendantAdded/ChildAdded va a aplicar la skin
+            -- cuando la gun aparezca (sea en PC o mobile).
+            _skinState.enabled = true
             -- FIX: usar _findGun() que busca en char y backpack correctamente (MM2 usa modelo en workspace)
             local tool = _findGun and _findGun()
             if tool then
-                _skinState.enabled = true
                 _scApply(tool, _scGetSkin(), true)
             end
+            -- Intentar de nuevo con delay por si la gun tarda en cargarse (mobile)
+            task.delay(0.4, function()
+                if not _skinState.enabled then return end
+                local gun2 = _findGun and _findGun()
+                if gun2 then _scApply(gun2, _scGetSkin(), true) end
+            end)
         end)
 
         -- Coming Soon -- Knife Skins (glitch effect)
