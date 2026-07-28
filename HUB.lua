@@ -26586,10 +26586,22 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local C_IND_OFF = Color3.fromRGB(255, 0, 0)     -- rojo cuando inactivo
     local TWEEN_T   = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
+    -- Detectar móvil para ajustar tamaños
+    local _isMobileTog = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
+    local _toggleBgW   = _isMobileTog and 52 or 65
+    local _toggleBgH   = _isMobileTog and 26 or 32
+    local _knobSize    = _isMobileTog and 18 or 24
+    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -28
+    local _knobOffL    = 4
+    local _labelTxtSz  = _isMobileTog and 13 or 18
+    local _labelWScale = _isMobileTog and 0.55 or 0.6
+    local _rowH        = _isMobileTog and 44 or 55
+    local _toggleRightOff = _isMobileTog and -8 or -15
+
     -- Marco principal ancho (600px simulado con 1, 0) -- transparente con borde blanco
     local container = Instance.new("Frame", actualParent)
     container.Name                   = "AuroraToggleRow_" .. nombre
-    container.Size                   = UDim2.new(1, -8, 0, 55)
+    container.Size                   = UDim2.new(1, -8, 0, _rowH)
     container.BackgroundTransparency = 1   -- completamente transparente
     container.BorderSizePixel        = 0
     container.ZIndex                 = 20
@@ -26606,11 +26618,11 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     -- Etiqueta de texto (mitad izquierda)
     local label = Instance.new("TextLabel", container)
-    label.Size             = UDim2.new(0.6, 0, 1, 0)
-    label.Position         = UDim2.new(0, 20, 0, 0)
+    label.Size             = UDim2.new(_labelWScale, 0, 1, 0)
+    label.Position         = UDim2.new(0, 8, 0, 0)
     label.BackgroundTransparency = 1
     label.Text             = nombre
-    label.TextSize         = 18
+    label.TextSize         = _labelTxtSz
     label.FontFace         = Font.fromEnum(Enum.Font.GothamMedium)
     label.TextColor3       = ThemeColors.TextPrimary
     label.TextXAlignment   = Enum.TextXAlignment.Left
@@ -26632,9 +26644,9 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Fondo del toggle (recuadro grisaceo a la derecha)
     local toggleBg = Instance.new("Frame", container)
     toggleBg.Name                   = "ToggleBackground"
-    toggleBg.Size                   = UDim2.new(0, 65, 0, 32)
+    toggleBg.Size                   = UDim2.new(0, _toggleBgW, 0, _toggleBgH)
     toggleBg.AnchorPoint            = Vector2.new(1, 0.5)
-    toggleBg.Position               = UDim2.new(1, -15, 0.5, 0)
+    toggleBg.Position               = UDim2.new(1, _toggleRightOff, 0.5, 0)
     toggleBg.BackgroundColor3       = ThemeColors.Secondary
     toggleBg.BackgroundTransparency = 0.4
     toggleBg.BorderSizePixel        = 0
@@ -26651,9 +26663,9 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Indicador cuadrado redondeado (rojo=off, verde=on)
     local indicator = Instance.new("Frame", toggleBg)
     indicator.Name             = "Knob"
-    indicator.Size             = UDim2.new(0, 24, 0, 24)
+    indicator.Size             = UDim2.new(0, _knobSize, 0, _knobSize)
     indicator.AnchorPoint      = Vector2.new(0, 0.5)
-    indicator.Position         = estado and UDim2.new(1, -28, 0.5, 0) or UDim2.new(0, 4, 0.5, 0)
+    indicator.Position         = estado and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
     indicator.BackgroundColor3 = estado and C_IND_ON or C_IND_OFF
     indicator.BorderSizePixel  = 0
     indicator.ZIndex           = 23
@@ -26674,11 +26686,11 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         if animate then
             TweenService:Create(indicator, TWEEN_T, {
                 BackgroundColor3 = on and C_IND_ON or C_IND_OFF,
-                Position = on and UDim2.new(1, -28, 0.5, 0) or UDim2.new(0, 4, 0.5, 0),
+                Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0),
             }):Play()
         else
             indicator.BackgroundColor3 = on and C_IND_ON or C_IND_OFF
-            indicator.Position = on and UDim2.new(1, -28, 0.5, 0) or UDim2.new(0, 4, 0.5, 0)
+            indicator.Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
         end
     end
     ApplyState(estado, false)
