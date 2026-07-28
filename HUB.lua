@@ -26154,6 +26154,16 @@ do
 
         -- FIX WORLD/BOOST #2: Re-aplicar toggles del tab BOOST (BS.*) tras pantalla negra
         -- Sin esto, todas las optimizaciones del tab Boost se pierden al respawnear
+        -- Re-aplicar Low Render Quality del tab Settings si estaba activo
+        local _hsReapply = _G._hubSettings
+        if _hsReapply and _hsReapply.lowRenderQuality then
+            task.spawn(function()
+                task.wait(0.4)
+                pcall(function()
+                    settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+                end)
+            end)
+        end
         local BS = _G.BS
         if BS then
             task.spawn(function()
@@ -32665,6 +32675,27 @@ local function _sgFlingPlayer(TargetPlayer)
     -- Marcar modo backpack para que el loop sepa que se intento
     StealGunSystem.gunInBackpackMode = true
 
+    -- CAPTURAR POSICION SEGURA ANTES DEL FLING
+    -- Se guarda aqui (antes de cualquier TP de agarre) para que el return
+    -- siempre vuelva al lugar real donde estaba el jugador, no donde cayo la gun.
+    local _sgSafePosBefore = nil
+    do
+        local _ry = myHRP.Position.Y
+        if _ry > 2 and _ry < 800 then
+            _sgSafePosBefore = myHRP.CFrame
+        elseif _flingLastSafePos then
+            local _sy = _flingLastSafePos.Position.Y
+            if _sy > 2 and _sy < 800 then
+                _sgSafePosBefore = _flingLastSafePos
+            end
+        end
+        -- Actualizar OldPos con esta posicion para que _doStealFling tambien la use
+        if _sgSafePosBefore then
+            _G.OldPos = _sgSafePosBefore
+            _flingLastSafePos = _sgSafePosBefore
+        end
+    end
+
     CreateCustomNotification("STEAL GUN", "Flingeando a " .. TargetPlayer.Name .. " para forzar drop...", 2.5)
 
     -- == FASE 1: FLING igual que Fling Murder ==
@@ -32768,15 +32799,50 @@ local function _sgFlingPlayer(TargetPlayer)
         end
     end
 
-    -- == FASE 3: volver a posicion segura ==
+    -- == FASE 3: volver a la posicion donde estaba ANTES del fling ==
+    -- Se usa _sgSafePosBefore capturada al inicio (antes de cualquier TP de agarre)
+    -- para evitar que el personaje quede pegado donde cayo la gun.
     _flingActive = false
     task.spawn(function()
         task.wait(0.05)
         local mc = LocalPlayer.Character
         local mh = mc and mc:FindFirstChild("HumanoidRootPart")
         local mm = mc and mc:FindFirstChildOfClass("Humanoid")
-        if mh and mm then
-            _flingDoReturn(mc, mh, mm)
+        if not mh or not mm then return end
+        -- Prioridad: posicion capturada antes del fling
+        local _returnCF = _sgSafePosBefore
+        -- Fallback: _flingLastSafePos / OldPos si no hay captura previa
+        if not _returnCF then
+            local _lsp = _flingLastSafePos or _G.OldPos
+            if _lsp then
+                local _ly = _lsp.Position and _lsp.Position.Y or 0
+                if _ly > 2 and _ly < 800 then
+                    _returnCF = _lsp
+                end
+            end
+        end
+        if _returnCF then
+            -- TP directo a la posicion pre-fling con intentos multiples
+            if not _flingReturning then
+                _flingReturning = true
+                for _i = 1, 5 do
+                    pcall(function()
+                        mh.CFrame = _returnCF * CFrame.new(0, 0.5, 0)
+                        mh.AssemblyLinearVelocity  = Vector3.zero
+                        mh.AssemblyAngularVelocity = Vector3.zero
+                    end)
+                    task.wait(0.06)
+                    if not (mc and mc.Parent) then break end
+                end
+                mm.PlatformStand = false
+                pcall(function() mm:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+                _flingReturning = false
+            end
+        else
+            -- Ultimo fallback: usar _flingDoReturn normal
+            if not _flingReturning then
+                _flingDoReturn(mc, mh, mm)
+            end
         end
     end)
 
@@ -35491,6 +35557,7 @@ function CreateExclusiveTab()
         fpsLimit           = 0,    -- 0 = sin limite
         crosshairHidden    = false,
         hudHidden          = false,
+        lowRenderQuality   = false,
     }
     local HS = _G._hubSettings
     local function _hs() return _G._hubSettings end
@@ -35621,6 +35688,7 @@ function CreateExclusiveTab()
         _hsr.hubScale           = 100
         _hsr.crosshairHidden    = false
         _hsr.hudHidden          = false
+        _hsr.lowRenderQuality   = false
         _G._hubDisableKeybinds    = false
         _G._hubUndraggableButtons = false
         _G._hubDisableAnimations  = false
@@ -35833,11 +35901,12 @@ function CreateExclusiveTab()
     local perfSec = CreateBorderedSectionGlobal(rightColumn, " PERFORMANCE")
 
     CreateAuroraToggle(perfSec, "Low Render Quality (reduce lag)", function(on)
+        _hs().lowRenderQuality = on
         pcall(function()
             settings().Rendering.QualityLevel = on and Enum.QualityLevel.Level01 or Enum.QualityLevel.Automatic
         end)
         CreateCustomNotification("SETTINGS", on and "Calidad minima (menos lag)" or "Calidad automatica", 2)
-    end, false)
+    end, HS.lowRenderQuality or false)
 
     CreateAuroraToggle(perfSec, "Disable Shadows (FPS boost)", function(on)
         pcall(function()
