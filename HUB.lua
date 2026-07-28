@@ -49283,31 +49283,9 @@ mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
--- -- TAMAÑO: responsive para móvil y escritorio --
-do
-    local _vp = workspace.CurrentCamera.ViewportSize
-    local _isMobile = _vp.X < 600 or _vp.Y < 500
-    if _isMobile then
-        -- Móvil: 95% ancho, 88% alto de pantalla (máximo 400x560)
-        local _mw = math.min(math.floor(_vp.X * 0.95), 400)
-        local _mh = math.min(math.floor(_vp.Y * 0.88), 560)
-        mainFrame.Size = UDim2.new(0, _mw, 0, _mh)
-    else
-        mainFrame.Size = UDim2.new(0, 730, 0, 430)
-    end
-    -- Escuchar cambios de viewport (rotación de dispositivo)
-    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-        local vp2 = workspace.CurrentCamera.ViewportSize
-        local mob2 = vp2.X < 600 or vp2.Y < 500
-        if mob2 then
-            local mw2 = math.min(math.floor(vp2.X * 0.95), 400)
-            local mh2 = math.min(math.floor(vp2.Y * 0.88), 560)
-            mainFrame.Size = UDim2.new(0, mw2, 0, mh2)
-        else
-            mainFrame.Size = UDim2.new(0, 730, 0, 430)
-        end
-    end)
-end
+-- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
+-- El UIScale que se aplica abajo se encarga de que entre en pantalla.
+mainFrame.Size = UDim2.new(0, 730, 0, 430)
 
 -- ==============================================================
 -- FONDO AZUL SLIDO  sin aurora animada, sin pulse dot
@@ -49331,40 +49309,40 @@ uiScale.Scale = 1
 
 -- ================================================================
 -- == AUTO SCALE SEGÚN DISPOSITIVO
--- Calcula una escala proporcional al viewport para que toda la UI
--- (texto, botones, iconos) se ajuste automáticamente en móvil.
+-- El hub siempre es 730x430 (apariencia PC idéntica).
+-- En móvil se escala para que entre completo en pantalla.
 -- ================================================================
 do
-    local UIS_AS = game:GetService("UserInputService")
-    -- true si es móvil (táctil sin teclado físico)
-    local _isMobileDevice = UIS_AS.TouchEnabled and not UIS_AS.KeyboardEnabled
+    local HUB_W = 730
+    local HUB_H = 430
 
     local function _calcScale()
         local vp = workspace.CurrentCamera.ViewportSize
-        if _isMobileDevice then
-            -- Escala basada en el ancho de pantalla relativo a 390px (iPhone estándar)
-            -- Clampear entre 0.55 (pantallas muy pequeñas) y 0.85 (tablets)
-            local baseScale = math.clamp(vp.X / 390, 0.55, 0.85)
-            return baseScale
-        else
-            -- PC: escala 1:1 (tamaño original del hub)
-            return 1.0
-        end
+        -- Escala máxima que cabe en ancho y en alto (con margen de 10px)
+        local scaleX = (vp.X - 10) / HUB_W
+        local scaleY = (vp.Y - 10) / HUB_H
+        -- Usar la escala más pequeña para que entre en ambas dimensiones
+        local scale  = math.min(scaleX, scaleY)
+        -- PC: nunca pasar de 1.0 (no agrandar)
+        -- Móvil: clamp mínimo 0.4 para que siempre sea legible
+        return math.clamp(scale, 0.4, 1.0)
+    end
+
+    local function _applyScale()
+        local s = _calcScale()
+        uiScale.Scale = s
+        -- Mantener el hub centrado en pantalla siempre
+        mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+        mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
     end
 
     -- Aplicar escala inicial
-    uiScale.Scale = _calcScale()
+    _applyScale()
 
     -- Reajustar si el usuario rota el dispositivo
-    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-        uiScale.Scale = _calcScale()
-    end)
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(_applyScale)
 
-    if _isMobileDevice then
-        print("[ZerqonHUB] Móvil detectado — escala aplicada: " .. tostring(uiScale.Scale))
-    else
-        print("[ZerqonHUB] PC detectado — escala: 1.0")
-    end
+    print("[ZerqonHUB] Escala aplicada: " .. tostring(uiScale.Scale))
 end
 -- ================================================================
 -- == FIN AUTO SCALE
