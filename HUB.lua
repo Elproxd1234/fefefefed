@@ -9584,9 +9584,39 @@ function CreateCustomNotification(titleRaw, message, duration)
         progressBar.BorderSizePixel = 0
         progressBar.Parent = progressBarBg
 
-        -- Slide in (responsive)
+        -- Boton transparente encima para cerrar al tocar (version movil)
+        local _dismissed = false
+        local dismissBtn = Instance.new("TextButton")
+        dismissBtn.Size = UDim2.new(1, 0, 1, 0)
+        dismissBtn.BackgroundTransparency = 1
+        dismissBtn.Text = ""
+        dismissBtn.ZIndex = 10
+        dismissBtn.AutoButtonColor = false
+        dismissBtn.Parent = mainFrame
+
+        local function _doFadeOut()
+            if _dismissed then return end
+            _dismissed = true
+            local fadeInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            TweenService:Create(mainFrame, fadeInfo, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(stroke, fadeInfo, {Transparency = 1}):Play()
+            TweenService:Create(titleLbl, fadeInfo, {TextTransparency = 1}):Play()
+            TweenService:Create(descLbl, fadeInfo, {TextTransparency = 1}):Play()
+            TweenService:Create(icon, fadeInfo, {ImageTransparency = 1}):Play()
+            task.delay(0.26, function() pcall(function() notifSG:Destroy() end) end)
+        end
+
+        dismissBtn.MouseButton1Click:Connect(_doFadeOut)
+        dismissBtn.TouchTap:Connect(_doFadeOut)
+
+        -- Margen inferior para movil: distancia desde el borde inferior de la pantalla
+        -- En movil usamos un margen fijo pequeño para que quede bien visible
+        local _notifMarginBottom = _notifIsMob and (_notifH + 14) or (_notifH + 20)
+        local _notifTargetY = -_notifMarginBottom
+
+        -- Slide in desde el borde inferior
+        mainFrame.Position = UDim2.new(1, -8, 1, 30)  -- empieza debajo de la pantalla
         local tweenIn = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        local _notifTargetY = _notifIsMob and -(_notifH + 10) or -85
         TweenService:Create(mainFrame, tweenIn, {Position = UDim2.new(1, -8, 1, _notifTargetY)}):Play()
 
         -- Barra se encoge durante 'duration' segundos
@@ -9595,15 +9625,10 @@ function CreateCustomNotification(titleRaw, message, duration)
 
         task.wait(duration)
 
-        -- Fade out suave
-        local fadeInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        TweenService:Create(mainFrame, fadeInfo, {BackgroundTransparency = 1}):Play()
-        TweenService:Create(stroke, fadeInfo, {Transparency = 1}):Play()
-        TweenService:Create(titleLbl, fadeInfo, {TextTransparency = 1}):Play()
-        TweenService:Create(descLbl, fadeInfo, {TextTransparency = 1}):Play()
-        TweenService:Create(icon, fadeInfo, {ImageTransparency = 1}):Play()
-        task.wait(0.5)
-        notifSG:Destroy()
+        -- Fade out suave (si no fue descartada antes)
+        _doFadeOut()
+        task.wait(0.3)
+        pcall(function() if notifSG and notifSG.Parent then notifSG:Destroy() end end)
     end)
     _processNotifQueue()
 end
