@@ -49783,7 +49783,7 @@ particles = {}
             TweenService:Create(glowBorder, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 Thickness    = 3.5,
                 Transparency = 0.1,
-                Color        = Color3.fromRGB(100, 210, 255),
+                Color        = Color3.fromRGB(220, 220, 220),
             }):Play()
 
             local BASE_W, BASE_H = 650, 380
@@ -49849,7 +49849,7 @@ particles = {}
         TweenService:Create(glowBorder, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Thickness    = 3.5,
             Transparency = 0.15,
-            Color        = Color3.fromRGB(100, 210, 255),
+            Color        = Color3.fromRGB(220, 220, 220),
         }):Play()
         -- Glow exterior en mainFrame ELIMINADO (causaba salto al hacer click)
     end)
