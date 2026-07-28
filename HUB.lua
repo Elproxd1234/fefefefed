@@ -9225,7 +9225,10 @@ local function _startEspBoxLoop()
     if _G._espBoxConn then return end
     _G._espBoxConn = task.spawn(function()
         while _G._espBoxEnabled do
-            wait(0.5)
+            -- OPT-COMBAT: cuando hay toggles pesados activos, reducir frecuencia del ESP
+            -- para no competir con los loops de Heartbeat de Silent Aim / Auto Shoot
+            local _espWait = _G._combatOpt_espThrottle and 1.5 or 0.5
+            wait(_espWait)
             local myChar = game.Players.LocalPlayer.Character
             for _, box in ipairs(workspace:GetDescendants()) do
                 if box:FindFirstChild("Humanoid") and box ~= myChar then
@@ -25508,7 +25511,9 @@ end, _G._chamDropGun or false)
             local _egT = 0
             _G._espGunConn = _safeConnect(RunService.Heartbeat, function(dt)
                 if not _G._espGunEnabled then return end
-                _egT = _egT + dt; if _egT < 0.2 then return end; _egT = 0
+                -- OPT-COMBAT: cuando combat pesado activo, reducir Gun ESP a 0.6s
+                local _egThresh = _G._combatOpt_gunEspThrottle and 0.6 or 0.2
+                _egT = _egT + dt; if _egT < _egThresh then return end; _egT = 0
                 if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
                 local gun = workspace:FindFirstChild("GunDrop",    true)
                          or workspace:FindFirstChild("DropGun",    true)
@@ -32157,160 +32162,253 @@ function CreateWorldUI_BombJump()
         end, false)
     end
 
-    -- Auto Teleport On Throw — cuando el LocalPlayer lanza la FakeBomb,
-    -- se teletransporta automáticamente a donde cae el Handle.
-    -- FIX: usa los mismos filtros del sistema principal (timestamp < 0.35s,
-    -- distancia < 8 studs, bomba más cercana a mí que a cualquier otro jugador).
-    CreateToggle(clutchSection, " Auto Teleport On Throw", function(enabled)
-        _G._autoTeleportOnThrow = enabled
-        CreateCustomNotification("AUTO TP ON THROW", enabled and "ON — te teleportas al lanzar!" or "OFF", 2)
-        if _G._autoTPThrowConn then
-            pcall(function() _G._autoTPThrowConn:Disconnect() end)
-            _G._autoTPThrowConn = nil
-        end
-        if enabled then
-            local _atLastClick = 0
-            local _atCooldown  = 0
-            -- Registrar clicks del LocalPlayer (igual que el sistema principal)
-            if _G._autoTPClickConn then
-                pcall(function() _G._autoTPClickConn:Disconnect() end)
+    -- ── Launch Bomb (sacar, equipar y lanzar FakeBomb via Remote) ──
+    do
+        local _lbBindGui   = nil
+        local _lbBindFrame = nil
+        local _lbCooldown  = 0
+        local LB_COOLDOWN  = 1.0  -- segundos entre lanzamientos
+
+        local function _doLaunchBomb()
+            local now = tick()
+            if now - _lbCooldown < LB_COOLDOWN then
+                CreateCustomNotification("LAUNCH BOMB", "Espera el cooldown!", 1)
+                return
             end
-            _G._autoTPClickConn = UserInputService.InputBegan:Connect(function(inp, gp)
-                if gp then return end
-                if inp.UserInputType == Enum.UserInputType.MouseButton1
-                or inp.UserInputType == Enum.UserInputType.Touch then
-                    _atLastClick = tick()
-                end
-            end)
-            _G._autoTPThrowConn = workspace.ChildAdded:Connect(function(child)
-                if not _G._autoTeleportOnThrow then return end
-                -- Solo handles (bomba lanzada)
-                if child.Name ~= "Handle" or not child:IsA("BasePart") then return end
-                local now = tick()
-                -- Cooldown entre TPs (evitar spam)
-                if now - _atCooldown < DJ_COOLDOWN then return end
-                -- El click debe ser reciente (< 0.35s), igual que el filtro principal
-                if now - _atLastClick > 0.35 then return end
-                local c   = LocalPlayer.Character
-                local hrp = c and c:FindFirstChild("HumanoidRootPart")
-                local hum = c and c:FindFirstChildOfClass("Humanoid")
-                if not hrp or not hum or hum.Health <= 0 then return end
-                -- Bomba debe estar cerca de mí (< 8 studs)
-                local myDist = (child.Position - hrp.Position).Magnitude
-                if myDist > 8 then return end
-                -- Bomba debe ser más cercana a mí que a cualquier otro jugador
-                for _, p in ipairs(_cachedPlayers) do
-                    if p ~= LocalPlayer and p.Character then
-                        local oHRP = p.Character:FindFirstChild("HumanoidRootPart")
-                        if oHRP then
-                            local oDist = (child.Position - oHRP.Position).Magnitude
-                            if oDist < myDist then return end
-                        end
-                    end
-                end
-                _atCooldown = now
-                -- Esperar que el Handle tenga velocidad estable (igual que _doBombJumpV3)
-                task.spawn(function()
-                    task.wait(0.08)
-                    if not child or not child.Parent then return end
-                    local c2   = LocalPlayer.Character
-                    local hrp2 = c2 and c2:FindFirstChild("HumanoidRootPart")
-                    local hum2 = c2 and c2:FindFirstChildOfClass("Humanoid")
-                    if not hrp2 or not hum2 or hum2.Health <= 0 then return end
-                    local bombPos = child.Position
-                    local tpPos   = Vector3.new(bombPos.X, bombPos.Y + DJ_TP_OFFSET_Y, bombPos.Z)
-                    pcall(function()
-                        hrp2.CFrame = CFrame.new(tpPos)
-                        hrp2.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                    end)
-                    CreateCustomNotification("AUTO TP ON THROW", "¡Teleportado a la bomba!", 1)
-                end)
-            end)
-        else
-            if _G._autoTPClickConn then
-                pcall(function() _G._autoTPClickConn:Disconnect() end)
-                _G._autoTPClickConn = nil
+
+            local char = LocalPlayer.Character
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then
+                CreateCustomNotification("LAUNCH BOMB", "Personaje no disponible", 1.5)
+                return
             end
-        end
-    end, false)
 
-    -- Auto Jump When Teleported — cuando el toggle esté activo, cada vez que el
-    -- personaje sea teleportado encima de la bomba (por Auto Teleport On Throw O
-    -- por el sistema principal de BombJump), ejecuta un salto normal automático.
-    -- Funciona de forma independiente: NO requiere que Auto Teleport On Throw
-    -- ni BombJumpSystem estén activos. Detecta el Handle igual que esos sistemas
-    -- y hace el salto con Humanoid:ChangeState(Jumping) tras el TP (0.12s delay).
-    CreateToggle(clutchSection, " Auto Jump When Teleported", function(enabled)
-        _G._autoJumpAfterTP = enabled
-        CreateCustomNotification("AUTO JUMP AFTER TP", enabled and "ON — salta automático al ser teleportado!" or "OFF", 2)
-        if _G._autoJumpTPConn then
-            pcall(function() _G._autoJumpTPConn:Disconnect() end)
-            _G._autoJumpTPConn = nil
-        end
-        if _G._autoJumpClickConn then
-            pcall(function() _G._autoJumpClickConn:Disconnect() end)
-            _G._autoJumpClickConn = nil
-        end
-        if enabled then
-            local _ajCooldown  = 0
-            local _ajLastClick = 0
-
-            -- Registrar clicks del LocalPlayer para detectar lanzamiento propio
-            _G._autoJumpClickConn = UserInputService.InputBegan:Connect(function(inp, gp)
-                if gp then return end
-                if inp.UserInputType == Enum.UserInputType.MouseButton1
-                or inp.UserInputType == Enum.UserInputType.Touch then
-                    _ajLastClick = tick()
-                end
-            end)
-
-            _G._autoJumpTPConn = workspace.ChildAdded:Connect(function(child)
-                if not _G._autoJumpAfterTP then return end
-                -- Solo Handles (bomba lanzada al workspace)
-                if child.Name ~= "Handle" or not child:IsA("BasePart") then return end
-                local now = tick()
-                -- Cooldown para evitar spam
-                if now - _ajCooldown < DJ_COOLDOWN then return end
-                -- El click/lanzamiento debe ser reciente (< 0.35s)
-                if now - _ajLastClick > 0.35 then return end
-                local c   = LocalPlayer.Character
-                local hrp = c and c:FindFirstChild("HumanoidRootPart")
-                local hum = c and c:FindFirstChildOfClass("Humanoid")
-                if not hrp or not hum or hum.Health <= 0 then return end
-                -- La bomba debe estar cerca del jugador (< 8 studs)
-                local myDist = (child.Position - hrp.Position).Magnitude
-                if myDist > 8 then return end
-                -- La bomba debe ser más cercana a mí que a cualquier otro jugador
-                for _, p in ipairs(_cachedPlayers) do
-                    if p ~= LocalPlayer and p.Character then
-                        local oHRP = p.Character:FindFirstChild("HumanoidRootPart")
-                        if oHRP then
-                            local oDist = (child.Position - oHRP.Position).Magnitude
-                            if oDist < myDist then return end
-                        end
-                    end
-                end
-                _ajCooldown = now
-                -- Esperar a que el TP haya ocurrido (Auto TP On Throw tarda ~0.08s,
-                -- BombJumpSystem tarda ~0.1-0.15s) y luego ejecutar salto normal
-                task.delay(0.18, function()
-                    if not _G._autoJumpAfterTP then return end
-                    local c2   = LocalPlayer.Character
-                    local hum2 = c2 and c2:FindFirstChildOfClass("Humanoid")
-                    if not hum2 or hum2.Health <= 0 then return end
-                    -- Salto normal de Humanoid (igual que presionar Space)
-                    pcall(function()
-                        hum2:ChangeState(Enum.HumanoidStateType.Jumping)
-                    end)
+            -- Buscar FakeBomb en Backpack o Character
+            local fb = LocalPlayer.Backpack:FindFirstChild("FakeBomb")
+                    or (char and char:FindFirstChild("FakeBomb"))
+            if not fb then
+                pcall(function()
+                    fb = game:GetService("Players")[LocalPlayer.Name].Backpack:FindFirstChild("FakeBomb")
                 end)
+            end
+            if not fb then
+                CreateCustomNotification("LAUNCH BOMB", "No hay FakeBomb en el inventario", 2)
+                return
+            end
+
+            -- Equipar si no está en mano
+            local inHand = char:FindFirstChild("FakeBomb")
+            if not inHand then
+                pcall(function() hum:EquipTool(fb) end)
+                task.wait(0.1)
+            end
+
+            -- Obtener la herramienta ya equipada
+            local tool = char:FindFirstChild("FakeBomb")
+            if not tool then
+                CreateCustomNotification("LAUNCH BOMB", "No se pudo equipar la FakeBomb", 2)
+                return
+            end
+
+            -- Buscar el Remote (igual que el Client original: tool.Remote)
+            local remote = tool:FindFirstChild("Remote")
+                        or tool:FindFirstChildOfClass("RemoteEvent")
+            if not remote then
+                CreateCustomNotification("LAUNCH BOMB", "Remote no encontrado", 2)
+                return
+            end
+
+            -- Obtener Hit del mouse (igual que p1.Hit en el Client)
+            local mouse   = LocalPlayer:GetMouse()
+            local hitPos  = mouse.Hit
+            local power   = 50  -- mismo valor que el Client original
+
+            -- FireServer replicando exactamente el Client: FireServer(p1.Hit, power)
+            pcall(function() remote:FireServer(hitPos, power) end)
+            _lbCooldown = tick()
+            CreateCustomNotification("LAUNCH BOMB", "💣 Bomba lanzada!", 1.5)
+        end
+
+        -- Toggle Launch Bomb
+        CreateToggle(clutchSection, " Launch Bomb", function(enabled)
+            if enabled then
+                _doLaunchBomb()
+                CreateCustomNotification("LAUNCH BOMB", "Lanzando bomba...", 1)
+            end
+            -- El toggle es de disparo único: se desactiva solo tras lanzar
+            -- (no es un sistema continuo, es on-demand)
+        end, false)
+
+        -- Bindable Launch Bomb
+        CreateToggle(clutchSection, " Bindable Launch Bomb", function(on)
+            DestroyCapyBind("LAUNCH 💣")
+            if _lbBindGui then
+                pcall(function() _lbBindGui:Destroy() end); _lbBindGui = nil
+            end
+            if on then
+                local sg = Instance.new("ScreenGui")
+                sg.Name           = "LaunchBombBindable"
+                sg.ResetOnSpawn   = false
+                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                sg.IgnoreGuiInset = true
+                sg.DisplayOrder   = 9900
+                pcall(function() sg.Parent = game:GetService("CoreGui") end)
+                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
+                _lbBindGui = sg
+                _lbBindFrame = MakeCapyBindableFrame(sg, "LAUNCH 💣", function()
+                    task.spawn(_doLaunchBomb)
+                end)
+            end
+        end, false)
+    end
+
+    -- ── Double Jump (TP + Salto al lanzar FakeBomb) ──
+    do
+        local _djEnabled    = false
+        local _djConn       = nil
+        local _djBindGui    = nil
+        local _djBindFrame  = nil
+
+        local function _djStart()
+            if _djConn then pcall(function() _djConn:Disconnect() end); _djConn = nil end
+            _djConn = workspace.ChildAdded:Connect(function(child)
+                if not _djEnabled then return end
+                if child.Name ~= "Handle" then return end
+                local character = LocalPlayer.Character
+                if not character then return end
+                local hasBomb = character:FindFirstChild("FakeBomb")
+                if not hasBomb then return end
+                local rootPart = character:FindFirstChild("HumanoidRootPart")
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if not rootPart or not humanoid then return end
+                task.wait(0.05)
+                rootPart.CFrame = child.CFrame * CFrame.new(0, 3, 0)
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             end)
         end
-    end, false)
 
-    -- ── Click Effect ──
-    CreateToggle(clutchSection, " Click Effect", function(on)
-        _clickEffectEnabled = on
-    end, _clickEffectEnabled)
+        local function _djStop()
+            if _djConn then pcall(function() _djConn:Disconnect() end); _djConn = nil end
+        end
+
+        CreateToggle(clutchSection, " Double Jump", function(enabled)
+            _djEnabled = enabled
+            if enabled then
+                _djStart()
+                CreateCustomNotification("DOUBLE JUMP", "ON — TP + salto al lanzar bomba!", 2)
+            else
+                _djStop()
+                CreateCustomNotification("DOUBLE JUMP", "OFF", 1.5)
+            end
+            if _djBindFrame then
+                pcall(function() _djBindFrame:SetActiveState(nil, enabled) end)
+            end
+        end, false)
+
+        -- Bindable Double Jump
+        CreateToggle(clutchSection, " Bindable Double Jump", function(on)
+            DestroyCapyBind("DBL JUMP")
+            if _djBindGui then
+                pcall(function() _djBindGui:Destroy() end); _djBindGui = nil
+            end
+            if on then
+                local sg = Instance.new("ScreenGui")
+                sg.Name           = "DoubleJumpBindable"
+                sg.ResetOnSpawn   = false
+                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                sg.IgnoreGuiInset = true
+                sg.DisplayOrder   = 9900
+                pcall(function() sg.Parent = game:GetService("CoreGui") end)
+                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
+                _djBindGui = sg
+                _djBindFrame = MakeCapyBindableFrame(sg, "DBL JUMP", function()
+                    _djEnabled = not _djEnabled
+                    if _djEnabled then
+                        _djStart()
+                        CreateCustomNotification("DOUBLE JUMP", "ON — TP + salto activado!", 2)
+                    else
+                        _djStop()
+                        CreateCustomNotification("DOUBLE JUMP", "OFF", 1.5)
+                    end
+                    pcall(function() _djBindFrame:SetActiveState(nil, _djEnabled) end)
+                end)
+            end
+        end, false)
+    end
+
+    -- ── TP Bomb (solo TP al lanzar FakeBomb, sin salto) ──
+    do
+        local _tpbEnabled   = false
+        local _tpbConn      = nil
+        local _tpbBindGui   = nil
+        local _tpbBindFrame = nil
+
+        local function _tpbStart()
+            if _tpbConn then pcall(function() _tpbConn:Disconnect() end); _tpbConn = nil end
+            _tpbConn = workspace.ChildAdded:Connect(function(child)
+                if not _tpbEnabled then return end
+                if child.Name ~= "Handle" then return end
+                local character = LocalPlayer.Character
+                if not character then return end
+                local hasBomb = character:FindFirstChild("FakeBomb")
+                if not hasBomb then return end
+                local rootPart = character:FindFirstChild("HumanoidRootPart")
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if not rootPart or not humanoid then return end
+                task.wait(0.05)
+                -- Solo TP, sin salto
+                rootPart.CFrame = child.CFrame * CFrame.new(0, 3, 0)
+            end)
+        end
+
+        local function _tpbStop()
+            if _tpbConn then pcall(function() _tpbConn:Disconnect() end); _tpbConn = nil end
+        end
+
+        CreateToggle(clutchSection, " TP Bomb", function(enabled)
+            _tpbEnabled = enabled
+            if enabled then
+                _tpbStart()
+                CreateCustomNotification("TP BOMB", "ON — TP al lanzar bomba!", 2)
+            else
+                _tpbStop()
+                CreateCustomNotification("TP BOMB", "OFF", 1.5)
+            end
+            if _tpbBindFrame then
+                pcall(function() _tpbBindFrame:SetActiveState(nil, enabled) end)
+            end
+        end, false)
+
+        -- Bindable TP Bomb
+        CreateToggle(clutchSection, " Bindable TP Bomb", function(on)
+            DestroyCapyBind("TP BOMB")
+            if _tpbBindGui then
+                pcall(function() _tpbBindGui:Destroy() end); _tpbBindGui = nil
+            end
+            if on then
+                local sg = Instance.new("ScreenGui")
+                sg.Name           = "TpBombBindable"
+                sg.ResetOnSpawn   = false
+                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                sg.IgnoreGuiInset = true
+                sg.DisplayOrder   = 9900
+                pcall(function() sg.Parent = game:GetService("CoreGui") end)
+                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
+                _tpbBindGui = sg
+                _tpbBindFrame = MakeCapyBindableFrame(sg, "TP BOMB", function()
+                    _tpbEnabled = not _tpbEnabled
+                    if _tpbEnabled then
+                        _tpbStart()
+                        CreateCustomNotification("TP BOMB", "ON — TP activado!", 2)
+                    else
+                        _tpbStop()
+                        CreateCustomNotification("TP BOMB", "OFF", 1.5)
+                    end
+                    pcall(function() _tpbBindFrame:SetActiveState(nil, _tpbEnabled) end)
+                end)
+            end
+        end, false)
+    end
 end
 
 
@@ -47109,6 +47207,172 @@ function CreateCombatTab()
 
     -- ================================================================
     -- BOTONES FLOTANTES MOBILE DESACTIVADOS
+
+    -- ================================================================
+    -- OPTIMIZACIONES DE COMBAT
+    -- Se activan automáticamente cuando cualquier toggle pesado está ON.
+    -- Reduce lag, limpia memoria y prioriza los loops de disparo/aim.
+    -- ================================================================
+    do
+        -- Registro de qué toggles pesados están activos
+        _G._combatOptActive = _G._combatOptActive or {
+            silentAim    = false,
+            autoShoot    = false,
+            knifeAim     = false,
+            aimlock      = false,
+            hitbox       = false,
+        }
+
+        -- Cuántos toggles pesados están ON en este momento
+        local function _combatOptCount()
+            local n = 0
+            for _, v in pairs(_G._combatOptActive) do if v then n = n + 1 end end
+            return n
+        end
+
+        -- Aplicar optimizaciones cuando AL MENOS UN toggle pesado está ON
+        local function _applyOpts()
+            -- OPT-1: GC agresivo — libera memoria de frames anteriores de predicción
+            pcall(function()
+                if collectgarbage then
+                    collectgarbage("setstepmul", 50)  -- más agresivo que el default (200)
+                    collectgarbage("collect")
+                end
+            end)
+
+            -- OPT-2: Throttle del ESP Box — pasa de 0.5s a 1.5s para no competir con Heartbeat de disparo
+            if _G._espBoxEnabled then
+                _G._combatOpt_espWasEnabled = true
+                -- Marcar throttle: el loop de ESP lo lee para saltar iteraciones
+                _G._combatOpt_espThrottle = true
+            end
+
+            -- OPT-3: Reducir frecuencia del Gun ESP (RunService.Heartbeat) al mínimo durante combat
+            if _G._espGunEnabled and _G._espGunConn then
+                _G._combatOpt_gunEspThrottle = true
+            end
+
+            -- OPT-4: Forzar refresh de _cachedPlayers para que los sistemas de aim
+            -- tengan el cache más fresco sin esperar el próximo tick automático
+            pcall(function()
+                _cachedPlayers = game:GetService("Players"):GetPlayers()
+            end)
+
+            -- OPT-5: Limpiar snap viejo de Silent Aim para evitar dead-reckoning stale
+            _G._saClickSnap = nil
+
+            -- OPT-6: Resetear throttle compartido de Heartbeat para que el primer
+            -- frame de disparo no sea saltado por el throttle global
+            _G._hbSharedTick = 0
+        end
+
+        -- Revertir optimizaciones cuando TODOS los toggles pesados están OFF
+        local function _revertOpts()
+            -- OPT-1: Restaurar GC a default
+            pcall(function()
+                if collectgarbage then
+                    collectgarbage("setstepmul", 200)
+                end
+            end)
+
+            -- OPT-2/3: Quitar throttles de ESP
+            _G._combatOpt_espThrottle    = false
+            _G._combatOpt_gunEspThrottle = false
+
+            -- OPT-6: Limpiar snap residual
+            _G._saClickSnap = nil
+        end
+
+        -- Punto de entrada: llamar desde cada toggle pesado con su key y estado
+        function _G._combatOptToggle(key, enabled)
+            if _G._combatOptActive[key] == nil then return end
+            _G._combatOptActive[key] = enabled
+            local count = _combatOptCount()
+            if enabled and count == 1 then
+                -- Primer toggle pesado activado: aplicar optimizaciones
+                _applyOpts()
+                CreateCustomNotification("COMBAT OPT", "Optimizaciones activadas", 1.5)
+            elseif not enabled and count == 0 then
+                -- Último toggle pesado desactivado: revertir
+                _revertOpts()
+                CreateCustomNotification("COMBAT OPT", "Optimizaciones revertidas", 1.5)
+            elseif enabled then
+                -- Otro toggle pesado adicional: re-aplicar para garantizar el estado
+                _applyOpts()
+            end
+        end
+
+        -- Hook en los toggles pesados ya existentes —
+        -- inyección no-destructiva: envuelve sus estados internos
+        -- Silent Aim
+        local _saOrig = CombatTabState.silentAimEnabled
+        if _saOrig then _G._combatOptToggle("silentAim", true) end
+        local _saOrigSet = rawset
+        -- Usamos un proxy en CombatTabState para interceptar silentAimEnabled
+        -- sin tocar el toggle original (compatible con el hook de __namecall)
+        local _ctsMeta = getmetatable(CombatTabState)
+        if not _ctsMeta then
+            _ctsMeta = {}
+            setmetatable(CombatTabState, _ctsMeta)
+        end
+        local _ctsOldNewindex = _ctsMeta.__newindex
+        _ctsMeta.__newindex = function(t, k, v)
+            -- Interceptar los campos de estado de los toggles pesados
+            if k == "silentAimEnabled" then
+                _G._combatOptToggle("silentAim", v and true or false)
+            elseif k == "autoShootMurderEnabled" then
+                _G._combatOptToggle("autoShoot", v and true or false)
+            end
+            if _ctsOldNewindex then
+                return _ctsOldNewindex(t, k, v)
+            else
+                rawset(t, k, v)
+            end
+        end
+
+        -- Knife Silent Aim y Aimlock se activan vía _G — hookeamos directo
+        local _origKnifeSA = _G._toggleStates and _G._toggleStates["Knife Silent Aim"]
+        if _origKnifeSA then _G._combatOptToggle("knifeAim", true) end
+
+        -- Monitorear _G._toggleStates["Knife Silent Aim"] y "Aimlock"
+        -- con un polling liviano cada 0.5s (no usar __newindex en _G para no romper otros sistemas)
+        task.spawn(function()
+            local _lastKnife   = false
+            local _lastAimlock = false
+            local _lastHitbox  = false
+            while true do
+                task.wait(0.5)
+                -- Verificar si el tab sigue abierto (si no, detener el monitor)
+                if not (contentContainer and contentContainer.Parent) then break end
+
+                local _ts = _G._toggleStates or {}
+                local _kn = _ts["Knife Silent Aim"]  and true or false
+                local _al = _ts["Aimlock"]            and true or false
+                local _hb = _ts["Hitbox Expander"]    and true or false
+
+                if _kn ~= _lastKnife   then _G._combatOptToggle("knifeAim", _kn);   _lastKnife   = _kn   end
+                if _al ~= _lastAimlock  then _G._combatOptToggle("aimlock",  _al);   _lastAimlock = _al   end
+                if _hb ~= _lastHitbox   then _G._combatOptToggle("hitbox",   _hb);   _lastHitbox  = _hb   end
+            end
+        end)
+
+        -- Restaurar metamétodo al salir del tab (ClearContent lo destruye)
+        -- para no dejar el proxy activo en otros tabs
+        local _cleanupConn
+        _cleanupConn = contentContainer.AncestryChanged:Connect(function()
+            if not contentContainer.Parent then
+                pcall(function()
+                    _ctsMeta.__newindex = _ctsOldNewindex  -- restaurar o nil
+                end)
+                -- Revertir optimizaciones al salir del tab
+                if _combatOptCount() > 0 then _revertOpts() end
+                pcall(function() _cleanupConn:Disconnect() end)
+            end
+        end)
+    end
+    -- ================================================================
+    -- FIN OPTIMIZACIONES DE COMBAT
+    -- ================================================================
 
 end  -- close CreateCombatTab
 
