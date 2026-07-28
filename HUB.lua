@@ -8762,6 +8762,11 @@ function ToggleFly(enabled)
         bg.MaxTorque = Vector3.new(100000, 100000, 100000)
         bg.P = 10000
         bg.Parent = hrp
+        -- MOBILE SUPPORT UseTab fly
+        local _utFlyMobile = (function()
+            local ok, res = pcall(function() return UserInputService.TouchEnabled end)
+            return ok and res
+        end)()
         Settings.connections.fly = RunService.Heartbeat:Connect(function()
             if not Settings.movement.fly.enabled or not hrp.Parent then
                 if bv then bv:Destroy() end
@@ -8771,23 +8776,38 @@ function ToggleFly(enabled)
             end
             local camera = workspace.CurrentCamera
             local moveDir = Vector3.zero
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                moveDir = moveDir + camera.CFrame.LookVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                moveDir = moveDir - camera.CFrame.LookVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                moveDir = moveDir - camera.CFrame.RightVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                moveDir = moveDir + camera.CFrame.RightVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                moveDir = moveDir + Vector3.new(0, 1, 0)
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                moveDir = moveDir - Vector3.new(0, 1, 0)
+            if _utFlyMobile then
+                -- Usar thumbstick del movil
+                local _utChar = LocalPlayer.Character
+                local _utHum  = _utChar and _utChar:FindFirstChildOfClass("Humanoid")
+                if _utHum then
+                    local md = _utHum.MoveDirection
+                    if md.Magnitude > 0.1 then
+                        moveDir = Vector3.new(md.X, 0, md.Z)
+                    end
+                end
+                -- Usar botones del sistema de fly principal si existen
+                if _G._flyUpHeld   then moveDir = moveDir + Vector3.new(0,1,0) end
+                if _G._flyDownHeld then moveDir = moveDir - Vector3.new(0,1,0) end
+            else
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                    moveDir = moveDir + camera.CFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                    moveDir = moveDir - camera.CFrame.LookVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                    moveDir = moveDir - camera.CFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                    moveDir = moveDir + camera.CFrame.RightVector
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    moveDir = moveDir + Vector3.new(0, 1, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                    moveDir = moveDir - Vector3.new(0, 1, 0)
+                end
             end
             bv.Velocity = moveDir * Settings.movement.fly.speed
             bg.CFrame = camera.CFrame
@@ -11721,33 +11741,94 @@ MainSystem = {
             S.bg.P = 10000
             S.bg.Parent = hrp
 
+            -- MOBILE SUPPORT para SwimFly
+            local _sfIsMobile = (function()
+                local ok, res = pcall(function() return UserInputService.TouchEnabled end)
+                return ok and res
+            end)()
+            local _sfUpHeld   = false
+            local _sfDownHeld = false
+            local _sfMobileGui = nil
+            if _sfIsMobile then
+                _sfMobileGui = Instance.new("ScreenGui")
+                _sfMobileGui.Name = "SwimFlyMobile_HUB"
+                _sfMobileGui.ResetOnSpawn = false
+                _sfMobileGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                _sfMobileGui.IgnoreGuiInset = true
+                _sfMobileGui.DisplayOrder = 9994
+                pcall(function() _sfMobileGui.Parent = game:GetService("CoreGui") end)
+                if not _sfMobileGui.Parent then _sfMobileGui.Parent = LocalPlayer.PlayerGui end
+                local vp2 = workspace.CurrentCamera.ViewportSize
+                local bs2 = 65
+                local function _sfBtn(lbl, color, px, py, downFn, upFn)
+                    local b = Instance.new("TextButton", _sfMobileGui)
+                    b.Size = UDim2.fromOffset(bs2, bs2)
+                    b.Position = UDim2.fromOffset(px, py)
+                    b.BackgroundColor3 = color
+                    b.BackgroundTransparency = 0.3
+                    b.Text = lbl; b.TextColor3 = Color3.fromRGB(255,255,255)
+                    b.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+                    b.TextSize = 13; b.BorderSizePixel = 0; b.AutoButtonColor = false; b.ZIndex = 300
+                    Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+                    b.InputBegan:Connect(function(i)
+                        if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+                            downFn(); TweenService:Create(b, TweenInfo.new(0.08), {BackgroundTransparency=0.05}):Play()
+                        end
+                    end)
+                    b.InputEnded:Connect(function(i)
+                        if i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1 then
+                            upFn(); TweenService:Create(b, TweenInfo.new(0.08), {BackgroundTransparency=0.3}):Play()
+                        end
+                    end)
+                end
+                _sfBtn("▲\nSUBIR", Color3.fromRGB(60,120,220), vp2.X-bs2*2-15, vp2.Y-bs2*2-10,
+                    function() _sfUpHeld=true end, function() _sfUpHeld=false end)
+                _sfBtn("▼\nBAJAR", Color3.fromRGB(220,80,60), vp2.X-bs2-8, vp2.Y-bs2*2-10,
+                    function() _sfDownHeld=true end, function() _sfDownHeld=false end)
+            end
+
             -- Fly usa RenderStepped para movimiento suave (sincronizado con camara)
             S.connection = RunService.RenderStepped:Connect(function()
                 if not S.enabled or not hrp.Parent then
                     if S.bv then S.bv:Destroy() S.bv = nil end
                     if S.bg then S.bg:Destroy() S.bg = nil end
                     if S.connection then S.connection:Disconnect() S.connection = nil end
+                    if _sfMobileGui then pcall(function() _sfMobileGui:Destroy() end); _sfMobileGui = nil end
                     return
                 end
                 local camera = workspace.CurrentCamera
                 local moveDir = Vector3.zero
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                    moveDir = moveDir + camera.CFrame.LookVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                    moveDir = moveDir - camera.CFrame.LookVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                    moveDir = moveDir - camera.CFrame.RightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                    moveDir = moveDir + camera.CFrame.RightVector
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                    moveDir = moveDir + Vector3.new(0, 1, 0)
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                    moveDir = moveDir - Vector3.new(0, 1, 0)
+                if _sfIsMobile then
+                    -- Usar thumbstick del movil para horizontal
+                    local _sfChar2 = LocalPlayer.Character
+                    local _sfHum2  = _sfChar2 and _sfChar2:FindFirstChildOfClass("Humanoid")
+                    if _sfHum2 then
+                        local md = _sfHum2.MoveDirection
+                        if md.Magnitude > 0.1 then
+                            moveDir = Vector3.new(md.X, 0, md.Z)
+                        end
+                    end
+                    if _sfUpHeld   then moveDir = moveDir + Vector3.new(0, 1, 0) end
+                    if _sfDownHeld then moveDir = moveDir - Vector3.new(0, 1, 0) end
+                else
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                        moveDir = moveDir + camera.CFrame.LookVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                        moveDir = moveDir - camera.CFrame.LookVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                        moveDir = moveDir - camera.CFrame.RightVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                        moveDir = moveDir + camera.CFrame.RightVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                        moveDir = moveDir + Vector3.new(0, 1, 0)
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                        moveDir = moveDir - Vector3.new(0, 1, 0)
+                    end
                 end
                 S.bv.Velocity = moveDir * S.speed
                 S.bg.CFrame = camera.CFrame
@@ -11894,17 +11975,33 @@ MainSystem = {
                 h.PlatformStand = true  -- mantener siempre
 
                 -- Movimiento en direccion de la camara (vuelo libre 6DOF)
+                -- MOBILE SUPPORT: usar MoveDirection en movil
                 local cf    = cam.CFrame
                 local vel   = Vector3.zero
-                if UIS:IsKeyDown(Enum.KeyCode.W) then vel = vel + cf.LookVector end
-                if UIS:IsKeyDown(Enum.KeyCode.S) then vel = vel - cf.LookVector end
-                if UIS:IsKeyDown(Enum.KeyCode.D) then vel = vel + cf.RightVector end
-                if UIS:IsKeyDown(Enum.KeyCode.A) then vel = vel - cf.RightVector end
-                if UIS:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0,1,0) end
-                if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.C) then
-                    vel = vel - Vector3.new(0,1,0)
+                local _sf3Mobile = (function()
+                    local ok2, res2 = pcall(function() return UIS.TouchEnabled end)
+                    return ok2 and res2
+                end)()
+                if _sf3Mobile then
+                    -- Thumbstick horizontal
+                    local _md3 = h and h.MoveDirection or Vector3.zero
+                    if _md3.Magnitude > 0.1 then
+                        vel = Vector3.new(_md3.X, 0, _md3.Z)
+                    end
+                    -- Usar botones moviles si existen (del sistema principal de fly)
+                    if _G._flyUpHeld   then vel = vel + Vector3.new(0,1,0) end
+                    if _G._flyDownHeld then vel = vel - Vector3.new(0,1,0) end
+                else
+                    if UIS:IsKeyDown(Enum.KeyCode.W) then vel = vel + cf.LookVector end
+                    if UIS:IsKeyDown(Enum.KeyCode.S) then vel = vel - cf.LookVector end
+                    if UIS:IsKeyDown(Enum.KeyCode.D) then vel = vel + cf.RightVector end
+                    if UIS:IsKeyDown(Enum.KeyCode.A) then vel = vel - cf.RightVector end
+                    if UIS:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0,1,0) end
+                    if UIS:IsKeyDown(Enum.KeyCode.LeftControl) or UIS:IsKeyDown(Enum.KeyCode.C) then
+                        vel = vel - Vector3.new(0,1,0)
+                    end
                 end
-                local spd = speed * (UIS:IsKeyDown(Enum.KeyCode.LeftShift) and 2 or 1)
+                local spd = speed * ((_sf3Mobile and _G._flyBoostHeld) or (not _sf3Mobile and UIS:IsKeyDown(Enum.KeyCode.LeftShift)) and 2 or 1)
                 bv.Velocity = vel.Magnitude > 0 and (vel.Unit * spd) or Vector3.zero
 
                 -- Orientar el personaje en la direccion de movimiento (o camara si quieto)
@@ -12982,6 +13079,89 @@ function CreateMainUI_Fly()
         local bg = Instance.new("BodyGyro", hrp)
         bg.Name = "FlyBG"; bg.MaxTorque = Vector3.new(1e5,1e5,1e5); bg.P = 1e4; bg.D = 500
         if flyNoclipInvisWalls then applyNoclip(char, true) end
+        -- MOBILE SUPPORT: detectar si el dispositivo es movil
+        local _isMobile = (function()
+            local ok, res = pcall(function() return UserInputService.TouchEnabled end)
+            return ok and res
+        end)()
+
+        -- MOBILE: botones flotantes de subir/bajar para movil
+        -- Variables en _G para que todos los sistemas de fly las compartan
+        _G._flyUpHeld    = _G._flyUpHeld    or false
+        _G._flyDownHeld  = _G._flyDownHeld  or false
+        _G._flyBoostHeld = _G._flyBoostHeld or false
+        local _flyMobileGui = nil
+        local _flyUpHeld    = _G._flyUpHeld
+        local _flyDownHeld  = _G._flyDownHeld
+        local _flyBoostHeld = _G._flyBoostHeld
+
+        if _isMobile then
+            _flyMobileGui = Instance.new("ScreenGui")
+            _flyMobileGui.Name = "FlyMobileControls_HUB"
+            _flyMobileGui.ResetOnSpawn = false
+            _flyMobileGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+            _flyMobileGui.IgnoreGuiInset = true
+            _flyMobileGui.DisplayOrder = 9995
+            pcall(function() _flyMobileGui.Parent = game:GetService("CoreGui") end)
+            if not _flyMobileGui.Parent then _flyMobileGui.Parent = LocalPlayer.PlayerGui end
+
+            local vp = workspace.CurrentCamera.ViewportSize
+            local btnSize = 70
+
+            local function _makeFlyBtn(label, color, posX, posY, onDown, onUp)
+                local btn = Instance.new("TextButton", _flyMobileGui)
+                btn.Size = UDim2.fromOffset(btnSize, btnSize)
+                btn.Position = UDim2.fromOffset(posX, posY)
+                btn.BackgroundColor3 = color
+                btn.BackgroundTransparency = 0.3
+                btn.Text = label
+                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                btn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+                btn.TextSize = 14
+                btn.BorderSizePixel = 0
+                btn.AutoButtonColor = false
+                btn.ZIndex = 300
+                Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+                local stroke = Instance.new("UIStroke", btn)
+                stroke.Color = Color3.fromRGB(255, 255, 255)
+                stroke.Thickness = 1.5
+                stroke.Transparency = 0.4
+                btn.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.Touch
+                    or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                        onDown()
+                        TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundTransparency = 0.05}):Play()
+                    end
+                end)
+                btn.InputEnded:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.Touch
+                    or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                        onUp()
+                        TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundTransparency = 0.3}):Play()
+                    end
+                end)
+                return btn
+            end
+
+            -- Boton SUBIR (derecha, arriba)
+            _makeFlyBtn("▲\nSUBIR", Color3.fromRGB(60, 120, 220),
+                vp.X - btnSize * 2 - 20, vp.Y - btnSize * 3 - 20,
+                function() _flyUpHeld = true;    _G._flyUpHeld = true end,
+                function() _flyUpHeld = false;   _G._flyUpHeld = false end)
+
+            -- Boton BAJAR (derecha, centro)
+            _makeFlyBtn("▼\nBAJAR", Color3.fromRGB(220, 80, 60),
+                vp.X - btnSize * 2 - 20, vp.Y - btnSize * 2 - 10,
+                function() _flyDownHeld = true;  _G._flyDownHeld = true end,
+                function() _flyDownHeld = false; _G._flyDownHeld = false end)
+
+            -- Boton BOOST (derecha, abajo)
+            _makeFlyBtn("⚡\nBOOST", Color3.fromRGB(200, 160, 20),
+                vp.X - btnSize - 10, vp.Y - btnSize * 2 - 10,
+                function() _flyBoostHeld = true;  _G._flyBoostHeld = true end,
+                function() _flyBoostHeld = false; _G._flyBoostHeld = false end)
+        end
+
         flyNoclipConn = _safeConnect(RunService.Heartbeat, function(dt)
             if not flyNoclipEnabled then
                 flyNoclipConn:Disconnect(); flyNoclipConn = nil
@@ -12989,23 +13169,52 @@ function CreateMainUI_Fly()
                 _stopSwimAnim()
                 if hum and hum.Parent then hum.PlatformStand = false end
                 applyNoclip(LocalPlayer.Character, false)
+                -- Limpiar GUI movil
+                if _flyMobileGui then
+                    pcall(function() _flyMobileGui:Destroy() end)
+                    _flyMobileGui = nil
+                end
+                _flyUpHeld = false; _flyDownHeld = false; _flyBoostHeld = false
                 return
             end
             local cam = _Camera
             local dir = Vector3.zero
-            local isBoosting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+
+            -- MOBILE: usar MoveDirection del Humanoid (thumbstick) para WASD
+            -- PC: usar IsKeyDown normal
+            local isBoosting = false
+            if _isMobile then
+                -- Thumbstick da la direccion de movimiento en el plano XZ
+                local currentChar = LocalPlayer.Character
+                local currentHum  = currentChar and currentChar:FindFirstChildOfClass("Humanoid")
+                if currentHum then
+                    local moveDir = currentHum.MoveDirection
+                    if moveDir.Magnitude > 0.1 then
+                        -- Convertir moveDir (world space) a camara-relativo
+                        local flatMove = Vector3.new(moveDir.X, 0, moveDir.Z)
+                        dir = flatMove
+                    end
+                end
+                -- Botones moviles de subir/bajar/boost
+                if _flyUpHeld   then dir = dir + Vector3.new(0, flyNoclipUpSpeed   / flyNoclipSpeed, 0) end
+                if _flyDownHeld then dir = dir - Vector3.new(0, flyNoclipDownSpeed  / flyNoclipSpeed, 0) end
+                isBoosting = _flyBoostHeld
+            else
+                isBoosting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
+                -- Subir/bajar con velocidades independientes
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    dir = dir + Vector3.new(0, flyNoclipUpSpeed / flyNoclipSpeed, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+                    dir = dir - Vector3.new(0, flyNoclipDownSpeed / flyNoclipSpeed, 0)
+                end
+            end
+
             local spd = flyNoclipSpeed * (isBoosting and flyNoclipBoost or 1)
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
-            -- Subir/bajar con velocidades independientes
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                dir = dir + Vector3.new(0, flyNoclipUpSpeed / spd, 0)
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.Q) then
-                dir = dir - Vector3.new(0, flyNoclipDownSpeed / spd, 0)
-            end
             -- Clamp altura maxima
             if hrp and hrp.Position.Y > flyNoclipMaxHeight and dir.Y > 0 then
                 dir = Vector3.new(dir.X, 0, dir.Z)
@@ -17543,6 +17752,10 @@ function CreateMainUI_SecureAuto()
             local bg = Instance.new("BodyGyro", hrp)
             bg.Name = "AdminFlyBG"; bg.MaxTorque = Vector3.new(1e6,1e6,1e6); bg.P = 2e4; bg.D = 800
 
+            local _afIsMobile = (function()
+                local ok, res = pcall(function() return UserInputService.TouchEnabled end)
+                return ok and res
+            end)()
             _adminFlyConn = RunService.Heartbeat:Connect(function()
                 if not _adminFlyEnabled then
                     pcall(function() bv:Destroy() end); pcall(function() bg:Destroy() end)
@@ -17551,13 +17764,27 @@ function CreateMainUI_SecureAuto()
                 end
                 local cam = workspace.CurrentCamera
                 local dir = Vector3.zero
-                local spd = _adminFlySpeed * (UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and 3 or 1)
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.yAxis end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.yAxis end
+                local isBst = false
+                if _afIsMobile then
+                    local _afc = LocalPlayer.Character
+                    local _afh = _afc and _afc:FindFirstChildOfClass("Humanoid")
+                    if _afh then
+                        local md = _afh.MoveDirection
+                        if md.Magnitude > 0.1 then dir = Vector3.new(md.X, 0, md.Z) end
+                    end
+                    if _G._flyUpHeld   then dir = dir + Vector3.yAxis end
+                    if _G._flyDownHeld then dir = dir - Vector3.yAxis end
+                    isBst = _G._flyBoostHeld
+                else
+                    isBst = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.yAxis end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then dir = dir - Vector3.yAxis end
+                end
+                local spd = _adminFlySpeed * (isBst and 3 or 1)
                 bv.Velocity = dir.Magnitude > 0 and dir.Unit * spd or Vector3.zero
                 bg.CFrame = cam.CFrame
             end)
@@ -18792,6 +19019,30 @@ function CreateMainTab()
                 pcall(function() _ncKeybindListenConn:Disconnect() end)
             end)
         end, false)
+
+        -- MOBILE: si es movil, mostrar aviso de que usar el boton bindable
+        do
+            local _ncIsMobile = (function()
+                local ok, res = pcall(function() return UserInputService.TouchEnabled end)
+                return ok and res
+            end)()
+            if _ncIsMobile then
+                local _ncMobileTip = Instance.new("TextLabel", _ncSection)
+                _ncMobileTip.Size = UDim2.new(1, -8, 0, 32)
+                _ncMobileTip.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
+                _ncMobileTip.BackgroundTransparency = 0.5
+                _ncMobileTip.BorderSizePixel = 0
+                _ncMobileTip.Text = "📱 Movil: usa el boton 'Noclip (Button)' de abajo"
+                _ncMobileTip.TextColor3 = Color3.fromRGB(100, 255, 100)
+                _ncMobileTip.FontFace = Font.fromEnum(Enum.Font.Montserrat)
+                _ncMobileTip.TextSize = 10
+                _ncMobileTip.TextWrapped = true
+                _ncMobileTip.ZIndex = 13
+                Instance.new("UICorner", _ncMobileTip).CornerRadius = UDim.new(0, 6)
+                local _ncTS = Instance.new("UIStroke", _ncMobileTip)
+                _ncTS.Color = Color3.fromRGB(60, 200, 60); _ncTS.Thickness = 1; _ncTS.Transparency = 0.4
+            end
+        end
 
         -- Noclip (Keybind Active) -- escucha la tecla N para toggle
         CreateAuroraToggle(_ncSection, "Noclip (Keybind Active)", function(on)
