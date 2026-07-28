@@ -8332,6 +8332,11 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
         if _locked then return end
         if isOpen then closeList() else openList() end
     end)
+    -- FIX MOBILE: soporte Touch para abrir/cerrar el selector
+    triggerBtn.TouchTap:Connect(function()
+        if _locked then return end
+        if isOpen then closeList() else openList() end
+    end)
 
     -- Construir opciones
     local function buildOptions(opts)
@@ -8396,14 +8401,17 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
                 end
             end)
 
-            row.MouseButton1Click:Connect(function()
+            local function _selectOption()
                 if _locked then return end
                 selectedValue     = name
                 selectedText.Text = name
                 refreshIndicators()
                 if callback then callback(name) end
                 closeList()
-            end)
+            end
+            row.MouseButton1Click:Connect(_selectOption)
+            -- FIX MOBILE: soporte Touch para seleccionar opcion
+            row.TouchTap:Connect(_selectOption)
 
             table.insert(optionBtns, wrapper)
         end
@@ -52049,8 +52057,14 @@ function CreateUseTab()
             local dragging = false
             local UIS = game:GetService("UserInputService")
             local function updatePos(input)
-                local relX = math.clamp(input.Position.X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
-                local frac = relX / track.AbsoluteSize.X
+                local relX
+                if input and (input.UserInputType == Enum.UserInputType.Touch
+                           or input.UserInputType == Enum.UserInputType.MouseButton1) then
+                    relX = math.clamp(input.Position.X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
+                else
+                    relX = math.clamp(UIS:GetMouseLocation().X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
+                end
+                local frac = relX / math.max(track.AbsoluteSize.X, 1)
                 local val = math.floor(frac * 255)
                 fill.Size = UDim2.new(frac, 0, 1, 0)
                 thumb.Position = UDim2.new(frac, -7, 0.5, -7)
@@ -52059,20 +52073,52 @@ function CreateUseTab()
                 _applyHubColor()
                 previewLbl.Text = "RGB(" .. math.floor(_cpCustomR) .. "," .. math.floor(_cpCustomG) .. "," .. math.floor(_cpCustomB) .. ")"
             end
+            -- FIX MOBILE: soporte Touch ademas de MouseButton1
             track.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=true; updatePos(inp) end
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                or inp.UserInputType == Enum.UserInputType.Touch then
+                    dragging = true; updatePos(inp)
+                end
             end)
             track.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=false end
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                or inp.UserInputType == Enum.UserInputType.Touch then
+                    dragging = false
+                end
             end)
             UIS.InputChanged:Connect(function(inp)
-                if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then updatePos(inp) end
+                if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
+                              or inp.UserInputType == Enum.UserInputType.Touch) then
+                    updatePos(inp)
+                end
             end)
         end
 
         makeRGBSlider(rgbContainer, "R", Color3.fromRGB(255,80,80),  _cpCustomR, function(v) _cpCustomR=v end)
         makeRGBSlider(rgbContainer, "G", Color3.fromRGB(80,255,100), _cpCustomG, function(v) _cpCustomG=v end)
         makeRGBSlider(rgbContainer, "B", Color3.fromRGB(80,150,255), _cpCustomB, function(v) _cpCustomB=v end)
+    end
+
+    -- == SLIDER ESCALA DEL HUB (USE tab) ==
+    do
+        local _scaleSec = CreateBorderedSectionGlobal(rightColumn, " ESCALA DEL HUB")
+        local _hs = function() return _G._hubSettings or {} end
+
+        CreateSlider(_scaleSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 100, function(v)
+            local hs = _G._hubSettings
+            if not hs then return end
+            hs.hubScale = math.floor(v)
+            -- Aplicar escala al frame principal del hub en tiempo real
+            local _hubGui = game:GetService("CoreGui"):FindFirstChild("f")
+                         or game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("f")
+            if not _hubGui then return end
+            local _mainF = _hubGui:FindFirstChildOfClass("Frame")
+            if not _mainF then return end
+            local scale = math.floor(v) / 100
+            local uiScale = _mainF:FindFirstChildOfClass("UIScale")
+            if not uiScale then uiScale = Instance.new("UIScale", _mainF) end
+            uiScale.Scale = scale
+        end)
     end
 
 end
