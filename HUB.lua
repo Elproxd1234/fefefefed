@@ -50154,7 +50154,8 @@ particles = {}
     arrowToggleBtn.Text = ""
     arrowToggleBtn.AutoButtonColor = false
     arrowToggleBtn.BorderSizePixel = 0
-    arrowToggleBtn.ZIndex = 12
+    arrowToggleBtn.ZIndex = 999  -- FIX MOBILE: ZIndex alto para que no quede debajo de otros elementos
+    arrowToggleBtn.Active = true  -- FIX MOBILE: necesario para recibir inputs touch
     local arrowLabel = Instance.new("ImageLabel", arrowToggleBtn)
     arrowLabel.Size = UDim2.new(0, 54, 0, 54)
     arrowLabel.Position = UDim2.new(0.5, -27, 0.5, -27)
@@ -50778,13 +50779,19 @@ particles = {}
     end
     _G._goBackToEmpty = _goBackToEmpty  -- exponer para minimizeBtn (scope externo)
 
-    arrowToggleBtn.MouseButton1Click:Connect(function()
+    -- FIX MOBILE: en ejecutores moviles MouseButton1Click puede no disparar con touch.
+    -- Usamos InputBegan como respaldo para garantizar que el boton funcione.
+    local _arrowBtnDebounce = false
+    local function _arrowBtnFire()
+        if _arrowBtnDebounce then return end
+        _arrowBtnDebounce = true
+        task.delay(0.5, function() _arrowBtnDebounce = false end)
+        -- disparar el handler de cierre/minimizar
         local _hubGuiRef    = hubGui
         local _mainFrameRef = mainFrame
         pcall(CloseExpandPanel)
         pcall(function() if _G._stopWeapon then _G._stopWeapon() end end)
         pcall(function() if _G._stopKnife  then _G._stopKnife()  end end)
-        -- FIX: respetar "No Minimize/Maximize Anim" de Settings
         if _G._hubSettings and _G._hubSettings.noMinMaxAnimations then
             if _mainFrameRef then _mainFrameRef.BackgroundTransparency = 1 end
             if tabDockFrame  then tabDockFrame.BackgroundTransparency  = 1 end
@@ -50801,7 +50808,7 @@ particles = {}
             end)
         end
         _G._hubHidden = true
-        pcall(_flushConfig)  -- OPT: flush inmediato al cerrar
+        pcall(_flushConfig)
         task.delay(0.36, function()
             pcall(function() if _hubGuiRef then _hubGuiRef.Enabled = false end end)
             pcall(function()
@@ -50814,174 +50821,76 @@ particles = {}
         end)
         -- Skull reopener
         local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-            if pg then
-                local rGui = Instance.new("ScreenGui")
-                rGui.Name = "reReopener"
-                rGui.ResetOnSpawn = false
-                rGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                rGui.DisplayOrder = 9998
-                rGui.Parent = pg
-                local SKULL_COLOR = Color3.fromRGB(80, 80, 85)
-                local SKULL_SIZE  = 130
-                local skullMF = Instance.new("Frame", rGui)
-                skullMF.Name = "MainFrame"
-                skullMF.BackgroundTransparency = 1
-                skullMF.AnchorPoint = Vector2.new(0.5, 0)
-                skullMF.Size = UDim2.new(0, SKULL_SIZE, 0, SKULL_SIZE)
-                skullMF.Position = UDim2.new(0.5, 0, 0, 10)
-                local rBtn = Instance.new("ImageButton", skullMF)
-                rBtn.AnchorPoint = Vector2.new(0.5, 0.5)
-                rBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
-                rBtn.Size = UDim2.new(0, 0, 0, 0)
-                rBtn.BackgroundTransparency = 1
-                rBtn.Image = "rbxassetid://100287275990702"
-                rBtn.ImageColor3 = Color3.fromRGB(255,255,255)
-                rBtn.ScaleType = Enum.ScaleType.Fit
-                rBtn.ZIndex = 100
-                TweenService:Create(rBtn, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                    Size = UDim2.new(0, SKULL_SIZE * 0.9, 0, SKULL_SIZE * 0.9)
-                }):Play()
-                -- Sin borde feo: solo esquinas redondeadas
-                Instance.new("UICorner", rBtn).CornerRadius = UDim.new(0, 14)
-
-                -- Capa fantasma magenta (aberracion cromatica)
-                local rGhostR = Instance.new("ImageLabel", skullMF)
-                rGhostR.Size = UDim2.new(0, SKULL_SIZE * 0.9, 0, SKULL_SIZE * 0.9)
-                rGhostR.AnchorPoint = Vector2.new(0.5, 0.5)
-                rGhostR.Position = UDim2.new(0.5, 0, 0.5, 0)
-                rGhostR.BackgroundTransparency = 1
-                rGhostR.Image = "rbxassetid://100287275990702"
-                rGhostR.ImageColor3 = Color3.fromRGB(160, 160, 165)
-                rGhostR.ImageTransparency = 0.72
-                rGhostR.ScaleType = Enum.ScaleType.Fit
-                rGhostR.ZIndex = 98
-                Instance.new("UICorner", rGhostR).CornerRadius = UDim.new(0, 14)
-
-                -- Capa fantasma cian
-                local rGhostB = Instance.new("ImageLabel", skullMF)
-                rGhostB.Size = UDim2.new(0, SKULL_SIZE * 0.9, 0, SKULL_SIZE * 0.9)
-                rGhostB.AnchorPoint = Vector2.new(0.5, 0.5)
-                rGhostB.Position = UDim2.new(0.5, 0, 0.5, 0)
-                rGhostB.BackgroundTransparency = 1
-                rGhostB.Image = "rbxassetid://100287275990702"
-                rGhostB.ImageColor3 = Color3.fromRGB(130, 130, 135)
-                rGhostB.ImageTransparency = 0.72
-                rGhostB.ScaleType = Enum.ScaleType.Fit
-                rGhostB.ZIndex = 99
-                Instance.new("UICorner", rGhostB).CornerRadius = UDim.new(0, 14)
-
-                -- Scanline
-                local rScanLine = Instance.new("Frame", skullMF)
-                rScanLine.Size = UDim2.new(0, SKULL_SIZE * 0.9, 0, 2)
-                rScanLine.AnchorPoint = Vector2.new(0.5, 0)
-                rScanLine.Position = UDim2.new(0.5, 0, 0, 0)
-                rScanLine.BackgroundColor3 = Color3.fromRGB(180, 180, 185)
-                rScanLine.BackgroundTransparency = 0.3
-                rScanLine.BorderSizePixel = 0
-                rScanLine.ZIndex = 103
-                Instance.new("UICorner", rScanLine).CornerRadius = UDim.new(1, 0)
-
-                local _r3OX = {-5,4,-3,6,-4,3,-6,5,0,0,-2,2}
-                local _r3OY = {2,-3,4,-2,3,-4,0,0,1,-1,0,0}
-                task.spawn(function()
-                    local _r3t = 0
-                    local _rScanY = 0
-                    while rBtn and rBtn.Parent do
-                        _r3t = _r3t + 1
-
-                        -- Scanline
-                        _rScanY = (_rScanY + 6) % math.floor(SKULL_SIZE * 0.9)
-                        rScanLine.Position = UDim2.new(0.5, 0, 0, _rScanY)
-
-                        -- Aberracion cromatica
-                        rGhostR.Position = UDim2.new(0.5, math.random(-6,6), 0.5, math.random(-2,2))
-                        rGhostB.Position = UDim2.new(0.5, math.random(-6,6), 0.5, math.random(-2,2))
-                        rGhostR.ImageTransparency = 0.6 + math.random() * 0.3
-                        rGhostB.ImageTransparency = 0.6 + math.random() * 0.3
-
-                        -- Color gris pulsante
-                        local pulse = 0.85 + math.sin(_r3t * 0.4) * 0.15
-                        rBtn.ImageColor3 = Color3.fromRGB(
-                            math.floor(200 * pulse),
-                            math.floor(200 * pulse),
-                            math.floor(205 * pulse)
-                        )
-
-                        if _r3t % 3 == 0 then
-                            local ox = _r3OX[math.random(1,#_r3OX)]
-                            local oy = _r3OY[math.random(1,#_r3OY)]
-                            rBtn.Position = UDim2.new(0.5, ox, 0.5, oy)
-                            task.wait(0.04); rBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
-                            task.wait(0.02); rBtn.Position = UDim2.new(0.5, -ox, 0.5, -oy)
-                            task.wait(0.03); rBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+        if pg then
+            -- Destruir reopeners anteriores
+            for _, ch in ipairs(pg:GetChildren()) do
+                if ch:IsA("ScreenGui") and (ch.Name == "reReopener" or ch.Name:find("Reopener")) then
+                    pcall(function() ch:Destroy() end)
+                end
+            end
+            local rGui2 = Instance.new("ScreenGui")
+            rGui2.Name = "reReopener"
+            rGui2.ResetOnSpawn = false
+            rGui2.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+            rGui2.DisplayOrder = 9998
+            rGui2.Parent = pg
+            local SKULL_SIZE2 = 130
+            local skullMF2 = Instance.new("Frame", rGui2)
+            skullMF2.BackgroundTransparency = 1
+            skullMF2.AnchorPoint = Vector2.new(0.5, 0)
+            skullMF2.Size = UDim2.new(0, SKULL_SIZE2, 0, SKULL_SIZE2)
+            skullMF2.Position = UDim2.new(0.5, 0, 0, 10)
+            local rBtn2 = Instance.new("ImageButton", skullMF2)
+            rBtn2.AnchorPoint = Vector2.new(0.5, 0.5)
+            rBtn2.Position = UDim2.new(0.5, 0, 0.5, 0)
+            rBtn2.Size = UDim2.new(0, 0, 0, 0)
+            rBtn2.BackgroundTransparency = 1
+            rBtn2.Image = "rbxassetid://100287275990702"
+            rBtn2.ImageColor3 = Color3.fromRGB(255, 255, 255)
+            rBtn2.ScaleType = Enum.ScaleType.Fit
+            rBtn2.ZIndex = 100
+            rBtn2.Active = true
+            Instance.new("UICorner", rBtn2).CornerRadius = UDim.new(0, 14)
+            TweenService:Create(rBtn2, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, SKULL_SIZE2 * 0.9, 0, SKULL_SIZE2 * 0.9)
+            }):Play()
+            local _rBtn2Clicked = false
+            local function _reopenHub()
+                if _rBtn2Clicked then return end
+                _rBtn2Clicked = true
+                task.delay(0.1, function()
+                    pcall(function() rGui2:Destroy() end)
+                    local existingHub = LocalPlayer.PlayerGui:FindFirstChild("f")
+                                     or game:GetService("CoreGui"):FindFirstChild("f")
+                    if existingHub then
+                        existingHub.Enabled = true
+                        _G._hubHidden = false
+                        if mainFrame and mainFrame.Parent then
+                            mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+                            mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
                         end
-                        if _r3t % 4 == 0 then
-                            rBtn.ImageTransparency=0.55; task.wait(0.025)
-                            rBtn.ImageTransparency=0;    task.wait(0.015)
-                            rBtn.ImageTransparency=0.35; task.wait(0.025)
-                            rBtn.ImageTransparency=0
+                        local uiScaleR = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
+                        if uiScaleR then
+                            uiScaleR.Scale = 0
+                            TweenService:Create(uiScaleR, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
                         end
-                        if _r3t % 7 == 0 then
-                            local sliceOff = math.random(-8, 8)
-                            rBtn.Position = UDim2.new(0.5, sliceOff, 0.5, 0)
-                            task.wait(0.03)
-                            rBtn.Position = UDim2.new(0.5, -sliceOff * 2, 0.5, 0)
-                            task.wait(0.02)
-                            rBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
-                        end
-                        task.wait(0.08)
+                    else
+                        task.spawn(abrirHub)
                     end
-                end)
-                rBtn.MouseEnter:Connect(function()
-                    TweenService:Create(rBtn, TweenInfo.new(0.15), {ImageTransparency=0.2, ImageColor3=Color3.fromRGB(220,220,225)}):Play()
-                end)
-                rBtn.MouseLeave:Connect(function()
-                    TweenService:Create(rBtn, TweenInfo.new(0.15), {ImageTransparency=0, ImageColor3=Color3.fromRGB(200,200,205)}):Play()
-                end)
-                local _rBtn3Clicked = false
-                rBtn.MouseButton1Click:Connect(function()
-                    if _rBtn3Clicked then return end
-                    _rBtn3Clicked = true
-                    -- FIX: limpiar TODOS los reopeners antes de abrir el hub
-                    local _pgFix3 = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-                    if _pgFix3 then
-                        for _, child in ipairs(_pgFix3:GetChildren()) do
-                            if child:IsA("ScreenGui") and (
-                                child.Name == "reReopener" or
-                                child.Name:find("Reopener") or
-                                child.Name == "rbxassetid://140622075233565Reopener"
-                            ) and child ~= rGui then
-                                pcall(function() child:Destroy() end)
-                            end
-                        end
-                    end
-                    task.delay(0.1, function()
-                        pcall(function() rGui:Destroy() end)
-                        local existingHub = LocalPlayer.PlayerGui:FindFirstChild("f")
-                        if existingHub then
-                            existingHub.Enabled = true
-                            _G._hubHidden = false
-                            if mainFrame and mainFrame.Parent then
-                                mainFrame.BackgroundTransparency = 1
-                                mainFrame.Size        = UDim2.new(0, 650, 0, 380)
-                                mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-                                mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
-                            end
-                            local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
-                            if uiScale then
-                                uiScale.Scale = 0
-                                TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
-                            end
-                            task.defer(function()
-                                if _G._reloadActiveTab then pcall(_G._reloadActiveTab) end
-                            end)
-                        else
-                            task.spawn(abrirHub)
-                        end
-                    end)
                 end)
             end
-    end)  -- cierra arrowToggleBtn.MouseButton1Click:Connect
+            rBtn2.MouseButton1Click:Connect(_reopenHub)
+            rBtn2.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.Touch then _reopenHub() end
+            end)
+        end
+    end
+    -- Conectar tanto MouseButton1Click como InputBegan (touch) para compatibilidad movil
+    arrowToggleBtn.MouseButton1Click:Connect(_arrowBtnFire)
+    arrowToggleBtn.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.Touch then _arrowBtnFire() end
+    end)
+
     restoreBtn.MouseButton1Click:Connect(function()
         _goBackToEmpty()
     end)
