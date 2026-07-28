@@ -36265,6 +36265,7 @@ function CreateCombatTab()
         _G._saInputConn = UserInputService.InputBegan:Connect(function(input, gp)
             if gp then return end
             if input.UserInputType ~= Enum.UserInputType.MouseButton1
+               and input.UserInputType ~= Enum.UserInputType.Touch
                and input.KeyCode ~= Enum.KeyCode.ButtonR2 then return end
             if not CombatTabState.silentAimEnabled then return end
 
@@ -37552,13 +37553,13 @@ function CreateCombatTab()
 
         local ssDragging = false
         ssKnob.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1 then ssDragging = true end
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then ssDragging = true end
         end)
         ssKnob.InputEnded:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1 then ssDragging = false end
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then ssDragging = false end
         end)
         RegisterTabConn(UserInputService.InputChanged:Connect(function(inp)
-            if ssDragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+            if ssDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
                 local rel = UserInputService:GetMouseLocation().X - ssBg.AbsolutePosition.X
                 local pct = math.clamp(rel / ssBg.AbsoluteSize.X, 0, 1)
                 local val = math.floor(100 + pct * (400 - 100))
@@ -38420,9 +38421,10 @@ function CreateCombatTab()
                 end
             end
 
-            -- Cerrar al hacer clic en el fondo
+            -- Cerrar al hacer clic/toque en el fondo
             bg.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                or inp.UserInputType == Enum.UserInputType.Touch then
                     _closeSelector()
                 end
             end)
@@ -39945,188 +39947,132 @@ function CreateCombatTab()
                 _IKS_startMonitor()
             end
 
-            -- ── BOTÓN MOBILE PARA KNIFE SA (solo si es celular/tablet) ────────
+            -- ── HOOK AL BOTÓN THROW NATIVO DE MM2 (solo mobile/tablet) ─────────
             local _isMobileKSA = UserInputService.TouchEnabled
             if _isMobileKSA then
-                -- Limpiar botón anterior si existe
-                if KnifeSAState._mobileGui then
-                    pcall(function() KnifeSAState._mobileGui:Destroy() end)
-                    KnifeSAState._mobileGui = nil
+                -- Limpiar conexiones anteriores si existen
+                if KnifeSAState._mobileConns then
+                    for _, c in ipairs(KnifeSAState._mobileConns) do
+                        pcall(function() c:Disconnect() end)
+                    end
+                end
+                KnifeSAState._mobileConns = {}
+
+                -- Función interna que ejecuta el lanzamiento SA
+                local function _ksaDoThrow()
+                    local myChar = LocalPlayer.Character
+                    local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+                    if not hum or hum.Health <= 0 then return end
+                    -- Equipar knife si no está en mano
+                    local knife = myChar:FindFirstChild("Knife")
+                    if not knife then
+                        local bpKnife = LocalPlayer.Backpack:FindFirstChild("Knife")
+                        if bpKnife then
+                            pcall(function() hum:EquipTool(bpKnife) end)
+                            task.wait(0.12)
+                            knife = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Knife")
+                        end
+                    end
+                    if not knife then return end
+                    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                    if not myHRP then return end
+                    local events = knife:FindFirstChild("Events") or knife
+                    local knifeThrown = events:FindFirstChild("KnifeThrown") or knife:FindFirstChildWhichIsA("RemoteEvent")
+                    if not knifeThrown then return end
+                    local target = _KnifeSA_getBestTarget()
+                    local targetCF, handleCF
+                    if target and target.Character then
+                        local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
+                        if tHRP then
+                            local predictedPos = _KnifeSA_getPredictedPos(tHRP, target.Character)
+                            local orig = myHRP.Position + Vector3.new(0, 1.5, 0)
+                            local aimVec = predictedPos - orig
+                            if aimVec.Magnitude < 0.01 then aimVec = myHRP.CFrame.LookVector end
+                            handleCF = CFrame.new(orig, orig + aimVec.Unit)
+                            local back = orig - predictedPos
+                            targetCF = back.Magnitude > 0.1 and CFrame.new(predictedPos, predictedPos + back.Unit) or CFrame.new(predictedPos)
+                        end
+                    end
+                    if not targetCF then
+                        local orig = myHRP.Position + Vector3.new(0, 1.5, 0)
+                        local fwd = orig + myHRP.CFrame.LookVector * 20
+                        handleCF = CFrame.new(orig, fwd)
+                        targetCF = CFrame.new(fwd)
+                    end
+                    pcall(function() knifeThrown:FireServer(handleCF, targetCF) end)
                 end
 
-                local ksaGui = Instance.new("ScreenGui")
-                ksaGui.Name = "BypasKnifeSABtn"
-                ksaGui.ResetOnSpawn = false
-                ksaGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                ksaGui.DisplayOrder = 9998
-                ksaGui.IgnoreGuiInset = true
-                ksaGui.Parent = game:GetService("CoreGui")
-                KnifeSAState._mobileGui = ksaGui
+                -- Buscar y hookear el botón Throw nativo de MM2 en PlayerGui
+                -- MM2 usa un ScreenGui con un botón llamado "Throw" dentro del combat GUI
+                local function _ksaHookNativeThrow()
+                    local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 10)
+                    if not pg then return end
 
-                local ksaRoot = Instance.new("Frame", ksaGui)
-                ksaRoot.Name = "KnifeThrowButton"
-                ksaRoot.Size = UDim2.new(0, 1, 0, 1)
-                ksaRoot.Position = UDim2.new(1, -118, 1, -118)
-                ksaRoot.BackgroundColor3 = Color3.fromRGB(80, 10, 10)
-                ksaRoot.BackgroundTransparency = 0.4
-                ksaRoot.BorderSizePixel = 0
-                ksaRoot.Active = true
-                ksaRoot.ZIndex = 197
-                Instance.new("UICorner", ksaRoot).CornerRadius = UDim.new(0, 999)
-
-                local ksaStroke = Instance.new("UIStroke", ksaRoot)
-                ksaStroke.Thickness = 2.5
-                ksaStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-                ksaStroke.Color = Color3.fromRGB(255, 80, 80)
-
-                local ksaGrad = Instance.new("UIGradient", ksaStroke)
-                ksaGrad.Color = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0,   Color3.fromRGB(255, 60, 60)),
-                    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 40, 100)),
-                    ColorSequenceKeypoint.new(1,   Color3.fromRGB(255, 60, 60)),
-                })
-                ksaGrad.Rotation = 0
-
-                -- OPT: Heartbeat en vez de RenderStepped (no necesita sync de render)
-                local _ksaGradT = 0
-                local _ksaGradConn = RunService.Heartbeat:Connect(function(dt)
-                    _ksaGradT = _ksaGradT + dt
-                    if _ksaGradT < 0.05 then return end  -- OPT: 20fps visual
-                    local _d = _ksaGradT; _ksaGradT = 0
-                    if _d > 0.1 then return end
-                    ksaGrad.Rotation = (ksaGrad.Rotation + 120 * _d) % 360
-                end)
-                if not KnifeSAState._mobileConns then KnifeSAState._mobileConns = {} end
-                table.insert(KnifeSAState._mobileConns, _ksaGradConn)
-
-                local ksaBtn = Instance.new("TextButton", ksaRoot)
-                ksaBtn.Size = UDim2.new(1, 0, 1, 0)
-                ksaBtn.BackgroundColor3 = Color3.fromRGB(140, 20, 20)
-                ksaBtn.BackgroundTransparency = 0.5
-                ksaBtn.BorderSizePixel = 0
-                ksaBtn.AutoButtonColor = false
-                ksaBtn.Text = "THROW"
-                ksaBtn.FontFace = Font.fromEnum(Enum.Font.Arimo)
-                ksaBtn.TextSize = 18
-                ksaBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-                ksaBtn.ZIndex = 204
-
-                -- Drag para mover el botón
-                local ksaDragStart, ksaRootStart, ksaDragging = nil, nil, false
-                ksaBtn.InputBegan:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.Touch
-                    or inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                        ksaDragStart = inp.Position
-                        ksaRootStart = ksaRoot.Position
-                        ksaDragging = false
-                    end
-                end)
-                local ksaEndConn = UserInputService.InputEnded:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.Touch
-                    or inp.UserInputType == Enum.UserInputType.MouseButton1 then
-                        if ksaDragStart and not ksaDragging then
-                            -- Tap: simular lanzamiento de knife
-                            local myChar = LocalPlayer.Character
-                            local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
-                            if hum and hum.Health > 0 then
-                                -- Forzar equip del knife si no está equipado
-                                local knife = myChar:FindFirstChild("Knife")
-                                if not knife then
-                                    local bpKnife = LocalPlayer.Backpack:FindFirstChild("Knife")
-                                    if bpKnife then
-                                        pcall(function() hum:EquipTool(bpKnife) end)
-                                        task.wait(0.15)
-                                    end
-                                end
-                                -- Simular Touch input para el hook de KnifeSA (dispara el throw)
-                                local fakeInp = {
-                                    UserInputType = Enum.UserInputType.Touch,
-                                    Position = Vector3.new(0, 0, 0)
-                                }
-                                -- Disparar KnifeThrown directo usando el sistema de SA
-                                task.spawn(function()
-                                    local myChar2 = LocalPlayer.Character
-                                    local myHRP = myChar2 and myChar2:FindFirstChild("HumanoidRootPart")
-                                    if not myHRP then return end
-                                    local knife2 = myChar2:FindFirstChild("Knife")
-                                    if not knife2 then return end
-                                    local events = knife2:FindFirstChild("Events") or knife2
-                                    local knifeThrown2 = events:FindFirstChild("KnifeThrown") or knife2:FindFirstChildWhichIsA("RemoteEvent")
-                                    if not knifeThrown2 then return end
-
-                                    local target2 = _KnifeSA_getBestTarget()
-                                    local targetCF2, handleCF2
-                                    if target2 and target2.Character then
-                                        local tHRP2 = target2.Character:FindFirstChild("HumanoidRootPart")
-                                        if tHRP2 then
-                                            local predictedPos2 = _KnifeSA_getPredictedPos(tHRP2, target2.Character)
-                                            local orig2 = myHRP.Position + Vector3.new(0, 1.5, 0)
-                                            local aimVec2 = predictedPos2 - orig2
-                                            if aimVec2.Magnitude < 0.01 then aimVec2 = myHRP.CFrame.LookVector end
-                                            handleCF2 = CFrame.new(orig2, orig2 + aimVec2.Unit)
-                                            local back2 = orig2 - predictedPos2
-                                            targetCF2 = back2.Magnitude > 0.1 and CFrame.new(predictedPos2, predictedPos2 + back2.Unit) or CFrame.new(predictedPos2)
-                                        end
-                                    end
-                                    if not targetCF2 then
-                                        local lookDir = myHRP.CFrame.LookVector
-                                        local orig2b = myHRP.Position + Vector3.new(0, 1.5, 0)
-                                        local fwd = orig2b + lookDir * 20
-                                        handleCF2 = CFrame.new(orig2b, fwd)
-                                        targetCF2 = CFrame.new(fwd)
-                                    end
-                                    pcall(function() knifeThrown2:FireServer(handleCF2, targetCF2) end)
-                                    CreateCustomNotification("KNIFE SA", "Lanzado!", 0.8)
-                                    -- Flash visual
-                                    TweenService:Create(ksaRoot, TweenInfo.new(0.07), {
-                                        Size = UDim2.new(0, 85, 0, 85)
-                                    }):Play()
-                                    task.wait(0.1)
-                                    TweenService:Create(ksaRoot, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                                        Size = UDim2.new(0, 75, 0, 75)
-                                    }):Play()
-                                end)
+                    -- Función recursiva para encontrar el botón Throw en cualquier nivel
+                    local function _findThrowBtn(parent, depth)
+                        if not parent or depth > 6 then return nil end
+                        for _, child in ipairs(parent:GetChildren()) do
+                            local n = child.Name
+                            -- Buscar por nombre: "Throw", "ThrowButton", "ThrowBtn", "ThrowKnife"
+                            if (n == "Throw" or n == "ThrowButton" or n == "ThrowBtn" or n == "ThrowKnife")
+                                and (child:IsA("TextButton") or child:IsA("ImageButton") or child:IsA("GuiButton")) then
+                                return child
                             end
+                            local found = _findThrowBtn(child, depth + 1)
+                            if found then return found end
                         end
-                        ksaDragStart = nil
-                        ksaDragging = false
+                        return nil
                     end
-                end)
-                local ksaMoveConn = UserInputService.InputChanged:Connect(function(inp)
-                    if not ksaDragStart then return end
-                    if inp.UserInputType == Enum.UserInputType.Touch
-                    or inp.UserInputType == Enum.UserInputType.MouseMovement then
-                        local delta = inp.Position - ksaDragStart
-                        if not ksaDragging then
-                            if delta.Magnitude > 8 then ksaDragging = true else return end
-                        end
-                        ksaRoot.Position = UDim2.new(ksaRootStart.X.Scale, ksaRootStart.X.Offset + delta.X,
-                                                      ksaRootStart.Y.Scale, ksaRootStart.Y.Offset + delta.Y)
-                    end
-                end)
-                table.insert(KnifeSAState._mobileConns, ksaEndConn)
-                table.insert(KnifeSAState._mobileConns, ksaMoveConn)
 
-                -- Animación de entrada
+                    local throwBtn = _findThrowBtn(pg, 0)
+                    if throwBtn then
+                        -- Hookear el Activated del botón nativo
+                        local hookConn = throwBtn.Activated:Connect(function()
+                            if not KnifeSAState.enabled then return end
+                            task.spawn(_ksaDoThrow)
+                        end)
+                        table.insert(KnifeSAState._mobileConns, hookConn)
+                        return true
+                    end
+                    return false
+                end
+
+                -- Intentar hookear inmediatamente; si no se encuentra el botón,
+                -- esperar a que aparezca (puede que la GUI de combat cargue después)
                 task.spawn(function()
-                    task.wait(0.1)
-                    TweenService:Create(ksaRoot, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                        Size = UDim2.new(0, 75, 0, 75)
-                    }):Play()
+                    if not _ksaHookNativeThrow() then
+                        -- Escuchar DescendantAdded en PlayerGui hasta encontrar el botón Throw
+                        local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+                        if not pg then return end
+                        local watchConn
+                        watchConn = pg.DescendantAdded:Connect(function(desc)
+                            if not KnifeSAState.enabled then
+                                if watchConn then watchConn:Disconnect() end
+                                return
+                            end
+                            local n = desc.Name
+                            if (n == "Throw" or n == "ThrowButton" or n == "ThrowBtn" or n == "ThrowKnife")
+                                and (desc:IsA("TextButton") or desc:IsA("ImageButton") or desc:IsA("GuiButton")) then
+                                local hookConn = desc.Activated:Connect(function()
+                                    if not KnifeSAState.enabled then return end
+                                    task.spawn(_ksaDoThrow)
+                                end)
+                                table.insert(KnifeSAState._mobileConns, hookConn)
+                                if watchConn then watchConn:Disconnect() end
+                            end
+                        end)
+                        table.insert(KnifeSAState._mobileConns, watchConn)
+                    end
                 end)
             end
- CreateCustomNotification("KNIFE SA", _isMobileKSA and " Activo — toca el botón 🔪 para lanzar" or " Activo — equipa knife, lanzá con RMB", 3)
+ CreateCustomNotification("KNIFE SA", _isMobileKSA and " Activo — usa el botón Throw del juego 🔪" or " Activo — equipa knife, lanzá con RMB", 3)
         else
             _KnifeSA_deactivate()
             -- Restaurar cualquier knife que IKS hubiera ocultado
             for model, _ in pairs(InvisibleKnifeSystem.activeKnives) do
                 pcall(_IKS_show, model)
             end
-            -- Limpiar botón mobile si existe
-            if KnifeSAState._mobileGui then
-                pcall(function() KnifeSAState._mobileGui:Destroy() end)
-                KnifeSAState._mobileGui = nil
-            end
+            -- Desconectar hooks al botón Throw nativo (mobile)
             if KnifeSAState._mobileConns then
                 for _, c in ipairs(KnifeSAState._mobileConns) do
                     pcall(function() c:Disconnect() end)
@@ -42717,8 +42663,8 @@ function CreateCombatTab()
                 local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
                 local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
 
-                -- -- LMB = SLASH cuando SA est OFF (SA lo maneja si est ON) --
-                if isDualKnife and input.UserInputType == Enum.UserInputType.MouseButton1
+                -- -- LMB/Touch = SLASH cuando SA est OFF (SA lo maneja si est ON) --
+                if isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
                     and not (KnifeSAState and KnifeSAState.enabled) then
                     if state.isAttacking then return end
                     local now = os.clock()
@@ -42737,8 +42683,8 @@ function CreateCombatTab()
                     if ks then pcall(function() ks:FireServer() end) end
                     _dl(0.85, function() state.isAttacking = false end)
 
-                -- -- RMB = DUALSTAB ANIMATION (Dual Knife ON) ---------------------------
-                elseif isDualKnife and input.UserInputType == Enum.UserInputType.MouseButton2 then
+                -- -- RMB/Touch = DUALSTAB ANIMATION (Dual Knife ON) ---------------------------
+                elseif isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch) then
                     local now = os.clock()
                     if now - (state._lastThrow or -999) < 0.8 then return end
                     state._lastThrow = now
@@ -42759,8 +42705,8 @@ function CreateCombatTab()
                     if ks then pcall(function() ks:FireServer() end) end
                     _dl(0.8, function() state.isAttacking = false end)
 
-                -- -- LMB = THROW (modo normal sin Dual) --------------------
-                elseif not isDualKnife and input.UserInputType == Enum.UserInputType.MouseButton1 then
+                -- -- LMB/Touch = THROW (modo normal sin Dual) --------------------
+                elseif not isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
                     -- Dual Gun: LMB lanza
                     -- (solo si Knife SA no est activo  si SA est ON, l maneja el LMB)
                     if KnifeSAState and KnifeSAState.enabled then return end
@@ -42984,8 +42930,8 @@ function CreateCombatTab()
                     local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
                     local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
 
-                    -- LMB -> slash alternado (solo si Knife SA est OFF)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1
+                    -- LMB/Touch -> slash alternado (solo si Knife SA est OFF)
+                    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
                         and not (KnifeSAState and KnifeSAState.enabled) then
                         if state.isAttacking then return end
                         local now = os.clock()
@@ -42999,8 +42945,8 @@ function CreateCombatTab()
                         if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                         _dl(0.85, function() state.isAttacking = false end)
 
-                    -- RMB -> throw
-                    elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+                    -- RMB/Touch -> throw
+                    elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
                         if not knifeThrown then return end
                         local now = os.clock()
                         if now - (state._lastThrow or -999) < 1.0 then return end
@@ -43141,7 +43087,7 @@ function CreateCombatTab()
                         local events       = tool:FindFirstChild("Events")
                         local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
                         local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
-                        if input.UserInputType == Enum.UserInputType.MouseButton1
+                        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
                             and not (KnifeSAState and KnifeSAState.enabled) then
                             if ks.isAttacking then return end
                             local now = os.clock()
@@ -43152,7 +43098,7 @@ function CreateCombatTab()
                             _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
                             if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                             _dl(0.85, function() ks.isAttacking = false end)
-                        elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+                        elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
                             if not knifeThrown then return end
                             local now = os.clock()
                             if now - (ks._lastThrow or -999) < 1.0 then return end
@@ -43981,7 +43927,8 @@ function CreateCombatTab()
                 -- LMB directo: intercepta el click del mouse y redirige al target
                 _ssLmbConn = UserInputService.InputBegan:Connect(function(i, gp)
                     if gp or not _ssEnabled then return end
-                    if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+                    if i.UserInputType ~= Enum.UserInputType.MouseButton1
+                       and i.UserInputType ~= Enum.UserInputType.Touch then return end
                     local now = tick()
                     if now - _ssLast < _ssCD then return end
                     _ssLast = now
@@ -44123,8 +44070,8 @@ function CreateCombatTab()
             btn.MouseEnter:Connect(function() TweenService:Create(btn,TweenInfo.new(0.15),{BackgroundTransparency=0.05}):Play() end)
             btn.MouseLeave:Connect(function() TweenService:Create(btn,TweenInfo.new(0.15),{BackgroundTransparency=0.25}):Play() end)
             local dr,ds,sp=false,nil,nil
-            btn.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dr=true;ds=i.Position;sp=btn.Position; i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dr=false end end) end end)
-            UserInputService.InputChanged:Connect(function(i) if dr and i.UserInputType==Enum.UserInputType.MouseMovement then local d=i.Position-ds; btn.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y) end end)
+            btn.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dr=true;ds=i.Position;sp=btn.Position; i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dr=false end end) end end)
+            UserInputService.InputChanged:Connect(function(i) if dr and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then local d=i.Position-ds; btn.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y) end end)
             btn.MouseButton1Click:Connect(function()
                 if not _pEnabled then return end
                 local now=tick(); if now-_pLastShot<_pCooldown then return end; _pLastShot=now
@@ -44166,7 +44113,8 @@ function CreateCombatTab()
                 if _pLmb then pcall(function() _pLmb:Disconnect() end) end
                 _pLmb = UserInputService.InputBegan:Connect(function(inp, gp)
                     if gp or not _pEnabled then return end
-                    if inp.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+                    if inp.UserInputType ~= Enum.UserInputType.MouseButton1
+                       and inp.UserInputType ~= Enum.UserInputType.Touch then return end
                     local now=tick(); if now-_pLastShot<_pCooldown then return end; _pLastShot=now
                     _sp(function() _doPierce(false) end)
                 end)
@@ -44224,7 +44172,8 @@ function CreateCombatTab()
 
             _scConn = UserInputService.InputBegan:Connect(function(inp, gp)
                 if gp or not _scEnabled then return end
-                if inp.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+                if inp.UserInputType ~= Enum.UserInputType.MouseButton1
+                   and inp.UserInputType ~= Enum.UserInputType.Touch then return end
 
                 -- Solo actuar si NO tiene gun equipada
                 local char = LocalPlayer.Character
@@ -46366,15 +46315,19 @@ function CreateCombatTab()
 
             _ssDrag.MouseButton1Down:Connect(function() _ssDragging = true end)
             _ssDrag.MouseButton1Up:Connect(function() _ssDragging = false end)
+            _ssDrag.InputBegan:Connect(function(inp) if inp.UserInputType == Enum.UserInputType.Touch then _ssDragging = true end end)
             UserInputService.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then _ssDragging = false end
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then _ssDragging = false end
             end)
             UserInputService.InputChanged:Connect(function(inp)
-                if _ssDragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+                if _ssDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
                     _ssUpdate(_ssPct(inp.Position.X))
                 end
             end)
             _ssDrag.MouseButton1Click:Connect(function()
+                _ssUpdate(_ssPct(UserInputService:GetMouseLocation().X))
+            end)
+            _ssDrag.Activated:Connect(function()
                 _ssUpdate(_ssPct(UserInputService:GetMouseLocation().X))
             end)
             -- Init
@@ -46629,6 +46582,8 @@ function CreateCombatTab()
             end
             -- Disparo normal
             if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == SK.keybind then
+                _skShoot()
+            elseif inp.UserInputType == Enum.UserInputType.Touch and not SK.listening then
                 _skShoot()
             end
         end)
