@@ -39353,13 +39353,13 @@ function CreateCombatTab()
 
         applyValue(defaultVal)
 
-        local function updateFromMouse()
-            local mx  = UserInputService:GetMouseLocation().X
-            local tp  = sliderTrack.AbsolutePosition.X
-            local ts  = sliderTrack.AbsoluteSize.X
-            local pct = math.clamp((mx - tp) / math.max(ts, 1), 0, 1)
-            applyValue(minVal + pct * (maxVal - minVal))
+        local function updateFromInput(inp)
+            local mx = inp and inp.UserInputType == Enum.UserInputType.Touch and inp.Position.X or UserInputService:GetMouseLocation().X
+            local tp = sliderTrack.AbsolutePosition.X
+            local ts = sliderTrack.AbsoluteSize.X
+            applyValue(minVal + math.clamp((mx - tp) / math.max(ts, 1), 0, 1) * (maxVal - minVal))
         end
+        local function updateFromMouse() updateFromInput(nil) end
 
         sliderThumb.MouseEnter:Connect(function()
             TweenService:Create(sliderThumb, TweenInfo.new(0.10), {Size = UDim2.new(0, 22, 0, 22)}):Play()
@@ -39376,8 +39376,8 @@ function CreateCombatTab()
             end
         end)
         sliderTrack.InputBegan:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 then
-                draggingKS = true; _G._sliderDragging = true; updateFromMouse()
+            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+                draggingKS = true; _G._sliderDragging = true; updateFromInput(i)
             end
         end)
         RegisterTabConn(UserInputService.InputEnded:Connect(function(i)
@@ -39387,8 +39387,8 @@ function CreateCombatTab()
             end
         end))
         RegisterTabConn(UserInputService.InputChanged:Connect(function(i)
-            if draggingKS and i.UserInputType == Enum.UserInputType.MouseMovement then
-                updateFromMouse()
+            if draggingKS and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+                updateFromInput(i)
             end
         end))
 
@@ -41316,12 +41316,12 @@ function CreateCombatTab()
             valueLabel.Text      = string.format("%.2f", v)
             if callback then callback(v) end
         end
-        local function updateFromMouse()
-            local mx = UserInputService:GetMouseLocation().X
-            local tp = sliderTrack.AbsolutePosition.X
-            local ts = sliderTrack.AbsoluteSize.X
+        local function updateFromInput(inp)
+            local mx = inp and inp.UserInputType == Enum.UserInputType.Touch and inp.Position.X or UserInputService:GetMouseLocation().X
+            local tp = sliderTrack.AbsolutePosition.X; local ts = sliderTrack.AbsoluteSize.X
             applyValue(minVal + math.clamp((mx - tp) / math.max(ts, 1), 0, 1) * (maxVal - minVal))
         end
+        local function updateFromMouse() updateFromInput(nil) end
         sliderThumb.MouseEnter:Connect(function()
             TweenService:Create(sliderThumb, TweenInfo.new(0.10), {Size = UDim2.new(0, 22, 0, 22)}):Play()
         end)
@@ -41335,7 +41335,7 @@ function CreateCombatTab()
             end
         end)
         sliderTrack.InputBegan:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingKS = true; _G._sliderDragging = true; updateFromMouse() end
+            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then draggingKS = true; _G._sliderDragging = true; updateFromInput(i) end
         end)
         RegisterTabConn(UserInputService.InputEnded:Connect(function(i)
             if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -41344,7 +41344,7 @@ function CreateCombatTab()
             end
         end))
         RegisterTabConn(UserInputService.InputChanged:Connect(function(i)
-            if draggingKS and i.UserInputType == Enum.UserInputType.MouseMovement then updateFromMouse() end
+            if draggingKS and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then updateFromInput(i) end
         end))
         applyValue(defaultVal)
         local function setValue(v) applyValue(v) end
@@ -45200,11 +45200,12 @@ function CreateCombatTab()
             sliderThumb.Position = UDim2.new(ratio, 0, 0.5, 0); sliderFill.Size = UDim2.new(ratio, 0, 1, 0)
             valueLabel.Text = string.format("%.2f", v); if callback then callback(v) end
         end
-        local function updateFromMouse()
-            local mx = UserInputService:GetMouseLocation().X
+        local function updateFromInput(inp)
+            local mx = inp and inp.UserInputType == Enum.UserInputType.Touch and inp.Position.X or UserInputService:GetMouseLocation().X
             local tp = sliderTrack.AbsolutePosition.X; local ts = sliderTrack.AbsoluteSize.X
             applyValue(minVal + math.clamp((mx - tp) / math.max(ts, 1), 0, 1) * (maxVal - minVal))
         end
+        local function updateFromMouse() updateFromInput(nil) end
         sliderThumb.MouseEnter:Connect(function() TweenService:Create(sliderThumb, TweenInfo.new(0.10), {Size = UDim2.new(0, 22, 0, 22)}):Play() end)
         sliderThumb.MouseLeave:Connect(function() if not draggingS then TweenService:Create(sliderThumb, TweenInfo.new(0.10), {Size = UDim2.new(0, 18, 0, 18)}):Play() end end)
         sliderThumb.InputBegan:Connect(function(i)
@@ -45212,14 +45213,14 @@ function CreateCombatTab()
                 draggingS = true; _G._sliderDragging = true; TweenService:Create(sliderThumb, TweenInfo.new(0.08), {Size = UDim2.new(0, 22, 0, 22)}):Play()
             end
         end)
-        sliderTrack.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingS = true; _G._sliderDragging = true; updateFromMouse() end end)
+        sliderTrack.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then draggingS = true; _G._sliderDragging = true; updateFromInput(i) end end)
         RegisterTabConn(UserInputService.InputEnded:Connect(function(i)
             if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
                 draggingS = false; _G._sliderDragging = false; TweenService:Create(sliderThumb, TweenInfo.new(0.10), {Size = UDim2.new(0, 18, 0, 18)}):Play()
             end
         end))
         RegisterTabConn(UserInputService.InputChanged:Connect(function(i)
-            if draggingS and i.UserInputType == Enum.UserInputType.MouseMovement then updateFromMouse() end
+            if draggingS and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then updateFromInput(i) end
         end))
         applyValue(defaultVal)
         _attachScrollPassthrough(container, sliderTrack, sliderThumb)
@@ -50068,13 +50069,14 @@ particles = {}
             -- FIX: respetar la opcion "Allow Hub Drag" de Settings
             if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
 
-            -- Solo arrastrar si el click es dentro del header (no en toggles/sliders)
-            if not _mouseOverHeader(Vector2.new(input.Position.X, input.Position.Y)) then return end
-            local mPos = UserInputService:GetMouseLocation()
+            -- Solo arrastrar si el input cae dentro del header (mouse o touch)
+            local _inputPos2D = Vector2.new(input.Position.X, input.Position.Y)
+            if not _mouseOverHeader(_inputPos2D) then return end
+            -- Verificar que el punto este dentro del mainFrame
             local fPos = mainFrame.AbsolutePosition
             local fSiz = mainFrame.AbsoluteSize
-            if mPos.X < fPos.X or mPos.X > fPos.X + fSiz.X then return end
-            if mPos.Y < fPos.Y or mPos.Y > fPos.Y + fSiz.Y then return end
+            if _inputPos2D.X < fPos.X or _inputPos2D.X > fPos.X + fSiz.X then return end
+            if _inputPos2D.Y < fPos.Y or _inputPos2D.Y > fPos.Y + fSiz.Y then return end
 
             -- Efecto: esquinas se ensanchan al sostener click
             local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
@@ -50087,10 +50089,12 @@ particles = {}
                 Color        = Color3.fromRGB(220, 220, 220),
             }):Play()
 
-            local BASE_W, BASE_H = 650, 380
+            -- Usar AbsoluteSize real (no valores hardcodeados) para calcular offset
             local vp  = workspace.CurrentCamera.ViewportSize
             local pos = mainFrame.Position
             local ap  = mainFrame.AnchorPoint
+            local fw  = mainFrame.AbsoluteSize.X
+            local fh  = mainFrame.AbsoluteSize.Y
             local curX, curY
 
             if ap == Vector2.new(0, 0) then
@@ -50099,15 +50103,15 @@ particles = {}
             else
                 local centerX = pos.X.Scale * vp.X + pos.X.Offset
                 local centerY = pos.Y.Scale * vp.Y + pos.Y.Offset
-                curX = centerX - BASE_W * ap.X
-                curY = centerY - BASE_H * ap.Y
+                curX = centerX - fw * ap.X
+                curY = centerY - fh * ap.Y
             end
 
             mainFrame.AnchorPoint = Vector2.new(0, 0)
             mainFrame.Position    = UDim2.new(0, curX, 0, curY)
 
             dragging       = true
-            dragStartMouse = input.Position
+            dragStartMouse = input.Position  -- Vector3: funciona igual para mouse y touch
             dragStartFrame = Vector2.new(curX, curY)
         end)
 
