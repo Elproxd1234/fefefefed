@@ -25221,8 +25221,8 @@ function CreateVisualsTab()
         MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 206, 76))
         CreateAuroraToggle(inner, "Cham Assassin Only", function(v) vc.assassin=v end, vc.assassin)
         MiniHeader(inner, "DEAD", Color3.fromRGB(255,120,120))
- -- Cham Dead Only: muestra pose de muerte del jugador, dura TODA la ronda
- CreateAuroraToggle(inner, "Cham Dead Only", function(v)
+        -- Cham Dead Only: muestra pose de muerte del jugador, dura TODA la ronda
+        CreateAuroraToggle(inner, "Cham Dead Only", function(v)
             VisualState.cham.dead = v
             DeathPoseState.enabled = v  -- vincular dead pose al mismo toggle
             if v and _vcRefreshAll then _vcRefreshAll() end
@@ -25249,10 +25249,10 @@ function CreateVisualsTab()
                 CreateCustomNotification("VISUALS", "Cham Dead OFF", 1)
             end
         end, VisualState.cham.dead or false)
-        MiniHeader(inner, " SURVIVOR",        Color3.fromRGB(255,255,255))
- CreateAuroraToggle(inner, "Cham Survivor Only", function(v) vc.survivor=v end, vc.survivor)
-        MiniHeader(inner, " COINS",           Color3.fromRGB(255, 215, 0))
- CreateAuroraToggle(inner, "Cham Coins", function(v)
+        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255,255,255))
+        CreateAuroraToggle(inner, "Cham Survivor Only", function(v) vc.survivor=v end, vc.survivor)
+        MiniHeader(inner, "COINS", Color3.fromRGB(255, 215, 0))
+        CreateAuroraToggle(inner, "Cham Coins", function(v)
             vc.coins = v
             _G._chamCoins = v
             -- Limpiar chams anteriores
@@ -25523,7 +25523,7 @@ end, _G._chamDropGun or false)
             end)
         end, _G._espGunEnabled or false)
 
- CreateAuroraToggle(inner, "ESP Display Distance", function(v) ve.distance=v end, ve.distance)
+        CreateAuroraToggle(inner, "ESP Display Distance", function(v) ve.distance=v end, ve.distance)
         makeESPPlayerPin(inner, ve, ThemeColors.Accent)
     end
 
@@ -25577,13 +25577,21 @@ end, _G._chamDropGun or false)
         end, vh.zombie)
         MiniHeader(inner, "OUTLINE (pinta cuerpo entero)", Color3.fromRGB(160, 220, 255))
         local vo = VisualState.outline
-        CreateAuroraToggle(inner, "Outline Everyone", function(v) vo.everyone=v end, vo.everyone)
-        CreateAuroraToggle(inner, "Outline Murderer Only", function(v) vo.murderer=v end, vo.murderer)
-        CreateAuroraToggle(inner, "Outline Sheriff Only", function(v) vo.sheriff=v end, vo.sheriff)
-        CreateAuroraToggle(inner, "Outline Hero Only", function(v) vo.hero=v end, vo.hero)
-        CreateAuroraToggle(inner, "Outline Assassin Only", function(v) vo.assassin=v end, vo.assassin)
-        CreateAuroraToggle(inner, "Outline Survivor Only", function(v) vo.survivor=v end, vo.survivor)
-        CreateAuroraToggle(inner, "Outline Zombie Only", function(v) vo.zombie=v end, vo.zombie)
+        local function _refreshOutline() _G._forceInstanceTick = true; if _vcRefreshAll then task.defer(_vcRefreshAll) end end
+        MiniHeader(inner, "EVERYONE", Color3.fromRGB(255,255,255))
+        CreateAuroraToggle(inner, "Outline Everyone", function(v) vo.everyone=v; _refreshOutline() end, vo.everyone)
+        MiniHeader(inner, "MURDERER", Color3.fromRGB(255,100,100))
+        CreateAuroraToggle(inner, "Outline Murderer Only", function(v) vo.murderer=v; _refreshOutline() end, vo.murderer)
+        MiniHeader(inner, "SHERIFF", Color3.fromRGB(75, 100, 230))
+        CreateAuroraToggle(inner, "Outline Sheriff Only", function(v) vo.sheriff=v; _refreshOutline() end, vo.sheriff)
+        MiniHeader(inner, "HERO", Color3.fromRGB(255, 181, 51))
+        CreateAuroraToggle(inner, "Outline Hero Only", function(v) vo.hero=v; _refreshOutline() end, vo.hero)
+        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 206, 76))
+        CreateAuroraToggle(inner, "Outline Assassin Only", function(v) vo.assassin=v; _refreshOutline() end, vo.assassin)
+        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 206, 76))
+        CreateAuroraToggle(inner, "Outline Survivor Only", function(v) vo.survivor=v; _refreshOutline() end, vo.survivor)
+        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(90, 120, 255))
+        CreateAuroraToggle(inner, "Outline Zombie Only", function(v) vo.zombie=v; _refreshOutline() end, vo.zombie)
         MiniHeader(inner, "BY OBJECT", Color3.fromRGB(255,220,100))
         CreateAuroraToggle(inner, "Highlight Dropped Gun", function(v)
             _G._hlGunEnabled = v
@@ -25679,27 +25687,60 @@ end, _G._chamDropGun or false)
                 end
             end)
         end, _G._hlGunEnabled or false)
- CreateAuroraToggle(inner, "Highlight Throwing Knives", function(v)
-            _G._tkHlEnabled=v
+        CreateAuroraToggle(inner, "Highlight Throwing Knives", function(v)
+            _G._tkHlEnabled = v
             if v then
+                -- Scan inicial: destacar cuchillos ya en el mapa al activar
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    pcall(function()
+                        local nm = obj.Name:lower()
+                        if (nm:find("knife") or nm:find("blade")) and not obj:IsDescendantOf(Players) then
+                            if obj.Parent and not obj.Parent:FindFirstChild("_TkHL") then
+                                local hl = Instance.new("Highlight")
+                                hl.Name = "_TkHL"
+                                hl.Adornee = obj.Parent
+                                hl.FillColor = Color3.fromRGB(255,60,30)
+                                hl.OutlineColor = Color3.fromRGB(255,150,100)
+                                hl.OutlineTransparency = 0
+                                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                hl.Parent = obj.Parent
+                                hl.FillTransparency = 0.4
+                                _dl(3, function() pcall(function() if hl and hl.Parent then hl:Destroy() end end) end)
+                            end
+                        end
+                    end)
+                end
                 if not _G._tkHlConn then
-                    _G._tkHlConn=workspace.DescendantAdded:Connect(function(obj)
+                    _G._tkHlConn = workspace.DescendantAdded:Connect(function(obj)
                         if not _G._tkHlEnabled then return end
-                        local nm=obj.Name:lower()
-                        if not(nm:find("knife") or nm:find("blade")) then return end
+                        local nm = obj.Name:lower()
+                        if not (nm:find("knife") or nm:find("blade")) then return end
                         if obj:IsDescendantOf(Players) then return end
                         pcall(function()
-                            local hl=Instance.new("Highlight"); hl.Adornee=obj.Parent
-                            hl.FillColor=Color3.fromRGB(255,60,30); hl.OutlineColor=Color3.fromRGB(255,150,100)
-                            hl.OutlineTransparency=0
-                            hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; hl.Parent=obj.Parent
-                            hl.FillTransparency=0.4
-                            _dl(3,function() pcall(function() if hl and hl.Parent then hl:Destroy() end end) end)
+                            if obj.Parent and not obj.Parent:FindFirstChild("_TkHL") then
+                                local hl = Instance.new("Highlight")
+                                hl.Name = "_TkHL"
+                                hl.Adornee = obj.Parent
+                                hl.FillColor = Color3.fromRGB(255,60,30)
+                                hl.OutlineColor = Color3.fromRGB(255,150,100)
+                                hl.OutlineTransparency = 0
+                                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                hl.Parent = obj.Parent
+                                hl.FillTransparency = 0.4
+                                _dl(3, function() pcall(function() if hl and hl.Parent then hl:Destroy() end end) end)
+                            end
                         end)
                     end)
                 end
             else
-                if _G._tkHlConn then _G._tkHlConn:Disconnect(); _G._tkHlConn=nil end
+                if _G._tkHlConn then _G._tkHlConn:Disconnect(); _G._tkHlConn = nil end
+                -- Limpiar highlights de cuchillos existentes al apagar
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    pcall(function()
+                        local hl = obj:FindFirstChild("_TkHL")
+                        if hl then hl:Destroy() end
+                    end)
+                end
             end
         end, false)
         makeESPPlayerPin(inner, vh, ThemeColors.Aurora3)
@@ -25709,7 +25750,9 @@ end, _G._chamDropGun or false)
         -- == BOX ESP ================================================
         local inner = CreateVisualCard(leftColumn, "", "BOX ESP", ThemeColors.Aurora2)
         local vb = VisualState.box
-        _G._espBoxEnabled = false
+        -- OPT: no resetear _espBoxEnabled al reconstruir el tab (cache de pestaña),
+        -- el estado real lo dan los toggles via _G._toggleStates
+        _G._espBoxEnabled = _G._espBoxEnabled or false
 
         local function _refreshBoxESP()
             local anyOn = vb.everyone or vb.murderer or vb.sheriff or vb.hero or vb.assassin
@@ -52198,13 +52241,15 @@ function CreateUseTab()
 
         -- Grid de swatches
         local swGrid = Instance.new("Frame", cpSec)
-        swGrid.Size = UDim2.new(1, -8, 0, 96)
+        swGrid.Size = UDim2.new(1, -8, 0, 0)
+        swGrid.AutomaticSize = Enum.AutomaticSize.Y
         swGrid.BackgroundTransparency = 1
         swGrid.BorderSizePixel = 0
         local swUIGrid = Instance.new("UIGridLayout", swGrid)
         swUIGrid.CellSize = UDim2.new(0, 30, 0, 30)
         swUIGrid.CellPadding = UDim2.new(0, 4, 0, 4)
         swUIGrid.SortOrder = Enum.SortOrder.LayoutOrder
+        swUIGrid.HorizontalAlignment = Enum.HorizontalAlignment.Left
 
         local _cpCustomR = ThemeColors.Primary.R * 255
         local _cpCustomG = ThemeColors.Primary.G * 255
