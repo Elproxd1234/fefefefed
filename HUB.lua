@@ -52749,19 +52749,30 @@ function CreateEmotesTab()
     }
 
     -- ---- Helper: ejecutar emote ----
-    local _activeTrack = nil  -- track activo actual
+    local _activeTrack = nil
+    local _moveConn = nil
+
+    local function _stopActiveEmote()
+        if _activeTrack then
+            pcall(function() _activeTrack:Stop(0) end)
+            _activeTrack = nil
+        end
+        if _moveConn then
+            pcall(function() _moveConn:Disconnect() end)
+            _moveConn = nil
+        end
+    end
+
     local function _playEmote(emoteId)
         local char = LocalPlayer and LocalPlayer.Character
         if not char then CreateCustomNotification("EMOTES", "Sin personaje", 2); return end
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum then CreateCustomNotification("EMOTES", "Sin humanoid", 2); return end
 
-        -- Detener track anterior
-        if _activeTrack then
-            pcall(function() _activeTrack:Stop(0) end)
-            _activeTrack = nil
-        end
-        -- Detener TODAS las animaciones activas del humanoid
+        -- Parar emote anterior y su conector
+        _stopActiveEmote()
+
+        -- Parar todas las animaciones activas
         pcall(function()
             local animator = hum:FindFirstChildOfClass("Animator")
             if animator then
@@ -52772,7 +52783,6 @@ function CreateEmotesTab()
         end)
 
         local ok = false
-        -- Metodo 1: Animator (preferido)
         pcall(function()
             local animator = hum:FindFirstChildOfClass("Animator")
             if not animator then
@@ -52786,8 +52796,26 @@ function CreateEmotesTab()
             track:Play()
             _activeTrack = track
             ok = true
+
+            -- Detener emote al caminar
+            _moveConn = hum.Running:Connect(function(speed)
+                if speed > 0.5 then
+                    _stopActiveEmote()
+                end
+            end)
+
+            -- Auto-limpiar conector cuando el track termina solo
+            track.Stopped:Connect(function()
+                if _moveConn then
+                    pcall(function() _moveConn:Disconnect() end)
+                    _moveConn = nil
+                end
+                if _activeTrack == track then
+                    _activeTrack = nil
+                end
+            end)
         end)
-        -- Metodo 2: hum:LoadAnimation fallback
+
         if not ok then
             pcall(function()
                 local anim = Instance.new("Animation")
@@ -52797,8 +52825,23 @@ function CreateEmotesTab()
                 track:Play()
                 _activeTrack = track
                 ok = true
+
+                _moveConn = hum.Running:Connect(function(speed)
+                    if speed > 0.5 then
+                        _stopActiveEmote()
+                    end
+                end)
+
+                track.Stopped:Connect(function()
+                    if _moveConn then
+                        pcall(function() _moveConn:Disconnect() end)
+                        _moveConn = nil
+                    end
+                    if _activeTrack == track then _activeTrack = nil end
+                end)
             end)
         end
+
         if ok then
             CreateCustomNotification("EMOTES", "▶ Reproduciendo emote", 1.2)
         else
