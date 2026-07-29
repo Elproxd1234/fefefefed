@@ -1285,7 +1285,8 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
         titleLabel.Font = isToggled and Enum.Font.GothamBold or Enum.Font.GothamSemibold
     end
 
-    clickBtn.MouseButton1Click:Connect(function()
+    -- FIX MOBILE: Activated funciona en PC y touch; MouseButton1Click no detecta tap en celu
+    clickBtn.Activated:Connect(function()
         isToggled = not isToggled
         _G._toggleStates[_ptKey] = isToggled
         updateToggle(true)
@@ -8232,7 +8233,7 @@ function createBindableButton(name, color)
     end)
 
     -- -- FEEDBACK DE CLICK -----------------------------------------
-    fill.MouseButton1Click:Connect(function()
+    fill.Activated:Connect(function()
         TweenService:Create(_bgScale, TweenInfo.new(0.08), {Scale = 0.88}):Play()
         TweenService:Create(circle, TweenInfo.new(0.08), {BackgroundTransparency = 0}):Play()
         TweenService:Create(glow, TweenInfo.new(0.08), {ImageTransparency = 0.38}):Play()
@@ -8526,7 +8527,7 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
         end)
     end
 
-    -- Hover badge
+    -- Hover badge (solo PC, en mobile no hay hover)
     triggerBtn.MouseEnter:Connect(function()
         TweenService:Create(triggerBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0}):Play()
     end)
@@ -8534,7 +8535,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
         TweenService:Create(triggerBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.15}):Play()
     end)
 
-    triggerBtn.MouseButton1Click:Connect(function()
+    -- FIX MOBILE: usar Activated en vez de MouseButton1Click para que funcione en touch
+    triggerBtn.Activated:Connect(function()
         if _locked then return end
         if isOpen then closeList() else openList() end
     end)
@@ -8602,7 +8604,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
                 end
             end)
 
-            row.MouseButton1Click:Connect(function()
+            -- FIX MOBILE: Activated funciona tanto en PC como en touch
+            row.Activated:Connect(function()
                 if _locked then return end
                 selectedValue     = name
                 selectedText.Text = name
@@ -8925,7 +8928,7 @@ function CreatePredSelector(parent, titulo, opciones, default, callback)
                     {Transparency = 0.3, Color = COL_STROKE_ROW}):Play()
             end
         end)
-        optBtn.MouseButton1Click:Connect(function()
+        optBtn.Activated:Connect(function()
             if selectedValue ~= name then
                 selectedValue = name
                 for _, info in ipairs(optBtns) do
@@ -8948,7 +8951,7 @@ function CreatePredSelector(parent, titulo, opciones, default, callback)
     end
 
     -- Abrir/cerrar
-    trigBtn.MouseButton1Click:Connect(function()
+    trigBtn.Activated:Connect(function()
         isOpen = not isOpen
         if isOpen then _openDrop() else _closeDrop() end
     end)
@@ -9839,7 +9842,7 @@ function CreateCustomNotification(titleRaw, message, duration)
             task.delay(0.26, function() pcall(function() notifSG:Destroy() end) end)
         end
 
-        dismissBtn.MouseButton1Click:Connect(_doFadeOut)
+        dismissBtn.Activated:Connect(_doFadeOut)  -- FIX MOBILE: Activated cubre mouse y touch
         dismissBtn.TouchTap:Connect(_doFadeOut)
 
         -- Margen inferior para movil: distancia desde el borde inferior de la pantalla
@@ -10271,7 +10274,7 @@ function CreateGlowTeleportButton(parent, icon, name, glowColor, callback)
         TweenService:Create(stroke, TweenInfo.new(0.12), {Transparency = 0.25, Thickness = 1.5}):Play()
         TweenService:Create(nameLabel, TweenInfo.new(0.12), {TextColor3 = ThemeColors.TextPrimary}):Play()
     end)
-    btn.MouseButton1Click:Connect(function()
+    btn.Activated:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Primary, BackgroundTransparency = 0.05}):Play()
         task.wait(0.12)
         TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = ThemeColors.Background, BackgroundTransparency = 0.05}):Play()
@@ -10449,7 +10452,7 @@ function _makeTwoColumns()
     clearBtn2.FontFace = Font.fromEnum(Enum.Font.Arimo)
     clearBtn2.ZIndex = 21
     clearBtn2.Visible = false
-    clearBtn2.MouseButton1Click:Connect(function() searchInput2.Text = "" end)
+    clearBtn2.Activated:Connect(function() searchInput2.Text = "" end)
 
     -- Label de placeholder manual (se oculta al hacer focus)
     local placeholderLabel = Instance.new("TextLabel", searchBar)
@@ -11198,7 +11201,7 @@ function CreateGlowButton(parent, nombre, callback)
         TweenService:Create(textLabel, TweenInfo.new(0.12), {TextColor3 = ThemeColors.TextPrimary}):Play()
     end)
 
-    btn.MouseButton1Click:Connect(function()
+    btn.Activated:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.07), {BackgroundColor3 = ThemeColors.Accent, BackgroundTransparency = 0.05}):Play()
         task.wait(0.13)
         TweenService:Create(btn, TweenInfo.new(0.18), {BackgroundColor3 = ThemeColors.Background, BackgroundTransparency = 0.05}):Play()
@@ -11390,10 +11393,12 @@ function CreateButton(parent, nombre, color, callback)
         TweenService:Create(textLabel, TweenInfo.new(0.12), {TextColor3 = ThemeColors.TextPrimary}):Play()
     end)
 
-    btn.MouseButton1Click:Connect(function()
+    -- FIX MOBILE: Activated detecta tap en celu y click en PC correctamente
+    btn.Activated:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.07), {BackgroundColor3 = ThemeColors.Accent, BackgroundTransparency = 0.05}):Play()
-        task.wait(0.12)
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = ThemeColors.Background, BackgroundTransparency = 0.05}):Play()
+        task.delay(0.12, function()
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = ThemeColors.Background, BackgroundTransparency = 0.05}):Play()
+        end)
         if callback then callback() end
     end)
 
@@ -12815,7 +12820,7 @@ function _createBombBtn()
         )
     end)
 
-    btn.MouseButton1Click:Connect(function()
+    btn.Activated:Connect(function()
         _syncBombJump(not _bombJumpEnabled)
         setVisual(_bombJumpEnabled)
  CreateCustomNotification("BOMB JUMP", _bombJumpEnabled and "ON -- lanza la FakeBomb!" or "OFF", 2)
@@ -13547,7 +13552,7 @@ function CreateMainUI_Fly()
         Instance.new("UICorner", _flyKeyBtn).CornerRadius = UDim.new(0, 6)
 
         local _flyListening = false
-        _flyKeyBtn.MouseButton1Click:Connect(function()
+        _flyKeyBtn.Activated:Connect(function()
             if _flyListening then return end
             _flyListening = true
             _flyKeyBtn.Text = "[ ... ]"
@@ -13859,7 +13864,7 @@ function CreateFakeBombBindlePanel()
                 {BackgroundTransparency = 0.25, Size = UDim2.new(0, BTN_SIZE, 0, BTN_SIZE), Position = UDim2.new(0, posX, 0, posY)}):Play()
             TweenService:Create(btnStroke, TweenInfo.new(0.2), {Thickness = 2.5, Transparency = 0.2}):Play()
         end)
-        btn.MouseButton1Click:Connect(function()
+        btn.Activated:Connect(function()
 
             TweenService:Create(btn, TweenInfo.new(0.08),
                 {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(255,255,255)}):Play()
@@ -14085,7 +14090,7 @@ function CreateMainUI_SwimFlyGithub()
         _ajKeyBtn.BorderSizePixel = 0; _ajKeyBtn.ZIndex = 3
         Instance.new("UICorner", _ajKeyBtn).CornerRadius = UDim.new(0, 6)
 
-        _ajKeyBtn.MouseButton1Click:Connect(function()
+        _ajKeyBtn.Activated:Connect(function()
             if _ajListening then return end
             _ajListening = true; _ajKeyBtn.Text = "[ ... ]"
             local conn; conn = UserInputService.InputBegan:Connect(function(inp, gp)
@@ -14360,7 +14365,7 @@ function CreateMainUI_SwimFlyGithub()
         _jbKeyBtn.BorderSizePixel = 0; _jbKeyBtn.ZIndex = 3
         Instance.new("UICorner", _jbKeyBtn).CornerRadius = UDim.new(0, 6)
 
-        _jbKeyBtn.MouseButton1Click:Connect(function()
+        _jbKeyBtn.Activated:Connect(function()
             if JB.listening then return end
             JB.listening = true; _jbKeyBtn.Text = "[ ... ]"; _jbKeyBtn.BackgroundTransparency = 0.1
             local conn; conn = UserInputService.InputBegan:Connect(function(inp, gp)
@@ -15554,10 +15559,10 @@ function _fuPlayRoulette(box, wonItem)
                 css=Instance.new("UIStroke",closeBtn); css.Color=ThemeColors.Primary; css.Thickness=2
                 closeBtn.BackgroundTransparency=1
                 TweenService:Create(closeBtn,TweenInfo.new(0.3,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{BackgroundTransparency=0}):Play()
-                closeBtn.MouseButton1Click:Connect(_fuDestroyRoulette)
+                closeBtn.Activated:Connect(_fuDestroyRoulette)
                 bgBtn=Instance.new("TextButton",bg)
                 bgBtn.Size=UDim2.new(1,0,1,0); bgBtn.BackgroundTransparency=1; bgBtn.Text=""; bgBtn.ZIndex=0
-                bgBtn.MouseButton1Click:Connect(_fuDestroyRoulette)
+                bgBtn.Activated:Connect(_fuDestroyRoulette)
             end
         end)
     end)
@@ -15677,12 +15682,12 @@ function CreateMainUI_Toys()
     _fuBoxSelectorCallback = function() pcall(refreshBox) end
     refreshBox()
 
-    prevBtn.MouseButton1Click:Connect(function()
+    prevBtn.Activated:Connect(function()
 
         _fuState.boxIdx = _fuState.boxIdx > 1 and _fuState.boxIdx-1 or #FU_BOXES
         refreshBox()
     end)
-    nextBtn.MouseButton1Click:Connect(function()
+    nextBtn.Activated:Connect(function()
 
         _fuState.boxIdx = _fuState.boxIdx < #FU_BOXES and _fuState.boxIdx+1 or 1
         refreshBox()
@@ -15699,7 +15704,7 @@ function CreateMainUI_Toys()
         end
     end)
 
-    openBtn.MouseButton1Click:Connect(function()
+    openBtn.Activated:Connect(function()
         if _fuState.isOpening then return end
         _fuState.isOpening  = true
         _fuState.openBtnRef = openBtn
@@ -15904,7 +15909,7 @@ function CreateMainUI_ThemeSelector()
             optTxt.TextColor3 = sel and Color3.fromRGB(255,255,255) or ThemeColors.TextPrimary
         end)
 
-        optBtn.MouseButton1Click:Connect(function()
+        optBtn.Activated:Connect(function()
 
             ApplyTheme(themeName)
  valueLabel.Text = themeName
@@ -17537,7 +17542,7 @@ function CreateMainUI_FakeUnbox()
 
     fubCooldown = false
 
-    fuBtn.MouseButton1Click:Connect(function()
+    fuBtn.Activated:Connect(function()
         if fubCooldown then return end
         fubCooldown = true
         weapon = getRandom()
@@ -17941,7 +17946,7 @@ function CreateMainUI_SecureAuto()
             st.Color = Color3.fromRGB(255,255,255); st.Thickness = 1
             st.Transparency = m == selMode and 0.5 or 0.85; mb.ZIndex = 13
             modeBtns[m] = {btn=mb, stroke=st}
-            mb.MouseButton1Click:Connect(function()
+            mb.Activated:Connect(function()
                 selMode = m; _secAuto.mode = m
                 for k, d in pairs(modeBtns) do
                     local isS = (k == m)
@@ -18242,7 +18247,7 @@ function CreateMainUI_SecureAuto()
                 if isDrag then frame.Position = UDim2.new(fs.X.Scale, fs.X.Offset + d.X, fs.Y.Scale, fs.Y.Offset + d.Y) end
             end
         end)
-        btn.MouseButton1Click:Connect(function()
+        btn.Activated:Connect(function()
             if isDrag then return end
             _secAuto.enabled = not _secAuto.enabled
             if _secAuto.enabled then _secStart() else _secStop() end
@@ -19871,7 +19876,7 @@ function CreateMainTab()
         _bg.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,ThemeColors.Primary),ColorSequenceKeypoint.new(0.5,ThemeColors.Aurora2),ColorSequenceKeypoint.new(1,ThemeColors.Primary)})
         _btn.MouseEnter:Connect(function() TweenService:Create(_btn,TweenInfo.new(0.1),{BackgroundTransparency=0.05}):Play() end)
         _btn.MouseLeave:Connect(function() TweenService:Create(_btn,TweenInfo.new(0.1),{BackgroundTransparency=0.15}):Play() end)
-        _btn.MouseButton1Click:Connect(function()
+        _btn.Activated:Connect(function()
             local id=tostring(_ss.currentId):gsub("%D","")
             if id=="" then CreateCustomNotification("SONG","Ingresa un ID valido",2); return end
             _playSound(id); CreateCustomNotification("SONG","> "..id,2)
@@ -25278,7 +25283,7 @@ function CreateVisualsTab()
         clearBtn.ZIndex = 13
         Instance.new("UICorner", clearBtn).CornerRadius = UDim.new(0, 6)
 
-        clearBtn.MouseButton1Click:Connect(function()
+        clearBtn.Activated:Connect(function()
             flags.pinPlayer = nil
             pinLbl.Text = "  Ninguno (todos)"
             pinLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -25356,7 +25361,7 @@ function CreateVisualsTab()
                 bStroke.Color = PIN_COLOR; bStroke.Thickness = 1
                 bStroke.Transparency = isPinned and 0.0 or 0.7
 
-                btn.MouseButton1Click:Connect(function()
+                btn.Activated:Connect(function()
                     flags.pinPlayer = p
                     pinLbl.Text = "  * " .. p.Name
                     pinLbl.TextColor3 = PIN_COLOR
@@ -25378,7 +25383,7 @@ function CreateVisualsTab()
             end
         end
 
-        toggleListBtn.MouseButton1Click:Connect(function()
+        toggleListBtn.Activated:Connect(function()
             listOpen = not listOpen
             if listOpen then
                 _rebuildList()
@@ -26100,7 +26105,7 @@ end, _G._chamDropGun or false)
         scanStroke.Color = Color3.fromRGB(195, 195, 200)
         scanStroke.Thickness = 2.5
         scanStroke.Transparency = 0.3
-        scanBtn.MouseButton1Click:Connect(function()
+        scanBtn.Activated:Connect(function()
 
             local count = 0
             for _, obj in ipairs(workspace:GetDescendants()) do  -- OPT: pairs->ipairs
@@ -27003,7 +27008,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         end
     end
 
-    clickRow.MouseButton1Click:Connect(doToggle)
+    -- FIX MOBILE: Activated responde a touch en celu; MouseButton1Click no siempre lo hace
+    clickRow.Activated:Connect(doToggle)
 
     return container
 end
@@ -27568,7 +27574,7 @@ function CreateWorldUI_Emotes()
         playBtn.FontFace = Font.fromEnum(Enum.Font.Montserrat)
         playBtn.TextColor3       = Color3.fromRGB(255, 255, 255)
         Instance.new("UICorner", playBtn).CornerRadius = UDim.new(0, 6)
-        playBtn.MouseButton1Click:Connect(function() PlayEmote(capturedId, capturedName) end)
+        playBtn.Activated:Connect(function() PlayEmote(capturedId, capturedName) end)
         playBtn.MouseEnter:Connect(function()
             TweenService:Create(playBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0.1}):Play()
         end)
@@ -29936,7 +29942,7 @@ function CreateWorldUI_InfinityJumpMovement()
         TweenService:Create(resetBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.25}):Play()
     end)
 
-    resetBtn.MouseButton1Click:Connect(function()
+    resetBtn.Activated:Connect(function()
         -- Forzar desactivacion del noclip si estaba activo
         if _camNC_active then
             _camNC_active = false
@@ -30132,7 +30138,7 @@ function CreateWorldUI_Spectate()
             b.BorderSizePixel = 0
             b.AutoButtonColor = false
             Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
-            b.MouseButton1Click:Connect(function()
+            b.Activated:Connect(function()
 
                 cb()
             end)
@@ -30259,7 +30265,7 @@ local function _makeTPButton(label, callback, forcedParent)
     end)
 
     -- Click: flash rapido
-    btn.MouseButton1Click:Connect(function()
+    btn.Activated:Connect(function()
         TweenService:Create(btn,    TWEEN_FAST, {BackgroundColor3 = ThemeColors.Accent, BackgroundTransparency = C_BG_CLK}):Play()
         TweenService:Create(stroke, TWEEN_FAST, {Color = C_STROKE_CLK, Thickness = 2.5}):Play()
         task.wait(0.12)
@@ -30640,13 +30646,13 @@ function CreateWorldUI_SendToChat()
             TweenService:Create(sendBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
             TweenService:Create(_sendBtnStroke, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.3, Thickness = 1.5}):Play()
         end)
-        sendBtn.MouseButton1Click:Connect(function()
+        sendBtn.Activated:Connect(function()
             TweenService:Create(sendBtn, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Accent}):Play()
             task.wait(0.12)
             TweenService:Create(sendBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
         end)
         local captSlot2 = slotI
-        sendBtn.MouseButton1Click:Connect(function()
+        sendBtn.Activated:Connect(function()
             local txt = _customSlots[captSlot2]
             if txt and txt ~= "" then
                 _sayInChat(txt)
@@ -30684,7 +30690,7 @@ function CreateWorldUI_SendToChat()
         TweenService:Create(prevBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
         TweenService:Create(_prevBtnStroke, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.3, Thickness = 1.5}):Play()
     end)
-    prevBtn.MouseButton1Click:Connect(function()
+    prevBtn.Activated:Connect(function()
         TweenService:Create(prevBtn, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Accent}):Play()
         task.wait(0.12)
         TweenService:Create(prevBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
@@ -30713,17 +30719,17 @@ function CreateWorldUI_SendToChat()
         TweenService:Create(nextBtnS, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
         TweenService:Create(_nextBtnSStroke, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.3, Thickness = 1.5}):Play()
     end)
-    nextBtnS.MouseButton1Click:Connect(function()
+    nextBtnS.Activated:Connect(function()
         TweenService:Create(nextBtnS, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Accent}):Play()
         task.wait(0.12)
         TweenService:Create(nextBtnS, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
     end)
 
-    prevBtn.MouseButton1Click:Connect(function()
+    prevBtn.Activated:Connect(function()
         _slotIdx = (_slotIdx - 2) % #slotNames + 1
  slotLabel.Text = slotNames[_slotIdx]
     end)
-    nextBtnS.MouseButton1Click:Connect(function()
+    nextBtnS.Activated:Connect(function()
         _slotIdx = _slotIdx % #slotNames + 1
  slotLabel.Text = slotNames[_slotIdx]
     end)
@@ -31121,7 +31127,7 @@ function CreateWorldUI_GameUtilities()
         TweenService:Create(prevSlotBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
         TweenService:Create(_prevSlotStroke, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.3, Thickness = 1.5}):Play()
     end)
-    prevSlotBtn.MouseButton1Click:Connect(function()
+    prevSlotBtn.Activated:Connect(function()
         TweenService:Create(prevSlotBtn, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Accent}):Play()
         task.wait(0.12)
         TweenService:Create(prevSlotBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
@@ -31150,7 +31156,7 @@ function CreateWorldUI_GameUtilities()
         TweenService:Create(nextSlotBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
         TweenService:Create(_nextSlotStroke, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.3, Thickness = 1.5}):Play()
     end)
-    nextSlotBtn.MouseButton1Click:Connect(function()
+    nextSlotBtn.Activated:Connect(function()
         TweenService:Create(nextSlotBtn, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Accent}):Play()
         task.wait(0.12)
         TweenService:Create(nextSlotBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
@@ -31170,12 +31176,12 @@ function CreateWorldUI_GameUtilities()
         end
     end
 
-    prevSlotBtn.MouseButton1Click:Connect(function()
+    prevSlotBtn.Activated:Connect(function()
 
         _currentSlot = (_currentSlot - 2) % _slotCount + 1
         _refreshSlotUI()
     end)
-    nextSlotBtn.MouseButton1Click:Connect(function()
+    nextSlotBtn.Activated:Connect(function()
 
         _currentSlot = _currentSlot % _slotCount + 1
         _refreshSlotUI()
@@ -34089,7 +34095,7 @@ function CreatePremiumTab()
         end
 
         -- Click en botón = copiar link
-        copyBtn.MouseButton1Click:Connect(function()
+        copyBtn.Activated:Connect(function()
             pcall(function() setclipboard(loginUrl) end)
             copyBtn.Text = "✅  Link copiado!"
             copyBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 100)
@@ -34272,7 +34278,7 @@ function CreatePremiumTab()
  clickBtn.Text = ""
         clickBtn.ZIndex = 20
         clickBtn.AutoButtonColor = false
-        clickBtn.MouseButton1Click:Connect(function()
+        clickBtn.Activated:Connect(function()
  CreateCustomNotification(" LOCKED FEATURE", label .. " is currently in development.", 3)
         end)
         return lockFrame
@@ -35388,7 +35394,7 @@ function CreateExclusiveTab()
     rsStroke.Color = ThemeColors.Primary; rsStroke.Thickness = 1; rsStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     resetBtn.MouseEnter:Connect(function() TweenService:Create(resetBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0}):Play() end)
     resetBtn.MouseLeave:Connect(function() TweenService:Create(resetBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.05}):Play() end)
-    resetBtn.MouseButton1Click:Connect(function()
+    resetBtn.Activated:Connect(function()
         _G._toggleStates        = {}
         local _hsr              = _G._hubSettings
         _hsr.disableClickSound  = false
@@ -35520,7 +35526,7 @@ function CreateExclusiveTab()
     centerBtn.AutoButtonColor = false; centerBtn.ZIndex = 13
     Instance.new("UICorner", centerBtn).CornerRadius = UDim.new(0, 8)
     Instance.new("UIStroke", centerBtn).Color = ThemeColors.Primary
-    centerBtn.MouseButton1Click:Connect(function()
+    centerBtn.Activated:Connect(function()
         pcall(function()
             mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
             mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -35572,7 +35578,7 @@ function CreateExclusiveTab()
     clearNotifBtn.FontFace = Font.fromEnum(Enum.Font.Montserrat); clearNotifBtn.TextSize = 11
     clearNotifBtn.AutoButtonColor = false; clearNotifBtn.ZIndex = 13
     Instance.new("UICorner", clearNotifBtn).CornerRadius = UDim.new(0, 8)
-    clearNotifBtn.MouseButton1Click:Connect(function()
+    clearNotifBtn.Activated:Connect(function()
         pcall(function()
             local cg = game:GetService("CoreGui")
             for _, g in ipairs(cg:GetChildren()) do
@@ -36033,7 +36039,7 @@ function CreateExclusiveTab()
         purgeBtn.MouseLeave:Connect(function()
             TweenService:Create(purgeBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.2}):Play()
         end)
-        purgeBtn.MouseButton1Click:Connect(function()
+        purgeBtn.Activated:Connect(function()
             local n = 0
             for _, obj in ipairs(workspace:GetDescendants()) do
                 if obj:IsA("ParticleEmitter") or obj:IsA("Smoke")
@@ -38389,7 +38395,7 @@ function CreateCombatTab()
             _selectorGui = nil
         end
 
-        _selBtn.MouseButton1Click:Connect(function()
+        _selBtn.Activated:Connect(function()
             -- Cerrar si ya está abierto
             if _selectorGui and _selectorGui.Parent then _closeSelector(); return end
 
@@ -38455,7 +38461,7 @@ function CreateCombatTab()
             clearBtn.ZIndex = 3
             clearBtn.LayoutOrder = 1
             Instance.new("UICorner", clearBtn).CornerRadius = UDim.new(0, 6)
-            clearBtn.MouseButton1Click:Connect(function()
+            clearBtn.Activated:Connect(function()
                 CombatTabState.customTargetPlayer = nil
                 CombatTabState.saCustomTargetName = ""  -- FIX: limpiar nombre también
                 _ctLabel.Text = "Target: ninguno"
@@ -38480,7 +38486,7 @@ function CreateCombatTab()
                     plrBtn.ZIndex = 3
                     plrBtn.LayoutOrder = i + 1
                     Instance.new("UICorner", plrBtn).CornerRadius = UDim.new(0, 6)
-                    plrBtn.MouseButton1Click:Connect(function()
+                    plrBtn.Activated:Connect(function()
                         CombatTabState.customTargetPlayer = plr
                         CombatTabState.saCustomTargetName = plr.Name  -- FIX: sincronizar nombre para _saGetTargetCF
                         _ctLabel.Text = "Target: " .. plr.Name
@@ -39588,7 +39594,7 @@ function CreateCombatTab()
             closeBtn.BorderSizePixel  = 0
             closeBtn.ZIndex           = 13
             Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-            closeBtn.MouseButton1Click:Connect(_destroyCopyGunGui)
+            closeBtn.Activated:Connect(_destroyCopyGunGui)
 
             -- Variables para anlisis
             local _fpsHistory   = {}
@@ -40348,7 +40354,7 @@ function CreateCombatTab()
             if kpDdFrame and kpDdFrame.Parent then kpDdFrame:Destroy(); kpDdFrame = nil end
             kpDdOpen = false
         end
-        kpBtn.MouseButton1Click:Connect(function()
+        kpBtn.Activated:Connect(function()
 
             if kpDdOpen then kpCloseDD(); return end
             kpDdOpen = true
@@ -40385,7 +40391,7 @@ function CreateCombatTab()
                 pbtn.TextColor3 = ThemeColors.TextPrimary
                 pbtn.ZIndex = 91
                 Instance.new("UICorner", pbtn).CornerRadius = UDim.new(0, 5)
-                pbtn.MouseButton1Click:Connect(function()
+                pbtn.Activated:Connect(function()
                     KnifeSAState.specificTarget = Players:FindFirstChild(pname)
                     KnifeSAState.target = "Select Player"
  kpLbl.Text = pname
@@ -40581,7 +40587,7 @@ function CreateCombatTab()
         _kaBtn.MouseLeave:Connect(function()
             TweenService:Create(_kaBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.35}):Play()
         end)
-        _kaBtn.MouseButton1Click:Connect(_doKillAll)
+        _kaBtn.Activated:Connect(_doKillAll)
 
         -- Botón: Kill All Except Your Friends
         -- Siempre saltea amigos (isFriend = true) y ejecuta _doKillAll al clickear
@@ -40613,7 +40619,7 @@ function CreateCombatTab()
             TweenService:Create(_kaefBtn, TweenInfo.new(0.15), {BackgroundColor3 = ThemeColors.Background, BackgroundTransparency = 0.05}):Play()
             TweenService:Create(_kaefStroke, TweenInfo.new(0.15), {Transparency = 0.10, Thickness = 1.5}):Play()
         end)
-        _kaefBtn.MouseButton1Click:Connect(function()
+        _kaefBtn.Activated:Connect(function()
             TweenService:Create(_kaefBtn, TweenInfo.new(0.07), {BackgroundColor3 = ThemeColors.Accent, BackgroundTransparency = 0.05}):Play()
             TweenService:Create(_kaefStroke, TweenInfo.new(0.07), {Color = ThemeColors.Accent, Thickness = 2.5}):Play()
             task.wait(0.12)
@@ -41533,7 +41539,7 @@ function CreateCombatTab()
             closeBtn.BorderSizePixel = 0
             closeBtn.ZIndex = 13
             Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-            closeBtn.MouseButton1Click:Connect(_destroyCopyKnifeGui)
+            closeBtn.Activated:Connect(_destroyCopyKnifeGui)
 
             -- Variables para anlisis
             local _fpsHistory   = {}
@@ -42552,7 +42558,7 @@ function CreateCombatTab()
         })
         repBgGrad.Rotation = 0
 
-        repairBtn.MouseButton1Click:Connect(function()
+        repairBtn.Activated:Connect(function()
             pcall(function()
                 local knife = _getKnife()
                 local handle = knife and knife:FindFirstChild("Handle")
@@ -43794,7 +43800,7 @@ function CreateCombatTab()
             acStroke.Thickness = 1.5
             acStroke.Transparency = 0.3
 
-            acBtn.MouseButton1Click:Connect(function()
+            acBtn.Activated:Connect(function()
                 local ping = 80
                 pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 1000) end)
 
@@ -43925,7 +43931,7 @@ function CreateCombatTab()
             acStroke.Thickness = 1.5
             acStroke.Transparency = 0.3
 
-            acBtn.MouseButton1Click:Connect(function()
+            acBtn.Activated:Connect(function()
                 local ping = 80
                 pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 1000) end)
 
@@ -44263,7 +44269,7 @@ function CreateCombatTab()
             local dr,ds,sp=false,nil,nil
             btn.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dr=true;ds=i.Position;sp=btn.Position; i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dr=false end end) end end)
             UserInputService.InputChanged:Connect(function(i) if dr and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then local d=i.Position-ds; btn.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y) end end)
-            btn.MouseButton1Click:Connect(function()
+            btn.Activated:Connect(function()
                 if not _pEnabled then return end
                 local now=tick(); if now-_pLastShot<_pCooldown then return end; _pLastShot=now
                 TweenService:Create(btn,TweenInfo.new(0.08),{BackgroundTransparency=0}):Play()
@@ -44711,7 +44717,7 @@ function CreateCombatTab()
             local _listening = false
             local _listenConn = nil
 
-            kfBtn.MouseButton1Click:Connect(function()
+            kfBtn.Activated:Connect(function()
                 if _listening then return end
                 _listening = true
                 kfBtn.Text = "..."
@@ -45169,7 +45175,7 @@ function CreateCombatTab()
                                 lock.ZIndex                 = btn.ZIndex + 10
                                 lock.AutoButtonColor        = false
                                 lock.Active                 = true
-                                lock.MouseButton1Click:Connect(function()
+                                lock.Activated:Connect(function()
                                     CreateCustomNotification("⭐ PREMIUM", "Loguea en el tab PREMIUM para usar este modo.", 4)
                                 end)
                             end
@@ -46299,7 +46305,7 @@ function CreateCombatTab()
                     _ssUpdate(_ssPct(inp.Position.X))
                 end
             end)
-            _ssDrag.MouseButton1Click:Connect(function()
+            _ssDrag.Activated:Connect(function()
                 _ssUpdate(_ssPct(UserInputService:GetMouseLocation().X))
             end)
             _ssDrag.Activated:Connect(function()
@@ -46564,7 +46570,7 @@ function CreateCombatTab()
         end)
 
         -- Click en el botn: entrar en modo escucha
-        _skKeyBtn.MouseButton1Click:Connect(function()
+        _skKeyBtn.Activated:Connect(function()
             if SK.listening then
                 SK.listening = false
                 _skKeyBtn.Text = SK.keybind.Name
@@ -46945,11 +46951,12 @@ function CreateCombatTab()
         _scDescLabel.Text = _scDescTexts[_scSavedOpt] or ""
         _scDescLabel.TextColor3 = (_scSavedOpt == "Desactivado") and Color3.fromRGB(160,160,160) or Color3.fromRGB(210, 20, 15)
 
-        _scPrev.MouseButton1Click:Connect(function()
+        -- FIX MOBILE: Activated funciona en touch y PC
+        _scPrev.Activated:Connect(function()
             _scIndex = _scIndex > 1 and _scIndex - 1 or #_scOptions
             _scApply(_scOptions[_scIndex])
         end)
-        _scNext.MouseButton1Click:Connect(function()
+        _scNext.Activated:Connect(function()
             _scIndex = _scIndex < #_scOptions and _scIndex + 1 or 1
             _scApply(_scOptions[_scIndex])
         end)
@@ -47027,7 +47034,7 @@ minimizeBtn.MouseLeave:Connect(function()
     TweenService:Create(minimizeBtn, TweenInfo.new(0.18), {BackgroundTransparency=1, BackgroundColor3=Color3.fromRGB(255,255,255)}):Play()
 end)
 
-minimizeBtn.MouseButton1Click:Connect(function()
+minimizeBtn.Activated:Connect(function()
     -- FIX: respetar "No Minimize/Maximize Anim" de Settings
     if _G._hubSettings and _G._hubSettings.noMinMaxAnimations then
         hubGui.Enabled = false
@@ -47039,9 +47046,11 @@ minimizeBtn.MouseButton1Click:Connect(function()
             TweenService:Create(uiScaleClose, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Scale = 0}):Play()
         end
         TweenService:Create(mainFrame, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
-        task.wait(0.58)
-        hubGui.Enabled = false
-        _G._hubHidden  = true
+        -- FIX MOBILE: task.wait bloquea el hilo en celu; usar task.delay para no bloquear
+        task.delay(0.58, function()
+            hubGui.Enabled = false
+            _G._hubHidden  = true
+        end)
     end
 
     local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -47086,7 +47095,7 @@ minimizeBtn.MouseButton1Click:Connect(function()
         TweenService:Create(rBtn, TweenInfo.new(0.2), {ImageTransparency = 0}):Play()
     end)
 
-    rBtn.MouseButton1Click:Connect(function()
+    rBtn.Activated:Connect(function()
         for i = 1, 12 do
             local dot = Instance.new("Frame", skullMainFrame)
             dot.Size = UDim2.new(0, 5, 0, 5)
@@ -47132,7 +47141,7 @@ minimizeBtn.MouseButton1Click:Connect(function()
     end)
 end)
 
-infoBtn.MouseButton1Click:Connect(function()
+infoBtn.Activated:Connect(function()
 
     CloseExpandPanel()
     local infoGui = Instance.new("ScreenGui")
@@ -47236,7 +47245,7 @@ infoBtn.MouseButton1Click:Connect(function()
     closeBtnRow.BorderSizePixel = 0
     closeBtnRow.ZIndex = 101
     Instance.new("UICorner", closeBtnRow).CornerRadius = UDim.new(0, 8)
-    closeBtnRow.MouseButton1Click:Connect(function()
+    closeBtnRow.Activated:Connect(function()
         TweenService:Create(infoFrame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
             Size = UDim2.new(0, 380, 0, 0), BackgroundTransparency = 1
         }):Play()
@@ -47250,7 +47259,7 @@ infoBtn.MouseButton1Click:Connect(function()
     }):Play()
 end)
 
-closeBtn.MouseButton1Click:Connect(function()
+closeBtn.Activated:Connect(function()
 
     CloseExpandPanel()
     -- FIX v12: detener weapons/knife al cerrar el hub para que los loops
@@ -47352,7 +47361,7 @@ closeBtn.MouseButton1Click:Connect(function()
     end)
 
     -- Click: animacion de puntitos + abrir hub
-    skullBtn.MouseButton1Click:Connect(function()
+    skullBtn.Activated:Connect(function()
         -- Puntitos hacia el centro
         for i = 1, 12 do
             local dot = Instance.new("Frame", skullMainFrame)
@@ -48713,7 +48722,7 @@ function abrirHub()
             end)
         end
         -- PC: click del mouse
-        _btn.MouseButton1Click:Connect(_onContinuar)
+        _btn.Activated:Connect(_onContinuar)
         -- Movil: toque tactil (Activated funciona en ambos dispositivos)
         _btn.Activated:Connect(_onContinuar)
 
@@ -50347,7 +50356,7 @@ particles = {}
             end
         end)
 
-        btn.MouseButton1Click:Connect(function()
+        btn.Activated:Connect(function()
             PlayTabSound()
             local wasVisible = contentContainer.Visible
             if not wasVisible then
@@ -50536,19 +50545,19 @@ particles = {}
                     end
                 end)
             end
-            rBtn2.MouseButton1Click:Connect(_reopenHub)
+            rBtn2.Activated:Connect(_reopenHub)
             rBtn2.InputBegan:Connect(function(inp)
                 if inp.UserInputType == Enum.UserInputType.Touch then _reopenHub() end
             end)
         end
     end
     -- Conectar tanto MouseButton1Click como InputBegan (touch) para compatibilidad movil
-    arrowToggleBtn.MouseButton1Click:Connect(_arrowBtnFire)
+    arrowToggleBtn.Activated:Connect(_arrowBtnFire)  -- FIX MOBILE: reemplaza MouseButton1Click
     arrowToggleBtn.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.Touch then _arrowBtnFire() end
     end)
 
-    restoreBtn.MouseButton1Click:Connect(function()
+    restoreBtn.Activated:Connect(function()
         _goBackToEmpty()
     end)
 
@@ -51335,7 +51344,7 @@ function CreateEmotesTab()
         btnMinus.TextSize = 14
         btnMinus.ZIndex = 14
         Instance.new("UICorner", btnMinus).CornerRadius = UDim.new(0, 5)
-        btnMinus.MouseButton1Click:Connect(function()
+        btnMinus.Activated:Connect(function()
             if speedIdx > 1 then speedIdx = speedIdx - 1; _applySpeed() end
         end)
 
@@ -51350,7 +51359,7 @@ function CreateEmotesTab()
         btnPlus.TextSize = 14
         btnPlus.ZIndex = 14
         Instance.new("UICorner", btnPlus).CornerRadius = UDim.new(0, 5)
-        btnPlus.MouseButton1Click:Connect(function()
+        btnPlus.Activated:Connect(function()
             if speedIdx < #speeds then speedIdx = speedIdx + 1; _applySpeed() end
         end)
     end
@@ -51371,7 +51380,7 @@ function CreateEmotesTab()
         _ss.Color = Color3.fromRGB(200, 50, 90)
         _ss.Thickness = 1.5
         _ss.Transparency = 0.3
-        stopBtn.MouseButton1Click:Connect(function()
+        stopBtn.Activated:Connect(function()
             _stopEmote()
             CreateCustomNotification("EMOTES", "Emote detenido", 1.5)
         end)
@@ -51428,7 +51437,7 @@ function CreateEmotesTab()
         _pbs.Thickness = 1.5
         _pbs.Transparency = 0.3
 
-        playBtn.MouseButton1Click:Connect(function()
+        playBtn.Activated:Connect(function()
             local raw = inputBox.Text:gsub("%s", "")
             if raw == "" then CreateCustomNotification("EMOTES", "Ingresa un ID primero", 2); return end
             local finalId = raw
@@ -51472,7 +51481,7 @@ function CreateEmotesTab()
         end)
         local _eId = emote.id
         local _eName = emote.name
-        row.MouseButton1Click:Connect(function()
+        row.Activated:Connect(function()
             _playEmote(_eId, ES.loopActive)
             CreateCustomNotification("EMOTES", _eName .. (ES.loopActive and " (loop)" or ""), 1.5)
         end)
@@ -51508,7 +51517,7 @@ function CreateEmotesTab()
         end)
         local _pId = pose.id
         local _pName = pose.name
-        row.MouseButton1Click:Connect(function()
+        row.Activated:Connect(function()
             _playEmote(_pId, ES.loopActive)
             CreateCustomNotification("EMOTES", _pName .. (ES.loopActive and " (loop)" or ""), 1.5)
         end)
@@ -52085,7 +52094,7 @@ function CreateUseTab()
             TweenService:Create(rfBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.45}):Play()
             TweenService:Create(rfStroke, TweenInfo.new(0.12), {Transparency = 0.20}):Play()
         end)
-        rfBtn.MouseButton1Click:Connect(function()
+        rfBtn.Activated:Connect(function()
             local newList = _buildPlayerNames()
  CreateCustomNotification("PLAYERS", "Lista: " .. #newList .. " jugadores", 2)
             -- Destruir y recrear el NebulaSelector con la lista actualizada
@@ -52248,7 +52257,7 @@ function CreateUseTab()
                 TweenService:Create(swStk, TweenInfo.new(0.12), {Thickness=0, Transparency=1}):Play()
                 TweenService:Create(sw, TweenInfo.new(0.12), {BackgroundTransparency=0}):Play()
             end)
-            sw.MouseButton1Click:Connect(function()
+            sw.Activated:Connect(function()
                 _cpCustomR = col.r; _cpCustomG = col.g; _cpCustomB = col.b
                 _applyHubColor()
                 previewLbl.Text = "Actual: " .. col.name
