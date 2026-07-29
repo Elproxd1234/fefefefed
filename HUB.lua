@@ -1,5 +1,5 @@
 -- ================================================================
--- == COMPAT SHIM v18 - FIX "attempt to call a nil value" (Line 1)
+-- == COMPAT SHIM v17 - FIX "attempt to call a nil value" (Line 1)
 -- Algunos executors mobiles (Delta, Arceus X, Fluxus) no exponen
 -- 'task' o tienen 'game' no disponible inmediatamente al cargar.
 -- Este bloque garantiza compatibilidad antes de cualquier otro codigo.
