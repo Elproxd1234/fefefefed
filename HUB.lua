@@ -1170,12 +1170,12 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
     local savedPT = _G._toggleStates[_ptKey]
     local isToggled = (savedPT ~= nil) and savedPT or (defaultState or false)
 
-    local C_STROKE_OFF  = Color3.fromRGB(40, 20, 100)
-    local C_STROKE_ON   = Color3.fromRGB(120, 60, 220)
+    local C_STROKE_OFF  = Color3.fromRGB(0, 80, 160)
+    local C_STROKE_ON   = Color3.fromRGB(0, 191, 255)
     local C_TRACK_OFF   = Color3.fromRGB(45, 45, 45)
     local C_TRACK_ON    = Color3.fromRGB(0, 220, 0)
-    local C_TRACK_S_OFF = Color3.fromRGB(40, 20, 100)
-    local C_TRACK_S_ON  = Color3.fromRGB(120, 60, 220)
+    local C_TRACK_S_OFF = Color3.fromRGB(0, 80, 160)
+    local C_TRACK_S_ON  = Color3.fromRGB(0, 191, 255)
 
     -- ptStroke eliminado (sin rectangulo)
     local ptStroke = {Color = C_STROKE_OFF}  -- stub para que el resto del codigo no rompa
@@ -1267,7 +1267,7 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
                 local thumbColor = Color3.fromRGB(120, 80, 200)
                 TweenService:Create(thumb, TweenInfo.new(0.10, Enum.EasingStyle.Quad), {BackgroundColor3 = thumbColor, BackgroundTransparency = 0}):Play()
                 task.delay(0.12, function()
-                    TweenService:Create(thumb, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(160, 120, 255), BackgroundTransparency = 0}):Play()
+                    TweenService:Create(thumb, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(0, 191, 255), BackgroundTransparency = 0}):Play()
                     -- pulso del stroke: brilla y vuelve
                     -- trackStroke hidden (border removed)
                 end)
@@ -4160,7 +4160,7 @@ local Themes = {
     },
     ["Neon Purple"] = {
         Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon principal
-        Secondary       = Color3.fromRGB(100, 20, 160),   -- Morado oscuro
+        Secondary       = Color3.fromRGB(0, 160, 220),   -- Morado oscuro
         Accent          = Color3.fromRGB(135, 206, 250),  -- Lila claro
         Background      = Color3.fromRGB(30, 30, 30),       -- Negro violaceo
         BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado muy oscuro
@@ -4186,7 +4186,7 @@ local Themes = {
     },
     ["Purple Blue Glow"] = {
         Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon
-        Secondary       = Color3.fromRGB(100, 20, 160),   -- Morado oscuro
+        Secondary       = Color3.fromRGB(0, 160, 220),   -- Morado oscuro
         Accent          = Color3.fromRGB(135, 206, 250),  -- Lila neon
         Background      = Color3.fromRGB(30, 30, 30),         -- Negro azulado
         BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado oscuro
@@ -4225,7 +4225,7 @@ local Themes = {
     },
     ["Purple Blue Glow"] = {
         Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon
-        Secondary       = Color3.fromRGB(100, 20, 160),   -- Morado oscuro
+        Secondary       = Color3.fromRGB(0, 160, 220),   -- Morado oscuro
         Accent          = Color3.fromRGB(135, 206, 250),  -- Lila neon
         Background      = Color3.fromRGB(30, 30, 30),         -- Negro azulado
         BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado oscuro
@@ -4266,7 +4266,7 @@ local Themes = {
     },
     ["Tropical Neon"] = {
     Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon principal
-    Secondary       = Color3.fromRGB(100, 20, 160),   -- Morado oscuro (sliders fondo)
+    Secondary       = Color3.fromRGB(0, 160, 220),   -- Morado oscuro (sliders fondo)
     Accent          = Color3.fromRGB(135, 206, 250),  -- Lila (acentos)
     Background      = Color3.fromRGB(30, 30, 30),       -- Negro violaceo (fondo hub)
     BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado oscuro (paneles internos)
@@ -4278,17 +4278,17 @@ local Themes = {
     Aurora4         = Color3.fromRGB(80, 10, 130),    -- Morado profundo
 },
     ["Neon Green"] = {
-    Primary         = Color3.fromRGB(200, 200, 200),   -- celeste
-    Secondary       = Color3.fromRGB(70, 30, 130),    -- aurora azul-morado oscuro
+    Primary         = Color3.fromRGB(0, 191, 255),    -- celeste electrico
+    Secondary       = Color3.fromRGB(0, 80, 160),     -- azul oscuro
     Accent          = Color3.fromRGB(60, 190, 240),   -- celeste claro
-    Background      = Color3.fromRGB(30, 30, 30),       -- negro oscuro
-    BackgroundLight = Color3.fromRGB(12, 18, 35),     -- negro muy oscuro
-    TextPrimary     = Color3.fromRGB(220, 245, 255),  -- blanco celeste suave
-    TextSecondary   = Color3.fromRGB(200, 200, 200),   -- celeste
-    Aurora1         = Color3.fromRGB(200, 200, 200),   -- celeste brillante
-    Aurora2         = Color3.fromRGB(70, 30, 130),    -- azul-morado medio
-    Aurora3         = Color3.fromRGB(60, 190, 240),   -- celeste claro titulo
-    Aurora4         = Color3.fromRGB(40, 15, 90),     -- indigo profundo
+    Background      = Color3.fromRGB(20, 80, 120),      -- negro azulado profundo
+    BackgroundLight = Color3.fromRGB(30, 110, 155),     -- azul muy oscuro
+    TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
+    TextSecondary   = Color3.fromRGB(160, 220, 255),  -- celeste suave
+    Aurora1         = Color3.fromRGB(0, 191, 255),    -- celeste electrico
+    Aurora2         = Color3.fromRGB(0, 80, 160),     -- azul oscuro
+    Aurora3         = Color3.fromRGB(60, 190, 240),   -- celeste claro
+    Aurora4         = Color3.fromRGB(20, 80, 120),      -- negro azulado
 },
 }
 
@@ -4296,17 +4296,17 @@ local Themes = {
 currentThemeName = "Neon Green"
 
 local ThemeColors = {
-    Primary         = Color3.fromRGB(120, 60, 220),   -- violeta principal
-    Secondary       = Color3.fromRGB(40, 20, 100),    -- violeta oscuro
-    Accent          = Color3.fromRGB(80, 120, 255),   -- azul electrico (acento)
-    Background      = Color3.fromRGB(18, 10, 40),     -- fondo violeta profundo
-    BackgroundLight = Color3.fromRGB(35, 20, 75),     -- violeta medio
+    Primary         = Color3.fromRGB(0, 191, 255),    -- celeste electrico
+    Secondary       = Color3.fromRGB(0, 80, 160),     -- azul oscuro
+    Accent          = Color3.fromRGB(60, 190, 240),   -- celeste claro
+    Background      = Color3.fromRGB(20, 80, 120),      -- negro azulado profundo
+    BackgroundLight = Color3.fromRGB(30, 110, 155),     -- azul muy oscuro
     TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
-    TextSecondary   = Color3.fromRGB(180, 160, 220),  -- lila suave
-    Aurora1         = Color3.fromRGB(120, 60, 220),   -- violeta principal
-    Aurora2         = Color3.fromRGB(40, 20, 100),    -- violeta oscuro
-    Aurora3         = Color3.fromRGB(80, 120, 255),   -- azul electrico
-    Aurora4         = Color3.fromRGB(18, 10, 40),     -- violeta profundo
+    TextSecondary   = Color3.fromRGB(160, 220, 255),  -- celeste suave
+    Aurora1         = Color3.fromRGB(0, 191, 255),    -- celeste electrico
+    Aurora2         = Color3.fromRGB(0, 80, 160),     -- azul oscuro
+    Aurora3         = Color3.fromRGB(60, 190, 240),   -- celeste claro
+    Aurora4         = Color3.fromRGB(20, 80, 120),      -- negro azulado
 }
 
 ThemeObjects = {}
@@ -10970,13 +10970,13 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     --  Track gris delgado con fill blanco y thumb circular blanco
     -- ==============================================================
 
-    local C_BG       = Color3.fromRGB(18, 10, 40)
-    local C_STROKE   = Color3.fromRGB(80, 120, 255)
+    local C_BG       = Color3.fromRGB(20, 80, 120)
+    local C_STROKE   = Color3.fromRGB(0, 191, 255)
     local C_TEXT     = Color3.fromRGB(255, 255, 255)
-    local C_NUM      = Color3.fromRGB(180, 160, 255)
-    local C_TRACK_BG = Color3.fromRGB(40, 20, 100)
-    local C_TRACK_FG = Color3.fromRGB(120, 60, 220)
-    local C_THUMB    = Color3.fromRGB(200, 180, 255)
+    local C_NUM      = Color3.fromRGB(160, 220, 255)
+    local C_TRACK_BG = Color3.fromRGB(0, 80, 160)
+    local C_TRACK_FG = Color3.fromRGB(0, 191, 255)
+    local C_THUMB    = Color3.fromRGB(255, 255, 255)
 
     local CONTAINER_H = 68
 
@@ -26848,7 +26848,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Borde blanco para el marco
     local mainStroke = Instance.new("UIStroke", container)
     mainStroke.Color = ThemeColors.Primary
-    mainStroke.Thickness = 2
+    mainStroke.Thickness = 0
+    mainStroke.Transparency = 1
     mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Etiqueta de texto (mitad izquierda)
@@ -26892,7 +26893,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     local toggleBgStroke = Instance.new("UIStroke", toggleBg)
     toggleBgStroke.Color = ThemeColors.Primary
-    toggleBgStroke.Thickness = 2
+    toggleBgStroke.Thickness = 0
+    toggleBgStroke.Transparency = 1
     toggleBgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Indicador cuadrado redondeado (rojo=off, verde=on)
@@ -35003,13 +35005,13 @@ function CreatePremiumTab()
             Instance.new("UICorner", _csFrame).CornerRadius = UDim.new(0, 10)
             local _csBorder = Instance.new("UIStroke", _csFrame)
             _csBorder.Thickness = 1.5
-            _csBorder.Color = Color3.fromRGB(120, 60, 220)
+            _csBorder.Color = Color3.fromRGB(0, 191, 255)
             _csBorder.Transparency = 0.3
             local _csGrad = Instance.new("UIGradient", _csBorder)
             _csGrad.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0,   Color3.fromRGB(180, 60, 255)),
+                ColorSequenceKeypoint.new(0,   Color3.fromRGB(0, 191, 255)),
                 ColorSequenceKeypoint.new(0.5, Color3.fromRGB(80, 180, 255)),
-                ColorSequenceKeypoint.new(1,   Color3.fromRGB(180, 60, 255)),
+                ColorSequenceKeypoint.new(1,   Color3.fromRGB(0, 191, 255)),
             })
             RegisterShimmer(_csGrad, 50, 15)
 
@@ -35897,7 +35899,7 @@ function CreateExclusiveTab()
         purgeBtn.ZIndex = 13
         Instance.new("UICorner", purgeBtn).CornerRadius = UDim.new(0, 8)
         local purgeStroke = Instance.new("UIStroke", purgeBtn)
-        purgeStroke.Color = Color3.fromRGB(120, 60, 220)
+        purgeStroke.Color = Color3.fromRGB(0, 191, 255)
         purgeStroke.Thickness = 1
         purgeStroke.Transparency = 0.3
         purgeBtn.MouseEnter:Connect(function()
@@ -47535,7 +47537,7 @@ do
     wlFillGrad.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0,   Color3.fromRGB(80, 100, 240)),
         ColorSequenceKeypoint.new(0.5, Color3.fromRGB(80, 255, 140)),
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(75, 90, 230)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(0, 191, 255)),
     })
 
     -- Actualizar la barra y el tiempo
@@ -48708,7 +48710,7 @@ print("3: mainFrame creado")
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 -- == ESTILO: Teal oscuro estilo MM2 hub ==
-mainFrame.BackgroundColor3 = Color3.fromRGB(18, 10, 40)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
 mainFrame.BackgroundTransparency = 0.12
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
@@ -48730,7 +48732,7 @@ end
 
 -- Borde azul nen estilo OverdriveInterface
 glowBorder = Instance.new("UIStroke", mainFrame)
-glowBorder.Color = Color3.fromRGB(100, 60, 200)
+glowBorder.Color = Color3.fromRGB(0, 191, 255)
 glowBorder.Thickness = 2.0
 glowBorder.Transparency = 0.10
 glowBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -48837,14 +48839,14 @@ do
 
         -- Stroke del borde ya existente: asegurar que siempre sea purpura neon
         if glowBorder then
-            glowBorder.Color     = Color3.fromRGB(110, 60, 220)
+            glowBorder.Color     = Color3.fromRGB(0, 191, 255)
             glowBorder.Thickness = _isMobileColor and 2.5 or 2.0
             glowBorder.Transparency = 0.05
         end
 
         -- En mobile: color base del mainFrame ligeramente mas saturado
         if _isMobileColor then
-            mainFrame.BackgroundColor3 = Color3.fromRGB(20, 10, 45)
+            mainFrame.BackgroundColor3 = Color3.fromRGB(25, 100, 145)
         end
     end)
 end
@@ -49280,11 +49282,11 @@ do
     -- Gradiente principal animado (toda la superficie)
     local _mainGrad = Instance.new("UIGradient", _auroraBase)
     _mainGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    Color3.fromRGB(8,   5,  30)),
-        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(50,  20, 100)),
+        ColorSequenceKeypoint.new(0,    Color3.fromRGB(10, 60, 100)),
+        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(0, 120, 180)),
         ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(0,  150, 140)),
-        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(100, 20, 160)),
-        ColorSequenceKeypoint.new(1,    Color3.fromRGB(8,   5,  30)),
+        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0, 160, 220)),
+        ColorSequenceKeypoint.new(1,    Color3.fromRGB(10, 60, 100)),
     })
     _mainGrad.Rotation = 120
     _mainGrad.Transparency = NumberSequence.new(0)
@@ -49408,7 +49410,7 @@ particles = {}
     header.Name = "TopBar"
     header.Size = UDim2.new(1, 0, 0, 36)
     header.Position = UDim2.new(0, 0, 0, 0)
-    header.BackgroundColor3 = Color3.fromRGB(14, 7, 32)
+    header.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
     header.BackgroundTransparency = 0.1
     header.BorderSizePixel = 0
     header.ZIndex = 10
@@ -49420,7 +49422,7 @@ particles = {}
     local _hdrLine = Instance.new("Frame", header)
     _hdrLine.Size = UDim2.new(1, 0, 0, 1)
     _hdrLine.Position = UDim2.new(0, 0, 1, -1)
-    _hdrLine.BackgroundColor3 = Color3.fromRGB(100, 60, 200)
+    _hdrLine.BackgroundColor3 = Color3.fromRGB(0, 191, 255)
     _hdrLine.BackgroundTransparency = 0.3
     _hdrLine.BorderSizePixel = 0
     _hdrLine.ZIndex = 11
@@ -49730,7 +49732,7 @@ particles = {}
     _contentBg.Name = "ContentBackground"
     _contentBg.Size = UDim2.new(1, 0, 1, -36)
     _contentBg.Position = UDim2.new(0, 0, 0, 34)
-    _contentBg.BackgroundColor3 = Color3.fromRGB(18, 10, 40)
+    _contentBg.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
     _contentBg.BackgroundTransparency = 0.15
     _contentBg.BorderSizePixel = 0
     _contentBg.ZIndex = 5
@@ -49907,11 +49909,11 @@ particles = {}
         local lbl2     = r and r.lbl2
         if isActive then
             -- Tab activa: fondo blanco semitransparente para destacar
-            TweenService:Create(btn, _ti_tab, {BackgroundColor3 = Color3.fromRGB(100, 60, 200), BackgroundTransparency = 0.5}):Play()
-            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = Color3.fromRGB(200, 180, 255)}):Play() end
+            TweenService:Create(btn, _ti_tab, {BackgroundColor3 = Color3.fromRGB(0, 191, 255), BackgroundTransparency = 0.5}):Play()
+            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = Color3.fromRGB(200, 240, 255)}):Play() end
             if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(120, 80, 255)}):Play() end
             if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(120, 80, 255)}):Play() end
-            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(220, 200, 255)}):Play() end
+            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(220, 245, 255)}):Play() end
         else
             -- Tab inactiva: completamente transparente, borde blanco, texto blanco
             TweenService:Create(btn, _ti_tab, {BackgroundTransparency = 1}):Play()
@@ -50048,7 +50050,7 @@ particles = {}
     tabDockFrame.BorderSizePixel = 0
     tabDockFrame.ZIndex = 12
     tabDockFrame.ClipsDescendants = true
-    tabDockFrame.BackgroundColor3 = Color3.fromRGB(14, 7, 32)
+    tabDockFrame.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
 
     if _isMobileLayout then
         -- Móvil: barra horizontal en la parte inferior del hub
@@ -50063,7 +50065,7 @@ particles = {}
     end
 
     local _dockStroke = Instance.new("UIStroke", tabDockFrame)
-    _dockStroke.Color = Color3.fromRGB(100, 60, 200)
+    _dockStroke.Color = Color3.fromRGB(0, 191, 255)
     _dockStroke.Thickness = 1.5
     _dockStroke.Transparency = 0.3
     _dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -50148,7 +50150,7 @@ particles = {}
 
         -- Borde blanco permanente
         local btnStroke = Instance.new("UIStroke", btn)
-        btnStroke.Color = Color3.fromRGB(100, 60, 200)
+        btnStroke.Color = Color3.fromRGB(0, 191, 255)
         btnStroke.Thickness = 2
         btnStroke.Transparency = 0.2
         btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -51272,14 +51274,14 @@ function CreateEmotesTab()
         inputBox.PlaceholderText = "rbxassetid://000000000"
         inputBox.PlaceholderColor3 = Color3.fromRGB(100, 80, 130)
         inputBox.Text = ""
-        inputBox.TextColor3 = Color3.fromRGB(220, 200, 255)
+        inputBox.TextColor3 = Color3.fromRGB(220, 245, 255)
         inputBox.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
         inputBox.TextSize = 11
         inputBox.ClearTextOnFocus = false
         inputBox.ZIndex = 14
         Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0, 8)
         local _is = Instance.new("UIStroke", inputBox)
-        _is.Color = Color3.fromRGB(90, 50, 180)
+        _is.Color = Color3.fromRGB(0, 150, 210)
         _is.Thickness = 1
         _is.Transparency = 0.4
         local _ip2 = Instance.new("UIPadding", inputBox)
@@ -51287,16 +51289,16 @@ function CreateEmotesTab()
 
         local playBtn = Instance.new("TextButton", customSec)
         playBtn.Size = UDim2.new(1, -8, 0, 28)
-        playBtn.BackgroundColor3 = Color3.fromRGB(60, 25, 150)
+        playBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 160)
         playBtn.BorderSizePixel = 0
         playBtn.Text = "Reproducir Custom"
-        playBtn.TextColor3 = Color3.fromRGB(220, 200, 255)
+        playBtn.TextColor3 = Color3.fromRGB(220, 245, 255)
         playBtn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
         playBtn.TextSize = 12
         playBtn.ZIndex = 14
         Instance.new("UICorner", playBtn).CornerRadius = UDim.new(0, 8)
         local _pbs = Instance.new("UIStroke", playBtn)
-        _pbs.Color = Color3.fromRGB(120, 70, 255)
+        _pbs.Color = Color3.fromRGB(0, 191, 255)
         _pbs.Thickness = 1.5
         _pbs.Transparency = 0.3
 
@@ -51319,11 +51321,11 @@ function CreateEmotesTab()
     for _, emote in ipairs(EMOTES) do
         local row = Instance.new("TextButton", emoteSec)
         row.Size = UDim2.new(1, -8, 0, 30)
-        row.BackgroundColor3 = Color3.fromRGB(18, 8, 42)
+        row.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
         row.BackgroundTransparency = 0.4
         row.BorderSizePixel = 0
         row.Text = "  " .. emote.name
-        row.TextColor3 = Color3.fromRGB(200, 180, 255)
+        row.TextColor3 = Color3.fromRGB(200, 240, 255)
         row.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
         row.TextSize = 12
         row.TextXAlignment = Enum.TextXAlignment.Left
@@ -51332,15 +51334,15 @@ function CreateEmotesTab()
         _rp.PaddingLeft = UDim.new(0, 10)
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
         local _rs = Instance.new("UIStroke", row)
-        _rs.Color = Color3.fromRGB(90, 50, 180)
+        _rs.Color = Color3.fromRGB(0, 150, 210)
         _rs.Thickness = 1
         _rs.Transparency = 0.5
         local _tiE = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         row.MouseEnter:Connect(function()
-            TweenService:Create(row, _tiE, {BackgroundTransparency = 0.1, TextColor3 = Color3.fromRGB(235, 215, 255)}):Play()
+            TweenService:Create(row, _tiE, {BackgroundTransparency = 0.1, TextColor3 = Color3.fromRGB(235, 248, 255)}):Play()
         end)
         row.MouseLeave:Connect(function()
-            TweenService:Create(row, _tiE, {BackgroundTransparency = 0.4, TextColor3 = Color3.fromRGB(200, 180, 255)}):Play()
+            TweenService:Create(row, _tiE, {BackgroundTransparency = 0.4, TextColor3 = Color3.fromRGB(200, 240, 255)}):Play()
         end)
         local _eId = emote.id
         local _eName = emote.name
@@ -51368,7 +51370,7 @@ function CreateEmotesTab()
         _rp2.PaddingLeft = UDim.new(0, 10)
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
         local _rs2 = Instance.new("UIStroke", row)
-        _rs2.Color = Color3.fromRGB(50, 90, 180)
+        _rs2.Color = Color3.fromRGB(0, 150, 210)
         _rs2.Thickness = 1
         _rs2.Transparency = 0.5
         local _tiP = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
