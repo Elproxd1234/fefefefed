@@ -33586,12 +33586,25 @@ function StealGunLoop()
                         _flingCooldowns[_tuid] = tick()
                     end
                 else
-                    -- Sheriff muerto o invalido: limpiar estado y buscar nuevo sheriff
-                    CreateCustomNotification("STEAL GUN", target.Name .. " murio, buscando nuevo sheriff...", 3)
+                    -- Sheriff muerto o invalido: limpiar cadaver, buscar heroe con gun y flingearlo
+                    CreateCustomNotification("STEAL GUN", target.Name .. " murio, limpiando cadaver y buscando heroe...", 3)
                     local deadUserId = target.UserId
+
+                    -- 1. Intentar limpiar gun del cadaver (si quedo pegada al body)
+                    pcall(function()
+                        local deadChar = target.Character
+                        if deadChar then
+                            for _, obj in ipairs(deadChar:GetChildren()) do
+                                if obj:IsA("Tool") and _SG_DROP_NAMES[obj.Name] then
+                                    obj.Parent = workspace
+                                end
+                            end
+                        end
+                    end)
+
                     -- Limpiar estado del sheriff muerto
                     _roleCache.sheriff    = nil
-                    _roleCache.lastUpdate = 0  -- forzar refresh inmediato en siguiente llamada
+                    _roleCache.lastUpdate = 0
                     StealGunSystem.sheriffOriginalFound = nil
                     StealGunSystem.sheriffDeadDetected  = false
                     StealGunSystem.gunInBackpackMode    = false
@@ -33599,28 +33612,25 @@ function StealGunLoop()
                     _backpackModeStart = 0
                     _lastFlingTarget = nil
                     _flingCount = 0
-                    -- Limpiar flingCooldown del muerto para no bloquear al nuevo
                     _flingCooldowns[deadUserId] = nil
-                    -- Limpiar dropConn del sheriff anterior
                     if _dropConn then
                         pcall(function() _dropConn:Disconnect() end)
                         _dropConn = nil
                     end
 
-                    -- Esperar hasta que aparezca un nuevo sheriff vivo
-                    -- Bypassear throttle del cache para detectar al nuevo lo antes posible
+                    -- 2. Esperar hasta encontrar heroe/nuevo sheriff vivo con la gun
                     local waited = 0
+                    local heroTarget = nil
                     repeat
                         task.wait(0.3)
                         waited = waited + 0.3
 
-                        -- Forzar refresh inmediato sin throttle
                         _roleCache.lastUpdate = 0
                         _refreshRoleCache()
 
                         local newSheriff = _roleCache.sheriff
 
-                        -- Fallback visual: buscar manualmente quien tiene la gun en mano
+                        -- Buscar visualmente quien tiene la gun (heroe o inocente que la agarro)
                         if (not newSheriff or newSheriff.UserId == deadUserId) and _findGunIn then
                             for _, p in ipairs(Players:GetPlayers()) do
                                 if p ~= LocalPlayer and p.UserId ~= deadUserId and p.Character then
@@ -33643,27 +33653,12 @@ function StealGunLoop()
                         and newSheriff.Character
                         and newSheriff.Character:FindFirstChildOfClass("Humanoid")
                         and newSheriff.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
-                            StealGunSystem.sheriffOriginalFound = newSheriff
-                            StealGunSystem.sheriffDeadDetected  = false
-                            StealGunSystem.gunInBackpackMode    = false
-                            -- Re-hookear muerte del nuevo sheriff
-                            task.defer(function() pcall(_hookSheriffDeath, newSheriff) end)
-                            CreateCustomNotification("STEAL GUN", "Nuevo sheriff: " .. newSheriff.Name .. " flingeando!", 2.5)
-                            -- FIX FLING NUEVO SHERIFF: flingear inmediatamente sin esperar
-                            -- la proxima iteracion del loop (evita el task.wait(0.8) de abajo)
-                            _flingActive    = false
-                            _flingReturning = false
-                            task.spawn(function()
-                                pcall(_sgFlingPlayer, newSheriff)
-                                if StealGunSystem._roundToken == _loopToken then
-                                    _flingCooldowns[newSheriff.UserId] = tick()
-                                end
-                            end)
-                            break
+                            heroTarget = newSheriff
                         elseif newSheriff and newSheriff.UserId == deadUserId then
                             _roleCache.sheriff = nil
                         end
-                    until not StealGunSystem.enabled
+                    until heroTarget ~= nil
+                        or not StealGunSystem.enabled
                         or StealGunSystem._roundToken ~= _loopToken
                         or waited > 25
                         or _sgLocalHasGun()
@@ -33671,11 +33666,31 @@ function StealGunLoop()
                     if _sgLocalHasGun() then
                         CreateCustomNotification("STEAL GUN", "Gun obtenida!", 2)
                         StealGunSystem.enabled = false
+                        if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end
                         break
                     end
-                    if waited > 25 then
-                        CreateCustomNotification("STEAL GUN", "Sin nuevo sheriff en 25s. Parando.", 3)
+
+                    if heroTarget then
+                        -- 3. Flingear al heroe para que suelte la gun
+                        CreateCustomNotification("STEAL GUN", "Heroe detectado: " .. heroTarget.Name .. " — flingeando!", 2.5)
+                        StealGunSystem.sheriffOriginalFound = heroTarget
+                        StealGunSystem.sheriffDeadDetected  = false
+                        StealGunSystem.gunInBackpackMode    = false
+                        _roleCache.sheriff    = heroTarget
+                        _roleCache.lastUpdate = 0
+                        task.defer(function() pcall(_hookSheriffDeath, heroTarget) end)
+                        _flingActive    = false
+                        _flingReturning = false
+                        task.spawn(function()
+                            pcall(_sgFlingPlayer, heroTarget)
+                            if StealGunSystem._roundToken == _loopToken then
+                                _flingCooldowns[heroTarget.UserId] = tick()
+                            end
+                        end)
+                    else
+                        CreateCustomNotification("STEAL GUN", "No se encontro heroe con gun en 25s. Parando.", 3)
                         StealGunSystem.enabled = false
+                        if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end
                         break
                     end
                 end
@@ -43482,6 +43497,43 @@ function CreateCombatTab()
             end
         end, false)
 
+        -- helper compartido: hookear backpack + char para re-armar dual gun cuando llega la gun
+        local function _dualGunHookPickup(gs)
+            -- Backpack: gun llega al backpack (pick-up del suelo)
+            if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end) end
+            _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
+                if not (gs and gs.enabled) then return end
+                if not tool:IsA("Tool") or not _dualGunKeywords[tool.Name] then return end
+                task.wait(0.1)
+                if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
+                if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
+                if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
+                _dualStartArm(gs, _dualGunKeywords)
+            end)
+            -- Char: gun equipada desde backpack (ChildAdded en el character)
+            if _G._dualGunCharPickupConn then pcall(function() _G._dualGunCharPickupConn:Disconnect() end) end
+            local char = LocalPlayer.Character
+            if char then
+                _G._dualGunCharPickupConn = char.ChildAdded:Connect(function(tool)
+                    if not (gs and gs.enabled) then return end
+                    if not tool:IsA("Tool") or not _dualGunKeywords[tool.Name] then return end
+                    task.wait(0.08)
+                    if not (gs and gs.enabled) then return end
+                    -- Destruir DK_Clone viejo antes de re-armar
+                    local c = LocalPlayer.Character
+                    if c then
+                        for _, obj in pairs(c:GetChildren()) do
+                            if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
+                        end
+                    end
+                    if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
+                    if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
+                    if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
+                    _dualStartArm(gs, _dualGunKeywords)
+                end)
+            end
+        end
+
         -- -- TOGGLE: DUAL GUN ----------------------------------------------
         CreatePremiumToggle(_dualSection, "Dual Gun", function(en)
             local state = _G._dualGunState
@@ -43492,9 +43544,13 @@ function CreateCombatTab()
                 end
                 state.enabled = true
                 _dualStartArm(state, _dualGunKeywords)
+                -- Hookear pick-up inmediatamente (no esperar CharacterAdded)
+                _dualGunHookPickup(state)
                 CreateCustomNotification("DUAL GUN", "OK Activado  Click Derecho para atacar", 3)
             else
                 _dualStopArm(state)
+                if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end); _G._dualGunBpConn = nil end
+                if _G._dualGunCharPickupConn then pcall(function() _G._dualGunCharPickupConn:Disconnect() end); _G._dualGunCharPickupConn = nil end
                 CreateCustomNotification("DUAL GUN", "X Desactivado", 2)
             end
         end, false)
@@ -43665,19 +43721,8 @@ function CreateCombatTab()
                     if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
                     _dualStartArm(gs, _dualGunKeywords)
 
-                    -- Tambien hookear el backpack: si la gun aparece mas tarde (pick-up), re-armar
-                    if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end) end
-                    _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
-                        if not (gs and gs.enabled) then return end
-                        if not tool:IsA("Tool") then return end
-                        if _dualGunKeywords[tool.Name] then
-                            task.wait(0.1)
-                            if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
-                            if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
-                            if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
-                            _dualStartArm(gs, _dualGunKeywords)
-                        end
-                    end)
+                    -- Hookear backpack + char para re-armar cuando llega la gun
+                    _dualGunHookPickup(gs)
                 end)
             end
         end)
