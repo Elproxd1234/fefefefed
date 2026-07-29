@@ -1,5 +1,5 @@
 -- ================================================================
--- == COMPAT SHIM v17 - FIX "attempt to call a nil value" (Line 1)
+-- == COMPAT SHIM v18 - FIX "attempt to call a nil value" (Line 1)
 -- Algunos executors mobiles (Delta, Arceus X, Fluxus) no exponen
 -- 'task' o tienen 'game' no disponible inmediatamente al cargar.
 -- Este bloque garantiza compatibilidad antes de cualquier otro codigo.
@@ -336,20 +336,6 @@ local function _serializeConfig()
             first = false
         end
     end
-    -- Guardar hubScale y hubOpacity de _hubSettings
-    if _G._hubSettings then
-        local hs = _G._hubSettings
-        if hs.hubScale and hs.hubScale ~= 100 then
-            if not first then parts[#parts+1] = "," end
-            parts[#parts+1] = string.format('"__hubScale":%d', math.floor(hs.hubScale))
-            first = false
-        end
-        if hs.hubOpacity and hs.hubOpacity ~= 15 then
-            if not first then parts[#parts+1] = "," end
-            parts[#parts+1] = string.format('"__hubOpacity":%d', math.floor(hs.hubOpacity))
-            first = false
-        end
-    end
     parts[#parts+1] = "}"
     return table.concat(parts)
 end
@@ -360,10 +346,6 @@ local function _deserializeConfig(json)
     -- Parser simple de JSON plano (solo booleans)
     for k, v in json:gmatch('"([^"]+)":%s*(true|false)') do
         result[k] = (v == "true")
-    end
-    -- Restaurar hubScale y hubOpacity guardados
-    for k, v in json:gmatch('"(__hub%a+)":(%d+)') do
-        result[k] = tonumber(v)
     end
     return result
 end
@@ -522,15 +504,6 @@ local function _loadConfig()
     -- Restaurar flag de auto-save desde el JSON
     if saved["Auto Save Config"] ~= nil then
         _G._autoSaveEnabled = saved["Auto Save Config"]
-    end
-    -- Restaurar hubScale y hubOpacity en _hubSettings (pueden existir ya o no)
-    if saved["__hubScale"] then
-        _G._hubSettings = _G._hubSettings or {}
-        _G._hubSettings.hubScale = saved["__hubScale"]
-    end
-    if saved["__hubOpacity"] then
-        _G._hubSettings = _G._hubSettings or {}
-        _G._hubSettings.hubOpacity = saved["__hubOpacity"]
     end
 end
 
@@ -3437,11 +3410,9 @@ end
 
 function _fluidGrabGun(child)
     -- -- Throttle global ----------------------------------------------
-    -- FIX: solo throttlear si el ultimo grab fue EXITOSO (return true al final)
-    -- Si fallo, permitir reintento inmediato para no perder la gun
     local now = os.clock()
-    if now - _grabGunLastTime < 0.05 then return false end
-    -- No actualizar _grabGunLastTime aqui; se actualiza al final si tuvo exito
+    if now - _grabGunLastTime < 0.05 then return false end  -- FIX v5: 0.08->0.05s, mas responsivo
+    _grabGunLastTime = now
 
     local char = LocalPlayer.Character
     local hrp  = char and char:FindFirstChild("HumanoidRootPart")
@@ -3480,10 +3451,6 @@ function _fluidGrabGun(child)
     -- Movemos la parte de la gun al HRP usando CFrame client-side.
     -- El servidor detecta la proximidad y da la gun al jugador.
     -- El personaje NUNCA se teletransporta.
-
-    -- FIX: actualizar timestamp AHORA (antes de los intentos) para evitar
-    -- llamadas paralelas simultaneas que compitan entre si
-    _grabGunLastTime = now
 
     -- PASO 1: EquipTool directo (funciona si ya esta en backpack/workspace)
     if child:IsA("Tool") then
@@ -3530,43 +3497,17 @@ function _fluidGrabGun(child)
     if _hasGun() then return true end
 
     -- PASO 5: EquipTool forzado si la gun sigue en workspace
-    if child:IsA("Tool") and child.Parent then
-        pcall(function() hum:EquipTool(child) end)
-        if _hasGun() then return true end
-    end
-
-    -- PASO 6 (FIX): blink del HRP a la gun como ultimo recurso
-    -- Solo si no se agarro con ningun metodo anterior
     task.defer(function()
         if _hasGun() then return end
-        local char2 = LocalPlayer.Character
-        local hrp2  = char2 and char2:FindFirstChild("HumanoidRootPart")
-        local hum2  = char2 and char2:FindFirstChildOfClass("Humanoid")
-        if not hrp2 or not hum2 or hum2.Health <= 0 then
-            -- Restaurar posicion original si no se pudo agarrar
-            pcall(function() part.CFrame = origCF; part.Anchored = origAnch end)
-            return
+        if child:IsA("Tool") and child.Parent then
+            pcall(function() hum:EquipTool(child) end)
         end
-        local savedCF = hrp2.CFrame
+        if _hasGun() then return end
+        -- Restaurar posicion original si no se agarro (limpieza)
         pcall(function()
-            hrp2.CFrame = CFrame.new(part.Position + Vector3.new(0, 1.5, 0))
-            hrp2.AssemblyLinearVelocity = Vector3.zero
+            part.CFrame   = origCF
+            part.Anchored = origAnch
         end)
-        task.wait(0)
-        pcall(function()
-            firetouchinterest(hrp2, part, 0)
-            firetouchinterest(hrp2, part, 1)
-        end)
-        task.wait(0)
-        pcall(function()
-            hrp2.CFrame = savedCF
-            hrp2.AssemblyLinearVelocity  = Vector3.zero
-            hrp2.AssemblyAngularVelocity = Vector3.zero
-        end)
-        if not _hasGun() then
-            -- No se agarro: restaurar posicion de la gun
-            pcall(function() part.CFrame = origCF; part.Anchored = origAnch end)
-        end
     end)
 
     return true
@@ -9568,8 +9509,8 @@ function CreateCustomNotification(titleRaw, message, duration)
         -- Fondo principal (responsive para móvil)
         local _notifVP = workspace.CurrentCamera.ViewportSize
         local _notifIsMob = _notifVP.X < 600
-        local _notifW = _notifIsMob and math.min(math.floor(_notifVP.X * 0.55), 220) or 260
-        local _notifH = _notifIsMob and 60 or 72
+        local _notifW = _notifIsMob and math.min(math.floor(_notifVP.X * 0.92), 320) or 340
+        local _notifH = _notifIsMob and 75 or 90
         local mainFrame = Instance.new("Frame")
         mainFrame.Size = UDim2.new(0, _notifW, 0, _notifH)
         mainFrame.Position = UDim2.new(1, -8, 1, -50)
@@ -9592,8 +9533,8 @@ function CreateCustomNotification(titleRaw, message, duration)
 
         -- Icono checkmark verde
         local icon = Instance.new("ImageLabel")
-        icon.Size = UDim2.new(0, 26, 0, 26)
-        icon.Position = UDim2.new(0, 10, 0, 10)
+        icon.Size = UDim2.new(0, 36, 0, 36)
+        icon.Position = UDim2.new(0, 12, 0, 12)
         icon.BackgroundTransparency = 1
         icon.Image = "rbxassetid://6031094678"
         icon.ImageColor3 = ThemeColors.Primary
@@ -9601,27 +9542,27 @@ function CreateCustomNotification(titleRaw, message, duration)
 
         -- Titulo con RichText: "Overdrive H Says:"
         local titleLbl = Instance.new("TextLabel")
-        titleLbl.Size = UDim2.new(1, -55, 0, 20)
-        titleLbl.Position = UDim2.new(0, 46, 0, 8)
+        titleLbl.Size = UDim2.new(1, -65, 0, 25)
+        titleLbl.Position = UDim2.new(0, 55, 0, 12)
         titleLbl.BackgroundTransparency = 1
         titleLbl.RichText = true
         local _pr = ThemeColors.Primary
         local _phex = string.format("#%02X%02X%02X", math.floor(_pr.R*255), math.floor(_pr.G*255), math.floor(_pr.B*255))
         titleLbl.Text = '<font color="' .. _phex .. '">' .. tostring(titleRaw) .. '</font> <font color="#FFFFFF">Says:</font>'
-        titleLbl.TextSize = 13
+        titleLbl.TextSize = 19
         titleLbl.Font = Enum.Font.GothamMedium
         titleLbl.TextXAlignment = Enum.TextXAlignment.Left
         titleLbl.Parent = mainFrame
 
         -- Mensaje
         local descLbl = Instance.new("TextLabel")
-        descLbl.Size = UDim2.new(1, -55, 0, 28)
-        descLbl.Position = UDim2.new(0, 46, 0, 28)
+        descLbl.Size = UDim2.new(1, -65, 0, 35)
+        descLbl.Position = UDim2.new(0, 55, 0, 35)
         descLbl.BackgroundTransparency = 1
         descLbl.RichText = true
         descLbl.Text = tostring(message)
         descLbl.TextColor3 = Color3.fromRGB(190, 190, 190)
-        descLbl.TextSize = 10
+        descLbl.TextSize = 13
         descLbl.Font = Enum.Font.Gotham
         descLbl.TextWrapped = true
         descLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -9643,39 +9584,9 @@ function CreateCustomNotification(titleRaw, message, duration)
         progressBar.BorderSizePixel = 0
         progressBar.Parent = progressBarBg
 
-        -- Boton transparente encima para cerrar al tocar (version movil)
-        local _dismissed = false
-        local dismissBtn = Instance.new("TextButton")
-        dismissBtn.Size = UDim2.new(1, 0, 1, 0)
-        dismissBtn.BackgroundTransparency = 1
-        dismissBtn.Text = ""
-        dismissBtn.ZIndex = 10
-        dismissBtn.AutoButtonColor = false
-        dismissBtn.Parent = mainFrame
-
-        local function _doFadeOut()
-            if _dismissed then return end
-            _dismissed = true
-            local fadeInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            TweenService:Create(mainFrame, fadeInfo, {BackgroundTransparency = 1}):Play()
-            TweenService:Create(stroke, fadeInfo, {Transparency = 1}):Play()
-            TweenService:Create(titleLbl, fadeInfo, {TextTransparency = 1}):Play()
-            TweenService:Create(descLbl, fadeInfo, {TextTransparency = 1}):Play()
-            TweenService:Create(icon, fadeInfo, {ImageTransparency = 1}):Play()
-            task.delay(0.26, function() pcall(function() notifSG:Destroy() end) end)
-        end
-
-        dismissBtn.MouseButton1Click:Connect(_doFadeOut)
-        dismissBtn.TouchTap:Connect(_doFadeOut)
-
-        -- Margen inferior para movil: distancia desde el borde inferior de la pantalla
-        -- En movil usamos un margen fijo pequeño para que quede bien visible
-        local _notifMarginBottom = _notifIsMob and (_notifH + 14) or (_notifH + 20)
-        local _notifTargetY = -_notifMarginBottom
-
-        -- Slide in desde el borde inferior
-        mainFrame.Position = UDim2.new(1, -8, 1, 30)  -- empieza debajo de la pantalla
+        -- Slide in (responsive)
         local tweenIn = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+        local _notifTargetY = _notifIsMob and -(_notifH + 10) or -110
         TweenService:Create(mainFrame, tweenIn, {Position = UDim2.new(1, -8, 1, _notifTargetY)}):Play()
 
         -- Barra se encoge durante 'duration' segundos
@@ -9684,10 +9595,15 @@ function CreateCustomNotification(titleRaw, message, duration)
 
         task.wait(duration)
 
-        -- Fade out suave (si no fue descartada antes)
-        _doFadeOut()
-        task.wait(0.3)
-        pcall(function() if notifSG and notifSG.Parent then notifSG:Destroy() end end)
+        -- Fade out suave
+        local fadeInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        TweenService:Create(mainFrame, fadeInfo, {BackgroundTransparency = 1}):Play()
+        TweenService:Create(stroke, fadeInfo, {Transparency = 1}):Play()
+        TweenService:Create(titleLbl, fadeInfo, {TextTransparency = 1}):Play()
+        TweenService:Create(descLbl, fadeInfo, {TextTransparency = 1}):Play()
+        TweenService:Create(icon, fadeInfo, {ImageTransparency = 1}):Play()
+        task.wait(0.5)
+        notifSG:Destroy()
     end)
     _processNotifQueue()
 end
@@ -10858,14 +10774,10 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     sliderFill.ZIndex                 = 13
     Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
 
-    -- Thumb más grande en móvil para que sea fácil de tocar con el dedo
-    local _thumbSize = UserInputService.TouchEnabled and 26 or 18
-    local _thumbSizeHover = UserInputService.TouchEnabled and 30 or 22
-
     -- Thumb circular blanco
     local sliderThumb = Instance.new("ImageButton", sliderTrack)
     sliderThumb.Name                   = "SliderThumb"
-    sliderThumb.Size                   = UDim2.new(0, _thumbSize, 0, _thumbSize)
+    sliderThumb.Size                   = UDim2.new(0, 18, 0, 18)
     sliderThumb.AnchorPoint            = Vector2.new(0.5, 0.5)
     sliderThumb.Position               = UDim2.new(fillRatio, 0, 0.5, 0)
     sliderThumb.BackgroundColor3       = C_THUMB
@@ -10895,62 +10807,49 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
 
     applyValue(_initVal)
 
-    local function updateFromInput(inputObj)
-        local mx
-        if inputObj and inputObj.UserInputType == Enum.UserInputType.Touch then
-            mx = inputObj.Position.X
-        else
-            mx = UserInputService:GetMouseLocation().X
-        end
+    local function updateFromMouse()
+        local mx  = UserInputService:GetMouseLocation().X
         local tp  = sliderTrack.AbsolutePosition.X
         local ts  = sliderTrack.AbsoluteSize.X
         local pct = math.clamp((mx - tp) / math.max(ts, 1), 0, 1)
         applyValue(minVal + pct * (maxVal - minVal))
     end
 
-    local function updateFromMouse()
-        updateFromInput(nil)
-    end
-
     sliderThumb.MouseEnter:Connect(function()
         TweenService:Create(sliderThumb, TweenInfo.new(0.10),
-            {Size = UDim2.new(0, _thumbSizeHover, 0, _thumbSizeHover)}):Play()
+            {Size = UDim2.new(0, 22, 0, 22)}):Play()
     end)
     sliderThumb.MouseLeave:Connect(function()
         if not dragging then
             TweenService:Create(sliderThumb, TweenInfo.new(0.10),
-                {Size = UDim2.new(0, _thumbSize, 0, _thumbSize)}):Play()
+                {Size = UDim2.new(0, 18, 0, 18)}):Play()
         end
     end)
 
     sliderThumb.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1
-        or i.UserInputType == Enum.UserInputType.Touch then
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
             _G._sliderDragging = true
             TweenService:Create(sliderThumb, TweenInfo.new(0.08),
-                {Size = UDim2.new(0, _thumbSizeHover, 0, _thumbSizeHover)}):Play()
+                {Size = UDim2.new(0, 22, 0, 22)}):Play()
         end
     end)
     sliderTrack.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1
-        or i.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; _G._sliderDragging = true; updateFromInput(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true; _G._sliderDragging = true; updateFromMouse()
         end
     end)
     local _c1 = UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1
-        or i.UserInputType == Enum.UserInputType.Touch then
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
             _G._sliderDragging = false
             TweenService:Create(sliderThumb, TweenInfo.new(0.10),
-                {Size = UDim2.new(0, _thumbSize, 0, _thumbSize)}):Play()
+                {Size = UDim2.new(0, 18, 0, 18)}):Play()
         end
     end)
     local _c2 = UserInputService.InputChanged:Connect(function(i)
-        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
-                      or i.UserInputType == Enum.UserInputType.Touch) then
-            updateFromInput(i)
+        if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+            updateFromMouse()
         end
     end)
     container.AncestryChanged:Connect(function()
@@ -15545,13 +15444,7 @@ end
 
 
 function CreateMainUI_ThemeSelector()
-    local themeList = {
-        "Neon Green", "Neon Purple", "Crimson", "Cyber Cyan",
-        "Cyber Gold", "Teal Dark", "Tropical Neon", "Beach",
-        "Purple Blue Glow", "Halloween", "Christmas", "Independence Day",
-        "Overdrive H Style", "Mi Tema Oscuro", "Amethyst",
-        "Dark", "Amoled", "Soft Gray", "Future",
-    }
+    local themeList = {"Soft Gray"}
 
     local headerSec = Instance.new("Frame", leftColumn)
     headerSec.Size = UDim2.new(1, -8, 0, 34)
@@ -16663,23 +16556,21 @@ function _createOverlayLabel(name, posY, textSize, font)
     sg.Name = "BYPAS_" .. name
     sg.ResetOnSpawn = false
     sg.DisplayOrder = 99
-    pcall(function() sg.Parent = game:GetService("CoreGui") end)
-    if not sg.Parent then sg.Parent = pg end
+    sg.Parent = pg
 
     local lbl = Instance.new("TextLabel", sg)
     lbl.Name = "Display"
-    -- Esquina superior derecha, ancho compacto, posY en offset vertical
-    lbl.Size        = UDim2.new(0, 160, 0, textSize + 10)
-    lbl.AnchorPoint = Vector2.new(1, 0)
-    lbl.Position    = UDim2.new(1, -8, 0, posY)
+    lbl.Size = UDim2.new(0, 500, 0, textSize + 12)
+    lbl.Position = UDim2.new(0.5, -250, 0, posY)
+    lbl.AnchorPoint = Vector2.new(0, 0)
     lbl.BackgroundTransparency = 1
-    lbl.Text = ""
-    lbl.Font = font or Enum.Font.GothamBold
+ lbl.Text = ""
+    lbl.Font = font or Enum.Font.Arimo
     lbl.TextSize = textSize
     lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-    lbl.TextStrokeTransparency = 0.15
-    lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    lbl.TextXAlignment = Enum.TextXAlignment.Right
+    lbl.TextStrokeTransparency = 0.2
+    lbl.TextStrokeColor3 = ThemeColors.Background
+    lbl.TextXAlignment = Enum.TextXAlignment.Center
     lbl.ZIndex = 99
     return sg, lbl
 end
@@ -16710,7 +16601,7 @@ function CreateMainUI_GameInfo()
             end
         end)
 
-        local sg, lbl = _createOverlayLabel("Timer", 8, 26, Enum.Font.GothamBold)
+        local sg, lbl = _createOverlayLabel("Timer", 36, 38, Enum.Font.Arimo)
         _gameInfoState.timerGui = sg
 
         -- -- Estado del timer: tabla local unica --------------------------
@@ -17049,17 +16940,17 @@ function CreateMainUI_GameInfo()
 
                 -- Sin fondo -- solo texto centrado en pantalla
                 local lbl = Instance.new("TextLabel", sg)
-                lbl.Size                    = UDim2.new(0, 160, 0, 22)
-                lbl.AnchorPoint             = Vector2.new(1, 0)
-                lbl.Position                = UDim2.new(1, -8, 0, 42)
+                lbl.Size                    = UDim2.new(0, 400, 0, 50)
+                lbl.AnchorPoint             = Vector2.new(0.5, 0.5)
+                lbl.Position                = UDim2.new(0.5, 0, 0.5, 0)
                 lbl.BackgroundTransparency  = 1
                 lbl.Text                    = "ROL: " .. safeRole:upper()
-                lbl.FontFace = Font.fromEnum(Enum.Font.GothamBold)
-                lbl.TextSize                = 14
+                lbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
+                lbl.TextSize                = 28
                 lbl.TextColor3              = color
-                lbl.TextStrokeTransparency  = 0.15
+                lbl.TextStrokeTransparency  = 0.0
                 lbl.TextStrokeColor3        = Color3.fromRGB(0, 0, 0)
-                lbl.TextXAlignment          = Enum.TextXAlignment.Right
+                lbl.TextXAlignment          = Enum.TextXAlignment.Center
                 lbl.TextYAlignment          = Enum.TextYAlignment.Center
                 lbl.ZIndex                  = 98
 
@@ -17181,15 +17072,26 @@ function CreateMainUI_GameInfo()
 
         if not on then return end
 
-        sg, lbl = _createOverlayLabel("Pct", 68, 13, Enum.Font.GothamBold)
-        -- Label combinado: "MURDER% XX%" en una sola linea, esquina derecha
-        lbl.Size     = UDim2.new(0, 160, 0, 18)
-        lbl.Position = UDim2.new(1, -8, 0, 68)
-        lbl.TextSize = 13
+        sg, lbl = _createOverlayLabel("Pct", 130, 20, Enum.Font.Arimo)
+        sublbl2 = Instance.new("TextLabel", sg)
+        sublbl2.Size = UDim2.new(0, 500, 0, 14)
+        sublbl2.Position = UDim2.new(0.5, -250, 0, 130)
+        sublbl2.BackgroundTransparency = 1
+ sublbl2.Text = "CHANCE DE SER MURDERER"
+        sublbl2.FontFace = Font.fromEnum(Enum.Font.Arimo)          -- fuente mas impactante
+        sublbl2.TextSize = 13
+        sublbl2.TextColor3 = Color3.fromRGB(255, 200, 50)   -- dorado
+        sublbl2.TextStrokeTransparency = 0.0
+        sublbl2.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        sublbl2.TextXAlignment = Enum.TextXAlignment.Center
+        sublbl2.ZIndex = 99
+
+        lbl.Position = UDim2.new(0.5, -250, 0, 143)
+        lbl.TextSize = 24
         _gameInfoState.pctGui = sg
 
         lastPct = "..."
- lbl.Text = "MURDER% " .. lastPct .. "%"
+ lbl.Text = lastPct .. "%"
 
         pcall(function()
             _pctEventConn = game.ReplicatedStorage.Remotes.Gameplay.ShowRoleSelectNew.OnClientEvent:Connect(function(arg1)
@@ -17215,7 +17117,7 @@ function CreateMainUI_GameInfo()
         _gameInfoState.pctConn = RunService.Heartbeat:Connect(function()
             _hbTpctC=_hbTpctC+1; if _hbTpctC<4 then return end; _hbTpctC=0
             if not _gameInfoState.pctEnabled then return end
- lbl.Text = "MURDER% " .. lastPct .. "%"
+ lbl.Text = lastPct .. "%"
             n = tonumber(lastPct)
             if n then
                 if n >= 50 then
@@ -24511,7 +24413,7 @@ instanceLoop = nil --[[empty loop removed]]
 -- el instanceLoop re-aplique todo en el proximo tick (~0.08s)
 -- ==================================================================
 function _vcRefreshAll()
-    -- Limpiar cache de chams
+    -- Limpiar cache de chams para forzar re-aplicado
     for player, ref in pairs(chamHighlight or {}) do
         pcall(function()
             if player and player.Character then
@@ -24533,15 +24435,7 @@ function _vcRefreshAll()
         pcall(function() if sb and sb.Parent then sb:Destroy() end end)
         boxSelect[player] = nil
     end
-    -- FIX: limpiar tambien ESP boards y highlights de todos los jugadores
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            pcall(removeBoard,     player)
-            pcall(removeHighlight, player)
-        end
-    end
-    -- Forzar tick inmediato del instanceLoop para re-aplicar
-    _G._forceInstanceTick = true
+    -- El instanceLoop se encarga de re-crear todo en el proximo tick
 end
 
 do
@@ -24564,27 +24458,11 @@ do
         ticker = ticker + dt
         -- LAG FIX: si no hay ningun visual activo, correr a 2s para no consumir CPU
         local _vs = VisualState
-        -- FIX: incluir hero/assassin/zombie/skeleton/tracer en el check de visuals activos
         local _anyVisual = _vs and (
-            (_vs.esp    and (_vs.esp.everyone    or _vs.esp.murderer    or _vs.esp.sheriff
-                          or _vs.esp.hero        or _vs.esp.assassin    or _vs.esp.zombie
-                          or _vs.esp.survivor    or _vs.esp.dead        or _vs.esp.knife
-                          or _vs.esp.gun         or _vs.esp.coins       or _vs.esp.distance)) or
-            (_vs.cham   and (_vs.cham.everyone   or _vs.cham.murderer   or _vs.cham.sheriff
-                          or _vs.cham.hero       or _vs.cham.assassin   or _vs.cham.zombie
-                          or _vs.cham.survivor   or _vs.cham.dead       or _vs.cham.knife
-                          or _vs.cham.coins)) or
-            (_vs.outline and (_vs.outline.everyone or _vs.outline.murderer or _vs.outline.sheriff
-                          or _vs.outline.hero    or _vs.outline.assassin or _vs.outline.zombie
-                          or _vs.outline.survivor or _vs.outline.dead   or _vs.outline.knife)) or
-            (_vs.box    and (_vs.box.everyone    or _vs.box.murderer    or _vs.box.sheriff
-                          or _vs.box.hero        or _vs.box.assassin    or _vs.box.zombie
-                          or _vs.box.survivor    or _vs.box.dead        or _vs.box.knife)) or
-            (_vs.skeleton and (_vs.skeleton.everyone or _vs.skeleton.murderer or _vs.skeleton.sheriff
-                          or _vs.skeleton.hero   or _vs.skeleton.assassin or _vs.skeleton.zombie)) or
-            (_vs.tracer  and (_vs.tracer.everyone  or _vs.tracer.murderer  or _vs.tracer.sheriff
-                          or _vs.tracer.hero     or _vs.tracer.assassin  or _vs.tracer.zombie
-                          or _vs.tracer.knife    or _vs.tracer.gun       or _vs.tracer.droppedknife))
+            (_vs.esp    and (_vs.esp.everyone    or _vs.esp.murderer    or _vs.esp.sheriff)) or
+            (_vs.cham   and (_vs.cham.everyone   or _vs.cham.murderer   or _vs.cham.sheriff  or _vs.cham.survivor or _vs.cham.dead)) or
+            (_vs.outline and (_vs.outline.everyone or _vs.outline.murderer or _vs.outline.sheriff)) or
+            (_vs.box    and (_vs.box.everyone    or _vs.box.murderer    or _vs.box.sheriff))
         )
         local _timeSinceRS   = tick() - (_G._roundStartTime or 0)
         local _isEarlyRound  = _timeSinceRS < 12
@@ -25014,14 +24892,15 @@ function CreateVisualsTab()
         _w(0.15)
         if not contentContainer or not contentContainer.Parent then return end
     end
-    -- FIX MOBILE: resetear _currentMainSectionFrame para que CreateAuroraToggle
-    -- use el parent correcto (inner del card) y no el frame del tab anterior.
-    -- CreateSection/CreateNeonSection lo setean pero nunca lo limpian, causando
-    -- que los toggles de Visuals se creen dentro de frames ocultos en movil.
-    _currentMainSectionFrame = nil
-    -- OPT: con cache de tabs, ClearContent() ya NO se llama aqui (el tab se construye una sola vez)
-    -- Solo limpiar conexiones que el tab propio pudo haber creado en ejecuciones anteriores
-    -- (trackerConn/_radarConn son conexiones del radar local, NO del instanceLoop global)
+    ClearContent()
+    -- OPT: limpiar conexiones del tab anterior
+    pcall(function()
+        -- instanceLoop es el loop global de pintado de jugadores -- NO desconectar al abrir Visuals
+        if trackerConn        then trackerConn:Disconnect();        trackerConn        = nil end
+        if _radarConn         then _radarConn:Disconnect();         _radarConn         = nil end
+        local bps = BodyPartState
+        if bps and bps.connection then bps.connection:Disconnect(); bps.connection = nil end
+    end)
     _makeTwoColumns()
 
     _G.ESPState = _G.ESPState or {
@@ -25418,6 +25297,8 @@ function CreateVisualsTab()
         if gun then pcall(_chamGunFn, gun) end
     end)
 end, _G._chamDropGun or false)
+
+
 
         makeESPPlayerPin(inner, vc, ThemeColors.Aurora1)
     end
@@ -26240,16 +26121,6 @@ do
 
         -- FIX WORLD/BOOST #2: Re-aplicar toggles del tab BOOST (BS.*) tras pantalla negra
         -- Sin esto, todas las optimizaciones del tab Boost se pierden al respawnear
-        -- Re-aplicar Low Render Quality del tab Settings si estaba activo
-        local _hsReapply = _G._hubSettings
-        if _hsReapply and _hsReapply.lowRenderQuality then
-            task.spawn(function()
-                task.wait(0.4)
-                pcall(function()
-                    settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-                end)
-            end)
-        end
         local BS = _G.BS
         if BS then
             task.spawn(function()
@@ -26623,22 +26494,10 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local C_IND_OFF = Color3.fromRGB(255, 0, 0)     -- rojo cuando inactivo
     local TWEEN_T   = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-    -- Detectar móvil para ajustar tamaños
-    local _isMobileTog = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
-    local _toggleBgW   = _isMobileTog and 52 or 65
-    local _toggleBgH   = _isMobileTog and 26 or 32
-    local _knobSize    = _isMobileTog and 18 or 24
-    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -28
-    local _knobOffL    = 4
-    local _labelTxtSz  = _isMobileTog and 13 or 18
-    local _labelWScale = _isMobileTog and 0.55 or 0.6
-    local _rowH        = _isMobileTog and 44 or 55
-    local _toggleRightOff = _isMobileTog and -8 or -15
-
     -- Marco principal ancho (600px simulado con 1, 0) -- transparente con borde blanco
     local container = Instance.new("Frame", actualParent)
     container.Name                   = "AuroraToggleRow_" .. nombre
-    container.Size                   = UDim2.new(1, -8, 0, _rowH)
+    container.Size                   = UDim2.new(1, -8, 0, 55)
     container.BackgroundTransparency = 1   -- completamente transparente
     container.BorderSizePixel        = 0
     container.ZIndex                 = 20
@@ -26655,11 +26514,11 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     -- Etiqueta de texto (mitad izquierda)
     local label = Instance.new("TextLabel", container)
-    label.Size             = UDim2.new(_labelWScale, 0, 1, 0)
-    label.Position         = UDim2.new(0, 8, 0, 0)
+    label.Size             = UDim2.new(0.6, 0, 1, 0)
+    label.Position         = UDim2.new(0, 20, 0, 0)
     label.BackgroundTransparency = 1
     label.Text             = nombre
-    label.TextSize         = _labelTxtSz
+    label.TextSize         = 18
     label.FontFace         = Font.fromEnum(Enum.Font.GothamMedium)
     label.TextColor3       = ThemeColors.TextPrimary
     label.TextXAlignment   = Enum.TextXAlignment.Left
@@ -26681,9 +26540,9 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Fondo del toggle (recuadro grisaceo a la derecha)
     local toggleBg = Instance.new("Frame", container)
     toggleBg.Name                   = "ToggleBackground"
-    toggleBg.Size                   = UDim2.new(0, _toggleBgW, 0, _toggleBgH)
+    toggleBg.Size                   = UDim2.new(0, 65, 0, 32)
     toggleBg.AnchorPoint            = Vector2.new(1, 0.5)
-    toggleBg.Position               = UDim2.new(1, _toggleRightOff, 0.5, 0)
+    toggleBg.Position               = UDim2.new(1, -15, 0.5, 0)
     toggleBg.BackgroundColor3       = ThemeColors.Secondary
     toggleBg.BackgroundTransparency = 0.4
     toggleBg.BorderSizePixel        = 0
@@ -26700,9 +26559,9 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Indicador cuadrado redondeado (rojo=off, verde=on)
     local indicator = Instance.new("Frame", toggleBg)
     indicator.Name             = "Knob"
-    indicator.Size             = UDim2.new(0, _knobSize, 0, _knobSize)
+    indicator.Size             = UDim2.new(0, 24, 0, 24)
     indicator.AnchorPoint      = Vector2.new(0, 0.5)
-    indicator.Position         = estado and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
+    indicator.Position         = estado and UDim2.new(1, -28, 0.5, 0) or UDim2.new(0, 4, 0.5, 0)
     indicator.BackgroundColor3 = estado and C_IND_ON or C_IND_OFF
     indicator.BorderSizePixel  = 0
     indicator.ZIndex           = 23
@@ -26723,11 +26582,11 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         if animate then
             TweenService:Create(indicator, TWEEN_T, {
                 BackgroundColor3 = on and C_IND_ON or C_IND_OFF,
-                Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0),
+                Position = on and UDim2.new(1, -28, 0.5, 0) or UDim2.new(0, 4, 0.5, 0),
             }):Play()
         else
             indicator.BackgroundColor3 = on and C_IND_ON or C_IND_OFF
-            indicator.Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
+            indicator.Position = on and UDim2.new(1, -28, 0.5, 0) or UDim2.new(0, 4, 0.5, 0)
         end
     end
     ApplyState(estado, false)
@@ -26735,20 +26594,13 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Sin hover (toggle transparente)
     clickRow.MouseEnter:Connect(function() end)
     clickRow.MouseLeave:Connect(function() end)
-    -- Logica de toggle
+    -- Lgica de toggle
     local function doToggle()
         estado = not estado
         _G._toggleStates[nombre] = estado
         ApplyState(estado, true)
         PlayToggleSound(estado)
         if callback then callback(estado) end
-        -- FIX: forzar tick inmediato del instanceLoop para que los visuals
-        -- se apliquen o limpien en el proximo Heartbeat sin esperar el intervalo
-        _G._forceInstanceTick = true
-        -- FIX: al desactivar, forzar limpieza inmediata de todos los visuals
-        if not estado and _vcRefreshAll then
-            task.defer(_vcRefreshAll)
-        end
     end
 
     -- Auto-activar al cargar (misma logica que antes)
@@ -26807,7 +26659,7 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
             or lower:find("auto tp") or lower:find("auto teleport")
             or lower:find("auto farm") or lower:find("auto prestige")
             or lower:find("auto grab gun") or lower:find("auto equip gun")
-            or lower:find("auto remove")
+            or lower:find("coin aura") or lower:find("auto remove")
             or lower:find("dual knife") or lower:find("dual gun")
             or lower:find("invisible") or lower:find("xray")
             or lower:find("second life") or lower:find("skip death")
@@ -28843,31 +28695,15 @@ function CreateWorldUI_AutoGrabGun()
         end
         GrabState._cachedDrop = nil
 
-        -- FIX: buscar GunDrop y nombres alternativos (antes solo "GunDrop" exacto)
-        local function _isLooseGun(obj)
-            if not obj or not obj:IsA("Tool") then return false end
-            local n = obj.Name:lower()
-            return obj.Name == "GunDrop" or obj.Name == "DropGun"
-                or obj.Name == "SheriffGun" or obj.Name == "HeroGun"
-                or n == "gun" or n:find("revolver") or n:find("sheriff")
-        end
-        local function _notInAnyPlayer(obj)
-            for _, p in pairs(_cachedPlayers) do
-                local c = p.Character; local b = p.Backpack
-                if (c and obj:IsDescendantOf(c)) or (b and obj:IsDescendantOf(b)) then
-                    return false
-                end
-            end
-            return true
-        end
-
+        -- 2. Solo hijos directos de workspace -- SOLO GunDrop (nombre exacto)
         for _, obj in ipairs(workspace:GetChildren()) do
-            if _isLooseGun(obj) and _notInAnyPlayer(obj) then
+            if obj.Name == "GunDrop" then
                 GrabState._cachedDrop = obj; return obj
             end
+            -- GunDrop dentro de un Model (un nivel)
             if obj:IsA("Model") then
                 for _, child in ipairs(obj:GetChildren()) do
-                    if _isLooseGun(child) and _notInAnyPlayer(child) then
+                    if child.Name == "GunDrop" then
                         GrabState._cachedDrop = child; return child
                     end
                 end
@@ -28907,8 +28743,7 @@ function CreateWorldUI_AutoGrabGun()
         if GrabState._agBusy then return end
         GrabState._agBusy = true
         task.spawn(function()
-            -- FIX: usar xpcall para garantizar que _agBusy siempre se libera
-            local _ok, _err = xpcall(function()
+            pcall(function()
                 local char = LocalPlayer.Character
                 local root = char and char:FindFirstChild("HumanoidRootPart")
                 local hum  = char and char:FindFirstChildOfClass("Humanoid")
@@ -28918,24 +28753,7 @@ function CreateWorldUI_AutoGrabGun()
                 if (_roleCache.localRole or "") == "Murderer" then return end
                 if _findGun(char) then return end
 
-                -- FIX: buscar tambien por nombres alternativos (SheriffGun, Gun, HeroGun)
                 local gunDrop = _agFindGunDrop()
-                if not gunDrop then
-                    -- Fallback: buscar en workspace con nombres extendidos
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if obj:IsA("Tool") then
-                            local n = obj.Name:lower()
-                            if n == "gundrop" or n == "gun" or n:find("sheriff") or n:find("revolver") or n:find("hero") then
-                                local inPlayer = false
-                                for _, p in pairs(_cachedPlayers) do
-                                    local c = p.Character; local b = p.Backpack
-                                    if (c and obj:IsDescendantOf(c)) or (b and obj:IsDescendantOf(b)) then inPlayer = true; break end
-                                end
-                                if not inPlayer then gunDrop = obj; break end
-                            end
-                        end
-                    end
-                end
                 if not gunDrop then return end
                 local gPart = _agGetPart(gunDrop)
                 if not gPart then return end
@@ -28995,8 +28813,7 @@ function CreateWorldUI_AutoGrabGun()
                     GrabState._cachedDrop = nil
                     CreateCustomNotification("AUTO GRAB GUN", "Gun agarrada!", 2)
                 end
-            end, function(err) warn("[AUTO GRAB GUN] error: " .. tostring(err)) end)
-            -- FIX: liberar _agBusy siempre, incluso si xpcall fallo
+            end)
             task.wait(0.02)
             GrabState._agBusy = false
         end)
@@ -29020,13 +28837,8 @@ function CreateWorldUI_AutoGrabGun()
             GrabState._agConn = workspace.DescendantAdded:Connect(function(obj)
                 if not GrabState.autoEnabled then return end
                 if _findGun(LocalPlayer.Character) then return end
-                -- FIX: aceptar GunDrop, Gun, SheriffGun, HeroGun, Revolver (antes solo GunDrop exacto)
-                if not obj:IsA("Tool") then return end
-                local n = obj.Name:lower()
-                local isGun = (obj.Name == "GunDrop" or n == "gun" or n:find("sheriff")
-                    or n:find("revolver") or n:find("herog") or obj.Name == "HeroGun"
-                    or obj.Name == "SheriffGun" or obj.Name == "DropGun")
-                if not isGun then return end
+                -- Solo GunDrop (nombre exacto)
+                if obj.Name ~= "GunDrop" then return end
                 do
                     local inPlayer = false
                     for _, p in pairs(_cachedPlayers) do
@@ -29036,45 +28848,26 @@ function CreateWorldUI_AutoGrabGun()
                         end
                     end
                     if not inPlayer then
-                        GrabState._cachedDrop = obj
-                        -- Intentar primero _fluidGrabGun (sin blink del HRP)
-                        -- y como respaldo _agTryGrab si falla
-                        task.spawn(function()
-                            local ok = pcall(_fluidGrabGun, obj)
-                            if not ok or not _findGun(LocalPlayer.Character) then
-                                task.wait(0.05)
-                                pcall(_agTryGrab)
-                            end
-                        end)
+                        -- FIX: usar _fluidGrabGun -- mueve la GUN al player, no al reves
+                        -- Sin blink del HRP -> sin lag visible para el jugador
+                        task.spawn(function() pcall(_fluidGrabGun, obj) end)
                     end
                 end
             end)
 
-            -- FIX: Heartbeat fallback reducido a 0.2s (antes 0.5s, muy lento)
+            -- Heartbeat fallback cada 0.5s
             if GrabState._hbConn then GrabState._hbConn:Disconnect() end
             local _hbT = 0
             GrabState._hbConn = RunService.Heartbeat:Connect(function(dt)
                 if not GrabState.autoEnabled then return end
-                if _G._visualRoundOver then return end
+                if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
                 _hbT = _hbT + dt
-                if _hbT < 0.2 then return end  -- FIX: 0.5 -> 0.2s, mas responsivo
+                if _hbT < 0.5 then return end
                 _hbT = 0
                 local c = LocalPlayer.Character
-                if not c then return end
-                if _findGun(c) then return end
-                -- FIX: si hay gun suelta, intentar con _agTryGrab (que limpia _agBusy)
-                -- y como segundo metodo _fluidGrabGun directo
-                local drop = _agFindGunDrop()
-                if drop then
-                    task.spawn(function()
-                        -- Primero intentar grab fluido (sin blink del jugador)
-                        pcall(_fluidGrabGun, drop)
-                        -- Si fallo, intentar _agTryGrab como respaldo
-                        task.wait(0.05)
-                        if not _findGun(LocalPlayer.Character) then
-                            pcall(_agTryGrab)
-                        end
-                    end)
+                if c and not _findGun(c) then
+                    local drop = _agFindGunDrop()
+                    if drop then task.spawn(function() pcall(_fluidGrabGun, drop) end) end
                 end
             end)
 
@@ -31306,76 +31099,37 @@ function CreateWorldUI_ProximityPromptSection()
     subLbl2.TextColor3 = Color3.fromRGB(0, 190, 255)
     subLbl2.TextXAlignment = Enum.TextXAlignment.Left
 
-    _G._proxState = _G._proxState or { instant = false, noLimit = false, hookConn = nil }
-    local PS = _G._proxState
+    _G._proxState = { instant = false, noLimit = false }
 
-    -- Helper: aplica el estado actual de Instant/NoLimit a un ProximityPrompt
-    local function _ppApply(v)
-        pcall(function()
-            if PS.instant  then v.HoldDuration = 0 end
-            if PS.noLimit  then v.MaxActivationDistance = 9999 end
-        end)
-    end
-
-    -- Hook workspace para aplicar a ProximityPrompts nuevos automaticamente
-    local function _ppStartHook()
-        if PS.hookConn then return end
-        PS.hookConn = workspace.DescendantAdded:Connect(function(v)
-            if v:IsA("ProximityPrompt") then
-                _ppApply(v)
-            end
-        end)
-    end
-
-    local function _ppStopHookIfUnneeded()
-        if not PS.instant and not PS.noLimit then
-            if PS.hookConn then PS.hookConn:Disconnect(); PS.hookConn = nil end
-        end
-    end
-
-    CreateToggle(sec, "Instant Interact", PS.instant, function(on)
-        PS.instant = on
+    CreateToggle(sec, "Instant Interact", false, function(on)
+        _G._proxState.instant = on
         for _, v in ipairs(workspace:GetDescendants()) do
             if v:IsA("ProximityPrompt") then
-                pcall(function() v.HoldDuration = on and 0 or 1 end)
+                v.HoldDuration = on and 0 or 1
             end
         end
-        if on then _ppStartHook()
-        else _ppStopHookIfUnneeded() end
     end)
 
-    CreateToggle(sec, "No Interactions Distance Limit", PS.noLimit, function(on)
-        PS.noLimit = on
+    CreateToggle(sec, "No Interactions Distance Limit", false, function(on)
+        _G._proxState.noLimit = on
         for _, v in ipairs(workspace:GetDescendants()) do
             if v:IsA("ProximityPrompt") then
-                pcall(function() v.MaxActivationDistance = on and 9999 or 10 end)
+                v.MaxActivationDistance = on and 9999 or 10
             end
         end
-        if on then _ppStartHook()
-        else _ppStopHookIfUnneeded() end
     end)
 
     _makeTPButton("Fire All Interactions", function()
-        local count = 0
         for _, v in ipairs(workspace:GetDescendants()) do
-            if v:IsA("ProximityPrompt") and v.Enabled then
-                -- fireproximityprompt es el metodo mas compatible (PC y mobile)
-                local ok = pcall(function() fireproximityprompt(v) end)
-                if not ok then
-                    -- fallback para executors que no tienen fireproximityprompt
-                    pcall(function()
-                        game:GetService("ProximityPromptService"):TriggerPrompt(v)
-                    end)
-                    pcall(function() v.Triggered:Fire(LocalPlayer) end)
-                end
-                count = count + 1
+            if v:IsA("ProximityPrompt") then
+                pcall(function()
+                    game:GetService("ProximityPromptService"):PromptTriggered(v, LocalPlayer)
+                end)
+                pcall(function() v.Triggered:Fire(LocalPlayer) end)
             end
         end
-        CreateCustomNotification("PROXIMITY", "Fired " .. count .. " interactions!", 2)
+        CreateCustomNotification("PROXIMITY", "Fired all interactions!", 2)
     end, sec)
-
-    -- Restaurar hook si ya estaban activos al reabrir el tab
-    if PS.instant or PS.noLimit then _ppStartHook() end
 end
 
 -- ==============================================================
@@ -32724,16 +32478,12 @@ function CreateWorldTab()
             if _G._tpVotingMap.conn then pcall(function() _G._tpVotingMap.conn:Disconnect() end) _G._tpVotingMap.conn = nil end
             _G._tpVotingMap.enabled = false
         end
-        -- ProximityPrompts -- resetear al estado default SOLO si los toggles estan apagados
+        -- ProximityPrompts -- resetear al estado default
         pcall(function()
-            local _ps = _G._proxState
-            -- Si instant o noLimit siguen activos, NO resetear (el usuario los quiere activos)
-            if not (_ps and (_ps.instant or _ps.noLimit)) then
-                for _, v in ipairs(workspace:GetDescendants()) do
-                    if v:IsA("ProximityPrompt") then
-                        v.HoldDuration = 1
-                        v.MaxActivationDistance = 10
-                    end
+            for _, v in ipairs(workspace:GetDescendants()) do
+                if v:IsA("ProximityPrompt") then
+                    v.HoldDuration = 1
+                    v.MaxActivationDistance = 10
                 end
             end
         end)
@@ -32882,27 +32632,6 @@ local function _sgFlingPlayer(TargetPlayer)
     -- Marcar modo backpack para que el loop sepa que se intento
     StealGunSystem.gunInBackpackMode = true
 
-    -- CAPTURAR POSICION SEGURA ANTES DEL FLING
-    -- Se guarda aqui (antes de cualquier TP de agarre) para que el return
-    -- siempre vuelva al lugar real donde estaba el jugador, no donde cayo la gun.
-    local _sgSafePosBefore = nil
-    do
-        local _ry = myHRP.Position.Y
-        if _ry > 2 and _ry < 800 then
-            _sgSafePosBefore = myHRP.CFrame
-        elseif _flingLastSafePos then
-            local _sy = _flingLastSafePos.Position.Y
-            if _sy > 2 and _sy < 800 then
-                _sgSafePosBefore = _flingLastSafePos
-            end
-        end
-        -- Actualizar OldPos con esta posicion para que _doStealFling tambien la use
-        if _sgSafePosBefore then
-            _G.OldPos = _sgSafePosBefore
-            _flingLastSafePos = _sgSafePosBefore
-        end
-    end
-
     CreateCustomNotification("STEAL GUN", "Flingeando a " .. TargetPlayer.Name .. " para forzar drop...", 2.5)
 
     -- == FASE 1: FLING igual que Fling Murder ==
@@ -33006,50 +32735,15 @@ local function _sgFlingPlayer(TargetPlayer)
         end
     end
 
-    -- == FASE 3: volver a la posicion donde estaba ANTES del fling ==
-    -- Se usa _sgSafePosBefore capturada al inicio (antes de cualquier TP de agarre)
-    -- para evitar que el personaje quede pegado donde cayo la gun.
+    -- == FASE 3: volver a posicion segura ==
     _flingActive = false
     task.spawn(function()
         task.wait(0.05)
         local mc = LocalPlayer.Character
         local mh = mc and mc:FindFirstChild("HumanoidRootPart")
         local mm = mc and mc:FindFirstChildOfClass("Humanoid")
-        if not mh or not mm then return end
-        -- Prioridad: posicion capturada antes del fling
-        local _returnCF = _sgSafePosBefore
-        -- Fallback: _flingLastSafePos / OldPos si no hay captura previa
-        if not _returnCF then
-            local _lsp = _flingLastSafePos or _G.OldPos
-            if _lsp then
-                local _ly = _lsp.Position and _lsp.Position.Y or 0
-                if _ly > 2 and _ly < 800 then
-                    _returnCF = _lsp
-                end
-            end
-        end
-        if _returnCF then
-            -- TP directo a la posicion pre-fling con intentos multiples
-            if not _flingReturning then
-                _flingReturning = true
-                for _i = 1, 5 do
-                    pcall(function()
-                        mh.CFrame = _returnCF * CFrame.new(0, 0.5, 0)
-                        mh.AssemblyLinearVelocity  = Vector3.zero
-                        mh.AssemblyAngularVelocity = Vector3.zero
-                    end)
-                    task.wait(0.06)
-                    if not (mc and mc.Parent) then break end
-                end
-                mm.PlatformStand = false
-                pcall(function() mm:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-                _flingReturning = false
-            end
-        else
-            -- Ultimo fallback: usar _flingDoReturn normal
-            if not _flingReturning then
-                _flingDoReturn(mc, mh, mm)
-            end
+        if mh and mm then
+            _flingDoReturn(mc, mh, mm)
         end
     end)
 
@@ -33902,44 +33596,7 @@ function CreatePremiumTab()
             return
         end
 
- CreateCustomNotification("SPEED GLITCH", "Activado -- saltar + joystick para boost de velocidad", 3)
-
-        -- MOBILE: detectar tap en boton de salto nativo de Roblox
-        if UserInputService.TouchEnabled then
-            local function _findJumpBtn(parent, depth)
-                if not parent or depth > 8 then return nil end
-                for _, c in ipairs(parent:GetChildren()) do
-                    if (c.Name == "JumpButton" or c.Name == "Jump" or c.Name == "JumpBtn")
-                        and (c:IsA("TextButton") or c:IsA("ImageButton") or c:IsA("GuiButton")) then
-                        return c
-                    end
-                    local found = _findJumpBtn(c, depth + 1)
-                    if found then return found end
-                end
-                return nil
-            end
-            task.spawn(function()
-                local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-                    or LocalPlayer:WaitForChild("PlayerGui", 10)
-                if not pg then return end
-                local jBtn = _findJumpBtn(pg, 0)
-                if jBtn and _sgConn then
-                    local jc = jBtn.Activated:Connect(function()
-                        if not Settings.premium.speedGlitch.enabled then return end
-                        local char = LocalPlayer.Character
-                        local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                        if not hum or not hrp then return end
-                        -- Forzar salto si no esta en el aire
-                        if hum.FloorMaterial ~= Enum.Material.Air then
-                            hum.Jump = true
-                        end
-                    end)
-                    -- Registrar la conexion para que se limpie junto con _sgConn
-                    local _origDisc = _sgConn.Disconnect
-                end
-            end)
-        end
+ CreateCustomNotification("SPEED GLITCH", "Activado -- saltar + W para boost de velocidad", 3)
 
         char0 = LocalPlayer.Character
         if char0 then
@@ -33948,59 +33605,53 @@ function CreatePremiumTab()
         end
 
         local _hbTsgConn = 0  -- OPT: local
-        local _isTouchDevice = UserInputService.TouchEnabled
         _sgConn = RunService.Heartbeat:Connect(function()
             _hbTsgConn=_hbTsgConn+1; if _hbTsgConn<2 then return end; _hbTsgConn=0
             if not Settings.premium.speedGlitch.enabled then return end
             local char = LocalPlayer.Character
             if not char then return end
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")  -- OPT: local
+            local hrp = char:FindFirstChild("HumanoidRootPart") -- OPT: local
             if not hum or not hrp then return end
 
-            local inAir = hum.FloorMaterial == Enum.Material.Air
-            local baseSpeed = Settings.premium.speedGlitch.originalSpeed
+            local inAir  = hum.FloorMaterial == Enum.Material.Air  -- OPT: local
+            local holdW  = UserInputService:IsKeyDown(Enum.KeyCode.W)
+            local holdA  = UserInputService:IsKeyDown(Enum.KeyCode.A)
+            local holdS  = UserInputService:IsKeyDown(Enum.KeyCode.S)
+            local holdD  = UserInputService:IsKeyDown(Enum.KeyCode.D)
+            local moving = holdW or holdA or holdS or holdD
+
+            local baseSpeed = Settings.premium.speedGlitch.originalSpeed  -- OPT: local
             local mult      = Settings.premium.speedGlitch.multiplier
 
+            -- Siempre mantener WalkSpeed base para no romper el salto
             if hum.WalkSpeed ~= baseSpeed then
                 hum.WalkSpeed = baseSpeed
             end
 
-            -- MoveDirection funciona en mobile (joystick) Y PC (teclado)
-            local moveDir = hum.MoveDirection
-            local moving  = moveDir.Magnitude > 0.1
-
-            -- Fallback de teclado para PC si MoveDirection falla
-            if not moving and not _isTouchDevice then
-                local holdW = UserInputService:IsKeyDown(Enum.KeyCode.W)
-                local holdA = UserInputService:IsKeyDown(Enum.KeyCode.A)
-                local holdS = UserInputService:IsKeyDown(Enum.KeyCode.S)
-                local holdD = UserInputService:IsKeyDown(Enum.KeyCode.D)
-                if holdW or holdA or holdS or holdD then
-                    moving = true
-                    local cam = _Camera
-                    local dir = Vector3.zero
-                    if holdW then dir = dir + Vector3.new(cam.CFrame.LookVector.X,  0, cam.CFrame.LookVector.Z) end
-                    if holdS then dir = dir - Vector3.new(cam.CFrame.LookVector.X,  0, cam.CFrame.LookVector.Z) end
-                    if holdA then dir = dir - Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z) end
-                    if holdD then dir = dir + Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z) end
-                    if dir.Magnitude > 0 then moveDir = dir.Unit end
-                end
-            end
-
             if inAir and moving then
-                local dir = Vector3.new(moveDir.X, 0, moveDir.Z)
-                if dir.Magnitude > 0.01 then
+                -- Calcular direccion de movimiento relativa a la camara
+                local cam = _Camera
+                local dir = Vector3.zero
+                if holdW then dir = dir + Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z) end
+                if holdS then dir = dir - Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z) end
+                if holdA then dir = dir - Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z) end
+                if holdD then dir = dir + Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z) end
+
+                if dir.Magnitude > 0 then
                     dir = dir.Unit
                     local boosted = baseSpeed * mult
+                    -- Solo modificar velocidad horizontal (X, Z)
+                    -- Preservar Y completamente para que el arco del salto no se altere
                     hrp.AssemblyLinearVelocity = Vector3.new(
                         dir.X * boosted,
-                        hrp.AssemblyLinearVelocity.Y,
+                        hrp.AssemblyLinearVelocity.Y,  -- Y intacta: no afecta la potencia del salto
                         dir.Z * boosted
                     )
                 end
                 _sgWasJumping = true
             elseif not inAir and _sgWasJumping then
+                -- Aterrizo: resetear velocidad a normal inmediatamente
                 _sgWasJumping = false
                 hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
             elseif not inAir then
@@ -34399,46 +34050,18 @@ function CreatePremiumTab()
         -- FIX: en MM2 la Gun vive en workspace.NombreJugador.Gun (no como Tool hijo directo del char raiz)
         -- Se usa _findGun() que ya maneja la busqueda correcta, y se escucha ChildAdded en el char de workspace
         if not _skinState._charConn then
-            -- FIX MOBILE: en celu la gun llega via DescendantAdded del workspace,
-            -- no necesariamente como ChildAdded del char. Usamos DescendantAdded
-            -- para capturar cualquier Tool que aparezca (gun en char o en workspace).
-            local function _scTryApplyGun()
-                if not _skinState.enabled then return end
-                task.wait(0.15)
-                local gun = _findGun and _findGun()
-                if gun then _scApply(gun, _scGetSkin(), true) end
-            end
-
             local function _scSetupListener(char)
-                -- Listener en el char (PC y algunos mobile)
                 char.ChildAdded:Connect(function(child)
-                    if child:IsA("Tool") then
-                        task.spawn(_scTryApplyGun)
+                    if _skinState.enabled then
+                        task.wait(0.15)
+                        local gun = _findGun and _findGun()
+                        if gun then _scApply(gun, _scGetSkin(), true) end
                     end
                 end)
-                -- Listener en DescendantAdded del workspace (mobile / MM2 gun model)
-                -- Solo re-aplicar si es una Tool que puede ser la gun
-                workspace.DescendantAdded:Connect(function(obj)
-                    if not _skinState.enabled then return end
-                    if obj:IsA("Tool") then
-                        local n = obj.Name:lower()
-                        if n:find("gun") or n == "gun" or n:find("sheriff") or n:find("revolver") then
-                            task.spawn(_scTryApplyGun)
-                        end
-                    end
-                end)
-                -- Re-check extra con delay por si la gun tarda en cargarse en mobile
-                task.delay(0.5, _scTryApplyGun)
-                task.delay(1.2, _scTryApplyGun)
             end
-
             local _scChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             _scSetupListener(_scChar)
-            _skinState._charConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
-                -- Re-aplicar al respawnear (importante en mobile donde el char se recarga lento)
-                _skinState.origData = {}  -- limpiar origData del char anterior
-                _scSetupListener(newChar)
-            end)
+            _skinState._charConn = LocalPlayer.CharacterAdded:Connect(_scSetupListener)
         end
 
         -- -- UI --------------------------------------------------
@@ -34513,21 +34136,14 @@ function CreatePremiumTab()
                     break
                 end
             end
-            -- FIX MOBILE: activar siempre, incluso si no hay gun ahora mismo.
-            -- El listener de DescendantAdded/ChildAdded va a aplicar la skin
-            -- cuando la gun aparezca (sea en PC o mobile).
-            _skinState.enabled = true
+            -- [Dual Gun automatico por skin desactivado]
+            -- -------------------------------------------------------------
             -- FIX: usar _findGun() que busca en char y backpack correctamente (MM2 usa modelo en workspace)
             local tool = _findGun and _findGun()
             if tool then
+                _skinState.enabled = true
                 _scApply(tool, _scGetSkin(), true)
             end
-            -- Intentar de nuevo con delay por si la gun tarda en cargarse (mobile)
-            task.delay(0.4, function()
-                if not _skinState.enabled then return end
-                local gun2 = _findGun and _findGun()
-                if gun2 then _scApply(gun2, _scGetSkin(), true) end
-            end)
         end)
 
         -- Coming Soon -- Knife Skins (glitch effect)
@@ -34654,23 +34270,99 @@ function CreateFarmTab()
     -- =====================================================================
     CreateSection(leftColumn, "", "COIN FARM", ThemeColors.Aurora2)
 
+    -- Coin Aura Farm
+    do
+        local _coinAuraEnabled = false
+        local _coinAuraConn    = nil
+
+        CreateAuroraToggle(leftColumn, "Coin Aura Farm", function(en)
+            _coinAuraEnabled = en
+            if _coinAuraConn then _coinAuraConn:Disconnect(); _coinAuraConn = nil end
+            if not en then
+                CreateCustomNotification("COIN AURA", "OFF", 1)
+                return
+            end
+            local _auraTick = 0
+            _coinAuraConn = RunService.Heartbeat:Connect(function()
+                if not _coinAuraEnabled then return end
+                _auraTick = _auraTick + 1; if _auraTick < 2 then return end; _auraTick = 0
+                local char = LocalPlayer.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                pcall(function()
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if obj:IsA("BasePart") and obj.Transparency < 1 then
+                            local n = obj.Name:lower()
+                            if n == "maincoin" or n == "coin" or n == "goldcoin" or n:find("coin") then
+                                if (obj.Position - hrp.Position).Magnitude < 60 then
+                                    if firetouchinterest then
+                                        firetouchinterest(hrp, obj, 0)
+                                        firetouchinterest(hrp, obj, 1)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+            end)
+            CreateCustomNotification("COIN AURA", "ON", 2)
+        end, false)
+    end
+
+    -- TP To Coins
+    do
+        local _tpCoinsEnabled = false
+        local _tpCoinsConn    = nil
+
+        CreateAuroraToggle(leftColumn, "TP To Coins", function(en)
+            _tpCoinsEnabled = en
+            if _tpCoinsConn then _tpCoinsConn:Disconnect(); _tpCoinsConn = nil end
+            if not en then
+                CreateCustomNotification("TP COINS", "OFF", 1)
+                return
+            end
+            _tpCoinsConn = RunService.Heartbeat:Connect(function()
+                if not _tpCoinsEnabled then return end
+                local char = LocalPlayer.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                if not hrp or not hum or hum.Health <= 0 then return end
+                pcall(function()
+                    local nearest, minDist = nil, math.huge
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if obj:IsA("BasePart") and obj.Transparency < 1 then
+                            local n = obj.Name:lower()
+                            if n == "maincoin" or n == "coin" or n == "goldcoin" or n:find("coin") then
+                                local d = (obj.Position - hrp.Position).Magnitude
+                                if d < minDist then minDist = d; nearest = obj end
+                            end
+                        end
+                    end
+                    if nearest and minDist > 1 then
+                        hrp.CFrame = CFrame.new(nearest.Position + Vector3.new(0, 3, 0))
+                    end
+                end)
+                task.wait(0.1)
+            end)
+            CreateCustomNotification("TP COINS", "ON", 2)
+        end, false)
+    end
+
     -- =====================================================================
     -- AUTO FARM v2 - Logica multi-toque, noclip, BodyVelocity, sin movimiento
     -- =====================================================================
     do
-        -- =====================================================================
-        -- AUTO FARM — logica reemplazada (multi-metodo, noclip, vuelo, touch)
-        -- =====================================================================
-        local _afEnabled      = false
-        local _afThread       = nil
-        local _afNoclipConn   = nil
-        local _afStateConn    = nil
-        local _afAntiSpinConn = nil
-        local _afBlacklist    = {}
-        local _afSpeed        = 100   -- studs/s
-        local _afAlturaOffset = 1.80  -- studs bajo la moneda
-        local _afGrabDelay    = 0     -- delay entre intentos de toque
+        local _afEnabled       = false
+        local _afThread        = nil
+        local _afNoclipConn    = nil
+        local _afStateConn     = nil
+        local _afAntiSpinConn  = nil
+        local _afBlacklist     = {}
+        local _afSpeed         = 100   -- studs/s (slider)
+        local _afAlturaOffset  = 2.8   -- studs bajo la moneda (slider)
+        local _afGrabDelay     = 0     -- segundos entre intentos de toque (slider)
 
+        -- Limpiar cache de sliders cuyo rango cambio para que el default se aplique correctamente
         if _G._sliderVals then
             _G._sliderVals["Auto Farm Offset Bajo Moneda|1|100"] = nil
             _G._sliderVals["Auto Farm Offset Bajo Moneda|5|100"] = nil
@@ -34678,57 +34370,88 @@ function CreateFarmTab()
             _G._sliderVals["Auto Farm Delay Agarre (x0.01s)|0|50"] = nil
         end
 
+        -- ---------------------------------------------------------------
         -- Buscar CoinContainer en el workspace de forma robusta
+        -- ---------------------------------------------------------------
         local function _afFindContainer()
-            local direct = workspace:FindFirstChild("CoinContainer")
-            if direct then return direct end
+            local wk = workspace:FindFirstChild("CoinContainer")
+            if wk then return wk end
             local wp = workspace:FindFirstChild("Workplace")
-            if wp and wp:FindFirstChild("CoinContainer") then return wp.CoinContainer end
-            local mn = workspace:FindFirstChild("Mansion2")
-            if mn and mn:FindFirstChild("CoinContainer") then return mn.CoinContainer end
+            if wp then
+                local wpc = wp:FindFirstChild("CoinContainer")
+                if wpc then return wpc end
+            end
+            local mansion = workspace:FindFirstChild("Mansion2")
+            if mansion then
+                local mc = mansion:FindFirstChild("CoinContainer")
+                if mc then return mc end
+            end
             for _, desc in pairs(workspace:GetDescendants()) do
                 if desc.Name == "CoinContainer" then return desc end
             end
             return nil
         end
 
-        -- Obtener la coin mas cercana (misma logica que el script de referencia)
+        -- ---------------------------------------------------------------
+        -- Obtener la coin mas cercana al root
+        -- Busca MainCoin en toda la jerarquia del CoinContainer,
+        -- sin asumir estructura fija (CoinFolder/CoinVisual puede variar por mapa)
+        -- ---------------------------------------------------------------
         local function _afGetNearest(root)
             local nearest, minDist = nil, math.huge
             local container = _afFindContainer()
             if not container then return nil end
 
-            for _, coinFolder in pairs(container:GetChildren()) do
-                if not _afBlacklist[coinFolder] then
-                    local coinVisual = coinFolder:FindFirstChild("CoinVisual")
-                    if coinVisual then
-                        local mainCoin = coinVisual:FindFirstChild("MainCoin")
-                        if mainCoin and mainCoin:IsA("BasePart") and mainCoin.Transparency < 1 then
-                            local d = (mainCoin.Position - root.Position).Magnitude
-                            if d < minDist then
-                                minDist = d
-                                nearest = { Container = coinFolder, Part = mainCoin }
-                            end
+            -- Recorrer todos los descendants buscando MainCoin visibles
+            for _, obj in pairs(container:GetDescendants()) do
+                if obj.Name == "MainCoin" and obj:IsA("BasePart") and obj.Transparency < 1 then
+                    -- El "folder" raiz es el hijo directo del container
+                    local folder = obj
+                    local p = obj.Parent
+                    while p and p ~= container do
+                        folder = p
+                        p = p.Parent
+                    end
+                    if not _afBlacklist[folder] then
+                        local d = (obj.Position - root.Position).Magnitude
+                        if d < minDist then
+                            minDist = d
+                            nearest = { Container = folder, Part = obj }
                         end
-                    else
-                        -- Fallback: buscar MainCoin directamente en cualquier descendiente
-                        for _, obj in pairs(coinFolder:GetDescendants()) do
-                            if obj.Name == "MainCoin" and obj:IsA("BasePart") and obj.Transparency < 1 then
+                    end
+                end
+            end
+
+            -- Fallback: si no hay MainCoin, buscar cualquier BasePart llamada "Coin" o similar
+            if not nearest then
+                for _, obj in pairs(container:GetDescendants()) do
+                    if obj:IsA("BasePart") and obj.Transparency < 1 then
+                        local n = obj.Name:lower()
+                        if n == "coin" or n == "goldcoin" or n:find("coin") then
+                            local folder = obj
+                            local p = obj.Parent
+                            while p and p ~= container do
+                                folder = p
+                                p = p.Parent
+                            end
+                            if not _afBlacklist[folder] then
                                 local d = (obj.Position - root.Position).Magnitude
                                 if d < minDist then
                                     minDist = d
-                                    nearest = { Container = coinFolder, Part = obj }
+                                    nearest = { Container = folder, Part = obj }
                                 end
-                                break
                             end
                         end
                     end
                 end
             end
+
             return nearest
         end
 
-        -- Cleanup completo
+        -- ---------------------------------------------------------------
+        -- Cleanup: desconecta todo y restaura el personaje
+        -- ---------------------------------------------------------------
         local function _afCleanup()
             if _afNoclipConn   then _afNoclipConn:Disconnect();   _afNoclipConn   = nil end
             if _afStateConn    then _afStateConn:Disconnect();     _afStateConn    = nil end
@@ -34741,7 +34464,7 @@ function CreateFarmTab()
                     local bv = hrp:FindFirstChild("FarmAntiGravity")
                     if bv then bv:Destroy() end
                     hrp.Anchored = false
-                    hrp.AssemblyAngularVelocity = Vector3.zero
+                    hrp.RotVelocity = Vector3.zero
                     hrp.CFrame = CFrame.new(hrp.Position)
                 end
                 if hum then
@@ -34772,13 +34495,9 @@ function CreateFarmTab()
                 return
             end
 
-            -- Noclip constante en Stepped (throttle: cada 6 frames para reducir lag)
-            local _afNoclipTick = 0
+            -- Noclip constante en Stepped
             _afNoclipConn = RunService.Stepped:Connect(function()
                 if not _afEnabled then return end
-                _afNoclipTick = _afNoclipTick + 1
-                if _afNoclipTick < 6 then return end
-                _afNoclipTick = 0
                 local char = LocalPlayer.Character
                 if not char then return end
                 for _, part in pairs(char:GetDescendants()) do
@@ -34788,13 +34507,9 @@ function CreateFarmTab()
                 end
             end)
 
-            -- PlatformStand + Physics state en Heartbeat (throttle: cada 10 frames)
-            local _afStateTick = 0
+            -- PlatformStand + Physics state en Heartbeat
             _afStateConn = RunService.Heartbeat:Connect(function()
                 if not _afEnabled then return end
-                _afStateTick = _afStateTick + 1
-                if _afStateTick < 10 then return end
-                _afStateTick = 0
                 local char = LocalPlayer.Character
                 if not char then return end
                 local hum = char:FindFirstChildOfClass("Humanoid")
@@ -34810,10 +34525,12 @@ function CreateFarmTab()
                 local char = LocalPlayer.Character
                 if not char then return end
                 local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.RotVelocity = Vector3.zero end
+                if hrp then
+                    hrp.RotVelocity = Vector3.zero
+                end
             end)
 
-            -- Loop principal
+            -- Loop principal de farm
             _afThread = task.spawn(function()
                 while _afEnabled do
                     local char = LocalPlayer.Character
@@ -34823,9 +34540,10 @@ function CreateFarmTab()
                     end
 
                     local hrp = char.HumanoidRootPart
+                    local hum = char:FindFirstChildOfClass("Humanoid")
                     hrp.Anchored = false
 
-                    -- Anti-gravedad via BodyVelocity
+                    -- BodyVelocity anti-gravedad
                     local bv = hrp:FindFirstChild("FarmAntiGravity")
                     if not bv then
                         bv = Instance.new("BodyVelocity")
@@ -34842,12 +34560,13 @@ function CreateFarmTab()
 
                         local coinPart  = coinData.Part
                         local flatAngle = CFrame.Angles(math.rad(90), 0, 0)
-
-                        -- Fase 1: volar hacia la moneda (recalcula coin mas cercana cada 10 frames)
                         local _recalcTick = 0
+
+                        -- Fase 1: moverse hacia la coin mas cercana (recalcula cada 10 frames)
                         while _afEnabled and coinData.Container.Parent
                               and coinPart.Parent and coinPart.Transparency < 1 do
 
+                            -- Recalcular coin mas cercana cada 10 frames
                             _recalcTick = _recalcTick + 1
                             if _recalcTick >= 10 then
                                 _recalcTick = 0
@@ -34876,18 +34595,15 @@ function CreateFarmTab()
                             hrp.CFrame = CFrame.new(hrp.Position + step) * flatAngle
                         end
 
-                        -- Fase 2: multi-metodo de recoleccion (igual al script de referencia)
+                        -- Fase 2: tocar la coin (multi-touch, sin delay forzado)
                         if _afEnabled and coinData.Container.Parent
                            and coinPart.Parent and coinPart.Transparency < 1 then
 
                             local startTime = tick()
-                            local grabWindow = _afGrabDelay > 0 and (_afGrabDelay * 12) or 0.6
+                            local grabWindow = _afGrabDelay > 0 and (_afGrabDelay * 12) or 0
 
-                            while _afEnabled and coinData.Container.Parent
-                                  and coinPart.Parent and coinPart.Transparency < 1
-                                  and (tick() - startTime) < grabWindow do
-
-                                -- Metodo 1: firetouchinterest estandar y reverso
+                            repeat
+                                -- Touch directo HRP <-> MainCoin
                                 if firetouchinterest then
                                     pcall(function()
                                         firetouchinterest(hrp, coinPart, 0)
@@ -34897,7 +34613,7 @@ function CreateFarmTab()
                                     end)
                                 end
 
-                                -- Metodo 2: TouchTransmitter / TouchInterest en todos los descendientes
+                                -- Touch en todos los TouchTransmitter / TouchInterest del folder
                                 pcall(function()
                                     for _, obj in pairs(coinData.Container:GetDescendants()) do
                                         if obj:IsA("TouchTransmitter") or obj.ClassName == "TouchInterest" then
@@ -34909,8 +34625,15 @@ function CreateFarmTab()
                                     end
                                 end)
 
-                                task.wait(0.05)
-                            end
+                                if _afGrabDelay > 0 then
+                                    task.wait(_afGrabDelay)
+                                end
+                            until not _afEnabled
+                                or not coinData.Container.Parent
+                                or not coinPart.Parent
+                                or coinPart.Transparency >= 1
+                                or (grabWindow > 0 and (tick() - startTime) >= grabWindow)
+                                or grabWindow == 0
 
                             _afBlacklist[coinData.Container] = true
                         end
@@ -34926,11 +34649,12 @@ function CreateFarmTab()
                 CreateCustomNotification("AUTO FARM", "OFF", 1)
             end)
 
-            CreateCustomNotification("AUTO FARM", "ON - volando hacia monedas", 2)
+            CreateCustomNotification("AUTO FARM", "ON", 2)
         end, false)
 
         -- Slider: altura bajo la moneda
-        CreateSlider(leftColumn, "Auto Farm Offset Bajo Moneda", 0.5, 10, 1.5, function(v)
+        -- Slider: altura bajo la moneda (valor directo en studs, step 0.1)
+        CreateSlider(leftColumn, "Auto Farm Offset Bajo Moneda", 0.1, 10, 2.8, function(v)
             _afAlturaOffset = v
         end)
 
@@ -34939,7 +34663,7 @@ function CreateFarmTab()
             _afSpeed = v
         end)
 
-        -- Slider: delay entre intentos de agarre
+        -- Slider: delay entre intentos de agarre (0s - 0.5s, step 0.01s)
         CreateSlider(leftColumn, "Auto Farm Delay Agarre (x0.01s)", 0, 50, 0, function(v)
             _afGrabDelay = v / 100
         end)
@@ -35367,6 +35091,91 @@ function CreateFarmTab()
     -- =====================================================================
     CreateSection(leftColumn, "", "UNDER MAP FARM", ThemeColors.Aurora3)
 
+    do
+        local _umfEnabled  = false
+        local _umfPlatform = nil
+        local _umfThread   = nil
+
+        local function _destroyUMFPlat()
+            if _umfPlatform and _umfPlatform.Parent then
+                pcall(function() _umfPlatform:Destroy() end)
+            end
+            _umfPlatform = nil
+        end
+
+        -- Under Map Coin Farm
+        CreateAuroraToggle(leftColumn, "Under Map Coin Farm", function(en)
+            _umfEnabled = en
+            if _umfThread then task.cancel(_umfThread); _umfThread = nil end
+            _destroyUMFPlat()
+
+            if not en then
+                CreateCustomNotification("UNDER MAP", "OFF", 1)
+                return
+            end
+
+            _umfThread = task.spawn(function()
+                -- Crear plataforma invisible bajo el mapa
+                local char = LocalPlayer.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+
+                -- TP bajo el mapa
+                local underPos = Vector3.new(hrp.Position.X, -50, hrp.Position.Z)
+                hrp.CFrame = CFrame.new(underPos)
+                task.wait(0.2)
+
+                -- Crear plataforma de soporte
+                _umfPlatform = Instance.new("Part")
+                _umfPlatform.Name      = "UMFPlatform"
+                _umfPlatform.Size      = Vector3.new(10, 1, 10)
+                _umfPlatform.Anchored  = true
+                _umfPlatform.CanCollide = true
+                _umfPlatform.Transparency = 1
+                _umfPlatform.Position  = underPos - Vector3.new(0, 3, 0)
+                _umfPlatform.Parent    = workspace
+
+                -- Reposicionar al jugador encima de la plataforma
+                task.wait(0.1)
+                hrp.CFrame = CFrame.new(underPos + Vector3.new(0, 2, 0))
+
+                CreateCustomNotification("UNDER MAP", "ON — bajo el mapa", 2)
+
+                -- Loop de farm de monedas bajo el mapa con aura
+                while _umfEnabled do
+                    local c = LocalPlayer.Character
+                    local h = c and c:FindFirstChild("HumanoidRootPart")
+                    if h then
+                        pcall(function()
+                            for _, obj in ipairs(workspace:GetDescendants()) do
+                                if obj:IsA("BasePart") and obj.Transparency < 1 then
+                                    local n = obj.Name:lower()
+                                    if n == "maincoin" or n == "coin" or n:find("coin") then
+                                        if firetouchinterest then
+                                            firetouchinterest(h, obj, 0)
+                                            firetouchinterest(h, obj, 1)
+                                        end
+                                    end
+                                end
+                            end
+                        end)
+                    end
+                    task.wait(0.05)
+                end
+            end)
+        end, false)
+
+        _makeTPButton("Salir de Under Map", function()
+            _destroyUMFPlat()
+            pcall(function()
+                local char = LocalPlayer.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = CFrame.new(0, 100, 0) end
+            end)
+            CreateCustomNotification("FARM", "Saliste del under map", 2)
+        end, leftColumn)
+    end
+
     -- =====================================================================
     -- AUTO PRESTIGE / XP FARM
     -- =====================================================================
@@ -35644,21 +35453,9 @@ function CreateExclusiveTab()
         fpsLimit           = 0,    -- 0 = sin limite
         crosshairHidden    = false,
         hudHidden          = false,
-        lowRenderQuality   = false,
     }
     local HS = _G._hubSettings
     local function _hs() return _G._hubSettings end
-
-    -- FIX ESCALA: re-aplicar UIScale guardada al abrir el tab Settings
-    -- (el UIScale del mainFrame puede haberse perdido si el hub se recreo)
-    pcall(function()
-        local savedScale = (_G._hubSettings.hubScale or 100) / 100
-        local sc = mainFrame:FindFirstChildOfClass("UIScale")
-        if not sc then sc = Instance.new("UIScale", mainFrame) end
-        if math.abs(sc.Scale - savedScale) > 0.001 then
-            sc.Scale = savedScale
-        end
-    end)
 
     -- ============================================================
     -- COLUMNA IZQUIERDA
@@ -35786,7 +35583,6 @@ function CreateExclusiveTab()
         _hsr.hubScale           = 100
         _hsr.crosshairHidden    = false
         _hsr.hudHidden          = false
-        _hsr.lowRenderQuality   = false
         _G._hubDisableKeybinds    = false
         _G._hubUndraggableButtons = false
         _G._hubDisableAnimations  = false
@@ -35999,12 +35795,11 @@ function CreateExclusiveTab()
     local perfSec = CreateBorderedSectionGlobal(rightColumn, " PERFORMANCE")
 
     CreateAuroraToggle(perfSec, "Low Render Quality (reduce lag)", function(on)
-        _hs().lowRenderQuality = on
         pcall(function()
             settings().Rendering.QualityLevel = on and Enum.QualityLevel.Level01 or Enum.QualityLevel.Automatic
         end)
         CreateCustomNotification("SETTINGS", on and "Calidad minima (menos lag)" or "Calidad automatica", 2)
-    end, HS.lowRenderQuality or false)
+    end, false)
 
     CreateAuroraToggle(perfSec, "Disable Shadows (FPS boost)", function(on)
         pcall(function()
@@ -36083,7 +35878,6 @@ function CreateExclusiveTab()
         end
         CreateCustomNotification("SETTINGS", v > 0 and ("FPS cap: " .. v) or "FPS cap OFF", 1.5)
     end)
-
 
     -- ================================================================
     -- CREDITOS / AGRADECIMIENTOS
@@ -36454,7 +36248,6 @@ function CreateCombatTab()
         _G._saInputConn = UserInputService.InputBegan:Connect(function(input, gp)
             if gp then return end
             if input.UserInputType ~= Enum.UserInputType.MouseButton1
-               and input.UserInputType ~= Enum.UserInputType.Touch
                and input.KeyCode ~= Enum.KeyCode.ButtonR2 then return end
             if not CombatTabState.silentAimEnabled then return end
 
@@ -37742,13 +37535,13 @@ function CreateCombatTab()
 
         local ssDragging = false
         ssKnob.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then ssDragging = true end
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 then ssDragging = true end
         end)
         ssKnob.InputEnded:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then ssDragging = false end
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 then ssDragging = false end
         end)
         RegisterTabConn(UserInputService.InputChanged:Connect(function(inp)
-            if ssDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+            if ssDragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
                 local rel = UserInputService:GetMouseLocation().X - ssBg.AbsolutePosition.X
                 local pct = math.clamp(rel / ssBg.AbsoluteSize.X, 0, 1)
                 local val = math.floor(100 + pct * (400 - 100))
@@ -38610,10 +38403,9 @@ function CreateCombatTab()
                 end
             end
 
-            -- Cerrar al hacer clic/toque en el fondo
+            -- Cerrar al hacer clic en el fondo
             bg.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1
-                or inp.UserInputType == Enum.UserInputType.Touch then
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
                     _closeSelector()
                 end
             end)
@@ -39544,13 +39336,13 @@ function CreateCombatTab()
 
         applyValue(defaultVal)
 
-        local function updateFromInput(inp)
-            local mx = inp and inp.UserInputType == Enum.UserInputType.Touch and inp.Position.X or UserInputService:GetMouseLocation().X
-            local tp = sliderTrack.AbsolutePosition.X
-            local ts = sliderTrack.AbsoluteSize.X
-            applyValue(minVal + math.clamp((mx - tp) / math.max(ts, 1), 0, 1) * (maxVal - minVal))
+        local function updateFromMouse()
+            local mx  = UserInputService:GetMouseLocation().X
+            local tp  = sliderTrack.AbsolutePosition.X
+            local ts  = sliderTrack.AbsoluteSize.X
+            local pct = math.clamp((mx - tp) / math.max(ts, 1), 0, 1)
+            applyValue(minVal + pct * (maxVal - minVal))
         end
-        local function updateFromMouse() updateFromInput(nil) end
 
         sliderThumb.MouseEnter:Connect(function()
             TweenService:Create(sliderThumb, TweenInfo.new(0.10), {Size = UDim2.new(0, 22, 0, 22)}):Play()
@@ -39567,8 +39359,8 @@ function CreateCombatTab()
             end
         end)
         sliderTrack.InputBegan:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-                draggingKS = true; _G._sliderDragging = true; updateFromInput(i)
+            if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                draggingKS = true; _G._sliderDragging = true; updateFromMouse()
             end
         end)
         RegisterTabConn(UserInputService.InputEnded:Connect(function(i)
@@ -39578,8 +39370,8 @@ function CreateCombatTab()
             end
         end))
         RegisterTabConn(UserInputService.InputChanged:Connect(function(i)
-            if draggingKS and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-                updateFromInput(i)
+            if draggingKS and i.UserInputType == Enum.UserInputType.MouseMovement then
+                updateFromMouse()
             end
         end))
 
@@ -40136,132 +39928,188 @@ function CreateCombatTab()
                 _IKS_startMonitor()
             end
 
-            -- ── HOOK AL BOTÓN THROW NATIVO DE MM2 (solo mobile/tablet) ─────────
+            -- ── BOTÓN MOBILE PARA KNIFE SA (solo si es celular/tablet) ────────
             local _isMobileKSA = UserInputService.TouchEnabled
             if _isMobileKSA then
-                -- Limpiar conexiones anteriores si existen
-                if KnifeSAState._mobileConns then
-                    for _, c in ipairs(KnifeSAState._mobileConns) do
-                        pcall(function() c:Disconnect() end)
-                    end
-                end
-                KnifeSAState._mobileConns = {}
-
-                -- Función interna que ejecuta el lanzamiento SA
-                local function _ksaDoThrow()
-                    local myChar = LocalPlayer.Character
-                    local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
-                    if not hum or hum.Health <= 0 then return end
-                    -- Equipar knife si no está en mano
-                    local knife = myChar:FindFirstChild("Knife")
-                    if not knife then
-                        local bpKnife = LocalPlayer.Backpack:FindFirstChild("Knife")
-                        if bpKnife then
-                            pcall(function() hum:EquipTool(bpKnife) end)
-                            task.wait(0.12)
-                            knife = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Knife")
-                        end
-                    end
-                    if not knife then return end
-                    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                    if not myHRP then return end
-                    local events = knife:FindFirstChild("Events") or knife
-                    local knifeThrown = events:FindFirstChild("KnifeThrown") or knife:FindFirstChildWhichIsA("RemoteEvent")
-                    if not knifeThrown then return end
-                    local target = _KnifeSA_getBestTarget()
-                    local targetCF, handleCF
-                    if target and target.Character then
-                        local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
-                        if tHRP then
-                            local predictedPos = _KnifeSA_getPredictedPos(tHRP, target.Character)
-                            local orig = myHRP.Position + Vector3.new(0, 1.5, 0)
-                            local aimVec = predictedPos - orig
-                            if aimVec.Magnitude < 0.01 then aimVec = myHRP.CFrame.LookVector end
-                            handleCF = CFrame.new(orig, orig + aimVec.Unit)
-                            local back = orig - predictedPos
-                            targetCF = back.Magnitude > 0.1 and CFrame.new(predictedPos, predictedPos + back.Unit) or CFrame.new(predictedPos)
-                        end
-                    end
-                    if not targetCF then
-                        local orig = myHRP.Position + Vector3.new(0, 1.5, 0)
-                        local fwd = orig + myHRP.CFrame.LookVector * 20
-                        handleCF = CFrame.new(orig, fwd)
-                        targetCF = CFrame.new(fwd)
-                    end
-                    pcall(function() knifeThrown:FireServer(handleCF, targetCF) end)
+                -- Limpiar botón anterior si existe
+                if KnifeSAState._mobileGui then
+                    pcall(function() KnifeSAState._mobileGui:Destroy() end)
+                    KnifeSAState._mobileGui = nil
                 end
 
-                -- Buscar y hookear el botón Throw nativo de MM2 en PlayerGui
-                -- MM2 usa un ScreenGui con un botón llamado "Throw" dentro del combat GUI
-                local function _ksaHookNativeThrow()
-                    local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 10)
-                    if not pg then return end
+                local ksaGui = Instance.new("ScreenGui")
+                ksaGui.Name = "BypasKnifeSABtn"
+                ksaGui.ResetOnSpawn = false
+                ksaGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                ksaGui.DisplayOrder = 9998
+                ksaGui.IgnoreGuiInset = true
+                ksaGui.Parent = game:GetService("CoreGui")
+                KnifeSAState._mobileGui = ksaGui
 
-                    -- Función recursiva para encontrar el botón Throw en cualquier nivel
-                    local function _findThrowBtn(parent, depth)
-                        if not parent or depth > 6 then return nil end
-                        for _, child in ipairs(parent:GetChildren()) do
-                            local n = child.Name
-                            -- Buscar por nombre: "Throw", "ThrowButton", "ThrowBtn", "ThrowKnife"
-                            if (n == "Throw" or n == "ThrowButton" or n == "ThrowBtn" or n == "ThrowKnife")
-                                and (child:IsA("TextButton") or child:IsA("ImageButton") or child:IsA("GuiButton")) then
-                                return child
-                            end
-                            local found = _findThrowBtn(child, depth + 1)
-                            if found then return found end
-                        end
-                        return nil
-                    end
+                local ksaRoot = Instance.new("Frame", ksaGui)
+                ksaRoot.Name = "KnifeThrowButton"
+                ksaRoot.Size = UDim2.new(0, 1, 0, 1)
+                ksaRoot.Position = UDim2.new(1, -118, 1, -118)
+                ksaRoot.BackgroundColor3 = Color3.fromRGB(80, 10, 10)
+                ksaRoot.BackgroundTransparency = 0.4
+                ksaRoot.BorderSizePixel = 0
+                ksaRoot.Active = true
+                ksaRoot.ZIndex = 197
+                Instance.new("UICorner", ksaRoot).CornerRadius = UDim.new(0, 999)
 
-                    local throwBtn = _findThrowBtn(pg, 0)
-                    if throwBtn then
-                        -- Hookear el Activated del botón nativo
-                        local hookConn = throwBtn.Activated:Connect(function()
-                            if not KnifeSAState.enabled then return end
-                            task.spawn(_ksaDoThrow)
-                        end)
-                        table.insert(KnifeSAState._mobileConns, hookConn)
-                        return true
-                    end
-                    return false
-                end
+                local ksaStroke = Instance.new("UIStroke", ksaRoot)
+                ksaStroke.Thickness = 2.5
+                ksaStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                ksaStroke.Color = Color3.fromRGB(255, 80, 80)
 
-                -- Intentar hookear inmediatamente; si no se encuentra el botón,
-                -- esperar a que aparezca (puede que la GUI de combat cargue después)
-                task.spawn(function()
-                    if not _ksaHookNativeThrow() then
-                        -- Escuchar DescendantAdded en PlayerGui hasta encontrar el botón Throw
-                        local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-                        if not pg then return end
-                        local watchConn
-                        watchConn = pg.DescendantAdded:Connect(function(desc)
-                            if not KnifeSAState.enabled then
-                                if watchConn then watchConn:Disconnect() end
-                                return
-                            end
-                            local n = desc.Name
-                            if (n == "Throw" or n == "ThrowButton" or n == "ThrowBtn" or n == "ThrowKnife")
-                                and (desc:IsA("TextButton") or desc:IsA("ImageButton") or desc:IsA("GuiButton")) then
-                                local hookConn = desc.Activated:Connect(function()
-                                    if not KnifeSAState.enabled then return end
-                                    task.spawn(_ksaDoThrow)
-                                end)
-                                table.insert(KnifeSAState._mobileConns, hookConn)
-                                if watchConn then watchConn:Disconnect() end
-                            end
-                        end)
-                        table.insert(KnifeSAState._mobileConns, watchConn)
+                local ksaGrad = Instance.new("UIGradient", ksaStroke)
+                ksaGrad.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0,   Color3.fromRGB(255, 60, 60)),
+                    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 40, 100)),
+                    ColorSequenceKeypoint.new(1,   Color3.fromRGB(255, 60, 60)),
+                })
+                ksaGrad.Rotation = 0
+
+                -- OPT: Heartbeat en vez de RenderStepped (no necesita sync de render)
+                local _ksaGradT = 0
+                local _ksaGradConn = RunService.Heartbeat:Connect(function(dt)
+                    _ksaGradT = _ksaGradT + dt
+                    if _ksaGradT < 0.05 then return end  -- OPT: 20fps visual
+                    local _d = _ksaGradT; _ksaGradT = 0
+                    if _d > 0.1 then return end
+                    ksaGrad.Rotation = (ksaGrad.Rotation + 120 * _d) % 360
+                end)
+                if not KnifeSAState._mobileConns then KnifeSAState._mobileConns = {} end
+                table.insert(KnifeSAState._mobileConns, _ksaGradConn)
+
+                local ksaBtn = Instance.new("TextButton", ksaRoot)
+                ksaBtn.Size = UDim2.new(1, 0, 1, 0)
+                ksaBtn.BackgroundColor3 = Color3.fromRGB(140, 20, 20)
+                ksaBtn.BackgroundTransparency = 0.5
+                ksaBtn.BorderSizePixel = 0
+                ksaBtn.AutoButtonColor = false
+                ksaBtn.Text = "THROW"
+                ksaBtn.FontFace = Font.fromEnum(Enum.Font.Arimo)
+                ksaBtn.TextSize = 18
+                ksaBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+                ksaBtn.ZIndex = 204
+
+                -- Drag para mover el botón
+                local ksaDragStart, ksaRootStart, ksaDragging = nil, nil, false
+                ksaBtn.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.Touch
+                    or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                        ksaDragStart = inp.Position
+                        ksaRootStart = ksaRoot.Position
+                        ksaDragging = false
                     end
                 end)
+                local ksaEndConn = UserInputService.InputEnded:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.Touch
+                    or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                        if ksaDragStart and not ksaDragging then
+                            -- Tap: simular lanzamiento de knife
+                            local myChar = LocalPlayer.Character
+                            local hum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+                            if hum and hum.Health > 0 then
+                                -- Forzar equip del knife si no está equipado
+                                local knife = myChar:FindFirstChild("Knife")
+                                if not knife then
+                                    local bpKnife = LocalPlayer.Backpack:FindFirstChild("Knife")
+                                    if bpKnife then
+                                        pcall(function() hum:EquipTool(bpKnife) end)
+                                        task.wait(0.15)
+                                    end
+                                end
+                                -- Simular Touch input para el hook de KnifeSA (dispara el throw)
+                                local fakeInp = {
+                                    UserInputType = Enum.UserInputType.Touch,
+                                    Position = Vector3.new(0, 0, 0)
+                                }
+                                -- Disparar KnifeThrown directo usando el sistema de SA
+                                task.spawn(function()
+                                    local myChar2 = LocalPlayer.Character
+                                    local myHRP = myChar2 and myChar2:FindFirstChild("HumanoidRootPart")
+                                    if not myHRP then return end
+                                    local knife2 = myChar2:FindFirstChild("Knife")
+                                    if not knife2 then return end
+                                    local events = knife2:FindFirstChild("Events") or knife2
+                                    local knifeThrown2 = events:FindFirstChild("KnifeThrown") or knife2:FindFirstChildWhichIsA("RemoteEvent")
+                                    if not knifeThrown2 then return end
+
+                                    local target2 = _KnifeSA_getBestTarget()
+                                    local targetCF2, handleCF2
+                                    if target2 and target2.Character then
+                                        local tHRP2 = target2.Character:FindFirstChild("HumanoidRootPart")
+                                        if tHRP2 then
+                                            local predictedPos2 = _KnifeSA_getPredictedPos(tHRP2, target2.Character)
+                                            local orig2 = myHRP.Position + Vector3.new(0, 1.5, 0)
+                                            local aimVec2 = predictedPos2 - orig2
+                                            if aimVec2.Magnitude < 0.01 then aimVec2 = myHRP.CFrame.LookVector end
+                                            handleCF2 = CFrame.new(orig2, orig2 + aimVec2.Unit)
+                                            local back2 = orig2 - predictedPos2
+                                            targetCF2 = back2.Magnitude > 0.1 and CFrame.new(predictedPos2, predictedPos2 + back2.Unit) or CFrame.new(predictedPos2)
+                                        end
+                                    end
+                                    if not targetCF2 then
+                                        local lookDir = myHRP.CFrame.LookVector
+                                        local orig2b = myHRP.Position + Vector3.new(0, 1.5, 0)
+                                        local fwd = orig2b + lookDir * 20
+                                        handleCF2 = CFrame.new(orig2b, fwd)
+                                        targetCF2 = CFrame.new(fwd)
+                                    end
+                                    pcall(function() knifeThrown2:FireServer(handleCF2, targetCF2) end)
+                                    CreateCustomNotification("KNIFE SA", "Lanzado!", 0.8)
+                                    -- Flash visual
+                                    TweenService:Create(ksaRoot, TweenInfo.new(0.07), {
+                                        Size = UDim2.new(0, 85, 0, 85)
+                                    }):Play()
+                                    task.wait(0.1)
+                                    TweenService:Create(ksaRoot, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                                        Size = UDim2.new(0, 75, 0, 75)
+                                    }):Play()
+                                end)
+                            end
+                        end
+                        ksaDragStart = nil
+                        ksaDragging = false
+                    end
+                end)
+                local ksaMoveConn = UserInputService.InputChanged:Connect(function(inp)
+                    if not ksaDragStart then return end
+                    if inp.UserInputType == Enum.UserInputType.Touch
+                    or inp.UserInputType == Enum.UserInputType.MouseMovement then
+                        local delta = inp.Position - ksaDragStart
+                        if not ksaDragging then
+                            if delta.Magnitude > 8 then ksaDragging = true else return end
+                        end
+                        ksaRoot.Position = UDim2.new(ksaRootStart.X.Scale, ksaRootStart.X.Offset + delta.X,
+                                                      ksaRootStart.Y.Scale, ksaRootStart.Y.Offset + delta.Y)
+                    end
+                end)
+                table.insert(KnifeSAState._mobileConns, ksaEndConn)
+                table.insert(KnifeSAState._mobileConns, ksaMoveConn)
+
+                -- Animación de entrada
+                task.spawn(function()
+                    task.wait(0.1)
+                    TweenService:Create(ksaRoot, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                        Size = UDim2.new(0, 75, 0, 75)
+                    }):Play()
+                end)
             end
- CreateCustomNotification("KNIFE SA", _isMobileKSA and " Activo — usa el botón Throw del juego 🔪" or " Activo — equipa knife, lanzá con RMB", 3)
+ CreateCustomNotification("KNIFE SA", _isMobileKSA and " Activo — toca el botón 🔪 para lanzar" or " Activo — equipa knife, lanzá con RMB", 3)
         else
             _KnifeSA_deactivate()
             -- Restaurar cualquier knife que IKS hubiera ocultado
             for model, _ in pairs(InvisibleKnifeSystem.activeKnives) do
                 pcall(_IKS_show, model)
             end
-            -- Desconectar hooks al botón Throw nativo (mobile)
+            -- Limpiar botón mobile si existe
+            if KnifeSAState._mobileGui then
+                pcall(function() KnifeSAState._mobileGui:Destroy() end)
+                KnifeSAState._mobileGui = nil
+            end
             if KnifeSAState._mobileConns then
                 for _, c in ipairs(KnifeSAState._mobileConns) do
                     pcall(function() c:Disconnect() end)
@@ -41451,12 +41299,12 @@ function CreateCombatTab()
             valueLabel.Text      = string.format("%.2f", v)
             if callback then callback(v) end
         end
-        local function updateFromInput(inp)
-            local mx = inp and inp.UserInputType == Enum.UserInputType.Touch and inp.Position.X or UserInputService:GetMouseLocation().X
-            local tp = sliderTrack.AbsolutePosition.X; local ts = sliderTrack.AbsoluteSize.X
+        local function updateFromMouse()
+            local mx = UserInputService:GetMouseLocation().X
+            local tp = sliderTrack.AbsolutePosition.X
+            local ts = sliderTrack.AbsoluteSize.X
             applyValue(minVal + math.clamp((mx - tp) / math.max(ts, 1), 0, 1) * (maxVal - minVal))
         end
-        local function updateFromMouse() updateFromInput(nil) end
         sliderThumb.MouseEnter:Connect(function()
             TweenService:Create(sliderThumb, TweenInfo.new(0.10), {Size = UDim2.new(0, 22, 0, 22)}):Play()
         end)
@@ -41470,7 +41318,7 @@ function CreateCombatTab()
             end
         end)
         sliderTrack.InputBegan:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then draggingKS = true; _G._sliderDragging = true; updateFromInput(i) end
+            if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingKS = true; _G._sliderDragging = true; updateFromMouse() end
         end)
         RegisterTabConn(UserInputService.InputEnded:Connect(function(i)
             if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
@@ -41479,7 +41327,7 @@ function CreateCombatTab()
             end
         end))
         RegisterTabConn(UserInputService.InputChanged:Connect(function(i)
-            if draggingKS and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then updateFromInput(i) end
+            if draggingKS and i.UserInputType == Enum.UserInputType.MouseMovement then updateFromMouse() end
         end))
         applyValue(defaultVal)
         local function setValue(v) applyValue(v) end
@@ -42852,8 +42700,8 @@ function CreateCombatTab()
                 local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
                 local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
 
-                -- -- LMB/Touch = SLASH cuando SA est OFF (SA lo maneja si est ON) --
-                if isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
+                -- -- LMB = SLASH cuando SA est OFF (SA lo maneja si est ON) --
+                if isDualKnife and input.UserInputType == Enum.UserInputType.MouseButton1
                     and not (KnifeSAState and KnifeSAState.enabled) then
                     if state.isAttacking then return end
                     local now = os.clock()
@@ -42872,8 +42720,8 @@ function CreateCombatTab()
                     if ks then pcall(function() ks:FireServer() end) end
                     _dl(0.85, function() state.isAttacking = false end)
 
-                -- -- RMB/Touch = DUALSTAB ANIMATION (Dual Knife ON) ---------------------------
-                elseif isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch) then
+                -- -- RMB = DUALSTAB ANIMATION (Dual Knife ON) ---------------------------
+                elseif isDualKnife and input.UserInputType == Enum.UserInputType.MouseButton2 then
                     local now = os.clock()
                     if now - (state._lastThrow or -999) < 0.8 then return end
                     state._lastThrow = now
@@ -42894,8 +42742,8 @@ function CreateCombatTab()
                     if ks then pcall(function() ks:FireServer() end) end
                     _dl(0.8, function() state.isAttacking = false end)
 
-                -- -- LMB/Touch = THROW (modo normal sin Dual) --------------------
-                elseif not isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+                -- -- LMB = THROW (modo normal sin Dual) --------------------
+                elseif not isDualKnife and input.UserInputType == Enum.UserInputType.MouseButton1 then
                     -- Dual Gun: LMB lanza
                     -- (solo si Knife SA no est activo  si SA est ON, l maneja el LMB)
                     if KnifeSAState and KnifeSAState.enabled then return end
@@ -43119,8 +42967,8 @@ function CreateCombatTab()
                     local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
                     local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
 
-                    -- LMB/Touch -> slash alternado (solo si Knife SA est OFF)
-                    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
+                    -- LMB -> slash alternado (solo si Knife SA est OFF)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1
                         and not (KnifeSAState and KnifeSAState.enabled) then
                         if state.isAttacking then return end
                         local now = os.clock()
@@ -43134,8 +42982,8 @@ function CreateCombatTab()
                         if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                         _dl(0.85, function() state.isAttacking = false end)
 
-                    -- RMB/Touch -> throw
-                    elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+                    -- RMB -> throw
+                    elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
                         if not knifeThrown then return end
                         local now = os.clock()
                         if now - (state._lastThrow or -999) < 1.0 then return end
@@ -43276,7 +43124,7 @@ function CreateCombatTab()
                         local events       = tool:FindFirstChild("Events")
                         local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
                         local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
-                        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
+                        if input.UserInputType == Enum.UserInputType.MouseButton1
                             and not (KnifeSAState and KnifeSAState.enabled) then
                             if ks.isAttacking then return end
                             local now = os.clock()
@@ -43287,7 +43135,7 @@ function CreateCombatTab()
                             _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
                             if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                             _dl(0.85, function() ks.isAttacking = false end)
-                        elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+                        elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
                             if not knifeThrown then return end
                             local now = os.clock()
                             if now - (ks._lastThrow or -999) < 1.0 then return end
@@ -44113,26 +43961,15 @@ function CreateCombatTab()
                 -- Deshabilitar conexiones originales y hookear la gun
                 _ssTryHook()
                 if _hookedGun then _ssApplyDisable() end
-                -- LMB / Touch: solo dispara si la gun esta EQUIPADA en el personaje
+                -- LMB directo: intercepta el click del mouse y redirige al target
                 _ssLmbConn = UserInputService.InputBegan:Connect(function(i, gp)
                     if gp or not _ssEnabled then return end
-                    if i.UserInputType ~= Enum.UserInputType.MouseButton1
-                       and i.UserInputType ~= Enum.UserInputType.Touch then return end
-                    -- Verificar que la gun este equipada (en el Character, NO en Backpack)
-                    local char = LocalPlayer.Character
-                    if not char then return end
-                    local equippedGun = nil
-                    for _, t in ipairs(char:GetChildren()) do
-                        if t:IsA("Tool") and (t:FindFirstChild("GunClient") or t:FindFirstChild("Shoot") or _ssGetR(t)) then
-                            equippedGun = t
-                            break
-                        end
-                    end
-                    if not equippedGun then return end  -- sin gun equipada: ignorar el touch
+                    if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
                     local now = tick()
                     if now - _ssLast < _ssCD then return end
                     _ssLast = now
-                    _sp(function() _ssFire(equippedGun) end)
+                    local gun = _hookedGun or _ssGetEquippedGun()
+                    if gun then _sp(function() _ssFire(gun) end) end
                 end)
                 CreateCustomNotification("SHOOPER SHOT","ON -- LMB redirige automaticamente al murder",2)
             else
@@ -44269,8 +44106,8 @@ function CreateCombatTab()
             btn.MouseEnter:Connect(function() TweenService:Create(btn,TweenInfo.new(0.15),{BackgroundTransparency=0.05}):Play() end)
             btn.MouseLeave:Connect(function() TweenService:Create(btn,TweenInfo.new(0.15),{BackgroundTransparency=0.25}):Play() end)
             local dr,ds,sp=false,nil,nil
-            btn.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dr=true;ds=i.Position;sp=btn.Position; i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dr=false end end) end end)
-            UserInputService.InputChanged:Connect(function(i) if dr and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then local d=i.Position-ds; btn.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y) end end)
+            btn.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dr=true;ds=i.Position;sp=btn.Position; i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dr=false end end) end end)
+            UserInputService.InputChanged:Connect(function(i) if dr and i.UserInputType==Enum.UserInputType.MouseMovement then local d=i.Position-ds; btn.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y) end end)
             btn.MouseButton1Click:Connect(function()
                 if not _pEnabled then return end
                 local now=tick(); if now-_pLastShot<_pCooldown then return end; _pLastShot=now
@@ -44312,8 +44149,7 @@ function CreateCombatTab()
                 if _pLmb then pcall(function() _pLmb:Disconnect() end) end
                 _pLmb = UserInputService.InputBegan:Connect(function(inp, gp)
                     if gp or not _pEnabled then return end
-                    if inp.UserInputType ~= Enum.UserInputType.MouseButton1
-                       and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+                    if inp.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
                     local now=tick(); if now-_pLastShot<_pCooldown then return end; _pLastShot=now
                     _sp(function() _doPierce(false) end)
                 end)
@@ -44371,8 +44207,7 @@ function CreateCombatTab()
 
             _scConn = UserInputService.InputBegan:Connect(function(inp, gp)
                 if gp or not _scEnabled then return end
-                if inp.UserInputType ~= Enum.UserInputType.MouseButton1
-                   and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+                if inp.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 
                 -- Solo actuar si NO tiene gun equipada
                 local char = LocalPlayer.Character
@@ -45348,12 +45183,11 @@ function CreateCombatTab()
             sliderThumb.Position = UDim2.new(ratio, 0, 0.5, 0); sliderFill.Size = UDim2.new(ratio, 0, 1, 0)
             valueLabel.Text = string.format("%.2f", v); if callback then callback(v) end
         end
-        local function updateFromInput(inp)
-            local mx = inp and inp.UserInputType == Enum.UserInputType.Touch and inp.Position.X or UserInputService:GetMouseLocation().X
+        local function updateFromMouse()
+            local mx = UserInputService:GetMouseLocation().X
             local tp = sliderTrack.AbsolutePosition.X; local ts = sliderTrack.AbsoluteSize.X
             applyValue(minVal + math.clamp((mx - tp) / math.max(ts, 1), 0, 1) * (maxVal - minVal))
         end
-        local function updateFromMouse() updateFromInput(nil) end
         sliderThumb.MouseEnter:Connect(function() TweenService:Create(sliderThumb, TweenInfo.new(0.10), {Size = UDim2.new(0, 22, 0, 22)}):Play() end)
         sliderThumb.MouseLeave:Connect(function() if not draggingS then TweenService:Create(sliderThumb, TweenInfo.new(0.10), {Size = UDim2.new(0, 18, 0, 18)}):Play() end end)
         sliderThumb.InputBegan:Connect(function(i)
@@ -45361,14 +45195,14 @@ function CreateCombatTab()
                 draggingS = true; _G._sliderDragging = true; TweenService:Create(sliderThumb, TweenInfo.new(0.08), {Size = UDim2.new(0, 22, 0, 22)}):Play()
             end
         end)
-        sliderTrack.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then draggingS = true; _G._sliderDragging = true; updateFromInput(i) end end)
+        sliderTrack.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then draggingS = true; _G._sliderDragging = true; updateFromMouse() end end)
         RegisterTabConn(UserInputService.InputEnded:Connect(function(i)
             if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
                 draggingS = false; _G._sliderDragging = false; TweenService:Create(sliderThumb, TweenInfo.new(0.10), {Size = UDim2.new(0, 18, 0, 18)}):Play()
             end
         end))
         RegisterTabConn(UserInputService.InputChanged:Connect(function(i)
-            if draggingS and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then updateFromInput(i) end
+            if draggingS and i.UserInputType == Enum.UserInputType.MouseMovement then updateFromMouse() end
         end))
         applyValue(defaultVal)
         _attachScrollPassthrough(container, sliderTrack, sliderThumb)
@@ -46514,19 +46348,15 @@ function CreateCombatTab()
 
             _ssDrag.MouseButton1Down:Connect(function() _ssDragging = true end)
             _ssDrag.MouseButton1Up:Connect(function() _ssDragging = false end)
-            _ssDrag.InputBegan:Connect(function(inp) if inp.UserInputType == Enum.UserInputType.Touch then _ssDragging = true end end)
             UserInputService.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then _ssDragging = false end
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then _ssDragging = false end
             end)
             UserInputService.InputChanged:Connect(function(inp)
-                if _ssDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+                if _ssDragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
                     _ssUpdate(_ssPct(inp.Position.X))
                 end
             end)
             _ssDrag.MouseButton1Click:Connect(function()
-                _ssUpdate(_ssPct(UserInputService:GetMouseLocation().X))
-            end)
-            _ssDrag.Activated:Connect(function()
                 _ssUpdate(_ssPct(UserInputService:GetMouseLocation().X))
             end)
             -- Init
@@ -46781,8 +46611,6 @@ function CreateCombatTab()
             end
             -- Disparo normal
             if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == SK.keybind then
-                _skShoot()
-            elseif inp.UserInputType == Enum.UserInputType.Touch and not SK.listening then
                 _skShoot()
             end
         end)
@@ -47191,8 +47019,398 @@ function CreateCombatTab()
     end
 
     -- ================================================================
-    -- BOTONES FLOTANTES MOBILE DESACTIVADOS
+    -- BOTONES FLOTANTES MOBILE — COMBAT TAB
+    -- Solo se crean si el dispositivo tiene TouchEnabled
+    -- Aparecen como botones circulares arrastrables en pantalla
+    -- ================================================================
+    do
+        local _isMobCombat = UserInputService.TouchEnabled
+        if not _isMobCombat then return end  -- skip en PC
 
+        -- Limpiar botones anteriores si existían
+        if _G._combatMobileGuis then
+            for _, g in ipairs(_G._combatMobileGuis) do
+                pcall(function() g:Destroy() end)
+            end
+        end
+        _G._combatMobileGuis = {}
+        if _G._combatMobileConns then
+            for _, c in ipairs(_G._combatMobileConns) do
+                pcall(function() c:Disconnect() end)
+            end
+        end
+        _G._combatMobileConns = {}
+
+        -- Helper: crear botón flotante circular arrastrable
+        local function _makeMobileBtn(name, label, color, posX, posY, onTap)
+            local sg = Instance.new("ScreenGui")
+            sg.Name = "CombatMobileBtn_" .. name
+            sg.ResetOnSpawn = false
+            sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+            sg.DisplayOrder = 9990
+            sg.IgnoreGuiInset = true
+            pcall(function() sg.Parent = game:GetService("CoreGui") end)
+            if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
+            table.insert(_G._combatMobileGuis, sg)
+
+            local SIZE = 68
+
+            local root = Instance.new("Frame", sg)
+            root.Name = "MobileBtn"
+            root.Size = UDim2.new(0, SIZE, 0, SIZE)
+            root.Position = UDim2.new(posX, 0, posY, 0)
+            root.AnchorPoint = Vector2.new(0.5, 0.5)
+            root.BackgroundColor3 = color
+            root.BackgroundTransparency = 0.3
+            root.BorderSizePixel = 0
+            root.Active = true
+            root.ZIndex = 195
+            Instance.new("UICorner", root).CornerRadius = UDim.new(1, 0)
+
+            -- Borde animado
+            local stroke = Instance.new("UIStroke", root)
+            stroke.Thickness = 2.5
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            stroke.Color = color
+            stroke.Transparency = 0.1
+
+            -- Glow pulsante
+            local _glowTick = 0
+            local _glowDir  = 1
+            local _glowConn = RunService.Heartbeat:Connect(function(dt)
+                _glowTick = _glowTick + dt * _glowDir * 1.2
+                if _glowTick >= 1 then _glowDir = -1 elseif _glowTick <= 0 then _glowDir = 1 end
+                pcall(function()
+                    stroke.Transparency = 0.1 + _glowTick * 0.6
+                end)
+            end)
+            table.insert(_G._combatMobileConns, _glowConn)
+
+            -- Texto del botón
+            local lbl = Instance.new("TextLabel", root)
+            lbl.Size = UDim2.new(1, 0, 1, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.Text = label
+            lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+            lbl.Font = Enum.Font.GothamBold
+            lbl.TextSize = math.max(10, math.floor(SIZE * 0.22))
+            lbl.TextWrapped = true
+            lbl.ZIndex = 196
+
+            -- Estado ON/OFF visual
+            local _isOn = false
+            local function _setVisualOn(on)
+                _isOn = on
+                TweenService:Create(root, TweenInfo.new(0.15), {
+                    BackgroundTransparency = on and 0.05 or 0.3,
+                    BackgroundColor3 = on and Color3.fromRGB(255,255,255) or color,
+                }):Play()
+                TweenService:Create(lbl, TweenInfo.new(0.1), {
+                    TextColor3 = on and color or Color3.fromRGB(255,255,255)
+                }):Play()
+            end
+
+            -- Drag
+            local dragStart, rootStart, dragging = nil, nil, false
+            local btn = Instance.new("TextButton", root)
+            btn.Size = UDim2.new(1, 0, 1, 0)
+            btn.BackgroundTransparency = 1
+            btn.Text = ""
+            btn.ZIndex = 197
+            btn.AutoButtonColor = false
+
+            btn.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.Touch
+                or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                    dragStart   = inp.Position
+                    rootStart   = root.Position
+                    dragging    = false
+                end
+            end)
+            local moveConn = UserInputService.InputChanged:Connect(function(inp)
+                if not dragStart then return end
+                if inp.UserInputType == Enum.UserInputType.Touch
+                or inp.UserInputType == Enum.UserInputType.MouseMovement then
+                    local delta = inp.Position - dragStart
+                    if not dragging then
+                        if delta.Magnitude > 10 then dragging = true else return end
+                    end
+                    local vp = workspace.CurrentCamera.ViewportSize
+                    local newX = math.clamp(rootStart.X.Scale * vp.X + delta.X, SIZE/2, vp.X - SIZE/2)
+                    local newY = math.clamp(rootStart.Y.Scale * vp.Y + delta.Y, SIZE/2, vp.Y - SIZE/2)
+                    root.Position = UDim2.new(newX / vp.X, 0, newY / vp.Y, 0)
+                end
+            end)
+            local endConn = UserInputService.InputEnded:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.Touch
+                or inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                    if dragStart and not dragging then
+                        -- TAP: ejecutar acción
+                        onTap(_setVisualOn, _isOn)
+                        -- Flash
+                        TweenService:Create(root, TweenInfo.new(0.08), {Size = UDim2.new(0, SIZE+12, 0, SIZE+12)}):Play()
+                        task.delay(0.12, function()
+                            TweenService:Create(root, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+                                {Size = UDim2.new(0, SIZE, 0, SIZE)}):Play()
+                        end)
+                    end
+                    dragStart = nil; dragging = false
+                end
+            end)
+            table.insert(_G._combatMobileConns, moveConn)
+            table.insert(_G._combatMobileConns, endConn)
+
+            -- Animación entrada
+            root.Size = UDim2.new(0, 1, 0, 1)
+            task.delay(0.05, function()
+                TweenService:Create(root, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+                    {Size = UDim2.new(0, SIZE, 0, SIZE)}):Play()
+            end)
+
+            return {gui=sg, root=root, setOn=_setVisualOn}
+        end
+
+        -- ── 1. BOTÓN SHOOT (disparo manual al murder) ───────────────────────
+        _makeMobileBtn("shoot", "SHOOT", Color3.fromRGB(0, 200, 160), 0.14, 0.82, function(setOn, isOn)
+            task.spawn(function()
+                local myChar = LocalPlayer.Character
+                local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                if not myHRP then CreateCustomNotification("SHOOT", "Sin personaje", 1); return end
+                local target = (_G._getEffectiveTarget and _G._getEffectiveTarget()) or findMurderer()
+                if not target or not target.Character then
+                    CreateCustomNotification("SHOOT", "Sin target", 1.2); return
+                end
+                local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
+                local tHead = target.Character:FindFirstChild("Head") or tHRP
+                if not tHRP then return end
+                local gun = _findGunIn and _findGunIn(myChar)
+                if not gun then CreateCustomNotification("SHOOT", "Sin gun equipada", 1.5); return end
+                local shootRemote = getShootRemote and getShootRemote(gun)
+                if not shootRemote then CreateCustomNotification("SHOOT", "Sin remote", 1.5); return end
+                local cam = workspace.CurrentCamera
+                local originPos = cam and cam.CFrame.Position or (myHRP.Position + Vector3.new(0,1.5,0))
+                local targetPos = tHead and tHead.Position or tHRP.Position
+                local oCF, tCF = buildShootCFrames(originPos, targetPos)
+                if oCF and tCF then
+                    pcall(function() shootRemote:FireServer(oCF, tCF) end)
+                    CreateCustomNotification("SHOOT", "Disparado a " .. target.Name, 1.2)
+                    setOn(true)
+                    task.delay(0.3, function() setOn(false) end)
+                end
+            end)
+        end)
+
+        -- ── 2. BOTÓN SILENT AIM TOGGLE ──────────────────────────────────────
+        local _saBtn = _makeMobileBtn("silenlaim", "SA", Color3.fromRGB(80, 120, 255), 0.28, 0.82, function(setOn, isOn)
+            local newState = not CombatTabState.silentAimEnabled
+            CombatTabState.silentAimEnabled = newState
+            setOn(newState)
+            CreateCustomNotification("SILENT AIM", newState and "ON" or "OFF", 1.5)
+        end)
+        -- Sincronizar estado inicial
+        if _saBtn then _saBtn.setOn(CombatTabState.silentAimEnabled) end
+
+        -- ── 3. BOTÓN AUTO SHOOT MURDER TOGGLE ───────────────────────────────
+        local _asBtn = _makeMobileBtn("autoshoot", "AUTO\nSHOOT", Color3.fromRGB(220, 80, 30), 0.72, 0.82, function(setOn, isOn)
+            local newState = not (CombatTabState.autoShootMurderEnabled or false)
+            CombatTabState.autoShootMurderEnabled = newState
+            setOn(newState)
+            if newState then
+                CreateCustomNotification("AUTO SHOOT", "ON", 1.5)
+                if CombatTabState.autoShootMurderConn then
+                    pcall(function() CombatTabState.autoShootMurderConn:Disconnect() end)
+                    CombatTabState.autoShootMurderConn = nil
+                end
+                local _asTick = 0
+                CombatTabState.autoShootMurderConn = RunService.Heartbeat:Connect(function(dt)
+                    if not CombatTabState.autoShootMurderEnabled then return end
+                    _asTick = _asTick + dt
+                    if _asTick < 0.35 then return end
+                    _asTick = 0
+                    task.spawn(function()
+                        local myChar = LocalPlayer.Character
+                        local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                        if not myHRP then return end
+                        local target = (_G._getEffectiveTarget and _G._getEffectiveTarget()) or findMurderer()
+                        if not target or not target.Character then return end
+                        local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
+                        local tHead = target.Character:FindFirstChild("Head") or tHRP
+                        if not tHRP then return end
+                        local tHum = target.Character:FindFirstChildOfClass("Humanoid")
+                        if not tHum or tHum.Health <= 0 then return end
+                        local gun = _findGunIn and _findGunIn(myChar)
+                        if not gun then return end
+                        local shootRemote = getShootRemote and getShootRemote(gun)
+                        if not shootRemote then return end
+                        if CombatTabState.autoShootMurderWC then
+                            if not wallCheckRaycast(myHRP.Position, tHRP.Position) then return end
+                        end
+                        local cam = workspace.CurrentCamera
+                        local originPos = cam and cam.CFrame.Position or (myHRP.Position + Vector3.new(0,1.5,0))
+                        local targetPos = tHead and tHead.Position or tHRP.Position
+                        local oCF, tCF = buildShootCFrames(originPos, targetPos)
+                        if oCF and tCF then
+                            pcall(function() shootRemote:FireServer(oCF, tCF) end)
+                        end
+                    end)
+                end)
+                table.insert(_G._combatMobileConns, CombatTabState.autoShootMurderConn)
+            else
+                CreateCustomNotification("AUTO SHOOT", "OFF", 1.5)
+                if CombatTabState.autoShootMurderConn then
+                    pcall(function() CombatTabState.autoShootMurderConn:Disconnect() end)
+                    CombatTabState.autoShootMurderConn = nil
+                end
+            end
+        end)
+        if _asBtn then _asBtn.setOn(CombatTabState.autoShootMurderEnabled or false) end
+
+        -- ── 4. BOTÓN STEAL GUN TOGGLE ────────────────────────────────────────
+        local _sgBtn = _makeMobileBtn("stealgun", "STEAL\nGUN", Color3.fromRGB(220, 160, 0), 0.86, 0.82, function(setOn, isOn)
+            if StealGunSystem then
+                local newState = not StealGunSystem.enabled
+                StealGunSystem.enabled = newState
+                setOn(newState)
+                if newState then
+                    task.spawn(StealGunLoop)
+                    CreateCustomNotification("STEAL GUN", "ON", 1.5)
+                else
+                    CreateCustomNotification("STEAL GUN", "OFF", 1.5)
+                end
+            else
+                CreateCustomNotification("STEAL GUN", "Sistema no encontrado", 2)
+            end
+        end)
+        if _sgBtn and StealGunSystem then _sgBtn.setOn(StealGunSystem.enabled or false) end
+
+        -- ── 5. BOTÓN GRAB GUN AHORA ──────────────────────────────────────────
+        _makeMobileBtn("grabgun", "GRAB\nGUN", Color3.fromRGB(40, 200, 100), 0.86, 0.65, function(setOn, isOn)
+            setOn(true)
+            task.spawn(function()
+                -- Intentar agarrar la gun del sheriff (múltiples métodos)
+                local grabbed = false
+                local sheriff = findSheriff and findSheriff()
+                if sheriff and sheriff.Character then
+                    local sChar = sheriff.Character
+                    local sHRP = sChar:FindFirstChild("HumanoidRootPart")
+                    local myChar = LocalPlayer.Character
+                    local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                    if myHRP and sHRP then
+                        -- TP cerca del sheriff y agarrar
+                        local oldPos = myHRP.CFrame
+                        pcall(function()
+                            myHRP.CFrame = sHRP.CFrame * CFrame.new(0, 0, 2.5)
+                        end)
+                        task.wait(0.1)
+                        -- Buscar GunDrop en workspace
+                        for _, obj in ipairs(workspace:GetDescendants()) do
+                            if obj:IsA("Tool") and (obj.Name == "GunDrop" or obj.Name == "SheriffGun" or obj.Name == "HeroGun" or obj.Name == "Gun") then
+                                local hum = myChar:FindFirstChildOfClass("Humanoid")
+                                if hum then
+                                    pcall(function() hum:EquipTool(obj) end)
+                                    grabbed = true
+                                    break
+                                end
+                            end
+                        end
+                        if not grabbed then
+                            -- Intentar via StealGunLoop
+                            if StealGunSystem and not StealGunSystem.enabled then
+                                task.spawn(StealGunLoop)
+                            end
+                        end
+                    end
+                end
+                CreateCustomNotification("GRAB GUN", grabbed and "Gun agarrada!" or "Intentando agarrar gun...", 2)
+                task.wait(0.5)
+                setOn(false)
+            end)
+        end)
+
+        -- ── 6. BOTÓN KNIFE SA TOGGLE ─────────────────────────────────────────
+        local _ksaBtn = nil
+        if KnifeSAState ~= nil then
+            _ksaBtn = _makeMobileBtn("knifesa", "KNIFE\nSA", Color3.fromRGB(180, 40, 40), 0.14, 0.65, function(setOn, isOn)
+                local newState = not (KnifeSAState.enabled or false)
+                KnifeSAState.enabled = newState
+                setOn(newState)
+                CreateCustomNotification("KNIFE SA", newState and "ON" or "OFF", 1.5)
+                -- Activar/desactivar sistema de knife SA
+                if newState then
+                    if _KnifeSA_activate then pcall(_KnifeSA_activate) end
+                else
+                    if _KnifeSA_deactivate then pcall(_KnifeSA_deactivate) end
+                end
+            end)
+            if _ksaBtn and KnifeSAState then _ksaBtn.setOn(KnifeSAState.enabled or false) end
+        end
+
+        -- ── 7. BOTÓN FLING MURDER ────────────────────────────────────────────
+        _makeMobileBtn("fling", "FLING", Color3.fromRGB(140, 60, 200), 0.28, 0.65, function(setOn, isOn)
+            setOn(true)
+            task.spawn(function()
+                local target = findMurderer and findMurderer()
+                if not target or not target.Character then
+                    CreateCustomNotification("FLING", "No hay murderer", 1.5)
+                    setOn(false)
+                    return
+                end
+                -- Usar _sgFlingPlayer si está disponible
+                if _sgFlingPlayer then
+                    pcall(_sgFlingPlayer, target)
+                    CreateCustomNotification("FLING", "Fling a " .. target.Name, 1.5)
+                else
+                    -- Fallback: TP encima del murder y empujar
+                    local tHRP = target.Character:FindFirstChild("HumanoidRootPart")
+                    local myChar = LocalPlayer.Character
+                    local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                    if tHRP and myHRP then
+                        pcall(function()
+                            myHRP.CFrame = tHRP.CFrame * CFrame.new(0, 3, 0)
+                            myHRP.AssemblyLinearVelocity = tHRP.AssemblyLinearVelocity + Vector3.new(0, 80, 0)
+                        end)
+                        CreateCustomNotification("FLING", "Fling aplicado", 1.5)
+                    end
+                end
+                task.wait(0.4)
+                setOn(false)
+            end)
+        end)
+
+        -- ── 8. BOTÓN WALL CHECK (toggle para silent aim) ────────────────────
+        local _wcBtn = _makeMobileBtn("wallcheck", "WALL\nCHECK", Color3.fromRGB(100, 100, 100), 0.72, 0.65, function(setOn, isOn)
+            local newState = not (CombatTabState.saWallCheck or false)
+            CombatTabState.saWallCheck = newState
+            setOn(newState)
+            CreateCustomNotification("WALL CHECK", newState and "ON" or "OFF", 1.2)
+        end)
+        if _wcBtn then _wcBtn.setOn(CombatTabState.saWallCheck or false) end
+
+        -- Notificación informativa
+        task.delay(0.5, function()
+            CreateCustomNotification("COMBAT MOBILE", "8 botones activos — arrástralos para moverlos", 3)
+        end)
+
+        -- Limpiar al destruir el tab
+        local _cleanupConn
+        _cleanupConn = contentContainer:GetPropertyChangedSignal("Parent"):Connect(function()
+            if contentContainer.Parent then return end
+            if _G._combatMobileGuis then
+                for _, g in ipairs(_G._combatMobileGuis) do
+                    pcall(function() g:Destroy() end)
+                end
+                _G._combatMobileGuis = {}
+            end
+            if _G._combatMobileConns then
+                for _, c in ipairs(_G._combatMobileConns) do
+                    pcall(function() c:Disconnect() end)
+                end
+                _G._combatMobileConns = {}
+            end
+            pcall(function() _cleanupConn:Disconnect() end)
+        end)
+        table.insert(_G._combatMobileConns, _cleanupConn)
+    end
 end  -- close CreateCombatTab
 
 
@@ -47229,7 +47447,7 @@ minimizeBtn.TextSize = 18
 minimizeBtn.TextColor3 = Color3.fromRGB(255,255,255)
 minimizeBtn.AutoButtonColor = false
 minimizeBtn.BorderSizePixel = 0
-minimizeBtn.ZIndex = 999
+minimizeBtn.ZIndex = 10
 Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 8)
 
 minStroke = Instance.new("UIStroke", minimizeBtn)
@@ -47344,7 +47562,7 @@ minimizeBtn.MouseButton1Click:Connect(function()
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
                     uiScale.Scale = 0
-                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
                 end
                 -- NO llamar _reloadActiveTab: no es necesario y disparaba
                 -- la pantalla de disculpas del premium al reconstruir el tab.
@@ -47611,7 +47829,7 @@ closeBtn.MouseButton1Click:Connect(function()
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
                     uiScale.Scale = 0
-                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
                 end
                 -- NO llamar _reloadActiveTab: causaba el popup de premium
             else
@@ -48887,28 +49105,20 @@ function abrirHub()
         _bg.ZIndex                 = 1
 
         -- Imagen principal centrada (rbxassetid://135253670455066)
-        -- Ajuste responsivo: en movil usar porcentaje de pantalla en vez de pixeles fijos
-        local _vp = workspace.CurrentCamera.ViewportSize
-        local _isMobileSplash = _vp.X < 600 or _vp.Y < 700
-        local _imgW = _isMobileSplash and math.floor(_vp.X * 0.92) or 540
-        local _imgH = _isMobileSplash and math.floor(_vp.Y * 0.75) or 700
-
         local _img = Instance.new("ImageLabel", _splashSG)
         _img.Image                  = "rbxassetid://135253670455066"
-        _img.Size                   = UDim2.new(0, _imgW, 0, _imgH)
+        _img.Size                   = UDim2.new(0, 540, 0, 700)
         _img.AnchorPoint            = Vector2.new(0.5, 0.5)
-        _img.Position               = UDim2.new(0.5, 0, 0.5, _isMobileSplash and -20 or -30)
+        _img.Position               = UDim2.new(0.5, 0, 0.5, -30)
         _img.BackgroundTransparency = 1
         _img.ScaleType              = Enum.ScaleType.Fit
         _img.ZIndex                 = 2
 
         -- Boton CONTINUAR
         local _btn = Instance.new("TextButton", _splashSG)
-        _btn.Size                   = UDim2.new(0, _isMobileSplash and 200 or 220, 0, _isMobileSplash and 44 or 50)
+        _btn.Size                   = UDim2.new(0, 220, 0, 50)
         _btn.AnchorPoint            = Vector2.new(0.5, 0.5)
-        -- En movil el offset vertical se calcula en base al alto de pantalla
-        local _btnOffsetY = _isMobileSplash and math.floor(_vp.Y * 0.42) or 380
-        _btn.Position               = UDim2.new(0.5, 0, 0.5, _btnOffsetY)
+        _btn.Position               = UDim2.new(0.5, 0, 0.5, 380)
         _btn.BackgroundColor3       = Color3.fromRGB(20, 20, 20)
         _btn.BorderSizePixel        = 0
         _btn.Text                   = "CONTINUAR"
@@ -48923,22 +49133,18 @@ function abrirHub()
 
         -- Bloquear la ejecucion hasta que el usuario presione CONTINUAR
         local _continued = false
-        local function _onContinuar()
-            if _continued then return end
+        _btn.MouseButton1Click:Connect(function()
             _continued = true
+            -- Animacion de fade out del splash
             local _ts = game:GetService("TweenService")
-            local _fade    = _ts:Create(_bg,  TweenInfo.new(0.3), {BackgroundTransparency = 1})
+            local _fade = _ts:Create(_bg, TweenInfo.new(0.3), {BackgroundTransparency = 1})
             local _fadeImg = _ts:Create(_img, TweenInfo.new(0.3), {ImageTransparency = 1})
             local _fadeBtn = _ts:Create(_btn, TweenInfo.new(0.3), {BackgroundTransparency = 1, TextTransparency = 1})
             _fade:Play(); _fadeImg:Play(); _fadeBtn:Play()
             task.delay(0.35, function()
                 pcall(function() _splashSG:Destroy() end)
             end)
-        end
-        -- PC: click del mouse
-        _btn.MouseButton1Click:Connect(_onContinuar)
-        -- Movil: toque tactil (Activated funciona en ambos dispositivos)
-        _btn.Activated:Connect(_onContinuar)
+        end)
 
         -- Esperar hasta que se presione CONTINUAR
         repeat task.wait(0.05) until _continued
@@ -48970,7 +49176,7 @@ function abrirHub()
         local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
         if uiScale then
             uiScale.Scale = 0
-            TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+            TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
         end
         -- FIX: recargar el tab activo para restaurar bindables y botones
         task.defer(function()
@@ -49065,9 +49271,31 @@ mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
--- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
--- El UIScale que se aplica abajo se encarga de que entre en pantalla.
-mainFrame.Size = UDim2.new(0, 730, 0, 430)
+-- -- TAMAÑO: responsive para móvil y escritorio --
+do
+    local _vp = workspace.CurrentCamera.ViewportSize
+    local _isMobile = _vp.X < 600 or _vp.Y < 500
+    if _isMobile then
+        -- Móvil: 95% ancho, 88% alto de pantalla (máximo 400x560)
+        local _mw = math.min(math.floor(_vp.X * 0.95), 400)
+        local _mh = math.min(math.floor(_vp.Y * 0.88), 560)
+        mainFrame.Size = UDim2.new(0, _mw, 0, _mh)
+    else
+        mainFrame.Size = UDim2.new(0, 730, 0, 430)
+    end
+    -- Escuchar cambios de viewport (rotación de dispositivo)
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+        local vp2 = workspace.CurrentCamera.ViewportSize
+        local mob2 = vp2.X < 600 or vp2.Y < 500
+        if mob2 then
+            local mw2 = math.min(math.floor(vp2.X * 0.95), 400)
+            local mh2 = math.min(math.floor(vp2.Y * 0.88), 560)
+            mainFrame.Size = UDim2.new(0, mw2, 0, mh2)
+        else
+            mainFrame.Size = UDim2.new(0, 730, 0, 430)
+        end
+    end)
+end
 
 -- ==============================================================
 -- FONDO AZUL SLIDO  sin aurora animada, sin pulse dot
@@ -49088,49 +49316,6 @@ glowBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 uiScale = Instance.new("UIScale", mainFrame)
 uiScale.Scale = 1
-
--- ================================================================
--- == AUTO SCALE SEGÚN DISPOSITIVO
--- El hub siempre es 730x430 (apariencia PC idéntica).
--- En móvil se escala para que entre completo en pantalla.
--- ================================================================
-do
-    local HUB_W = 730
-    local HUB_H = 430
-
-    -- HELPER GLOBAL: devuelve la escala correcta según viewport actual.
-    -- Todos los reopeners/animaciones deben animar HASTA este valor, no hasta 1.
-    _getTargetScale = function()
-        local vp = workspace.CurrentCamera.ViewportSize
-        local isMobile = UserInputService.TouchEnabled
-        local marginX = isMobile and 20 or 10
-        local marginY = isMobile and 30 or 10
-        local scaleX = (vp.X - marginX) / HUB_W
-        local scaleY = (vp.Y - marginY) / HUB_H
-        local scale  = math.min(scaleX, scaleY)
-        local minScale = isMobile and 0.30 or 0.5
-        return math.clamp(scale, minScale, 0.70)
-    end
-
-    local function _applyScale()
-        local s = _getTargetScale()
-        uiScale.Scale = s
-        -- Mantener el hub centrado en pantalla siempre
-        mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-        mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
-    end
-
-    -- Aplicar escala inicial
-    _applyScale()
-
-    -- Reajustar si el usuario rota el dispositivo
-    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(_applyScale)
-
-    print("[ZerqonHUB] Escala aplicada: " .. tostring(uiScale.Scale))
-end
--- ================================================================
--- == FIN AUTO SCALE
--- ================================================================
 
 -- FONDO SIMPLE: rbxassetid://93899674926078 dentro del hub
 -- stubs de compatibilidad requeridos por el resto del codigo
@@ -49833,14 +50018,13 @@ particles = {}
             -- FIX: respetar la opcion "Allow Hub Drag" de Settings
             if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
 
-            -- Solo arrastrar si el input cae dentro del header (mouse o touch)
-            local _inputPos2D = Vector2.new(input.Position.X, input.Position.Y)
-            if not _mouseOverHeader(_inputPos2D) then return end
-            -- Verificar que el punto este dentro del mainFrame
+            -- Solo arrastrar si el click es dentro del header (no en toggles/sliders)
+            if not _mouseOverHeader(Vector2.new(input.Position.X, input.Position.Y)) then return end
+            local mPos = UserInputService:GetMouseLocation()
             local fPos = mainFrame.AbsolutePosition
             local fSiz = mainFrame.AbsoluteSize
-            if _inputPos2D.X < fPos.X or _inputPos2D.X > fPos.X + fSiz.X then return end
-            if _inputPos2D.Y < fPos.Y or _inputPos2D.Y > fPos.Y + fSiz.Y then return end
+            if mPos.X < fPos.X or mPos.X > fPos.X + fSiz.X then return end
+            if mPos.Y < fPos.Y or mPos.Y > fPos.Y + fSiz.Y then return end
 
             -- Efecto: esquinas se ensanchan al sostener click
             local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
@@ -49853,12 +50037,10 @@ particles = {}
                 Color        = Color3.fromRGB(220, 220, 220),
             }):Play()
 
-            -- Usar AbsoluteSize real (no valores hardcodeados) para calcular offset
+            local BASE_W, BASE_H = 650, 380
             local vp  = workspace.CurrentCamera.ViewportSize
             local pos = mainFrame.Position
             local ap  = mainFrame.AnchorPoint
-            local fw  = mainFrame.AbsoluteSize.X
-            local fh  = mainFrame.AbsoluteSize.Y
             local curX, curY
 
             if ap == Vector2.new(0, 0) then
@@ -49867,15 +50049,15 @@ particles = {}
             else
                 local centerX = pos.X.Scale * vp.X + pos.X.Offset
                 local centerY = pos.Y.Scale * vp.Y + pos.Y.Offset
-                curX = centerX - fw * ap.X
-                curY = centerY - fh * ap.Y
+                curX = centerX - BASE_W * ap.X
+                curY = centerY - BASE_H * ap.Y
             end
 
             mainFrame.AnchorPoint = Vector2.new(0, 0)
             mainFrame.Position    = UDim2.new(0, curX, 0, curY)
 
             dragging       = true
-            dragStartMouse = input.Position  -- Vector3: funciona igual para mouse y touch
+            dragStartMouse = input.Position
             dragStartFrame = Vector2.new(curX, curY)
         end)
 
@@ -49963,8 +50145,7 @@ particles = {}
     arrowToggleBtn.Text = ""
     arrowToggleBtn.AutoButtonColor = false
     arrowToggleBtn.BorderSizePixel = 0
-    arrowToggleBtn.ZIndex = 999  -- FIX MOBILE: ZIndex alto para que no quede debajo de otros elementos
-    arrowToggleBtn.Active = true  -- FIX MOBILE: necesario para recibir inputs touch
+    arrowToggleBtn.ZIndex = 12
     local arrowLabel = Instance.new("ImageLabel", arrowToggleBtn)
     arrowLabel.Size = UDim2.new(0, 54, 0, 54)
     arrowLabel.Position = UDim2.new(0.5, -27, 0.5, -27)
@@ -50316,11 +50497,9 @@ particles = {}
 
     -- SIDEBAR: panel izquierdo en desktop, barra inferior en móvil
     local _vpNow = workspace.CurrentCamera.ViewportSize
-    -- SIEMPRE usar layout de PC (sidebar vertical) — el auto-scale se encarga
-    -- de que el hub entre completo en pantalla, tanto en PC como en móvil.
-    local _isMobileLayout = false
-    local SIDEBAR_W = 240
-    local TAB_BAR_BOTTOM_H = 0
+    local _isMobileLayout = _vpNow.X < 600 or _vpNow.Y < 500
+    local SIDEBAR_W = _isMobileLayout and 0 or 240
+    local TAB_BAR_BOTTOM_H = _isMobileLayout and 40 or 0  -- altura barra inferior móvil
 
     local tabDockFrame = Instance.new("Frame", mainFrame)
     tabDockFrame.Name = "TabDock"
@@ -50588,19 +50767,13 @@ particles = {}
     end
     _G._goBackToEmpty = _goBackToEmpty  -- exponer para minimizeBtn (scope externo)
 
-    -- FIX MOBILE: en ejecutores moviles MouseButton1Click puede no disparar con touch.
-    -- Usamos InputBegan como respaldo para garantizar que el boton funcione.
-    local _arrowBtnDebounce = false
-    local function _arrowBtnFire()
-        if _arrowBtnDebounce then return end
-        _arrowBtnDebounce = true
-        task.delay(0.5, function() _arrowBtnDebounce = false end)
-        -- disparar el handler de cierre/minimizar
+    arrowToggleBtn.MouseButton1Click:Connect(function()
         local _hubGuiRef    = hubGui
         local _mainFrameRef = mainFrame
         pcall(CloseExpandPanel)
         pcall(function() if _G._stopWeapon then _G._stopWeapon() end end)
         pcall(function() if _G._stopKnife  then _G._stopKnife()  end end)
+        -- FIX: respetar "No Minimize/Maximize Anim" de Settings
         if _G._hubSettings and _G._hubSettings.noMinMaxAnimations then
             if _mainFrameRef then _mainFrameRef.BackgroundTransparency = 1 end
             if tabDockFrame  then tabDockFrame.BackgroundTransparency  = 1 end
@@ -50617,7 +50790,7 @@ particles = {}
             end)
         end
         _G._hubHidden = true
-        pcall(_flushConfig)
+        pcall(_flushConfig)  -- OPT: flush inmediato al cerrar
         task.delay(0.36, function()
             pcall(function() if _hubGuiRef then _hubGuiRef.Enabled = false end end)
             pcall(function()
@@ -50630,76 +50803,174 @@ particles = {}
         end)
         -- Skull reopener
         local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-        if pg then
-            -- Destruir reopeners anteriores
-            for _, ch in ipairs(pg:GetChildren()) do
-                if ch:IsA("ScreenGui") and (ch.Name == "reReopener" or ch.Name:find("Reopener")) then
-                    pcall(function() ch:Destroy() end)
-                end
-            end
-            local rGui2 = Instance.new("ScreenGui")
-            rGui2.Name = "reReopener"
-            rGui2.ResetOnSpawn = false
-            rGui2.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-            rGui2.DisplayOrder = 9998
-            rGui2.Parent = pg
-            local SKULL_SIZE2 = 130
-            local skullMF2 = Instance.new("Frame", rGui2)
-            skullMF2.BackgroundTransparency = 1
-            skullMF2.AnchorPoint = Vector2.new(0.5, 0)
-            skullMF2.Size = UDim2.new(0, SKULL_SIZE2, 0, SKULL_SIZE2)
-            skullMF2.Position = UDim2.new(0.5, 0, 0, 10)
-            local rBtn2 = Instance.new("ImageButton", skullMF2)
-            rBtn2.AnchorPoint = Vector2.new(0.5, 0.5)
-            rBtn2.Position = UDim2.new(0.5, 0, 0.5, 0)
-            rBtn2.Size = UDim2.new(0, 0, 0, 0)
-            rBtn2.BackgroundTransparency = 1
-            rBtn2.Image = "rbxassetid://100287275990702"
-            rBtn2.ImageColor3 = Color3.fromRGB(255, 255, 255)
-            rBtn2.ScaleType = Enum.ScaleType.Fit
-            rBtn2.ZIndex = 100
-            rBtn2.Active = true
-            Instance.new("UICorner", rBtn2).CornerRadius = UDim.new(0, 14)
-            TweenService:Create(rBtn2, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Size = UDim2.new(0, SKULL_SIZE2 * 0.9, 0, SKULL_SIZE2 * 0.9)
-            }):Play()
-            local _rBtn2Clicked = false
-            local function _reopenHub()
-                if _rBtn2Clicked then return end
-                _rBtn2Clicked = true
-                task.delay(0.1, function()
-                    pcall(function() rGui2:Destroy() end)
-                    local existingHub = LocalPlayer.PlayerGui:FindFirstChild("f")
-                                     or game:GetService("CoreGui"):FindFirstChild("f")
-                    if existingHub then
-                        existingHub.Enabled = true
-                        _G._hubHidden = false
-                        if mainFrame and mainFrame.Parent then
-                            mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-                            mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
+            if pg then
+                local rGui = Instance.new("ScreenGui")
+                rGui.Name = "reReopener"
+                rGui.ResetOnSpawn = false
+                rGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                rGui.DisplayOrder = 9998
+                rGui.Parent = pg
+                local SKULL_COLOR = Color3.fromRGB(80, 80, 85)
+                local SKULL_SIZE  = 130
+                local skullMF = Instance.new("Frame", rGui)
+                skullMF.Name = "MainFrame"
+                skullMF.BackgroundTransparency = 1
+                skullMF.AnchorPoint = Vector2.new(0.5, 0)
+                skullMF.Size = UDim2.new(0, SKULL_SIZE, 0, SKULL_SIZE)
+                skullMF.Position = UDim2.new(0.5, 0, 0, 10)
+                local rBtn = Instance.new("ImageButton", skullMF)
+                rBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+                rBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+                rBtn.Size = UDim2.new(0, 0, 0, 0)
+                rBtn.BackgroundTransparency = 1
+                rBtn.Image = "rbxassetid://100287275990702"
+                rBtn.ImageColor3 = Color3.fromRGB(255,255,255)
+                rBtn.ScaleType = Enum.ScaleType.Fit
+                rBtn.ZIndex = 100
+                TweenService:Create(rBtn, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                    Size = UDim2.new(0, SKULL_SIZE * 0.9, 0, SKULL_SIZE * 0.9)
+                }):Play()
+                -- Sin borde feo: solo esquinas redondeadas
+                Instance.new("UICorner", rBtn).CornerRadius = UDim.new(0, 14)
+
+                -- Capa fantasma magenta (aberracion cromatica)
+                local rGhostR = Instance.new("ImageLabel", skullMF)
+                rGhostR.Size = UDim2.new(0, SKULL_SIZE * 0.9, 0, SKULL_SIZE * 0.9)
+                rGhostR.AnchorPoint = Vector2.new(0.5, 0.5)
+                rGhostR.Position = UDim2.new(0.5, 0, 0.5, 0)
+                rGhostR.BackgroundTransparency = 1
+                rGhostR.Image = "rbxassetid://100287275990702"
+                rGhostR.ImageColor3 = Color3.fromRGB(160, 160, 165)
+                rGhostR.ImageTransparency = 0.72
+                rGhostR.ScaleType = Enum.ScaleType.Fit
+                rGhostR.ZIndex = 98
+                Instance.new("UICorner", rGhostR).CornerRadius = UDim.new(0, 14)
+
+                -- Capa fantasma cian
+                local rGhostB = Instance.new("ImageLabel", skullMF)
+                rGhostB.Size = UDim2.new(0, SKULL_SIZE * 0.9, 0, SKULL_SIZE * 0.9)
+                rGhostB.AnchorPoint = Vector2.new(0.5, 0.5)
+                rGhostB.Position = UDim2.new(0.5, 0, 0.5, 0)
+                rGhostB.BackgroundTransparency = 1
+                rGhostB.Image = "rbxassetid://100287275990702"
+                rGhostB.ImageColor3 = Color3.fromRGB(130, 130, 135)
+                rGhostB.ImageTransparency = 0.72
+                rGhostB.ScaleType = Enum.ScaleType.Fit
+                rGhostB.ZIndex = 99
+                Instance.new("UICorner", rGhostB).CornerRadius = UDim.new(0, 14)
+
+                -- Scanline
+                local rScanLine = Instance.new("Frame", skullMF)
+                rScanLine.Size = UDim2.new(0, SKULL_SIZE * 0.9, 0, 2)
+                rScanLine.AnchorPoint = Vector2.new(0.5, 0)
+                rScanLine.Position = UDim2.new(0.5, 0, 0, 0)
+                rScanLine.BackgroundColor3 = Color3.fromRGB(180, 180, 185)
+                rScanLine.BackgroundTransparency = 0.3
+                rScanLine.BorderSizePixel = 0
+                rScanLine.ZIndex = 103
+                Instance.new("UICorner", rScanLine).CornerRadius = UDim.new(1, 0)
+
+                local _r3OX = {-5,4,-3,6,-4,3,-6,5,0,0,-2,2}
+                local _r3OY = {2,-3,4,-2,3,-4,0,0,1,-1,0,0}
+                task.spawn(function()
+                    local _r3t = 0
+                    local _rScanY = 0
+                    while rBtn and rBtn.Parent do
+                        _r3t = _r3t + 1
+
+                        -- Scanline
+                        _rScanY = (_rScanY + 6) % math.floor(SKULL_SIZE * 0.9)
+                        rScanLine.Position = UDim2.new(0.5, 0, 0, _rScanY)
+
+                        -- Aberracion cromatica
+                        rGhostR.Position = UDim2.new(0.5, math.random(-6,6), 0.5, math.random(-2,2))
+                        rGhostB.Position = UDim2.new(0.5, math.random(-6,6), 0.5, math.random(-2,2))
+                        rGhostR.ImageTransparency = 0.6 + math.random() * 0.3
+                        rGhostB.ImageTransparency = 0.6 + math.random() * 0.3
+
+                        -- Color gris pulsante
+                        local pulse = 0.85 + math.sin(_r3t * 0.4) * 0.15
+                        rBtn.ImageColor3 = Color3.fromRGB(
+                            math.floor(200 * pulse),
+                            math.floor(200 * pulse),
+                            math.floor(205 * pulse)
+                        )
+
+                        if _r3t % 3 == 0 then
+                            local ox = _r3OX[math.random(1,#_r3OX)]
+                            local oy = _r3OY[math.random(1,#_r3OY)]
+                            rBtn.Position = UDim2.new(0.5, ox, 0.5, oy)
+                            task.wait(0.04); rBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+                            task.wait(0.02); rBtn.Position = UDim2.new(0.5, -ox, 0.5, -oy)
+                            task.wait(0.03); rBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
                         end
-                        local uiScaleR = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
-                        if uiScaleR then
-                            uiScaleR.Scale = 0
-                            TweenService:Create(uiScaleR, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                        if _r3t % 4 == 0 then
+                            rBtn.ImageTransparency=0.55; task.wait(0.025)
+                            rBtn.ImageTransparency=0;    task.wait(0.015)
+                            rBtn.ImageTransparency=0.35; task.wait(0.025)
+                            rBtn.ImageTransparency=0
                         end
-                    else
-                        task.spawn(abrirHub)
+                        if _r3t % 7 == 0 then
+                            local sliceOff = math.random(-8, 8)
+                            rBtn.Position = UDim2.new(0.5, sliceOff, 0.5, 0)
+                            task.wait(0.03)
+                            rBtn.Position = UDim2.new(0.5, -sliceOff * 2, 0.5, 0)
+                            task.wait(0.02)
+                            rBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+                        end
+                        task.wait(0.08)
                     end
                 end)
+                rBtn.MouseEnter:Connect(function()
+                    TweenService:Create(rBtn, TweenInfo.new(0.15), {ImageTransparency=0.2, ImageColor3=Color3.fromRGB(220,220,225)}):Play()
+                end)
+                rBtn.MouseLeave:Connect(function()
+                    TweenService:Create(rBtn, TweenInfo.new(0.15), {ImageTransparency=0, ImageColor3=Color3.fromRGB(200,200,205)}):Play()
+                end)
+                local _rBtn3Clicked = false
+                rBtn.MouseButton1Click:Connect(function()
+                    if _rBtn3Clicked then return end
+                    _rBtn3Clicked = true
+                    -- FIX: limpiar TODOS los reopeners antes de abrir el hub
+                    local _pgFix3 = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+                    if _pgFix3 then
+                        for _, child in ipairs(_pgFix3:GetChildren()) do
+                            if child:IsA("ScreenGui") and (
+                                child.Name == "reReopener" or
+                                child.Name:find("Reopener") or
+                                child.Name == "rbxassetid://140622075233565Reopener"
+                            ) and child ~= rGui then
+                                pcall(function() child:Destroy() end)
+                            end
+                        end
+                    end
+                    task.delay(0.1, function()
+                        pcall(function() rGui:Destroy() end)
+                        local existingHub = LocalPlayer.PlayerGui:FindFirstChild("f")
+                        if existingHub then
+                            existingHub.Enabled = true
+                            _G._hubHidden = false
+                            if mainFrame and mainFrame.Parent then
+                                mainFrame.BackgroundTransparency = 1
+                                mainFrame.Size        = UDim2.new(0, 650, 0, 380)
+                                mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+                                mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
+                            end
+                            local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
+                            if uiScale then
+                                uiScale.Scale = 0
+                                TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+                            end
+                            task.defer(function()
+                                if _G._reloadActiveTab then pcall(_G._reloadActiveTab) end
+                            end)
+                        else
+                            task.spawn(abrirHub)
+                        end
+                    end)
+                end)
             end
-            rBtn2.MouseButton1Click:Connect(_reopenHub)
-            rBtn2.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.Touch then _reopenHub() end
-            end)
-        end
-    end
-    -- Conectar tanto MouseButton1Click como InputBegan (touch) para compatibilidad movil
-    arrowToggleBtn.MouseButton1Click:Connect(_arrowBtnFire)
-    arrowToggleBtn.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.Touch then _arrowBtnFire() end
-    end)
-
+    end)  -- cierra arrowToggleBtn.MouseButton1Click:Connect
     restoreBtn.MouseButton1Click:Connect(function()
         _goBackToEmpty()
     end)
@@ -50753,7 +51024,7 @@ particles = {}
                 mainFrame.Visible = true
                 mainFrame.BackgroundTransparency = 1
                 local _uiSF = mainFrame:FindFirstChildOfClass("UIScale")
-                if _uiSF then _uiSF.Scale = (_getTargetScale and _getTargetScale() or 0.70) end
+                if _uiSF then _uiSF.Scale = 1 end
                 if header then header.Position = UDim2.new(0, 0, 0, 0) end
                 if sidebar then sidebar.Position = UDim2.new(0, 0, 0, 32) end
             end)
@@ -50781,7 +51052,7 @@ particles = {}
             local _uiSR = mainFrame:FindFirstChildOfClass("UIScale")
             if _uiSR then _uiSR.Scale = 0 end
             if _uiSR then
-                TweenService:Create(_uiSR, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                TweenService:Create(_uiSR, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
             end
             header.Position  = UDim2.new(0, 0, 0, 0)
             sidebar.Position = UDim2.new(0, 0, 0, 32)
@@ -50789,7 +51060,7 @@ particles = {}
             _G._hubReady = true
             mainFrame.BackgroundTransparency = 1
             if mainFrame:FindFirstChildOfClass("UIScale") then
-                mainFrame:FindFirstChildOfClass("UIScale").Scale = (_getTargetScale and _getTargetScale() or 0.70)
+                mainFrame:FindFirstChildOfClass("UIScale").Scale = 1
             end
             task.defer(function()
                 _G._tabContentActive = true
@@ -51025,7 +51296,7 @@ particles = {}
         if uiScaleEntry then uiScaleEntry.Scale = 0 end
         if uiScaleEntry then
             TweenService:Create(uiScaleEntry, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Scale = (_getTargetScale and _getTargetScale() or 0.70)
+                Scale = 1
             }):Play()
         end
         task.wait(0)
@@ -51042,7 +51313,7 @@ particles = {}
         mainFrame.Visible = true
         mainFrame.BackgroundTransparency = 1
         if mainFrame:FindFirstChildOfClass("UIScale") then
-            mainFrame:FindFirstChildOfClass("UIScale").Scale = (_getTargetScale and _getTargetScale() or 0.70)
+            mainFrame:FindFirstChildOfClass("UIScale").Scale = 1
         end
         print("3: Hub completamente visible")
         -- Auto-cargar el primer tab (MAIN) al iniciar
@@ -51058,7 +51329,7 @@ particles = {}
                 mainFrame.Visible = true
                 mainFrame.BackgroundTransparency = 1
                 local _uiS = mainFrame:FindFirstChildOfClass("UIScale")
-                if _uiS then _uiS.Scale = (_getTargetScale and _getTargetScale() or 0.70) end
+                if _uiS then _uiS.Scale = 1 end
                 if header then header.Position = UDim2.new(0, 0, 0, 0) end
                 if sidebar then sidebar.Position = UDim2.new(0, 0, 0, 32) end
             end)
@@ -51937,234 +52208,6 @@ function CreateUseTab()
     -- ANIMATION SELECTOR
     -- ================================================================
     -- ================================================================
-
-    -- ================================================================
-    -- 🎨 COLOR DEL HUB — cambia colores de todo el hub en tiempo real
-    -- ================================================================
-    do
-        local cpSec = CreateBorderedSectionGlobal(rightColumn, " 🎨 COLOR DEL HUB")
-
-        local cpTitle = Instance.new("TextLabel", cpSec)
-        cpTitle.Size = UDim2.new(1, -10, 0, 22)
-        cpTitle.BackgroundTransparency = 1
-        cpTitle.Text = "Elegir Color Principal"
-        cpTitle.TextColor3 = ThemeColors.TextPrimary
-        cpTitle.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        cpTitle.TextSize = 12
-        cpTitle.TextXAlignment = Enum.TextXAlignment.Left
-        cpTitle.ZIndex = 13
-
-        local cpSub = Instance.new("TextLabel", cpSec)
-        cpSub.Size = UDim2.new(1, -10, 0, 16)
-        cpSub.BackgroundTransparency = 1
-        cpSub.Text = "Cambia bindables, sliders, toggles y selectores"
-        cpSub.TextColor3 = ThemeColors.TextSecondary
-        cpSub.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        cpSub.TextSize = 10
-        cpSub.TextXAlignment = Enum.TextXAlignment.Left
-        cpSub.ZIndex = 13
-
-        -- Preview del color actual
-        local previewRow = Instance.new("Frame", cpSec)
-        previewRow.Size = UDim2.new(1, -8, 0, 32)
-        previewRow.BackgroundTransparency = 1
-        previewRow.BorderSizePixel = 0
-        local prLayout = Instance.new("UIListLayout", previewRow)
-        prLayout.FillDirection = Enum.FillDirection.Horizontal
-        prLayout.Padding = UDim.new(0, 8)
-        prLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-
-        local previewCircle = Instance.new("Frame", previewRow)
-        previewCircle.Size = UDim2.new(0, 22, 0, 22)
-        previewCircle.BackgroundColor3 = ThemeColors.Primary
-        previewCircle.BorderSizePixel = 0
-        Instance.new("UICorner", previewCircle).CornerRadius = UDim.new(1, 0)
-
-        local previewLbl = Instance.new("TextLabel", previewRow)
-        previewLbl.Size = UDim2.new(0, 180, 0, 22)
-        previewLbl.BackgroundTransparency = 1
-        previewLbl.Text = "Actual: " .. (currentThemeName or "Default")
-        previewLbl.TextColor3 = ThemeColors.TextPrimary
-        previewLbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        previewLbl.TextSize = 11
-        previewLbl.TextXAlignment = Enum.TextXAlignment.Left
-        previewLbl.ZIndex = 13
-
-        -- Paleta de 21 colores vibrantes
-        local _colorPaletteUse = {
-            {r=255, g=30,  b=60,   name="Crimson"},
-            {r=255, g=80,  b=180,  name="Hot Pink"},
-            {r=255, g=0,   b=128,  name="Neon Magenta"},
-            {r=230, g=50,  b=50,   name="Red"},
-            {r=255, g=120, b=50,   name="Orange"},
-            {r=255, g=200, b=0,    name="Gold"},
-            {r=200, g=255, b=0,    name="Lime"},
-            {r=0,   g=255, b=80,   name="Neon Green"},
-            {r=0,   g=220, b=180,  name="Emerald"},
-            {r=0,   g=255, b=220,  name="Cyan Glow"},
-            {r=0,   g=200, b=255,  name="Sky Blue"},
-            {r=30,  g=100, b=255,  name="Electric Blue"},
-            {r=100, g=50,  b=255,  name="Violet"},
-            {r=200, g=100, b=255,  name="Purple"},
-            {r=255, g=255, b=255,  name="White"},
-            {r=180, g=180, b=180,  name="Silver"},
-            {r=255, g=165, b=0,    name="Amber"},
-            {r=255, g=50,  b=150,  name="Rose"},
-            {r=0,   g=255, b=160,  name="Mint"},
-            {r=120, g=200, b=255,  name="Ice"},
-            {r=255, g=80,  b=80,   name="Coral"},
-        }
-
-        -- Grid de swatches
-        local swGrid = Instance.new("Frame", cpSec)
-        swGrid.Size = UDim2.new(1, -8, 0, 96)
-        swGrid.BackgroundTransparency = 1
-        swGrid.BorderSizePixel = 0
-        local swUIGrid = Instance.new("UIGridLayout", swGrid)
-        swUIGrid.CellSize = UDim2.new(0, 30, 0, 30)
-        swUIGrid.CellPadding = UDim2.new(0, 4, 0, 4)
-        swUIGrid.SortOrder = Enum.SortOrder.LayoutOrder
-
-        local _cpCustomR = ThemeColors.Primary.R * 255
-        local _cpCustomG = ThemeColors.Primary.G * 255
-        local _cpCustomB = ThemeColors.Primary.B * 255
-
-        local function _applyHubColor()
-            local r = math.clamp(math.floor(_cpCustomR), 0, 255)
-            local g = math.clamp(math.floor(_cpCustomG), 0, 255)
-            local b = math.clamp(math.floor(_cpCustomB), 0, 255)
-            local newColor = Color3.fromRGB(r, g, b)
-            Themes["Custom Color"] = {
-                Primary         = newColor,
-                Secondary       = Color3.fromRGB(math.floor(r*0.5), math.floor(g*0.5), math.floor(b*0.5)),
-                Accent          = Color3.fromRGB(math.clamp(math.floor(r*1.3),0,255), math.clamp(math.floor(g*1.3),0,255), math.clamp(math.floor(b*1.3),0,255)),
-                Background      = Color3.fromRGB(18, 18, 22),
-                BackgroundLight = Color3.fromRGB(28, 28, 36),
-                TextPrimary     = Color3.fromRGB(255, 255, 255),
-                TextSecondary   = Color3.fromRGB(math.clamp(math.floor(r*0.85),0,255), math.clamp(math.floor(g*0.85),0,255), math.clamp(math.floor(b*0.85),0,255)),
-                Aurora1         = newColor,
-                Aurora2         = Color3.fromRGB(math.floor(r*0.45), math.floor(g*0.45), math.floor(b*0.45)),
-                Aurora3         = Color3.fromRGB(math.clamp(math.floor(r*1.2),0,255), math.clamp(math.floor(g*1.2),0,255), math.clamp(math.floor(b*1.2),0,255)),
-                Aurora4         = Color3.fromRGB(math.floor(r*0.3), math.floor(g*0.3), math.floor(b*0.3)),
-            }
-            ApplyTheme("Custom Color")
-            previewCircle.BackgroundColor3 = newColor
-        end
-
-        for i, col in ipairs(_colorPaletteUse) do
-            local sw = Instance.new("TextButton", swGrid)
-            sw.Size = UDim2.new(0, 30, 0, 30)
-            sw.BackgroundColor3 = Color3.fromRGB(col.r, col.g, col.b)
-            sw.BorderSizePixel = 0
-            sw.Text = ""
-            sw.AutoButtonColor = false
-            sw.LayoutOrder = i
-            sw.ZIndex = 13
-            Instance.new("UICorner", sw).CornerRadius = UDim.new(0, 6)
-            local swStk = Instance.new("UIStroke", sw)
-            swStk.Color = Color3.fromRGB(255, 255, 255)
-            swStk.Thickness = 0
-            swStk.Transparency = 1
-
-            sw.MouseEnter:Connect(function()
-                TweenService:Create(swStk, TweenInfo.new(0.12), {Thickness=2.5, Transparency=0}):Play()
-                TweenService:Create(sw, TweenInfo.new(0.12), {BackgroundTransparency=0.25}):Play()
-            end)
-            sw.MouseLeave:Connect(function()
-                TweenService:Create(swStk, TweenInfo.new(0.12), {Thickness=0, Transparency=1}):Play()
-                TweenService:Create(sw, TweenInfo.new(0.12), {BackgroundTransparency=0}):Play()
-            end)
-            sw.MouseButton1Click:Connect(function()
-                _cpCustomR = col.r; _cpCustomG = col.g; _cpCustomB = col.b
-                _applyHubColor()
-                previewLbl.Text = "Actual: " .. col.name
-                CreateCustomNotification(" COLOR", col.name .. " aplicado", 1.5)
-                TweenService:Create(swStk, TweenInfo.new(0.1), {Thickness=3, Transparency=0}):Play()
-                task.wait(0.35)
-                TweenService:Create(swStk, TweenInfo.new(0.2), {Thickness=0, Transparency=1}):Play()
-            end)
-        end
-
-        -- Sliders RGB para color exacto
-        local rgbTitle = Instance.new("TextLabel", cpSec)
-        rgbTitle.Size = UDim2.new(1, -10, 0, 18)
-        rgbTitle.BackgroundTransparency = 1
-        rgbTitle.Text = "  Color exacto (RGB):"
-        rgbTitle.TextColor3 = ThemeColors.TextSecondary
-        rgbTitle.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        rgbTitle.TextSize = 10
-        rgbTitle.TextXAlignment = Enum.TextXAlignment.Left
-        rgbTitle.ZIndex = 13
-
-        local rgbContainer = Instance.new("Frame", cpSec)
-        rgbContainer.Size = UDim2.new(1, -8, 0, 0)
-        rgbContainer.AutomaticSize = Enum.AutomaticSize.Y
-        rgbContainer.BackgroundTransparency = 1
-        rgbContainer.BorderSizePixel = 0
-        Instance.new("UIListLayout", rgbContainer).Padding = UDim.new(0, 5)
-
-        local function makeRGBSlider(parent, label, labelColor, initVal, onSet)
-            local row = Instance.new("Frame", parent)
-            row.Size = UDim2.new(1, 0, 0, 26)
-            row.BackgroundTransparency = 1; row.BorderSizePixel = 0
-
-            local lbl = Instance.new("TextLabel", row)
-            lbl.Size = UDim2.new(0, 18, 1, 0); lbl.BackgroundTransparency = 1
-            lbl.Text = label; lbl.TextColor3 = labelColor
-            lbl.FontFace = Font.fromEnum(Enum.Font.Code); lbl.TextSize = 11; lbl.ZIndex = 13
-
-            local track = Instance.new("Frame", row)
-            track.Size = UDim2.new(1, -56, 0, 6)
-            track.Position = UDim2.new(0, 22, 0.5, -3)
-            track.BackgroundColor3 = Color3.fromRGB(35, 35, 45); track.BorderSizePixel = 0
-            Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-
-            local fill = Instance.new("Frame", track)
-            fill.Size = UDim2.new(initVal/255, 0, 1, 0)
-            fill.BackgroundColor3 = labelColor; fill.BorderSizePixel = 0
-            Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-            local thumb = Instance.new("Frame", track)
-            thumb.Size = UDim2.new(0, 14, 0, 14)
-            thumb.Position = UDim2.new(initVal/255, -7, 0.5, -7)
-            thumb.BackgroundColor3 = Color3.fromRGB(255,255,255); thumb.BorderSizePixel = 0
-            Instance.new("UICorner", thumb).CornerRadius = UDim.new(1, 0)
-
-            local valLbl = Instance.new("TextLabel", row)
-            valLbl.Size = UDim2.new(0, 30, 1, 0)
-            valLbl.Position = UDim2.new(1, -30, 0, 0)
-            valLbl.BackgroundTransparency = 1; valLbl.Text = tostring(math.floor(initVal))
-            valLbl.TextColor3 = Color3.fromRGB(255,255,255)
-            valLbl.FontFace = Font.fromEnum(Enum.Font.Code); valLbl.TextSize = 10; valLbl.ZIndex = 13
-
-            local dragging = false
-            local UIS = game:GetService("UserInputService")
-            local function updatePos(input)
-                local relX = math.clamp(input.Position.X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
-                local frac = relX / track.AbsoluteSize.X
-                local val = math.floor(frac * 255)
-                fill.Size = UDim2.new(frac, 0, 1, 0)
-                thumb.Position = UDim2.new(frac, -7, 0.5, -7)
-                valLbl.Text = tostring(val)
-                onSet(val)
-                _applyHubColor()
-                previewLbl.Text = "RGB(" .. math.floor(_cpCustomR) .. "," .. math.floor(_cpCustomG) .. "," .. math.floor(_cpCustomB) .. ")"
-            end
-            track.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=true; updatePos(inp) end
-            end)
-            track.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=false end
-            end)
-            UIS.InputChanged:Connect(function(inp)
-                if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then updatePos(inp) end
-            end)
-        end
-
-        makeRGBSlider(rgbContainer, "R", Color3.fromRGB(255,80,80),  _cpCustomR, function(v) _cpCustomR=v end)
-        makeRGBSlider(rgbContainer, "G", Color3.fromRGB(80,255,100), _cpCustomG, function(v) _cpCustomG=v end)
-        makeRGBSlider(rgbContainer, "B", Color3.fromRGB(80,150,255), _cpCustomB, function(v) _cpCustomB=v end)
-    end
 
 end
 _animCurrentTrack = nil
