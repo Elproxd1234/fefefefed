@@ -26678,21 +26678,24 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local savedState = _G._toggleStates[nombre]
     local estado = (savedState ~= nil) and savedState or (initialValue or false)
 
-    local C_IND_ON  = Color3.fromRGB(0, 200, 80)   -- verde cuando activo
-    local C_IND_OFF = Color3.fromRGB(255, 0, 0)     -- rojo cuando inactivo
-    local TWEEN_T   = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
     -- Detectar móvil para ajustar tamaños
     local _isMobileTog = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
-    local _toggleBgW   = _isMobileTog and 52 or 65
-    local _toggleBgH   = _isMobileTog and 26 or 32
-    local _knobSize    = _isMobileTog and 18 or 24
-    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -28
-    local _knobOffL    = 4
+    -- Dimensiones del nuevo toggle estilo slider (igual al codigo de referencia)
+    local _toggleBgW   = _isMobileTog and 90  or 130   -- ancho total del switch
+    local _toggleBgH   = _isMobileTog and 26  or 35    -- alto total
+    local _knobW       = _isMobileTog and 34  or 50    -- ancho de la perilla
+    local _knobH       = _isMobileTog and 18  or 27    -- alto de la perilla
+    local _knobOffR    = _isMobileTog and -(_knobW + 4) or -54   -- posicion ON (pegada a la derecha)
+    local _knobOffL    = _isMobileTog and 3 or 4                 -- posicion OFF (pegada a la izquierda)
     local _labelTxtSz  = _isMobileTog and 13 or 18
-    local _labelWScale = _isMobileTog and 0.55 or 0.6
+    local _labelWScale = _isMobileTog and 0.45 or 0.52
     local _rowH        = _isMobileTog and 44 or 55
-    local _toggleRightOff = _isMobileTog and -8 or -15
+    local _toggleRightOff = _isMobileTog and -6 or -10
+
+    local C_IND_ON  = Color3.fromRGB(0, 220, 0)       -- verde cuando activo
+    local C_IND_OFF = Color3.fromRGB(45, 45, 45)       -- gris oscuro cuando inactivo
+    local C_KNOB    = Color3.fromRGB(80, 80, 80)       -- color fijo de la perilla
+    local TWEEN_T   = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
     -- Marco principal ancho (600px simulado con 1, 0) -- transparente con borde blanco
     local container = Instance.new("Frame", actualParent)
@@ -26737,32 +26740,31 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         end
     end
 
-    -- Fondo del toggle (recuadro grisaceo a la derecha)
+    -- Fondo del toggle: pill de color (verde ON / gris OFF) — estilo nuevo
     local toggleBg = Instance.new("Frame", container)
     toggleBg.Name                   = "ToggleBackground"
     toggleBg.Size                   = UDim2.new(0, _toggleBgW, 0, _toggleBgH)
     toggleBg.AnchorPoint            = Vector2.new(1, 0.5)
     toggleBg.Position               = UDim2.new(1, _toggleRightOff, 0.5, 0)
-    toggleBg.BackgroundColor3       = ThemeColors.Secondary
-    toggleBg.BackgroundTransparency = 0.4
+    toggleBg.BackgroundColor3       = estado and C_IND_ON or C_IND_OFF
+    toggleBg.BackgroundTransparency = 0
     toggleBg.BorderSizePixel        = 0
     toggleBg.ZIndex                 = 21
 
+    -- Esquinas completamente redondas (pill)
     local toggleBgCorner = Instance.new("UICorner", toggleBg)
-    toggleBgCorner.CornerRadius = UDim.new(0, 8)
+    toggleBgCorner.CornerRadius = UDim.new(1, 0)
 
-    local toggleBgStroke = Instance.new("UIStroke", toggleBg)
-    toggleBgStroke.Color = ThemeColors.Primary
-    toggleBgStroke.Thickness = 2
-    toggleBgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-    -- Indicador cuadrado redondeado (rojo=off, verde=on)
+    -- Perilla deslizante (rectangle redondeado, gris fijo)
     local indicator = Instance.new("Frame", toggleBg)
     indicator.Name             = "Knob"
-    indicator.Size             = UDim2.new(0, _knobSize, 0, _knobSize)
+    indicator.Size             = UDim2.new(0, _knobW, 0, _knobH)
     indicator.AnchorPoint      = Vector2.new(0, 0.5)
-    indicator.Position         = estado and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
-    indicator.BackgroundColor3 = estado and C_IND_ON or C_IND_OFF
+    indicator.Position         = estado
+        and UDim2.new(1, _knobOffR, 0.5, 0)
+        or  UDim2.new(0, _knobOffL, 0.5, 0)
+    indicator.BackgroundColor3 = C_KNOB
+    indicator.BackgroundTransparency = 0
     indicator.BorderSizePixel  = 0
     indicator.ZIndex           = 23
 
@@ -26780,13 +26782,20 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Funcion de actualizacion visual
     local function ApplyState(on, animate)
         if animate then
-            TweenService:Create(indicator, TWEEN_T, {
+            -- Animar el fondo del switch (verde/gris) y deslizar la perilla
+            TweenService:Create(toggleBg, TWEEN_T, {
                 BackgroundColor3 = on and C_IND_ON or C_IND_OFF,
-                Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0),
+            }):Play()
+            TweenService:Create(indicator, TWEEN_T, {
+                Position = on
+                    and UDim2.new(1, _knobOffR, 0.5, 0)
+                    or  UDim2.new(0, _knobOffL, 0.5, 0),
             }):Play()
         else
-            indicator.BackgroundColor3 = on and C_IND_ON or C_IND_OFF
-            indicator.Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
+            toggleBg.BackgroundColor3 = on and C_IND_ON or C_IND_OFF
+            indicator.Position = on
+                and UDim2.new(1, _knobOffR, 0.5, 0)
+                or  UDim2.new(0, _knobOffL, 0.5, 0)
         end
     end
     ApplyState(estado, false)
