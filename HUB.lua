@@ -1170,12 +1170,12 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
     local savedPT = _G._toggleStates[_ptKey]
     local isToggled = (savedPT ~= nil) and savedPT or (defaultState or false)
 
-    local C_STROKE_OFF  = ThemeColors.Secondary    -- violeta oscuro
-    local C_STROKE_ON   = ThemeColors.TextPrimary  -- violeta claro
-    local C_TRACK_OFF   = ThemeColors.Background     -- violeta profundo
-    local C_TRACK_ON    = ThemeColors.Primary    -- violeta principal
-    local C_TRACK_S_OFF = ThemeColors.Secondary    -- violeta oscuro
-    local C_TRACK_S_ON  = ThemeColors.TextPrimary  -- violeta claro
+    local C_STROKE_OFF  = Color3.fromRGB(40, 20, 100)
+    local C_STROKE_ON   = Color3.fromRGB(120, 60, 220)
+    local C_TRACK_OFF   = Color3.fromRGB(45, 45, 45)
+    local C_TRACK_ON    = Color3.fromRGB(0, 220, 0)
+    local C_TRACK_S_OFF = Color3.fromRGB(40, 20, 100)
+    local C_TRACK_S_ON  = Color3.fromRGB(120, 60, 220)
 
     -- ptStroke eliminado (sin rectangulo)
     local ptStroke = {Color = C_STROKE_OFF}  -- stub para que el resto del codigo no rompa
@@ -1206,9 +1206,9 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
         subLabel.TextTruncate = Enum.TextTruncate.AtEnd
     end
 
-    local TRACK_W, TRACK_H = 52, 26
-    local THUMB_D = 20
-    local THUMB_PAD = 3
+    local TRACK_W, TRACK_H = 130, 35
+    local THUMB_W, THUMB_H = 50, 27
+    local THUMB_PAD = 4
 
     local track = Instance.new("Frame", mainFrame)
     track.Size = UDim2.new(0, TRACK_W, 0, TRACK_H)
@@ -1222,20 +1222,20 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
 
     local trackStroke = Instance.new("UIStroke", track)
     trackStroke.Color = isToggled and C_TRACK_S_ON or C_TRACK_S_OFF
-    trackStroke.Thickness = 2.0
-    trackStroke.Transparency = 0.0
+    trackStroke.Thickness = 0
+    trackStroke.Transparency = 1
 
-    local POS_ON  = UDim2.new(1, -(THUMB_D + THUMB_PAD), 0.5, -THUMB_D/2)
-    local POS_OFF = UDim2.new(0, THUMB_PAD, 0.5, -THUMB_D/2)
+    local POS_ON  = UDim2.new(1, -(THUMB_W + THUMB_PAD), 0.5, -THUMB_H/2)
+    local POS_OFF = UDim2.new(0, THUMB_PAD, 0.5, -THUMB_H/2)
 
     local thumb = Instance.new("Frame", track)
-    thumb.Size = UDim2.new(0, THUMB_D, 0, THUMB_D)
+    thumb.Size = UDim2.new(0, THUMB_W, 0, THUMB_H)
     thumb.Position = isToggled and POS_ON or POS_OFF
-    thumb.BackgroundColor3 = ThemeColors.TextPrimary
-    thumb.BackgroundTransparency = 0.15
+    thumb.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    thumb.BackgroundTransparency = 0
     thumb.BorderSizePixel = 0
     thumb.ZIndex = 14
-    Instance.new("UICorner", thumb).CornerRadius = UDim.new(1, 0)
+    Instance.new("UICorner", thumb).CornerRadius = UDim.new(0, 6)
 
     local numLabel = Instance.new("TextLabel", track)
     numLabel.Size = UDim2.new(0.5, 0, 1, 0)
@@ -1264,18 +1264,15 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
             TweenService:Create(numLabel,    ti,  {Position        = isToggled and UDim2.new(0, THUMB_PAD, 0, 0) or UDim2.new(0.5, 0, 0, 0)}):Play()
             -- Animacion estrella: pulso de brillo al activar
             if isToggled then
-                local thumbColor = ThemeColors.TextPrimary
+                local thumbColor = Color3.fromRGB(120, 80, 200)
                 TweenService:Create(thumb, TweenInfo.new(0.10, Enum.EasingStyle.Quad), {BackgroundColor3 = thumbColor, BackgroundTransparency = 0}):Play()
                 task.delay(0.12, function()
-                    TweenService:Create(thumb, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(255,255,255), BackgroundTransparency = 0.10}):Play()
+                    TweenService:Create(thumb, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(160, 120, 255), BackgroundTransparency = 0}):Play()
                     -- pulso del stroke: brilla y vuelve
-                    TweenService:Create(trackStroke, TweenInfo.new(0.15), {Transparency = 0}):Play()
-                    task.delay(0.20, function()
-                        TweenService:Create(trackStroke, TweenInfo.new(0.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.2}):Play()
-                    end)
+                    -- trackStroke hidden (border removed)
                 end)
             else
-                TweenService:Create(thumb, TweenInfo.new(0.20), {BackgroundColor3 = ThemeColors.Secondary, BackgroundTransparency = 0.20}):Play()
+                TweenService:Create(thumb, TweenInfo.new(0.20), {BackgroundColor3 = Color3.fromRGB(80, 80, 80), BackgroundTransparency = 0}):Play()
             end
         else
             thumb.Position = isToggled and POS_ON or POS_OFF
@@ -4299,17 +4296,17 @@ local Themes = {
 currentThemeName = "Neon Green"
 
 local ThemeColors = {
-    Primary         = Color3.fromRGB(80, 80, 80),    -- violeta principal
-    Secondary       = Color3.fromRGB(50, 50, 50),     -- violeta oscuro
-    Accent          = Color3.fromRGB(80, 80, 80),    -- verde/turquesa (acento)
-    Background      = Color3.fromRGB(80, 80, 80),    -- verde/turquesa oscuro (fondo)
-    BackgroundLight = Color3.fromRGB(20, 140, 115),   -- verde/turquesa medio
+    Primary         = Color3.fromRGB(120, 60, 220),   -- violeta principal
+    Secondary       = Color3.fromRGB(40, 20, 100),    -- violeta oscuro
+    Accent          = Color3.fromRGB(80, 120, 255),   -- azul electrico (acento)
+    Background      = Color3.fromRGB(18, 10, 40),     -- fondo violeta profundo
+    BackgroundLight = Color3.fromRGB(35, 20, 75),     -- violeta medio
     TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
-    TextSecondary   = Color3.fromRGB(180, 180, 190),  -- gris suave
-    Aurora1         = Color3.fromRGB(80, 80, 80),    -- violeta principal
-    Aurora2         = Color3.fromRGB(50, 50, 50),     -- violeta oscuro
-    Aurora3         = Color3.fromRGB(80, 80, 80),    -- verde/turquesa
-    Aurora4         = Color3.fromRGB(80, 80, 80),    -- verde/turquesa oscuro
+    TextSecondary   = Color3.fromRGB(180, 160, 220),  -- lila suave
+    Aurora1         = Color3.fromRGB(120, 60, 220),   -- violeta principal
+    Aurora2         = Color3.fromRGB(40, 20, 100),    -- violeta oscuro
+    Aurora3         = Color3.fromRGB(80, 120, 255),   -- azul electrico
+    Aurora4         = Color3.fromRGB(18, 10, 40),     -- violeta profundo
 }
 
 ThemeObjects = {}
@@ -5876,7 +5873,8 @@ function _KnifeSA_setupKnife(knife)
     knife:SetAttribute("_SA_SetupId", _knifeSetupId)
     local mySetupId = _knifeSetupId
     local knifeNoCollideConn = RunService.Heartbeat:Connect(function()
-        -- Si hay un setup más nuevo, este loop es zombie → desconectar
+        -- Si hay un setup más nuevo o SA fue desactivado, este loop es zombie → parar
+        if not KnifeSAState.enabled then return end
         if knife:GetAttribute("_SA_SetupId") ~= mySetupId then return end
         _hbTknifeNC = _hbTknifeNC + 1; if _hbTknifeNC < 12 then return end; _hbTknifeNC = 0  -- OPT: throttle 200ms
         if not knife or not knife.Parent then return end
@@ -5893,6 +5891,7 @@ function _KnifeSA_setupKnife(knife)
         if gp or not equipped then return end
         if input.UserInputType == Enum.UserInputType.MouseButton2
             or input.UserInputType == Enum.UserInputType.Touch then
+            if not KnifeSAState.enabled then return end  -- FIX: salir si SA fue desactivado
             rmbThrowTime = os.clock()
             
             -- EJECUTAR THROW CON RMB
@@ -6183,15 +6182,23 @@ function _KnifeSA_deactivate()
                 end)
             end
         end
-        -- 3) Detener TODAS las animaciones del SA (no solo por ID)
+        -- 3) Detener TODAS las animaciones del SA (ThrowCharge, SlashKnife, etc.)
         local char2 = LocalPlayer.Character
         local hum2  = char2 and char2:FindFirstChildOfClass("Humanoid")
         local animr = hum2 and hum2:FindFirstChildOfClass("Animator")
         if animr then
+            local knifeAnimNames = {
+                throwcharge=true, throwknife=true, throw=true, animation2=true,
+                slashknife=true, slash=true, stab=true, hit=true, animation1=true,
+                knife=true, charge=true, hold=true
+            }
             for _, track in ipairs(animr:GetPlayingAnimationTracks()) do
+                local tname = (track.Name or ""):lower()
                 local animId = track.Animation and track.Animation.AnimationId or ""
-                if animId:find("1108307876") or animId:find("knife") or animId:find("Knife") then
-                    pcall(function() track:Stop(0.1) end)
+                if knifeAnimNames[tname]
+                    or tname:find("throw") or tname:find("slash") or tname:find("knife") or tname:find("stab")
+                    or animId:find("1108307876") or animId:find("knife") then
+                    pcall(function() track:Stop(0.15) end)
                 end
             end
         end
@@ -6209,14 +6216,34 @@ function _KnifeSA_deactivate()
             local bpKnife = bp:FindFirstChild("Knife")
             _restoreKnife(bpKnife)
         end
-        -- Esperar 1 frame y forzar re-equip del knife para que KnifeClient se reinicie limpio
-        task.defer(function()
+        -- Esperar y re-habilitar KnifeClient limpiamente (delay para que el SA termine de soltar el control)
+        task.delay(0.25, function()
+            if KnifeSAState.enabled then return end  -- si se reactivó, no hacer nada
             local c2 = LocalPlayer.Character
             if not c2 then return end
+            -- Re-habilitar en character
             local k2 = c2:FindFirstChild("Knife")
             if k2 then
                 local kc2 = k2:FindFirstChild("KnifeClient")
-                if kc2 then kc2.Disabled = false end
+                if kc2 then
+                    kc2.Disabled = false
+                    -- Forzar re-equip limpio: desequipar y re-equipar para que KnifeClient arranque fresco
+                    local hum3 = c2:FindFirstChildOfClass("Humanoid")
+                    if hum3 then
+                        pcall(function() hum3:UnequipTools() end)
+                        task.wait(0.08)
+                        if not KnifeSAState.enabled then  -- doble check
+                            pcall(function() hum3:EquipTool(k2) end)
+                        end
+                    end
+                end
+            end
+            -- Re-habilitar en backpack también
+            local bp2 = LocalPlayer.Backpack
+            local bpk2 = bp2 and bp2:FindFirstChild("Knife")
+            if bpk2 then
+                local kc3 = bpk2:FindFirstChild("KnifeClient")
+                if kc3 then kc3.Disabled = false end
             end
         end)
     end
@@ -10861,13 +10888,13 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     --  Track gris delgado con fill blanco y thumb circular blanco
     -- ==============================================================
 
-    local C_BG       = Color3.fromRGB(30, 30, 35)
-    local C_STROKE   = Color3.fromRGB(60, 60, 70)
+    local C_BG       = Color3.fromRGB(18, 10, 40)
+    local C_STROKE   = Color3.fromRGB(80, 120, 255)
     local C_TEXT     = Color3.fromRGB(255, 255, 255)
-    local C_NUM      = Color3.fromRGB(255, 255, 255)
-    local C_TRACK_BG = Color3.fromRGB(80, 80, 90)
-    local C_TRACK_FG = Color3.fromRGB(255, 255, 255)
-    local C_THUMB    = Color3.fromRGB(255, 255, 255)
+    local C_NUM      = Color3.fromRGB(180, 160, 255)
+    local C_TRACK_BG = Color3.fromRGB(40, 20, 100)
+    local C_TRACK_FG = Color3.fromRGB(120, 60, 220)
+    local C_THUMB    = Color3.fromRGB(200, 180, 255)
 
     local CONTAINER_H = 68
 
@@ -10883,8 +10910,8 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     contCorner.CornerRadius          = UDim.new(0, 12)
     local contStroke = Instance.new("UIStroke", container)
     contStroke.Color           = C_STROKE
-    contStroke.Thickness       = 1
-    contStroke.Transparency    = 0.5
+    contStroke.Thickness       = 0
+    contStroke.Transparency    = 1
     contStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Titulo izquierda
@@ -39307,6 +39334,42 @@ function CreateCombatTab()
                         handleCF = CFrame.new(orig, fwd)
                         targetCF = CFrame.new(fwd)
                     end
+                    -- Reproducir animación de lanzamiento en el cliente (mobile)
+                    pcall(function()
+                        local myChar2 = LocalPlayer.Character
+                        if myChar2 then
+                            local knife2 = myChar2:FindFirstChild("Knife")
+                            if knife2 then
+                                local hum2 = myChar2:FindFirstChildOfClass("Humanoid")
+                                local animator2 = hum2 and hum2:FindFirstChildOfClass("Animator")
+                                if animator2 then
+                                    -- Intentar usar _playThrowAnim si está disponible (misma sesión de knife)
+                                    if _playThrowAnim then
+                                        _playThrowAnim()
+                                    else
+                                        -- Fallback: buscar animación ThrowCharge/ThrowKnife/Throw en el knife
+                                        local throwAnimNames = {"ThrowCharge", "ThrowKnife", "Throw", "Animation2"}
+                                        for _, animName in ipairs(throwAnimNames) do
+                                            local animObj = knife2:FindFirstChild(animName, true)
+                                            if not animObj then
+                                                animObj = knife2:FindFirstChild("Animate") and
+                                                    knife2:FindFirstChild("Animate"):FindFirstChild(animName)
+                                            end
+                                            if animObj and animObj:IsA("Animation") then
+                                                local ok, track = pcall(function()
+                                                    return animator2:LoadAnimation(animObj)
+                                                end)
+                                                if ok and track then
+                                                    track:Play(0.1, 1, 1)
+                                                    break
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end)
                     pcall(function() knifeThrown:FireServer(handleCF, targetCF) end)
                 end
 
@@ -44862,222 +44925,6 @@ function CreateCombatTab()
     end  -- close TK SILENT AIM do
 
     -- ======================================================================
-    -- SECCIÓN: TRAJECTORY INFO & BULLET TRACER (Combat Tab)
-    -- ======================================================================
-    do
-        _currentMainSectionFrame = nil
-        local _tibtSection = (CreateBorderedSection and leftColumn)
-            and CreateBorderedSection(leftColumn, " ⬢ TRAJECTORY INFO & BULLET TRACER")
-            or Instance.new("Frame")
-
-        -- Reutiliza el estado de GUN UTILITIES para no duplicar lógica
-        CombatTabState._gunUtil = CombatTabState._gunUtil or {
-            _btLiveEnabled   = false,
-            _btLiveLine      = nil,
-            _btLiveConn      = nil,
-            trajEnabled      = false,
-            _trajConn        = nil,
-            _trajLine        = nil,
-            _trajLabel       = nil,
-            autoEquipRange   = false,
-            equippingRange   = 80,
-            _autoEquipConn   = nil,
-            _onlyEquipRange  = 30,
-        }
-        local _GU = CombatTabState._gunUtil
-
-        -- =====================================================================
-        -- BULLET TRACER — línea roja en tiempo real desde Gun → Murder
-        -- =====================================================================
-        do
-            local function _cbt_stop()
-                if _GU._btLiveConn then
-                    pcall(function() _GU._btLiveConn:Disconnect() end)
-                    _GU._btLiveConn = nil
-                end
-                if _GU._btLiveLine then
-                    pcall(function() _GU._btLiveLine.Visible = false end)
-                end
-            end
-
-            local function _cbt_start()
-                _cbt_stop()
-                if not _GU._btLiveLine then
-                    local ln = Drawing.new("Line")
-                    ln.Visible      = false
-                    ln.Color        = Color3.fromRGB(255, 40, 40)
-                    ln.Thickness    = 2
-                    ln.Transparency = 0.15
-                    ln.ZIndex       = 5
-                    _GU._btLiveLine = ln
-                end
-                local line = _GU._btLiveLine
-                local _hbt = 0
-                _GU._btLiveConn = RunService.Heartbeat:Connect(function()
-                    _hbt = _hbt + 1; if _hbt < 3 then return end; _hbt = 0
-                    if not _GU._btLiveEnabled then line.Visible = false; return end
-                    if _G._visualRoundOver then line.Visible = false; return end
-                    local char = LocalPlayer.Character
-                    local cam  = workspace.CurrentCamera
-                    if not char or not cam then line.Visible = false; return end
-                    -- Solo activo si el jugador tiene la Gun equipada en mano
-                    local gunTool = _findGunIn and _findGunIn(char)
-                    if not gunTool then line.Visible = false; return end
-                    local gunHandle = gunTool:FindFirstChild("Handle")
-                    if not gunHandle then line.Visible = false; return end
-                    local target = (_G._getEffectiveTarget and _G._getEffectiveTarget())
-                               or (findMurderer and findMurderer())
-                    if not target then line.Visible = false; return end
-                    local tChar = target.Character
-                    local tHRP  = tChar and (tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso"))
-                    if not tHRP then line.Visible = false; return end
-                    local fromSc, ok1 = cam:WorldToViewportPoint(gunHandle.Position)
-                    local toSc,   ok2 = cam:WorldToViewportPoint(tHRP.Position)
-                    if not ok1 and not ok2 then line.Visible = false; return end
-                    line.Visible = true
-                    line.From    = Vector2.new(fromSc.X, fromSc.Y)
-                    line.To      = Vector2.new(toSc.X,   toSc.Y)
-                end)
-            end
-
-            CreateBorderedToggle(_tibtSection, "Bullet Tracer", function(enabled)
-                _GU._btLiveEnabled = enabled
-                if enabled then
-                    _cbt_start()
-                    CreateCustomNotification("BULLET TRACER", " Línea roja Gun → Murder activada", 2)
-                else
-                    _cbt_stop()
-                    CreateCustomNotification("BULLET TRACER", " Tracer desactivado", 1.5)
-                end
-            end, _GU._btLiveEnabled)
-
-            do
-                local _d = Instance.new("TextLabel", _tibtSection)
-                _d.Size = UDim2.new(1, -8, 0, 0); _d.AutomaticSize = Enum.AutomaticSize.Y
-                _d.BackgroundTransparency = 1
-                _d.Text = "Dibuja una línea roja en tiempo real desde tu arma hasta el Murder."
-                _d.TextColor3 = Color3.fromRGB(255, 100, 100)
-                _d.Font = Enum.Font.Montserrat; _d.TextSize = 10
-                _d.TextWrapped = true; _d.TextXAlignment = Enum.TextXAlignment.Left; _d.ZIndex = 13
-                local _p = Instance.new("UIPadding", _d)
-                _p.PaddingLeft = UDim.new(0,6); _p.PaddingRight = UDim.new(0,6)
-                _p.PaddingTop  = UDim.new(0,2); _p.PaddingBottom = UDim.new(0,4)
-            end
-        end
-
-        -- =====================================================================
-        -- TRAJECTORY INFO — panel con distancia, velocidad y tiempo de vuelo
-        -- =====================================================================
-        do
-            local function _ctj_stop()
-                if _GU._trajConn  then pcall(function() _GU._trajConn:Disconnect() end);  _GU._trajConn  = nil end
-                if _GU._trajLabel then pcall(function() _GU._trajLabel:Destroy() end);     _GU._trajLabel = nil end
-                if _GU._trajLine  then pcall(function() _GU._trajLine:Destroy() end);      _GU._trajLine  = nil end
-            end
-
-            local function _ctj_start()
-                _ctj_stop()
-                local sg = Instance.new("ScreenGui")
-                sg.Name           = "TrajectoryInfoGui"
-                sg.ResetOnSpawn   = false
-                sg.IgnoreGuiInset = true
-                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                sg.DisplayOrder   = 9800
-                pcall(function() sg.Parent = CoreGui end)
-                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
-
-                local fr = Instance.new("Frame", sg)
-                fr.AnchorPoint         = Vector2.new(0.5, 0)
-                fr.Position            = UDim2.new(0.5, 0, 0.08, 0)
-                fr.Size                = UDim2.new(0, 260, 0, 0)
-                fr.AutomaticSize       = Enum.AutomaticSize.Y
-                fr.BackgroundColor3    = Color3.fromRGB(10, 10, 18)
-                fr.BackgroundTransparency = 0.12
-                fr.BorderSizePixel     = 0
-                fr.ZIndex              = 9801
-                Instance.new("UICorner", fr).CornerRadius = UDim.new(0, 10)
-                local frs = Instance.new("UIStroke", fr)
-                frs.Color = Color3.fromRGB(255, 80, 80); frs.Thickness = 1.5; frs.Transparency = 0.2
-                local frl = Instance.new("UIListLayout", fr)
-                frl.Padding = UDim.new(0, 2); frl.FillDirection = Enum.FillDirection.Vertical
-                local frp = Instance.new("UIPadding", fr)
-                frp.PaddingTop = UDim.new(0,6); frp.PaddingBottom = UDim.new(0,6)
-                frp.PaddingLeft = UDim.new(0,8); frp.PaddingRight = UDim.new(0,8)
-
-                local title = Instance.new("TextLabel", fr)
-                title.Size = UDim2.new(1, 0, 0, 22); title.BackgroundTransparency = 1
-                title.Text = " ⬢ TRAJECTORY INFO"; title.TextColor3 = Color3.fromRGB(255, 80, 80)
-                title.Font = Enum.Font.Montserrat; title.TextSize = 13
-                title.TextXAlignment = Enum.TextXAlignment.Left; title.ZIndex = 9802
-
-                local lbl = Instance.new("TextLabel", fr)
-                lbl.Size = UDim2.new(1, 0, 0, 0); lbl.AutomaticSize = Enum.AutomaticSize.Y
-                lbl.BackgroundTransparency = 1
-                lbl.Text = "Calculando..."
-                lbl.TextColor3 = Color3.fromRGB(200, 230, 255)
-                lbl.Font = Enum.Font.Montserrat; lbl.TextSize = 11
-                lbl.TextWrapped = true; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.ZIndex = 9802
-                _GU._trajLabel = lbl
-
-                local _tjHb = 0
-                _GU._trajConn = RunService.Heartbeat:Connect(function()
-                    _tjHb = _tjHb + 1; if _tjHb < 6 then return end; _tjHb = 0
-                    if not _GU.trajEnabled or not sg.Parent then
-                        pcall(function() sg:Destroy() end); return
-                    end
-                    local char = LocalPlayer.Character
-                    if not char then lbl.Text = "Sin personaje"; return end
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    if not hrp then lbl.Text = "Sin HRP"; return end
-                    local target = (_G._getEffectiveTarget and _G._getEffectiveTarget())
-                               or (findMurderer and findMurderer())
-                    if not target then lbl.Text = "Sin target"; return end
-                    local tChar = target.Character
-                    local tHRP  = tChar and (tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso"))
-                    if not tHRP then lbl.Text = "Sin HRP target"; return end
-                    local dist   = (hrp.Position - tHRP.Position).Magnitude
-                    local vel    = tHRP.AssemblyLinearVelocity
-                    local speed  = math.round(vel.Magnitude * 10) / 10
-                    local tFly   = math.round((dist / math.max(speed, 1)) * 100) / 100
-                    local camDir = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.LookVector or Vector3.new(0,0,-1)
-                    local toTgt  = (tHRP.Position - hrp.Position).Unit
-                    local angle  = math.round(math.deg(math.acos(math.clamp(camDir:Dot(toTgt), -1, 1))))
-                    lbl.Text = string.format(
-                        "📏 Distancia:  %.1f st\n💨 Velocidad target:  %.1f st/s\n⏱ Tiempo vuelo est.:  %.2f s\n📐 Ángulo cam→target:  %d°",
-                        dist, speed, tFly, angle
-                    )
-                end)
-            end
-
-            CreateBorderedToggle(_tibtSection, "Trajectory Info", function(enabled)
-                _GU.trajEnabled = enabled
-                if enabled then
-                    _ctj_start()
-                    CreateCustomNotification("TRAJECTORY INFO", " Panel de trayectoria activado", 3)
-                else
-                    _ctj_stop()
-                    CreateCustomNotification("TRAJECTORY INFO", " Info de trayectoria desactivada", 2)
-                end
-            end, _GU.trajEnabled)
-
-            do
-                local _d = Instance.new("TextLabel", _tibtSection)
-                _d.Size = UDim2.new(1, -8, 0, 0); _d.AutomaticSize = Enum.AutomaticSize.Y
-                _d.BackgroundTransparency = 1
-                _d.Text = "Muestra en pantalla: distancia, velocidad del target, tiempo de vuelo estimado y ángulo cámara→target."
-                _d.TextColor3 = Color3.fromRGB(130, 170, 220)
-                _d.Font = Enum.Font.Montserrat; _d.TextSize = 10
-                _d.TextWrapped = true; _d.TextXAlignment = Enum.TextXAlignment.Left; _d.ZIndex = 13
-                local _p = Instance.new("UIPadding", _d)
-                _p.PaddingLeft = UDim.new(0,6); _p.PaddingRight = UDim.new(0,6)
-                _p.PaddingTop  = UDim.new(0,2); _p.PaddingBottom = UDim.new(0,4)
-            end
-        end
-
-        _currentMainSectionFrame = nil
-    end  -- close TRAJECTORY INFO & BULLET TRACER do
-
-    -- ======================================================================
     -- SECCIÓN: GUN UTILITIES — Bullet Tracer, Trajectory Info, Auto-Equip Smart
     -- ======================================================================
     do
@@ -48201,15 +48048,15 @@ print("3: mainFrame creado")
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 -- == ESTILO: Teal oscuro estilo MM2 hub ==
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-mainFrame.BackgroundTransparency = 1
+mainFrame.BackgroundColor3 = Color3.fromRGB(18, 10, 40)
+mainFrame.BackgroundTransparency = 0.12
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
 -- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
 -- El UIScale que se aplica abajo se encarga de que entre en pantalla.
-mainFrame.Size = UDim2.new(0, 730, 0, 430)
+mainFrame.Size = UDim2.new(0, 920, 0, 490)
 
 -- ==============================================================
 -- FONDO AZUL SLIDO  sin aurora animada, sin pulse dot
@@ -48223,9 +48070,9 @@ end
 
 -- Borde azul nen estilo OverdriveInterface
 glowBorder = Instance.new("UIStroke", mainFrame)
-glowBorder.Color = Color3.fromRGB(80, 80, 80)
+glowBorder.Color = Color3.fromRGB(100, 60, 200)
 glowBorder.Thickness = 2.0
-glowBorder.Transparency = 0.25
+glowBorder.Transparency = 0.10
 glowBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 uiScale = Instance.new("UIScale", mainFrame)
@@ -48237,8 +48084,8 @@ uiScale.Scale = 1
 -- En móvil se escala para que entre completo en pantalla.
 -- ================================================================
 do
-    local HUB_W = 730
-    local HUB_H = 430
+    local HUB_W = 920
+    local HUB_H = 490
 
     -- HELPER GLOBAL: devuelve la escala correcta según viewport actual.
     -- Todos los reopeners/animaciones deben animar HASTA este valor, no hasta 1.
@@ -48251,7 +48098,7 @@ do
         local scaleY = (vp.Y - marginY) / HUB_H
         local scale  = math.min(scaleX, scaleY)
         local minScale = isMobile and 0.30 or 0.5
-        return math.clamp(scale, minScale, 0.70)
+        return math.clamp(scale, minScale, isMobile and 0.85 or 1.0)
     end
 
     local function _applyScale()
@@ -48830,8 +48677,8 @@ particles = {}
     header.Name = "TopBar"
     header.Size = UDim2.new(1, 0, 0, 36)
     header.Position = UDim2.new(0, 0, 0, 0)
-    header.BackgroundColor3 = Color3.fromRGB(6, 30, 26)
-    header.BackgroundTransparency = 1
+    header.BackgroundColor3 = Color3.fromRGB(14, 7, 32)
+    header.BackgroundTransparency = 0.1
     header.BorderSizePixel = 0
     header.ZIndex = 10
     header.Active = true
@@ -48842,8 +48689,8 @@ particles = {}
     local _hdrLine = Instance.new("Frame", header)
     _hdrLine.Size = UDim2.new(1, 0, 0, 1)
     _hdrLine.Position = UDim2.new(0, 0, 1, -1)
-    _hdrLine.BackgroundColor3 = Color3.fromRGB(40, 160, 130)
-    _hdrLine.BackgroundTransparency = 0.5
+    _hdrLine.BackgroundColor3 = Color3.fromRGB(100, 60, 200)
+    _hdrLine.BackgroundTransparency = 0.3
     _hdrLine.BorderSizePixel = 0
     _hdrLine.ZIndex = 11
 
@@ -49152,14 +48999,14 @@ particles = {}
     _contentBg.Name = "ContentBackground"
     _contentBg.Size = UDim2.new(1, 0, 1, -36)
     _contentBg.Position = UDim2.new(0, 0, 0, 34)
-    _contentBg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    _contentBg.BackgroundTransparency = 1
+    _contentBg.BackgroundColor3 = Color3.fromRGB(18, 10, 40)
+    _contentBg.BackgroundTransparency = 0.15
     _contentBg.BorderSizePixel = 0
     _contentBg.ZIndex = 5
-    _contentBg.Visible = false
+    _contentBg.Visible = true
     -- Sincronizar visibilidad con contentContainer
     contentContainer:GetPropertyChangedSignal("Visible"):Connect(function()
-        _contentBg.Visible = contentContainer.Visible
+        _contentBg.Visible = true  -- siempre visible para cubrir el fondo
     end)
 
     -- Aurora effect (igual que antes)
@@ -49327,11 +49174,11 @@ particles = {}
         local lbl2     = r and r.lbl2
         if isActive then
             -- Tab activa: fondo blanco semitransparente para destacar
-            TweenService:Create(btn, _ti_tab, {BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0.8}):Play()
-            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = Color3.fromRGB(255, 255, 255)}):Play() end
-            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(255,255,255)}):Play() end
-            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(255,255,255)}):Play() end
-            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(255, 255, 255)}):Play() end
+            TweenService:Create(btn, _ti_tab, {BackgroundColor3 = Color3.fromRGB(100, 60, 200), BackgroundTransparency = 0.5}):Play()
+            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = Color3.fromRGB(200, 180, 255)}):Play() end
+            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(120, 80, 255)}):Play() end
+            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(120, 80, 255)}):Play() end
+            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(220, 200, 255)}):Play() end
         else
             -- Tab inactiva: completamente transparente, borde blanco, texto blanco
             TweenService:Create(btn, _ti_tab, {BackgroundTransparency = 1}):Play()
@@ -49459,7 +49306,7 @@ particles = {}
     -- SIEMPRE usar layout de PC (sidebar vertical) — el auto-scale se encarga
     -- de que el hub entre completo en pantalla, tanto en PC como en móvil.
     local _isMobileLayout = false
-    local SIDEBAR_W = 240
+    local SIDEBAR_W = 200
     local TAB_BAR_BOTTOM_H = 0
 
     local tabDockFrame = Instance.new("Frame", mainFrame)
@@ -49468,7 +49315,7 @@ particles = {}
     tabDockFrame.BorderSizePixel = 0
     tabDockFrame.ZIndex = 12
     tabDockFrame.ClipsDescendants = true
-    tabDockFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    tabDockFrame.BackgroundColor3 = Color3.fromRGB(14, 7, 32)
 
     if _isMobileLayout then
         -- Móvil: barra horizontal en la parte inferior del hub
@@ -49479,13 +49326,13 @@ particles = {}
         -- Desktop: sidebar vertical izquierda
         tabDockFrame.Position = UDim2.new(0, 0, 0, 36)
         tabDockFrame.Size = UDim2.new(0, SIDEBAR_W, 1, -36)
-        tabDockFrame.BackgroundTransparency = 1
+        tabDockFrame.BackgroundTransparency = 0.15
     end
 
     local _dockStroke = Instance.new("UIStroke", tabDockFrame)
-    _dockStroke.Color = Color3.fromRGB(80, 80, 80)
-    _dockStroke.Thickness = 1.8
-    _dockStroke.Transparency = 0.35
+    _dockStroke.Color = Color3.fromRGB(100, 60, 200)
+    _dockStroke.Thickness = 1.5
+    _dockStroke.Transparency = 0.3
     _dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local tabDockList = Instance.new("ScrollingFrame", tabDockFrame)
@@ -49568,9 +49415,9 @@ particles = {}
 
         -- Borde blanco permanente
         local btnStroke = Instance.new("UIStroke", btn)
-        btnStroke.Color = Color3.fromRGB(255, 255, 255)
-        btnStroke.Thickness = 3
-        btnStroke.Transparency = 0
+        btnStroke.Color = Color3.fromRGB(100, 60, 200)
+        btnStroke.Thickness = 2
+        btnStroke.Transparency = 0.2
         btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         -- Barra lateral izquierda (indicador activo)
