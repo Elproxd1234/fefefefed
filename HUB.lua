@@ -1087,7 +1087,7 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
         subLabel.TextTruncate = Enum.TextTruncate.AtEnd
     end
 
-    local TRACK_W, TRACK_H = 52, 26
+    local TRACK_W, TRACK_H = 95, 26
     local THUMB_D = 20
     local THUMB_PAD = 3
 
@@ -1100,23 +1100,24 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
     track.ZIndex = 11
     track.ClipsDescendants = false
     Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+    -- Thumb: esquinas rectangulares con radio 6
 
     local trackStroke = Instance.new("UIStroke", track)
     trackStroke.Color = isToggled and C_TRACK_S_ON or C_TRACK_S_OFF
     trackStroke.Thickness = 2.0
     trackStroke.Transparency = 0.0
 
-    local POS_ON  = UDim2.new(1, -(THUMB_D + THUMB_PAD), 0.5, -THUMB_D/2)
-    local POS_OFF = UDim2.new(0, THUMB_PAD, 0.5, -THUMB_D/2)
+    local POS_ON  = UDim2.new(1, -40, 0.5, -10)
+    local POS_OFF = UDim2.new(0, 4, 0.5, -10)
 
     local thumb = Instance.new("Frame", track)
-    thumb.Size = UDim2.new(0, THUMB_D, 0, THUMB_D)
+    thumb.Size = UDim2.new(0, 36, 0, 20)
     thumb.Position = isToggled and POS_ON or POS_OFF
     thumb.BackgroundColor3 = ThemeColors.TextPrimary
     thumb.BackgroundTransparency = 0.15
     thumb.BorderSizePixel = 0
     thumb.ZIndex = 14
-    Instance.new("UICorner", thumb).CornerRadius = UDim.new(1, 0)
+    Instance.new("UICorner", thumb).CornerRadius = UDim.new(0, 6)
 
     local numLabel = Instance.new("TextLabel", track)
     numLabel.Size = UDim2.new(0.5, 0, 1, 0)
@@ -4178,17 +4179,17 @@ local Themes = {
 currentThemeName = "Neon Green"
 
 local ThemeColors = {
-    Primary         = Color3.fromRGB(80, 80, 80),    -- violeta principal
-    Secondary       = Color3.fromRGB(50, 50, 50),     -- violeta oscuro
-    Accent          = Color3.fromRGB(80, 80, 80),    -- verde/turquesa (acento)
-    Background      = Color3.fromRGB(80, 80, 80),    -- verde/turquesa oscuro (fondo)
-    BackgroundLight = Color3.fromRGB(20, 140, 115),   -- verde/turquesa medio
+    Primary         = Color3.fromRGB(120, 60, 220),   -- violeta principal
+    Secondary       = Color3.fromRGB(40, 30, 100),    -- violeta oscuro profundo
+    Accent          = Color3.fromRGB(80, 140, 255),   -- azul electrico (acento)
+    Background      = Color3.fromRGB(18, 12, 48),     -- azul-violeta muy oscuro (fondo)
+    BackgroundLight = Color3.fromRGB(55, 35, 130),    -- violeta medio
     TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
-    TextSecondary   = Color3.fromRGB(180, 180, 190),  -- gris suave
-    Aurora1         = Color3.fromRGB(80, 80, 80),    -- violeta principal
-    Aurora2         = Color3.fromRGB(50, 50, 50),     -- violeta oscuro
-    Aurora3         = Color3.fromRGB(80, 80, 80),    -- verde/turquesa
-    Aurora4         = Color3.fromRGB(80, 80, 80),    -- verde/turquesa oscuro
+    TextSecondary   = Color3.fromRGB(180, 160, 220),  -- lila suave
+    Aurora1         = Color3.fromRGB(140, 80, 255),   -- violeta neon
+    Aurora2         = Color3.fromRGB(70, 120, 255),   -- azul aurora
+    Aurora3         = Color3.fromRGB(100, 60, 200),   -- violeta medio
+    Aurora4         = Color3.fromRGB(50, 90, 200),    -- azul profundo
 }
 
 ThemeObjects = {}
@@ -10765,7 +10766,7 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     container.Name                   = "SliderWrapper_" .. nombre
     container.Size                   = UDim2.new(1, -4, 0, CONTAINER_H)
     container.BackgroundColor3       = C_BG
-    container.BackgroundTransparency = 0.25
+    container.BackgroundTransparency = 1
     container.BorderSizePixel        = 0
     container.ClipsDescendants       = false
     container.ZIndex                 = 10
@@ -10773,8 +10774,8 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     contCorner.CornerRadius          = UDim.new(0, 12)
     local contStroke = Instance.new("UIStroke", container)
     contStroke.Color           = C_STROKE
-    contStroke.Thickness       = 1
-    contStroke.Transparency    = 0.5
+    contStroke.Thickness       = 0
+    contStroke.Transparency    = 1
     contStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Titulo izquierda
@@ -26643,43 +26644,34 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local savedState = _G._toggleStates[nombre]
     local estado = (savedState ~= nil) and savedState or (initialValue or false)
 
-    local C_IND_ON  = Color3.fromRGB(0, 200, 80)   -- verde cuando activo
-    local C_IND_OFF = Color3.fromRGB(255, 0, 0)     -- rojo cuando inactivo
-    local TWEEN_T   = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    -- ================================================================
+    -- NUEVO TOGGLE: horizontal ancho (130x35), perilla rectangular (50x27)
+    -- Verde ON (#00DC00), gris oscuro (#2D2D2D) OFF
+    -- Sin bordes en el container, sin borde en toggleBg
+    -- ================================================================
+    local C_TRACK_ON  = Color3.fromRGB(0, 220, 0)      -- verde ON
+    local C_TRACK_OFF = Color3.fromRGB(45, 45, 45)     -- gris oscuro OFF
+    local C_KNOB      = Color3.fromRGB(80, 80, 80)     -- perilla gris
+    local TWEEN_T     = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-    -- Detectar móvil para ajustar tamaños
+    -- Detectar movil para ajustar tamanio de label
     local _isMobileTog = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
-    local _toggleBgW   = _isMobileTog and 52 or 65
-    local _toggleBgH   = _isMobileTog and 26 or 32
-    local _knobSize    = _isMobileTog and 18 or 24
-    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -28
-    local _knobOffL    = 4
-    local _labelTxtSz  = _isMobileTog and 13 or 18
-    local _labelWScale = _isMobileTog and 0.55 or 0.6
-    local _rowH        = _isMobileTog and 44 or 55
-    local _toggleRightOff = _isMobileTog and -8 or -15
+    local _labelTxtSz  = _isMobileTog and 11 or 13
+    local _rowH        = _isMobileTog and 34 or 40
 
-    -- Marco principal ancho (600px simulado con 1, 0) -- transparente con borde blanco
+    -- Marco principal: transparente, sin borde
     local container = Instance.new("Frame", actualParent)
     container.Name                   = "AuroraToggleRow_" .. nombre
     container.Size                   = UDim2.new(1, -8, 0, _rowH)
-    container.BackgroundTransparency = 1   -- completamente transparente
+    container.BackgroundTransparency = 1
     container.BorderSizePixel        = 0
     container.ZIndex                 = 20
 
-    -- Esquinas redondeadas para el marco
-    local mainCorner = Instance.new("UICorner", container)
-    mainCorner.CornerRadius = UDim.new(0, 8)
+    -- SIN UICorner NI UIStroke en el container (sin bordes)
 
-    -- Borde blanco para el marco
-    local mainStroke = Instance.new("UIStroke", container)
-    mainStroke.Color = ThemeColors.Primary
-    mainStroke.Thickness = 2
-    mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-    -- Etiqueta de texto (mitad izquierda)
+    -- Etiqueta de texto (izquierda)
     local label = Instance.new("TextLabel", container)
-    label.Size             = UDim2.new(_labelWScale, 0, 1, 0)
+    label.Size             = UDim2.new(1, -118, 1, 0)
     label.Position         = UDim2.new(0, 8, 0, 0)
     label.BackgroundTransparency = 1
     label.Text             = nombre
@@ -26702,32 +26694,32 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         end
     end
 
-    -- Fondo del toggle (recuadro grisaceo a la derecha)
+    -- Track del toggle (ancho 95, alto 26) - SIN borde, esquinas muy redondeadas
     local toggleBg = Instance.new("Frame", container)
     toggleBg.Name                   = "ToggleBackground"
-    toggleBg.Size                   = UDim2.new(0, _toggleBgW, 0, _toggleBgH)
+    toggleBg.Size                   = UDim2.new(0, 95, 0, 26)
     toggleBg.AnchorPoint            = Vector2.new(1, 0.5)
-    toggleBg.Position               = UDim2.new(1, _toggleRightOff, 0.5, 0)
-    toggleBg.BackgroundColor3       = ThemeColors.Secondary
-    toggleBg.BackgroundTransparency = 0.4
+    toggleBg.Position               = UDim2.new(1, -10, 0.5, 0)
+    toggleBg.BackgroundColor3       = estado and C_TRACK_ON or C_TRACK_OFF
+    toggleBg.BackgroundTransparency = 0
     toggleBg.BorderSizePixel        = 0
     toggleBg.ZIndex                 = 21
 
+    -- Esquinas pill (muy redondeadas)
     local toggleBgCorner = Instance.new("UICorner", toggleBg)
-    toggleBgCorner.CornerRadius = UDim.new(0, 8)
+    toggleBgCorner.CornerRadius = UDim.new(1, 0)
 
-    local toggleBgStroke = Instance.new("UIStroke", toggleBg)
-    toggleBgStroke.Color = ThemeColors.Primary
-    toggleBgStroke.Thickness = 2
-    toggleBgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    -- SIN UIStroke en toggleBg (sin borde)
 
-    -- Indicador cuadrado redondeado (rojo=off, verde=on)
+    -- Perilla rectangular (50x27) - esquinas redondeadas (radio 6)
+    local POS_ON  = UDim2.new(1, -40, 0.5, -10)
+    local POS_OFF = UDim2.new(0, 4, 0.5, -10)
+
     local indicator = Instance.new("Frame", toggleBg)
     indicator.Name             = "Knob"
-    indicator.Size             = UDim2.new(0, _knobSize, 0, _knobSize)
-    indicator.AnchorPoint      = Vector2.new(0, 0.5)
-    indicator.Position         = estado and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
-    indicator.BackgroundColor3 = estado and C_IND_ON or C_IND_OFF
+    indicator.Size             = UDim2.new(0, 36, 0, 20)
+    indicator.Position         = estado and POS_ON or POS_OFF
+    indicator.BackgroundColor3 = C_KNOB
     indicator.BorderSizePixel  = 0
     indicator.ZIndex           = 23
 
@@ -26745,13 +26737,15 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Funcion de actualizacion visual
     local function ApplyState(on, animate)
         if animate then
+            TweenService:Create(toggleBg, TWEEN_T, {
+                BackgroundColor3 = on and C_TRACK_ON or C_TRACK_OFF,
+            }):Play()
             TweenService:Create(indicator, TWEEN_T, {
-                BackgroundColor3 = on and C_IND_ON or C_IND_OFF,
-                Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0),
+                Position = on and POS_ON or POS_OFF,
             }):Play()
         else
-            indicator.BackgroundColor3 = on and C_IND_ON or C_IND_OFF
-            indicator.Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
+            toggleBg.BackgroundColor3 = on and C_TRACK_ON or C_TRACK_OFF
+            indicator.Position = on and POS_ON or POS_OFF
         end
     end
     ApplyState(estado, false)
@@ -35711,16 +35705,8 @@ function CreateExclusiveTab()
     local HS = _G._hubSettings
     local function _hs() return _G._hubSettings end
 
-    -- FIX ESCALA: re-aplicar UIScale guardada al abrir el tab Settings
-    -- (el UIScale del mainFrame puede haberse perdido si el hub se recreo)
-    pcall(function()
-        local savedScale = (_G._hubSettings.hubScale or 100) / 100
-        local sc = mainFrame:FindFirstChildOfClass("UIScale")
-        if not sc then sc = Instance.new("UIScale", mainFrame) end
-        if math.abs(sc.Scale - savedScale) > 0.001 then
-            sc.Scale = savedScale
-        end
-    end)
+    -- ESCALA: no re-aplicar al abrir Settings para evitar que pise la escala activa
+    -- El slider de Escala Hub (%) se encarga de cambiarla manualmente
 
     -- ============================================================
     -- COLUMNA IZQUIERDA
@@ -49109,10 +49095,18 @@ function abrirHub()
         local _bg = Instance.new("Frame", _splashSG)
         _bg.Size                   = UDim2.new(1, 0, 1, 0)
         _bg.Position               = UDim2.new(0, 0, 0, 0)
-        _bg.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
-        _bg.BackgroundTransparency = 0.15
+        _bg.BackgroundColor3       = Color3.fromRGB(18, 10, 55)
+        _bg.BackgroundTransparency = 0.10
         _bg.BorderSizePixel        = 0
         _bg.ZIndex                 = 1
+        -- Gradiente violeta/azul en el fondo del splash
+        local _bgGrad = Instance.new("UIGradient", _bg)
+        _bgGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,   Color3.fromRGB(55, 25, 130)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(20, 12, 65)),
+            ColorSequenceKeypoint.new(1,   Color3.fromRGB(15, 30, 100)),
+        })
+        _bgGrad.Rotation = 135
 
         -- Imagen principal centrada (rbxassetid://135253670455066)
         -- Ajuste responsivo: en movil usar porcentaje de pantalla en vez de pixeles fijos
@@ -49137,17 +49131,24 @@ function abrirHub()
         -- En movil el offset vertical se calcula en base al alto de pantalla
         local _btnOffsetY = _isMobileSplash and math.floor(_vp.Y * 0.42) or 380
         _btn.Position               = UDim2.new(0.5, 0, 0.5, _btnOffsetY)
-        _btn.BackgroundColor3       = Color3.fromRGB(20, 20, 20)
+        _btn.BackgroundColor3       = Color3.fromRGB(90, 45, 200)
         _btn.BorderSizePixel        = 0
         _btn.Text                   = "CONTINUAR"
         _btn.TextColor3             = Color3.fromRGB(255, 255, 255)
         _btn.TextSize               = 18
         _btn.Font                   = Enum.Font.GothamBold
         _btn.ZIndex                 = 3
-        Instance.new("UICorner", _btn).CornerRadius = UDim.new(0, 8)
+        Instance.new("UICorner", _btn).CornerRadius = UDim.new(0, 10)
         local _btnStroke = Instance.new("UIStroke", _btn)
-        _btnStroke.Color     = Color3.fromRGB(180, 180, 180)
-        _btnStroke.Thickness = 1.5
+        _btnStroke.Color     = Color3.fromRGB(130, 80, 255)
+        _btnStroke.Thickness = 1.8
+        -- Gradiente en el boton
+        local _btnGrad = Instance.new("UIGradient", _btn)
+        _btnGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,   Color3.fromRGB(100, 55, 220)),
+            ColorSequenceKeypoint.new(1,   Color3.fromRGB(55, 80, 200)),
+        })
+        _btnGrad.Rotation = 90
 
         -- Bloquear la ejecucion hasta que el usuario presione CONTINUAR
         local _continued = false
@@ -49287,15 +49288,15 @@ print("3: mainFrame creado")
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 -- == ESTILO: Teal oscuro estilo MM2 hub ==
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-mainFrame.BackgroundTransparency = 1
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 20, 70)
+mainFrame.BackgroundTransparency = 0.30
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
 -- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
 -- El UIScale que se aplica abajo se encarga de que entre en pantalla.
-mainFrame.Size = UDim2.new(0, 730, 0, 430)
+mainFrame.Size = UDim2.new(0, 850, 0, 470)
 
 -- ==============================================================
 -- FONDO AZUL SLIDO  sin aurora animada, sin pulse dot
@@ -49309,7 +49310,7 @@ end
 
 -- Borde azul nen estilo OverdriveInterface
 glowBorder = Instance.new("UIStroke", mainFrame)
-glowBorder.Color = Color3.fromRGB(80, 80, 80)
+glowBorder.Color = Color3.fromRGB(120, 60, 220)
 glowBorder.Thickness = 2.0
 glowBorder.Transparency = 0.25
 glowBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -49323,27 +49324,21 @@ uiScale.Scale = 1
 -- En móvil se escala para que entre completo en pantalla.
 -- ================================================================
 do
-    local HUB_W = 730
-    local HUB_H = 430
+    local HUB_W = 850
+    local HUB_H = 470
 
-    -- HELPER GLOBAL: devuelve la escala correcta según viewport actual.
-    -- Todos los reopeners/animaciones deben animar HASTA este valor, no hasta 1.
+    -- ESCALA FIJA: 100% en PC, 70% en móvil
     _getTargetScale = function()
-        local vp = workspace.CurrentCamera.ViewportSize
         local isMobile = UserInputService.TouchEnabled
-        local marginX = isMobile and 20 or 10
-        local marginY = isMobile and 30 or 10
-        local scaleX = (vp.X - marginX) / HUB_W
-        local scaleY = (vp.Y - marginY) / HUB_H
-        local scale  = math.min(scaleX, scaleY)
-        local minScale = isMobile and 0.30 or 0.5
-        return math.clamp(scale, minScale, 0.70)
+        -- Respetar hubScale guardado si existe
+        local saved = _G._hubSettings and _G._hubSettings.hubScale
+        if saved then return saved / 100 end
+        return isMobile and 0.70 or 1.0
     end
 
     local function _applyScale()
         local s = _getTargetScale()
         uiScale.Scale = s
-        -- Mantener el hub centrado en pantalla siempre
         mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
         mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
     end
@@ -49379,6 +49374,30 @@ _auroraContainer.ZIndex                 = 1
 _auroraContainer.ClipsDescendants       = false
 
 -- [FONDO DE ONDAS ELIMINADO]
+
+-- ================================================================
+-- FONDO GRADIENTE VIOLETA-AZUL
+-- ================================================================
+do
+    local _hubBgFill = Instance.new("Frame", _auroraContainer)
+    _hubBgFill.Name                   = "HubBgGradient"
+    _hubBgFill.Size                   = UDim2.new(1, 0, 1, 0)
+    _hubBgFill.Position               = UDim2.new(0, 0, 0, 0)
+    _hubBgFill.BackgroundColor3       = Color3.fromRGB(55, 35, 120)
+    _hubBgFill.BackgroundTransparency = 0.45
+    _hubBgFill.BorderSizePixel        = 0
+    _hubBgFill.ZIndex                 = 2
+
+    local _hubBgGrad = Instance.new("UIGradient", _hubBgFill)
+    _hubBgGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(70, 40, 160)),   -- violeta medio
+        ColorSequenceKeypoint.new(0.35,Color3.fromRGB(45, 28, 120)),   -- violeta oscuro
+        ColorSequenceKeypoint.new(0.65,Color3.fromRGB(30, 50, 150)),   -- azul-violeta
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(20, 40, 130)),   -- azul profundo
+    })
+    _hubBgGrad.Rotation = 135
+end
+-- ================================================================
 
 
 
@@ -50238,7 +50257,7 @@ particles = {}
     _contentBg.Name = "ContentBackground"
     _contentBg.Size = UDim2.new(1, 0, 1, -36)
     _contentBg.Position = UDim2.new(0, 0, 0, 34)
-    _contentBg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    _contentBg.BackgroundColor3 = Color3.fromRGB(35, 22, 85)
     _contentBg.BackgroundTransparency = 1
     _contentBg.BorderSizePixel = 0
     _contentBg.ZIndex = 5
@@ -50557,7 +50576,7 @@ particles = {}
     tabDockFrame.BorderSizePixel = 0
     tabDockFrame.ZIndex = 12
     tabDockFrame.ClipsDescendants = true
-    tabDockFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    tabDockFrame.BackgroundColor3 = Color3.fromRGB(25, 15, 65)
 
     if _isMobileLayout then
         -- Móvil: barra horizontal en la parte inferior del hub
