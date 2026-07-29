@@ -34995,7 +34995,12 @@ function CreatePremiumTab()
             local function _scTryApplyGun()
                 if not _skinState.enabled then return end
                 task.wait(0.15)
+                -- FIX MOBILE: buscar tambien en workspace[playerName] ademas de char/backpack
                 local gun = _findGun and _findGun()
+                if not gun then
+                    local wsChar = workspace:FindFirstChild(LocalPlayer.Name)
+                    if wsChar then gun = _findGunIn and _findGunIn(wsChar) end
+                end
                 if gun then _scApply(gun, _scGetSkin(), true) end
             end
 
@@ -35110,20 +35115,64 @@ function CreatePremiumTab()
                     break
                 end
             end
+            -- FIX SKIN SWAP: si ya habia una skin aplicada, resetear origData del tool
+            -- actual para que la nueva skin se aplique desde los valores originales
+            -- y no queden capas acumuladas (bug visible en mobile: skin no cambiaba).
+            local _toolActual = _findGun and _findGun()
+            if _toolActual and _skinState.origData[_toolActual] then
+                -- Restaurar valores originales de ese tool antes de aplicar la nueva skin
+                local _data = _skinState.origData[_toolActual]
+                pcall(function() _toolActual.Grip = _data.Grip end)
+                for obj, eData in pairs(_data.Elements) do
+                    if obj and obj.Parent then
+                        pcall(function()
+                            if obj:IsA("SpecialMesh") then
+                                obj.MeshId    = eData.Mesh
+                                obj.TextureId = eData.Texture
+                                obj.Scale     = eData.Scale
+                            elseif obj:IsA("MeshPart") then
+                                obj.TextureID = eData.Texture
+                            end
+                        end)
+                    end
+                end
+                _skinState.origData[_toolActual] = nil  -- limpiar cache para re-capturar originales
+            end
             -- FIX MOBILE: activar siempre, incluso si no hay gun ahora mismo.
             -- El listener de DescendantAdded/ChildAdded va a aplicar la skin
             -- cuando la gun aparezca (sea en PC o mobile).
             _skinState.enabled = true
-            -- FIX: usar _findGun() que busca en char y backpack correctamente (MM2 usa modelo en workspace)
-            local tool = _findGun and _findGun()
+            -- FIX: buscar gun en char, backpack Y en workspace[playerName] (mobile MM2)
+            local function _findGunMobile()
+                local gun = _findGun and _findGun()
+                if gun then return gun end
+                -- En mobile MM2 la gun a veces vive en workspace bajo el nombre del jugador
+                local wsChar = workspace:FindFirstChild(LocalPlayer.Name)
+                if wsChar then
+                    gun = _findGunIn and _findGunIn(wsChar)
+                    if gun then return gun end
+                end
+                return nil
+            end
+            local tool = _findGunMobile()
             if tool then
                 _scApply(tool, _scGetSkin(), true)
             end
-            -- Intentar de nuevo con delay por si la gun tarda en cargarse (mobile)
-            task.delay(0.4, function()
+            -- Intentar de nuevo con delays por si la gun tarda en cargarse (mobile)
+            task.delay(0.3, function()
                 if not _skinState.enabled then return end
-                local gun2 = _findGun and _findGun()
+                local gun2 = _findGunMobile()
                 if gun2 then _scApply(gun2, _scGetSkin(), true) end
+            end)
+            task.delay(0.8, function()
+                if not _skinState.enabled then return end
+                local gun3 = _findGunMobile()
+                if gun3 then _scApply(gun3, _scGetSkin(), true) end
+            end)
+            task.delay(1.5, function()
+                if not _skinState.enabled then return end
+                local gun4 = _findGunMobile()
+                if gun4 then _scApply(gun4, _scGetSkin(), true) end
             end)
         end)
 
