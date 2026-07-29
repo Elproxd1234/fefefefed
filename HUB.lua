@@ -3362,11 +3362,9 @@ function startAutoReload()
     local C = Settings.combatSettings
     if not C.autoReload then return end
 
-    local _hbTautoReload = 0
-    local _arTick=0
+    local _arTick = 0
     CombatState.autoReloadConnection = RunService.Heartbeat:Connect(function()
         _arTick=_arTick+1; if _arTick<6 then return end; _arTick=0  -- OPT: ~10Hz para auto-reload
-        _hbTautoReload=_hbTautoReload+1; if _hbTautoReload<3 then return end; _hbTautoReload=0
         if not C.autoReload then return end
         if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
         -- FIX: buscar gun por _GUN_NAMES igual que autoShoot (no solo literal "Gun")
@@ -7329,7 +7327,9 @@ function EnableNoclip()
         _rebuildCache(c)
     end)
     _rebuildCache(LocalPlayer.Character)
+    local _ncTick = 0
     Settings.connections.noclip = RunService.Stepped:Connect(function()
+        _ncTick = _ncTick + 1; if _ncTick < 3 then return end; _ncTick = 0  -- OPT: ~20Hz en vez de 60Hz
         local char = LocalPlayer.Character
         if not char then return end
         -- Reconstruir cache si el personaje cambio
@@ -9202,7 +9202,7 @@ function CreateESP(player)
     -- no se actualizara cuando cambiaba el rol (Murder detectado, Sheriff muerto, etc.).
     -- Reducido a 18 (~0.3s) para sincronizar colores sin sobrecargar el Heartbeat.
     do local _espTick=0 espConnection = RunService.Heartbeat:Connect(function()
-        _espTick=_espTick+1; if _espTick<144 then return end; _espTick=0  -- OPT: 120→144 frames (~2.4s ciclo de color)
+        _espTick=_espTick+1; if _espTick<240 then return end; _espTick=0  -- OPT: 144→240 frames (~4s ciclo de color)
         if not (Settings.esp and (Settings.esp.enabled.Everyone or Settings.esp.enabled.MurdererOnly or Settings.esp.enabled.SheriffOnly)) then return end
         pcall(updateESP)
     end) end
@@ -9295,7 +9295,7 @@ function CreateChams(player)
     -- FIX HEARTBEAT: _chamTick<9999 equivale a ~166s de delay, nunca actualizaba.
     -- Reducido a 9 (~0.15s) para limpiar Highlights residuos de Settings.cham.objects.
     do local _chamTick=0 chamConnection = RunService.Heartbeat:Connect(function()
-        _chamTick=_chamTick+1; if _chamTick<90 then return end; _chamTick=0  -- OPT: 72→90 frames (~1.5s ciclo cham)
+        _chamTick=_chamTick+1; if _chamTick<180 then return end; _chamTick=0  -- OPT: 90→180 frames (~3s ciclo cham)
         if not (VisualState and (VisualState.cham and next(VisualState.cham))) then return end
         pcall(updateChams)
     end) end
@@ -9513,7 +9513,7 @@ function CreateOutline(player)
     local _hbToutline = 0
     outlineConnection = RunService.Heartbeat:Connect(function()
         _hbToutline = _hbToutline + 1
-        if _hbToutline < 36 then return end
+        if _hbToutline < 72 then return end  -- OPT: 36→72 frames (~1.2s)
         _hbToutline = 0
         local _vo = VisualState and VisualState.outline
         if not (_vo and (_vo.everyone or _vo.murderer or _vo.sheriff or _vo.hero)) then
@@ -9606,7 +9606,7 @@ function CreateSkeleton(player)
     -- LAG FIX: skeleton solo corre si la feature esta activa
     local _hbTskeleton = 0
     skeletonConnection = RunService.Heartbeat:Connect(function()
-        _hbTskeleton=_hbTskeleton+1; if _hbTskeleton<36 then return end; _hbTskeleton=0  -- OPT: 30→36 frames
+        _hbTskeleton=_hbTskeleton+1; if _hbTskeleton<72 then return end; _hbTskeleton=0  -- OPT: 36→72 frames (~1.2s)
         local _vsk = VisualState and VisualState.skeleton
         if not (_vsk and (_vsk.everyone or _vsk.murderer or _vsk.sheriff)) then return end
         pcall(updateSkeleton)
@@ -9673,7 +9673,24 @@ function _getPlayerUserId(name)
     return nil
 end
 
+-- OPT: dedup table - evita encolar la misma notif repetida en menos de 0.5s
+_notifLastSent = {}
+
 function CreateCustomNotification(titleRaw, message, duration)
+    -- Dedup: ignorar si ya se envio el mismo titulo+mensaje hace menos de 0.5s
+    local _deKey = tostring(titleRaw) .. "|" .. tostring(message)
+    local _deNow = os.clock()
+    if _notifLastSent[_deKey] and (_deNow - _notifLastSent[_deKey]) < 0.5 then return end
+    _notifLastSent[_deKey] = _deNow
+    -- Limpiar entradas viejas cada 50 notifs para no acumular memoria
+    if next(_notifLastSent) then
+        local _deCount = 0
+        for k, t in pairs(_notifLastSent) do
+            _deCount = _deCount + 1
+            if _deNow - t > 10 then _notifLastSent[k] = nil end
+        end
+    end
+
     table.insert(_notifQueue, function()
         duration = duration or (_G._notifDefaultDuration) or 4
 
@@ -16256,7 +16273,9 @@ function CreateMainUI_BackgroundSelector()
             local hrp = character and character:FindFirstChild("HumanoidRootPart")
             local hum = character and character:FindFirstChildOfClass("Humanoid")
             if not hrp or not hum then return end
+            local _stFloatTick = 0
             _st.floatConn = RunService.Heartbeat:Connect(function()
+                _stFloatTick = _stFloatTick + 1; if _stFloatTick < 3 then return end; _stFloatTick = 0  -- OPT: ~20Hz
                 if not _st.enabled then
                     pcall(function() _st.floatConn:Disconnect() end); _st.floatConn = nil
                     pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true) end)
@@ -17069,24 +17088,27 @@ function CreateMainUI_GameInfo()
             if murder then _hookMurderer(murder) end
         end)
 
-        -- -- Display loop: Heartbeat, redibuja solo cuando cambia el segundo o el rol
-        -- -- Display loop: Heartbeat, redibuja solo cuando cambia el segundo
-        -- FIX: solo muestra el TIEMPO (sin rol) en el overlay principal
-        local _hbConn = RunService.Heartbeat:Connect(function()
-            if not lbl or not lbl.Parent then _hbConn:Disconnect(); return end
-            if T.frozen then return end
-            if not T.active then
-                if lbl.Text ~= "--:--" then
-                    lbl.Text       = "--:--"
-                    lbl.TextColor3 = Color3.fromRGB(150, 150, 150)
+        -- OPT: timer solo cambia 1 vez por segundo -- reemplazar Heartbeat (60Hz) con loop 1Hz
+        local _timerLoopActive = true
+        local _hbConn = { Disconnect = function() _timerLoopActive = false end }
+        task.spawn(function()
+            while _timerLoopActive do
+                task.wait(0.5)  -- 2Hz es suficiente para un display de segundos
+                if not lbl or not lbl.Parent then _timerLoopActive = false; break end
+                if T.frozen then continue end
+                if not T.active then
+                    if lbl.Text ~= "--:--" then
+                        lbl.Text       = "--:--"
+                        lbl.TextColor3 = Color3.fromRGB(150, 150, 150)
+                    end
+                    continue
                 end
-                return
+                local secs = math.max(0, math.floor(T.value - (tick() - T.syncTick)))
+                if secs == T.lastSecs then continue end
+                T.lastSecs = secs
+                lbl.Text       = secs > 0 and _fmt(secs) or "--:--"
+                lbl.TextColor3 = _color(secs)
             end
-            local secs = math.max(0, math.floor(T.value - (tick() - T.syncTick)))
-            if secs == T.lastSecs then return end
-            T.lastSecs = secs
-            lbl.Text       = secs > 0 and _fmt(secs) or "--:--"
-            lbl.TextColor3 = _color(secs)
         end)
         _addConn(_hbConn)
 
@@ -17333,7 +17355,7 @@ function CreateMainUI_GameInfo()
 
         _hbTpctC = 0
         _gameInfoState.pctConn = RunService.Heartbeat:Connect(function()
-            _hbTpctC=_hbTpctC+1; if _hbTpctC<4 then return end; _hbTpctC=0
+            _hbTpctC=_hbTpctC+1; if _hbTpctC<20 then return end; _hbTpctC=0  -- OPT: 4→20 frames (~3Hz)
             if not _gameInfoState.pctEnabled then return end
  lbl.Text = "MURDER% " .. lastPct .. "%"
             n = tonumber(lastPct)
@@ -19074,7 +19096,9 @@ function CreateMainTab()
             if _mp.avSafeConn then pcall(function() _mp.avSafeConn:Disconnect() end); _mp.avSafeConn = nil end
             if not on then _mp.avSafePos = nil; return end
             -- OPT: un solo loop hace las dos cosas (guarda pos segura + detecta void)
+            local _avTick = 0
             _mp.avConn = _safeConnect(RunService.Heartbeat, function()
+                _avTick = _avTick + 1; if _avTick < 6 then return end; _avTick = 0  -- OPT: ~10Hz
                 local char = LocalPlayer.Character; if not char then return end
                 local hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
                 local y = hrp.Position.Y
@@ -19401,7 +19425,9 @@ function CreateMainTab()
             if _cs.fovConn then pcall(function() _cs.fovConn:Disconnect() end); _cs.fovConn = nil end
             if on then
                 pcall(function() _Camera.FieldOfView = _cs.fovValue end)
-                _cs.fovConn = _safeConnect(RunService.RenderStepped, function()
+                local _fovTick = 0
+                _cs.fovConn = _safeConnect(RunService.Heartbeat, function()
+                    _fovTick = _fovTick + 1; if _fovTick < 6 then return end; _fovTick = 0  -- OPT: ~10Hz
                     local cam = _Camera
                     if cam and math.abs(cam.FieldOfView - _cs.fovValue) > 0.5 then
                         cam.FieldOfView = _cs.fovValue
@@ -19510,7 +19536,9 @@ function CreateMainTab()
             if _sp.swConn then pcall(function() _sp.swConn:Disconnect() end); _sp.swConn = nil end
             if on then
                 _applyWS(_swVal)
+                local _swTick = 0
                 _sp.swConn = _safeConnect(RunService.Heartbeat, function()
+                    _swTick = _swTick + 1; if _swTick < 6 then return end; _swTick = 0  -- OPT: ~10Hz
                     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
                     if hum and hum.Health > 0 and math.abs(hum.WalkSpeed - _sp.swVal) > 0.5 then
                         pcall(function() hum.WalkSpeed = _sp.swVal end)
@@ -19550,7 +19578,9 @@ function CreateMainTab()
             if _sp.pjConn then pcall(function() _sp.pjConn:Disconnect() end); _sp.pjConn = nil end
             if on then
                 _applyJP(_pjVal)
+                local _pjTick = 0
                 _sp.pjConn = _safeConnect(RunService.Heartbeat, function()
+                    _pjTick = _pjTick + 1; if _pjTick < 6 then return end; _pjTick = 0  -- OPT: ~10Hz
                     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
                     if hum and hum.Health > 0 and math.abs(hum.JumpPower - _sp.pjVal) > 0.5 then
                         pcall(function() hum.JumpPower = _sp.pjVal end)
@@ -26879,8 +26909,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     -- Detectar movil para ajustar tamanio de label
     local _isMobileTog = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
-    local _labelTxtSz  = _isMobileTog and 11 or 13
-    local _rowH        = _isMobileTog and 34 or 40
+    local _labelTxtSz  = _isMobileTog and 9 or 11
+    local _rowH        = _isMobileTog and 24 or 32
 
     -- Marco principal: transparente, sin borde
     local container = Instance.new("Frame", actualParent)
@@ -26894,8 +26924,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     -- Etiqueta de texto (izquierda)
     local label = Instance.new("TextLabel", container)
-    label.Size             = UDim2.new(1, -118, 1, 0)
-    label.Position         = UDim2.new(0, 8, 0, 0)
+    label.Size             = UDim2.new(1, -90, 1, 0)
+    label.Position         = UDim2.new(0, 6, 0, 0)
     label.BackgroundTransparency = 1
     label.Text             = nombre
     label.TextSize         = _labelTxtSz
@@ -26917,12 +26947,12 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         end
     end
 
-    -- Track del toggle (ancho 95, alto 26) - SIN borde, esquinas muy redondeadas
+    -- Track del toggle (ancho 72, alto 18) - SIN borde, esquinas muy redondeadas
     local toggleBg = Instance.new("Frame", container)
     toggleBg.Name                   = "ToggleBackground"
-    toggleBg.Size                   = UDim2.new(0, 95, 0, 26)
+    toggleBg.Size                   = UDim2.new(0, 72, 0, 18)
     toggleBg.AnchorPoint            = Vector2.new(1, 0.5)
-    toggleBg.Position               = UDim2.new(1, -10, 0.5, 0)
+    toggleBg.Position               = UDim2.new(1, -8, 0.5, 0)
     toggleBg.BackgroundColor3       = estado and C_TRACK_ON or C_TRACK_OFF
     toggleBg.BackgroundTransparency = 0
     toggleBg.BorderSizePixel        = 0
@@ -26934,20 +26964,20 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     -- SIN UIStroke en toggleBg (sin borde)
 
-    -- Perilla rectangular (50x27) - esquinas redondeadas (radio 6)
-    local POS_ON  = UDim2.new(1, -40, 0.5, -10)
-    local POS_OFF = UDim2.new(0, 4, 0.5, -10)
+    -- Perilla rectangular (26x14) - esquinas redondeadas (radio 4)
+    local POS_ON  = UDim2.new(1, -30, 0.5, -7)
+    local POS_OFF = UDim2.new(0, 4, 0.5, -7)
 
     local indicator = Instance.new("Frame", toggleBg)
     indicator.Name             = "Knob"
-    indicator.Size             = UDim2.new(0, 36, 0, 20)
+    indicator.Size             = UDim2.new(0, 26, 0, 14)
     indicator.Position         = estado and POS_ON or POS_OFF
     indicator.BackgroundColor3 = C_KNOB
     indicator.BorderSizePixel  = 0
     indicator.ZIndex           = 23
 
     local indCorner = Instance.new("UICorner", indicator)
-    indCorner.CornerRadius = UDim.new(0, 6)
+    indCorner.CornerRadius = UDim.new(0, 4)
 
     -- Boton invisible sobre todo el row
     local clickRow = Instance.new("TextButton", container)
@@ -49572,13 +49602,35 @@ do
     local HUB_W = 850
     local HUB_H = 470
 
-    -- ESCALA FIJA: 100% en PC, 70% en móvil
+    -- ESCALA DINÁMICA: se calcula para que el hub siempre entre completo en pantalla
     _getTargetScale = function()
-        local isMobile = UserInputService.TouchEnabled
-        -- Respetar hubScale guardado si existe
+        -- Respetar hubScale guardado si existe (ajuste manual del usuario)
         local saved = _G._hubSettings and _G._hubSettings.hubScale
         if saved then return saved / 100 end
-        return isMobile and 0.70 or 1.0
+
+        local vp = workspace.CurrentCamera.ViewportSize
+        local screenW = vp.X
+        local screenH = vp.Y
+
+        -- Margen de seguridad en píxeles para no pegar el hub al borde
+        local MARGIN = 16
+
+        -- Calcular cuánto escalar para que quepa en ambas dimensiones
+        local scaleW = (screenW - MARGIN * 2) / HUB_W
+        local scaleH = (screenH - MARGIN * 2) / HUB_H
+        local scale  = math.min(scaleW, scaleH)
+
+        -- En PC nunca agrandar más de 100%; en móvil ajustar sin límite inferior excesivo
+        local isMobile = UserInputService.TouchEnabled
+        if isMobile then
+            -- Móvil: usar el scale calculado, mínimo 0.40 para que se pueda leer
+            scale = math.max(scale, 0.40)
+        else
+            -- PC: máximo 100%, no agrandar
+            scale = math.min(scale, 1.0)
+        end
+
+        return scale
     end
 
     local function _applyScale()
@@ -50586,10 +50638,10 @@ particles = {}
     sideLayout.Padding = UDim.new(0, 6)
     sideLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
-    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "FARM", "EMOTES"}
+    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "EMOTES"}
     local tabFunctions = {CreateMainTab, CreateWorldTab, CreateVisualsTab, CreatePremiumTab, CreateExclusiveTab, CreateCombatTab,
         function() CreateUseTab() end,  -- late binding: CreateUseTab se define despues de esta tabla
-        CreateFarmTab, function() CreateEmotesTab() end}  -- late binding: CreateEmotesTab se define despues
+        function() CreateEmotesTab() end}  -- late binding: CreateEmotesTab se define despues
     local tabIcons = {
         "rbxassetid://104322605423609",  -- MAIN
         "rbxassetid://105507739661539",  -- WORLD
@@ -50598,7 +50650,6 @@ particles = {}
         "rbxassetid://103503754018914",  -- SETTINGS
         "rbxassetid://134041781822125",  -- COMBAT
         "rbxassetid://106189149164668",  -- USE
-        "rbxassetid://104322605423609",  -- FARM (usa mismo icono que MAIN como fallback)
         "rbxassetid://104322605423609",  -- EMOTES
     }
 
@@ -50809,11 +50860,15 @@ particles = {}
 
     -- SIDEBAR: panel izquierdo en desktop, barra inferior en móvil
     local _vpNow = workspace.CurrentCamera.ViewportSize
-    -- SIEMPRE usar layout de PC (sidebar vertical) — el auto-scale se encarga
-    -- de que el hub entre completo en pantalla, tanto en PC como en móvil.
-    local _isMobileLayout = false
-    local SIDEBAR_W = 240
-    local TAB_BAR_BOTTOM_H = 0
+    -- Detectar si es móvil para usar layout de barra inferior en vez de sidebar lateral
+    -- En pantallas angostas (móvil portrait/landscape pequeño) la sidebar de 240px
+    -- consume demasiado espacio horizontal, así que se pone abajo como barra de tabs.
+    local _vpNowCheck = workspace.CurrentCamera.ViewportSize
+    -- Usar el tamaño REAL de pantalla (sin escala del UIScale aplicado) para decidir layout
+    -- Si la pantalla física es menor a 600px de ancho O es táctil → layout móvil
+    local _isMobileLayout = UserInputService.TouchEnabled or (_vpNowCheck.X < 600)
+    local SIDEBAR_W = _isMobileLayout and 0 or 240
+    local TAB_BAR_BOTTOM_H = _isMobileLayout and 56 or 0
 
     local tabDockFrame = Instance.new("Frame", mainFrame)
     tabDockFrame.Name = "TabDock"
