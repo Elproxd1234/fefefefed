@@ -3521,6 +3521,8 @@ _GUN_NAMES = {
     gun=true, gundrop=true, dropgun=true,
     SheriffGun=true, HeroGun=true, GunModel=true,
 }
+-- FIX: alias para setupGunPickup (DescendantAdded usa _gunDropNames)
+_gunDropNames = _GUN_NAMES
 
 -- -- HELPER: buscar gun por _GUN_NAMES o keyword en cualquier contenedor ------
 -- Reemplaza todos los FindFirstChild("Gun") que solo detectaban el nombre exacto
@@ -28839,8 +28841,11 @@ function CreateWorldUI_AutoGrabGun()
         WorldSystem.grab.gui = gg
         grabGui              = gg
 
-        local frame = MakeCapyBindableFrame(gg, "GRAB GUN", function()
-            -- FIX: usar _G._TryGrabGun como fallback si TryGrabGun no esta en scope
+        -- FIX: usar rightColumn como guiParent para que AncestryChanged destruya el bind
+        -- cuando el tab se cierra (antes usaba gg=ScreenGui que nunca pierde padre)
+        local frame = MakeCapyBindableFrame(rightColumn or gg, "GRAB GUN", function()
+            -- FIX: sync _G._TryGrabGun antes de llamar, por si el closure cambio
+            if type(TryGrabGun) == "function" then _G._TryGrabGun = TryGrabGun end
             local fn = (type(TryGrabGun) == "function" and TryGrabGun)
                     or _G._TryGrabGun
             if fn then pcall(fn) end
@@ -28895,7 +28900,10 @@ function CreateWorldUI_AutoGrabGun()
         local _prevSection = _currentMainSectionFrame
         _currentMainSectionFrame = nil
         CreateButton(rightColumn, "Grab Gun", ThemeColors.Aurora3, function()
-            TryGrabGun()
+            -- FIX: usar _G._TryGrabGun como fallback por si TryGrabGun no esta en scope
+            -- (puede pasar si el tab se cerro y reabrio y la funcion no fue redefinida aun)
+            local fn = (type(TryGrabGun) == "function" and TryGrabGun) or _G._TryGrabGun
+            if fn then pcall(fn) end
         end)
         _currentMainSectionFrame = _prevSection
     end
@@ -29096,34 +29104,45 @@ function CreateWorldUI_AutoGrabGun()
             task.spawn(_agTryGrab)
 
             -- Event-driven: DescendantAdded en workspace
+            -- FIX: detectar TODOS los nombres de gun que usa MM2 (no solo "GunDrop" exacto)
             if GrabState._agConn then GrabState._agConn:Disconnect() end
             GrabState._agConn = workspace.DescendantAdded:Connect(function(obj)
                 if not GrabState.autoEnabled then return end
                 if _findGun(LocalPlayer.Character) then return end
-                -- Solo GunDrop (nombre exacto)
-                if obj.Name ~= "GunDrop" then return end
-                do
-                    local inPlayer = false
-                    for _, p in pairs(_cachedPlayers) do
-                        local c = p.Character; local b = p.Backpack
-                        if (c and obj:IsDescendantOf(c)) or (b and obj:IsDescendantOf(b)) then
-                            inPlayer = true; break
-                        end
+                -- FIX: aceptar cualquier nombre de gun en _GUN_NAMES o keyword "gun"/"sheriff"/"revolver"
+                if not obj:IsA("Tool") then return end
+                local nm = obj.Name:lower()
+                local isGun = _GUN_NAMES[obj.Name]
+                    or nm:find("gun") or nm:find("sheriff") or nm:find("revolver")
+                if not isGun then return end
+                local inPlayer = false
+                for _, p in pairs(_cachedPlayers) do
+                    local c = p.Character; local b = p.Backpack
+                    if (c and obj:IsDescendantOf(c)) or (b and obj:IsDescendantOf(b)) then
+                        inPlayer = true; break
                     end
-                    if not inPlayer then
-                        -- FIX: usar _fluidGrabGun -- mueve la GUN al player, no al reves
-                        -- Sin blink del HRP -> sin lag visible para el jugador
-                        task.spawn(function() pcall(_fluidGrabGun, obj) end)
-                    end
+                end
+                if not inPlayer then
+                    -- FIX: usar _fluidGrabGun -- mueve la GUN al player, no al reves
+                    -- Sin blink del HRP -> sin lag visible para el jugador
+                    task.spawn(function() pcall(_fluidGrabGun, obj) end)
                 end
             end)
 
             -- Heartbeat fallback cada 0.5s
+            -- FIX: no pausar por _visualRoundOver al inicio -- la gun puede spawnear justo
+            -- cuando _visualRoundOver todavia es true (lag de red). Solo pausar si ya
+            -- llevamos mas de 3s desde el fin de ronda sin RoundStart.
             if GrabState._hbConn then GrabState._hbConn:Disconnect() end
             local _hbT = 0
             GrabState._hbConn = RunService.Heartbeat:Connect(function(dt)
                 if not GrabState.autoEnabled then return end
-                if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
+                -- FIX: permitir grab aunque _visualRoundOver sea true si hay drop visible
+                -- Solo saltear si estamos en intermission larga (>3s sin RoundStart)
+                if _G._visualRoundOver then
+                    local timeSinceStart = _G._roundStartTime and (tick() - _G._roundStartTime) or 999
+                    if timeSinceStart > 3 then return end
+                end
                 _hbT = _hbT + dt
                 if _hbT < 0.5 then return end
                 _hbT = 0
@@ -29134,7 +29153,8 @@ function CreateWorldUI_AutoGrabGun()
                 end
             end)
 
-            -- RoundStart: intentar 20 veces en los primeros 2 segundos de ronda
+            -- RoundStart: burst de intentos en los primeros 4 segundos de ronda
+            -- FIX: extender burst a 4s (40 intentos) porque la gun puede tardar en spawnear
             if GrabState._agRoundConn then pcall(function() GrabState._agRoundConn:Disconnect() end) end
             task.spawn(function()
                 local ok, rem = pcall(function()
@@ -29150,13 +29170,40 @@ function CreateWorldUI_AutoGrabGun()
                     end
                     GrabState._agBusy     = false
                     GrabState._cachedDrop = nil
-                    -- Burst de 20 intentos en 2s al inicio de ronda
-                    for _ = 1, 20 do
-                        if not GrabState.autoEnabled then break end
-                        task.spawn(_agTryGrab)
-                        task.wait(0.1)
-                        if _findGun(LocalPlayer.Character) then break end
-                    end
+                    -- FIX: burst de 40 intentos en 4s (gun puede tardar en spawnear en el mapa)
+                    -- Ademas buscar en workspace:GetDescendants() por si la gun ya esta pero
+                    -- el cache no la tiene todavia
+                    task.spawn(function()
+                        for _ = 1, 40 do
+                            if not GrabState.autoEnabled then break end
+                            if _findGun(LocalPlayer.Character) then break end
+                            -- Intentar grab con agTryGrab (usa cache)
+                            task.spawn(_agTryGrab)
+                            -- FIX: ademas buscar directo en workspace sin cache
+                            local char = LocalPlayer.Character
+                            if char then
+                                for _, obj in ipairs(workspace:GetDescendants()) do
+                                    if obj:IsA("Tool") then
+                                        local nm = obj.Name:lower()
+                                        if _GUN_NAMES[obj.Name] or nm:find("gun") or nm:find("sheriff") then
+                                            local inPlayer = false
+                                            for _, p in pairs(_cachedPlayers) do
+                                                local c2 = p.Character; local b2 = p.Backpack
+                                                if (c2 and obj:IsDescendantOf(c2)) or (b2 and obj:IsDescendantOf(b2)) then
+                                                    inPlayer = true; break
+                                                end
+                                            end
+                                            if not inPlayer then
+                                                pcall(_fluidGrabGun, obj)
+                                                if _findGun(char) then break end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                            task.wait(0.1)
+                        end
+                    end)
                 end)
             end)
         else
