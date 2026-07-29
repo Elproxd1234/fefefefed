@@ -6675,9 +6675,10 @@ function _doStealFling(targetHRP, skipReturn)
     end
 
     -- ═══════════════════════════════════════════════════════
-    -- GHOST FORCE FLING v2 — teleportamos al target 1 frame
-    -- para aplicar colision, luego volvemos INMEDIATAMENTE
-    -- a la posicion segura. El jugador local NO sale volando.
+    -- GHOST FORCE FLING v3 — FIX: NO teleportar al jugador
+    -- local dentro del target. Usamos firetouchinterest para
+    -- registrar colision SIN mover nuestro personaje.
+    -- La velocidad extrema se aplica SOLO al target.
     -- ═══════════════════════════════════════════════════════
     local _RS = game:GetService("RunService")
     local _targetLaunched = false
@@ -6696,15 +6697,19 @@ function _doStealFling(targetHRP, skipReturn)
         end
     end
 
-    -- FIX: NO activar PlatformStand en el jugador local.
-    -- Antes se activaba "para no resistir el movimiento", pero eso
-    -- es exactamente lo que dejaba al jugador vulnerable a salir volando.
-    -- En su lugar, lo mantenemos en estado normal y solo tocamos el target.
-
     -- Capturar posicion segura de retorno ANTES de cualquier TP
+    -- El jugador local NO se mueve en ningun momento del fling.
     local _safeReturnCFrame = _flingLastSafePos or RootPart.CFrame
-    local _stickyTimeout = tick() + 10  -- hasta 10 segundos buscando lanzar al target
+    local _stickyTimeout = tick() + 5  -- maximo 5s (antes era 10, causaba quedarse pegado)
     _flingFrameCount = 0
+
+    -- Recolectar partes del cuerpo del jugador local para firetouchinterest
+    local _myParts = {}
+    for _, part in ipairs(Character:GetChildren()) do
+        if part:IsA("BasePart") then
+            table.insert(_myParts, part)
+        end
+    end
 
     _stickyConn = _RS.Heartbeat:Connect(function()
         if not TRootPart or not TRootPart.Parent then
@@ -6733,23 +6738,30 @@ function _doStealFling(targetHRP, skipReturn)
 
         _flingFrameCount = _flingFrameCount + 1
 
-        -- FIX PRINCIPAL: teleportamos al target SOLO para registrar colision (1 frame),
-        -- luego en el MISMO frame volvemos a la posicion segura.
-        -- La velocidad extrema se aplica SOLO al target, nunca al jugador local.
+        -- FIX v3: aplicar velocidad extrema al target directamente.
+        -- Usar firetouchinterest para registrar colision SIN mover al jugador local.
+        -- El jugador local NUNCA se teleporta dentro del sheriff.
         pcall(function()
-            -- Frame impar: TP al target para colision
-            RootPart.CFrame = TRootPart.CFrame
-            Character:SetPrimaryPartCFrame(TRootPart.CFrame)
-            -- Aplicar velocidad extrema AL TARGET (no a nosotros)
             TRootPart.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
             TRootPart.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
         end)
-        -- Inmediatamente volver a la posicion segura para que el jugador local no vuele
-        pcall(function()
-            RootPart.CFrame = _safeReturnCFrame
-            Character:SetPrimaryPartCFrame(_safeReturnCFrame)
-        end)
-        -- Zerear cualquier velocidad residual del jugador local
+        -- Registrar colision con firetouchinterest sin moverse
+        if firetouchinterest then
+            pcall(function()
+                firetouchinterest(RootPart, TRootPart, 0)
+                firetouchinterest(RootPart, TRootPart, 1)
+            end)
+            -- Tambien con partes del target para mayor efectividad
+            for _, tPart in ipairs(TCharacter:GetChildren()) do
+                if tPart:IsA("BasePart") then
+                    pcall(function()
+                        firetouchinterest(RootPart, tPart, 0)
+                        firetouchinterest(RootPart, tPart, 1)
+                    end)
+                end
+            end
+        end
+        -- Asegurarse de que el jugador local no se mueva
         _zeroSelfDS()
     end)
 
@@ -6758,7 +6770,7 @@ function _doStealFling(targetHRP, skipReturn)
     repeat
         task.wait(0.05)
         _waitLimit = _waitLimit + 0.05
-    until _targetLaunched or _waitLimit > 11
+    until _targetLaunched or _waitLimit > 6
 
     -- Asegurar desconexion del Heartbeat
     if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
@@ -29609,56 +29621,65 @@ function CreateWorldUI_InfinityJumpMovement()
  CreateSection(rightColumn, "", "INFINITY JUMP", ThemeColors.Aurora2)
 
         -- FIX: mover ijState a _G para que sobreviva entre cambios de tab
-        _G._ijState = _G._ijState or { enabled = false, power = 50, conn = nil, maxJumps = 0, jumpCount = 0 }
+        _G._ijState = _G._ijState or { enabled = false, power = 50, conn = nil, stateConn = nil, charConn = nil, maxJumps = 0, jumpCount = 0 }
         local ijState = _G._ijState
+
+        -- FIX: helper para conectar el sistema de salto a un humanoid/char dado
+        local function _ijConnectChar(char, hum)
+            -- Limpiar conexiones viejas
+            if ijState.conn      then ijState.conn:Disconnect();      ijState.conn = nil end
+            if ijState.stateConn then ijState.stateConn:Disconnect(); ijState.stateConn = nil end
+            if not char or not hum then return end
+            ijState.jumpCount = 0
+
+            -- Conexion principal: detectar salto
+            ijState.conn = hum:GetPropertyChangedSignal("Jump"):Connect(function()
+                if not ijState.enabled then return end
+                if hum.Jump then
+                    if ijState.maxJumps == 0 or ijState.jumpCount < ijState.maxJumps then
+                        ijState.jumpCount = ijState.jumpCount + 1
+                        local hrp = char:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            hrp.AssemblyLinearVelocity = Vector3.new(
+                                hrp.AssemblyLinearVelocity.X,
+                                ijState.power,
+                                hrp.AssemblyLinearVelocity.Z
+                            )
+                        end
+                    end
+                end
+            end)
+
+            -- FIX: resetear jumpCount cuando el personaje toca el suelo (Landed)
+            -- Antes solo se reseteaba cuando hum.Jump == false, lo cual es poco
+            -- confiable en muchos executors. StateChanged es mas robusto.
+            ijState.stateConn = hum.StateChanged:Connect(function(_, newState)
+                if not ijState.enabled then return end
+                if newState == Enum.HumanoidStateType.Landed
+                or newState == Enum.HumanoidStateType.Running
+                or newState == Enum.HumanoidStateType.RunningNoPhysics then
+                    ijState.jumpCount = 0
+                end
+            end)
+        end
 
  CreateAuroraToggle(rightColumn, "Infinity Jump", function(enabled)
             ijState.enabled = enabled
-            if ijState.conn then ijState.conn:Disconnect(); ijState.conn = nil end
+            if not enabled then
+                if ijState.conn      then ijState.conn:Disconnect();      ijState.conn = nil end
+                if ijState.stateConn then ijState.stateConn:Disconnect(); ijState.stateConn = nil end
+            end
             if enabled then
                 local char = LocalPlayer.Character
                 local hum = char and char:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    ijState.jumpCount = 0
-                    ijState.conn = hum:GetPropertyChangedSignal("Jump"):Connect(function()
-                        if not ijState.enabled then return end
-                        if hum.Jump then
-                            if ijState.maxJumps == 0 or ijState.jumpCount < ijState.maxJumps then
-                                ijState.jumpCount = ijState.jumpCount + 1
-                                local hrp = char:FindFirstChild("HumanoidRootPart")
-                                if hrp then
-                                    hrp.AssemblyLinearVelocity = Vector3.new(
-                                        hrp.AssemblyLinearVelocity.X,
-                                        ijState.power,
-                                        hrp.AssemblyLinearVelocity.Z
-                                    )
-                                end
-                            end
-                        else
-                            ijState.jumpCount = 0
-                        end
-                    end)
-                end
-                LocalPlayer.CharacterAdded:Connect(function(c)
+                _ijConnectChar(char, hum)
+
+                -- Reconectar al respawnear
+                if ijState.charConn then ijState.charConn:Disconnect() end
+                ijState.charConn = LocalPlayer.CharacterAdded:Connect(function(c)
                     if not ijState.enabled then return end
-                    if ijState.conn then ijState.conn:Disconnect() end
                     local h = c:WaitForChild("Humanoid")
-                    ijState.jumpCount = 0
-                    ijState.conn = h:GetPropertyChangedSignal("Jump"):Connect(function()
-                        if not ijState.enabled then return end
-                        if h.Jump then
-                            local r = c:FindFirstChild("HumanoidRootPart")
-                            if r then
-                                r.AssemblyLinearVelocity = Vector3.new(
-                                    r.AssemblyLinearVelocity.X,
-                                    ijState.power,
-                                    r.AssemblyLinearVelocity.Z
-                                )
-                            end
-                        else
-                            ijState.jumpCount = 0
-                        end
-                    end)
+                    _ijConnectChar(c, h)
                 end)
  CreateCustomNotification("INFINITY JUMP", "ON -- salta infinito!", 3)
             else
