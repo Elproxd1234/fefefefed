@@ -21063,16 +21063,9 @@ function FireKnifeOnTarget(knife, targetHrp)
             end
         end
     end)
-    pcall(function()
-        cam  = _Camera
-        origCam = cam.CFrame
-        if hrp then
-            cam.CFrame = CFrame.lookAt(hrp.Position, targetHrp.Position)
-        end
-        knife:Activate()
-        cam.CFrame = origCam
-    end)
-    -- Restaurar posicin inmediatamente para que el personaje NO se mueva
+    -- NO llamamos knife:Activate() aqui — romperia la animacion slash del jugador
+    -- Los RemoteEvents de arriba son suficientes para matar en el servidor
+    -- Restaurar posicion inmediatamente para que el personaje NO se mueva
     if hrp and savedCF then
         _sp(function()
             pcall(function()
@@ -26593,15 +26586,15 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     -- Detectar móvil para ajustar tamaños
     local _isMobileTog = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
-    local _toggleBgW   = _isMobileTog and 52 or 65
-    local _toggleBgH   = _isMobileTog and 26 or 32
-    local _knobSize    = _isMobileTog and 18 or 24
-    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -28
-    local _knobOffL    = 4
-    local _labelTxtSz  = _isMobileTog and 13 or 18
+    local _toggleBgW   = _isMobileTog and 52 or 44
+    local _toggleBgH   = _isMobileTog and 26 or 22
+    local _knobSize    = _isMobileTog and 18 or 16
+    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -20
+    local _knobOffL    = 3
+    local _labelTxtSz  = _isMobileTog and 13 or 13
     local _labelWScale = _isMobileTog and 0.55 or 0.6
-    local _rowH        = _isMobileTog and 44 or 55
-    local _toggleRightOff = _isMobileTog and -8 or -15
+    local _rowH        = _isMobileTog and 44 or 36
+    local _toggleRightOff = _isMobileTog and -8 or -10
 
     -- Marco principal ancho (600px simulado con 1, 0) -- transparente con borde blanco
     local container = Instance.new("Frame", actualParent)
@@ -28579,60 +28572,30 @@ function CreateWorldUI_AutoGrabGun()
                     return
                 end
 
-                -- METODO 3: blink del HRP a la gun, firetouchinterest, volver
-                local savedCF2 = root.CFrame
-                local gunPos2  = gPart.Position
-                pcall(function()
-                    root.CFrame = CFrame.new(gunPos2 + Vector3.new(0, 1.5, 0))
-                    root.AssemblyLinearVelocity = Vector3.zero
-                end)
-                task.wait(0)
-                pcall(function()
-                    firetouchinterest(root, gPart, 0)
-                    firetouchinterest(root, gPart, 1)
-                end)
-                task.wait(0)
-                pcall(function()
-                    root.CFrame = savedCF2
-                    root.AssemblyLinearVelocity  = Vector3.zero
-                    root.AssemblyAngularVelocity = Vector3.zero
-                end)
-                if _findGun(char) then
-                    CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
-                    return
-                end
-
-                -- METODO 4: segundo blink mas cercano
-                local savedCF = root.CFrame
-                pcall(function()
-                    root.CFrame = gPart.CFrame + Vector3.new(0, 1.2, 0)
-                    root.AssemblyLinearVelocity = Vector3.zero
-                end)
-                task.wait(0.015)
-                pcall(function()
-                    firetouchinterest(root, gPart, 0)
-                    firetouchinterest(root, gPart, 1)
-                end)
-                task.wait(0.015)
-                pcall(function()
-                    root.CFrame = savedCF
-                    root.AssemblyLinearVelocity  = Vector3.zero
-                    root.AssemblyAngularVelocity = Vector3.zero
-                end)
-                if _findGun(char) then
-                    CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
-                    return
-                end
-
-                -- METODO 5: mover la GUN al jugador y restaurar
+                -- METODO 3: mover la GUN al jugador (sin TP del personaje)
                 local gOrigCF   = gPart.CFrame
                 local gAnchored = gPart.Anchored
+                local targetPos = root.Position + Vector3.new(0, -1.2, 0)
                 pcall(function()
                     gPart.Anchored = false
-                    gPart.CFrame = CFrame.new(root.Position + Vector3.new(0, -1, 0))
-                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(root.Position + Vector3.new(0, -1, 0))) end
+                    gPart.CFrame = CFrame.new(targetPos)
+                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(targetPos)) end
+                end)
+                pcall(function()
+                    firetouchinterest(root, gPart, 0)
+                    firetouchinterest(root, gPart, 1)
                 end)
                 task.wait(0)
+                if _findGun(char) then
+                    CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
+                    return
+                end
+
+                -- METODO 4: segundo intento sobre el HRP
+                pcall(function()
+                    gPart.CFrame = CFrame.new(root.Position + Vector3.new(0, 0.5, 0))
+                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(root.Position + Vector3.new(0, 0.5, 0))) end
+                end)
                 pcall(function()
                     firetouchinterest(root, gPart, 0)
                     firetouchinterest(root, gPart, 1)
@@ -28641,11 +28604,19 @@ function CreateWorldUI_AutoGrabGun()
                 if _findGun(char) then
                     CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
                 else
-                    pcall(function()
-                        gPart.CFrame   = gOrigCF
-                        gPart.Anchored = gAnchored
-                    end)
-                    CreateCustomNotification("GRAB GUN", "Arma encontrada pero no se pudo agarrar.", 2)
+                    -- EquipTool forzado como ultimo intento
+                    if gunDrop:IsA("Tool") and gunDrop.Parent then
+                        pcall(function() hum:EquipTool(gunDrop) end)
+                    end
+                    if _findGun(char) then
+                        CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
+                    else
+                        pcall(function()
+                            gPart.CFrame   = gOrigCF
+                            gPart.Anchored = gAnchored
+                        end)
+                        CreateCustomNotification("GRAB GUN", "Arma encontrada pero no se pudo agarrar.", 2)
+                    end
                 end
             end)
         end)
@@ -28884,50 +28855,44 @@ function CreateWorldUI_AutoGrabGun()
                     end
                 end
 
-                -- METODO 2: blink del HRP a la gun, firetouchinterest, volver
-                local savedCF2 = root.CFrame
-                local gunPos2  = gPart.Position
+                -- METODO 2: mover la GUN al jugador (sin TP del personaje)
+                local agOrigCF   = gPart.CFrame
+                local agAnchored = gPart.Anchored
+                local agTarget   = root.Position + Vector3.new(0, -1.2, 0)
                 pcall(function()
-                    root.CFrame = CFrame.new(gunPos2 + Vector3.new(0, 1.5, 0))
-                    root.AssemblyLinearVelocity = Vector3.zero
+                    gPart.Anchored = false
+                    gPart.CFrame = CFrame.new(agTarget)
+                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(agTarget)) end
                 end)
-                task.wait(0)
                 pcall(function()
                     firetouchinterest(root, gPart, 0)
                     firetouchinterest(root, gPart, 1)
                 end)
                 task.wait(0)
-                pcall(function()
-                    root.CFrame = savedCF2
-                    root.AssemblyLinearVelocity  = Vector3.zero
-                    root.AssemblyAngularVelocity = Vector3.zero
-                end)
                 if _findGun(char) then
                     GrabState._cachedDrop = nil
                     CreateCustomNotification("AUTO GRAB GUN", "Gun agarrada!", 2)
                     return
                 end
 
-                -- METODO 3: segundo intento de blink mas cercano
-                local savedCF = root.CFrame
+                -- METODO 3: segundo intento sobre el HRP
                 pcall(function()
-                    root.CFrame = gPart.CFrame + Vector3.new(0, 1.2, 0)
-                    root.AssemblyLinearVelocity = Vector3.zero
+                    gPart.CFrame = CFrame.new(root.Position + Vector3.new(0, 0.5, 0))
+                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(root.Position + Vector3.new(0, 0.5, 0))) end
                 end)
-                task.wait(0.015)
                 pcall(function()
                     firetouchinterest(root, gPart, 0)
                     firetouchinterest(root, gPart, 1)
                 end)
                 task.wait(0.015)
-                pcall(function()
-                    root.CFrame = savedCF
-                    root.AssemblyLinearVelocity  = Vector3.zero
-                    root.AssemblyAngularVelocity = Vector3.zero
-                end)
                 if _findGun(char) then
                     GrabState._cachedDrop = nil
                     CreateCustomNotification("AUTO GRAB GUN", "Gun agarrada!", 2)
+                else
+                    pcall(function()
+                        gPart.CFrame   = agOrigCF
+                        gPart.Anchored = agAnchored
+                    end)
                 end
             end)
             task.wait(0.02)
@@ -33113,9 +33078,11 @@ function StealGunLoop()
                 continue
             end
 
-            -- Refrescar cache en cada iteracion para detectar cambios de sheriff
+            -- Refrescar cache en cada iteracion para detectar cambios de sheriff/hero
             _refreshRoleCache()
-            local target = _roleCache and _roleCache.sheriff
+            -- Prioridad: Sheriff primero, si no hay -> Hero (quien levanto la gun)
+            local target = (_roleCache and _roleCache.sheriff)
+                        or (_roleCache and _roleCache.hero)
             StealGunSystem.sheriffOriginalFound = target
 
             if target and target.Character and target.Parent then
@@ -33182,8 +33149,12 @@ function StealGunLoop()
                     -- Sheriff muerto o invalido: limpiar estado y buscar nuevo sheriff
                     CreateCustomNotification("STEAL GUN", target.Name .. " murio, buscando nuevo sheriff...", 3)
                     local deadUserId = target.UserId
-                    -- Limpiar estado del sheriff muerto
+                    -- Limpiar estado del sheriff/hero muerto
                     _roleCache.sheriff    = nil
+                    -- Solo limpiar hero si era el mismo jugador que murió
+                    if _roleCache.hero and _roleCache.hero.UserId == deadUserId then
+                        _roleCache.hero = nil
+                    end
                     _roleCache.lastUpdate = 0  -- forzar refresh inmediato en siguiente llamada
                     StealGunSystem.sheriffOriginalFound = nil
                     StealGunSystem.sheriffDeadDetected  = false
@@ -33211,7 +33182,9 @@ function StealGunLoop()
                         _roleCache.lastUpdate = 0
                         _refreshRoleCache()
 
+                        -- Sheriff o Hero (quien levanto la gun del sheriff muerto)
                         local newSheriff = _roleCache.sheriff
+                                       or _roleCache.hero
 
                         -- Fallback visual: buscar manualmente quien tiene la gun en mano
                         if (not newSheriff or newSheriff.UserId == deadUserId) and _findGunIn then
@@ -33241,7 +33214,7 @@ function StealGunLoop()
                             StealGunSystem.gunInBackpackMode    = false
                             -- Re-hookear muerte del nuevo sheriff
                             task.defer(function() pcall(_hookSheriffDeath, newSheriff) end)
-                            CreateCustomNotification("STEAL GUN", "Nuevo sheriff: " .. newSheriff.Name .. " flingeando!", 2.5)
+                            CreateCustomNotification("STEAL GUN", "Nuevo objetivo: " .. newSheriff.Name .. " flingeando!", 2.5)
                             -- FIX FLING NUEVO SHERIFF: flingear inmediatamente sin esperar
                             -- la proxima iteracion del loop (evita el task.wait(0.8) de abajo)
                             _flingActive    = false
@@ -40692,12 +40665,8 @@ function CreateCombatTab()
                 if child:IsA("RemoteEvent") then pcall(function() child:FireServer(targetHrp) end) end
             end
         end)
-        -- Metodo 3: Activar el tool directamente
-        pcall(function()
-            local hum = char:FindFirstChildOfClass("Humanoid")  -- FIX: variable local, no global
-            if hum then hum:EquipTool(knife) end
-            knife:Activate()
-        end)
+        -- Metodo 3 (Activate) eliminado: rompía la animacion slash del jugador.
+        -- Los metodos 1 y 2 (RemoteEvents) son suficientes para matar en el servidor.
     end
 
     -- OPT: cache de HumanoidRootParts por player — se actualiza solo cuando
@@ -47992,7 +47961,7 @@ Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
 -- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
 -- El UIScale que se aplica abajo se encarga de que entre en pantalla.
-mainFrame.Size = UDim2.new(0, 730, 0, 430)
+mainFrame.Size = UDim2.new(0, 580, 0, 400)
 
 -- ==============================================================
 -- FONDO AZUL SLIDO  sin aurora animada, sin pulse dot
