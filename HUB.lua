@@ -6675,16 +6675,14 @@ function _doStealFling(targetHRP, skipReturn)
     end
 
     -- ═══════════════════════════════════════════════════════
-    -- STICKY FORCE FLING — nos pegamos al target 10 segundos
-    -- empujando con velocidad extrema, luego TP de retorno
+    -- GHOST FORCE FLING v2 — teleportamos al target 1 frame
+    -- para aplicar colision, luego volvemos INMEDIATAMENTE
+    -- a la posicion segura. El jugador local NO sale volando.
     -- ═══════════════════════════════════════════════════════
     local _RS = game:GetService("RunService")
     local _targetLaunched = false
     local _stickyConn
-
-    -- Activar ragdoll propio para no resistir el movimiento
-    pcall(function() Humanoid.PlatformStand = true end)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+    local _flingFrameCount = 0
 
     -- Helper: zerear velocidad propia inmediatamente
     local function _zeroSelfDS()
@@ -6698,48 +6696,64 @@ function _doStealFling(targetHRP, skipReturn)
         end
     end
 
-    local _stickyTimeout = tick() + 10  -- 10 segundos pegado al target
+    -- FIX: NO activar PlatformStand en el jugador local.
+    -- Antes se activaba "para no resistir el movimiento", pero eso
+    -- es exactamente lo que dejaba al jugador vulnerable a salir volando.
+    -- En su lugar, lo mantenemos en estado normal y solo tocamos el target.
+
+    -- Capturar posicion segura de retorno ANTES de cualquier TP
+    local _safeReturnCFrame = _flingLastSafePos or RootPart.CFrame
+    local _stickyTimeout = tick() + 10  -- hasta 10 segundos buscando lanzar al target
+    _flingFrameCount = 0
+
     _stickyConn = _RS.Heartbeat:Connect(function()
         if not TRootPart or not TRootPart.Parent then
             _targetLaunched = true
-            _zeroSelfDS()  -- FIX: zerear antes de disconnect
+            _zeroSelfDS()
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
 
-        -- FIX: si el target ya salio volando (vel alta), cortar inmediatamente
+        -- Si el target ya salio volando (vel alta), listo
         local tVel = TRootPart.AssemblyLinearVelocity.Magnitude
         if tVel > 120 then
             _targetLaunched = true
             _zeroSelfDS()
-            pcall(function() Humanoid.PlatformStand = false end)
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
 
-        -- Timeout de 10s alcanzado: cortar y volver
+        -- Timeout alcanzado
         if tick() > _stickyTimeout then
             _targetLaunched = true
             _zeroSelfDS()
-            pcall(function() Humanoid.PlatformStand = false end)
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
 
-        -- Pegarse al cuerpo del target en cada frame
+        _flingFrameCount = _flingFrameCount + 1
+
+        -- FIX PRINCIPAL: teleportamos al target SOLO para registrar colision (1 frame),
+        -- luego en el MISMO frame volvemos a la posicion segura.
+        -- La velocidad extrema se aplica SOLO al target, nunca al jugador local.
         pcall(function()
+            -- Frame impar: TP al target para colision
             RootPart.CFrame = TRootPart.CFrame
             Character:SetPrimaryPartCFrame(TRootPart.CFrame)
+            -- Aplicar velocidad extrema AL TARGET (no a nosotros)
+            TRootPart.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
+            TRootPart.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
         end)
-
-        -- Inyectar fuerza extrema al motor de colisiones durante todo el tiempo
+        -- Inmediatamente volver a la posicion segura para que el jugador local no vuele
         pcall(function()
-            RootPart.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
-            RootPart.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
+            RootPart.CFrame = _safeReturnCFrame
+            Character:SetPrimaryPartCFrame(_safeReturnCFrame)
         end)
+        -- Zerear cualquier velocidad residual del jugador local
+        _zeroSelfDS()
     end)
 
-    -- Esperar los 10 segundos completos (o hasta que el target desaparezca)
+    -- Esperar hasta que el target sea lanzado o timeout
     local _waitLimit = 0
     repeat
         task.wait(0.05)
@@ -6749,14 +6763,10 @@ function _doStealFling(targetHRP, skipReturn)
     -- Asegurar desconexion del Heartbeat
     if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
 
-    -- Restaurar estado fisico propio (triple zereo)
+    -- Restaurar estado fisico propio (triple zereo final)
     _zeroSelfDS()
     task.wait(0.05)
     _zeroSelfDS()
-    pcall(function()
-        Humanoid.PlatformStand = false
-    end)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
     pcall(function() workspace.CurrentCamera.CameraSubject = Humanoid end)
 
     -- Liberar el guard ANTES del return para que el boton pueda volver a activarse
@@ -34642,8 +34652,10 @@ function CreatePremiumTab()
                 meshId = "http://www.roblox.com/asset/?id=95356090",
                 texId  = "http://www.roblox.com/asset/?id=126534866",
                 scale  = Vector3.new(1.7999999523162842, 1.7999999523162842, 1.7999999523162842),
+                -- FIX GRIP: Z=+0.5 empujaba el arma hacia adentro del torso.
+                -- Cambiado a Z=-0.5 para que quede adelante de la mano apuntando al frente.
                 grip   = CFrame.new(
-                    0, -0.5, 0.5,
+                    0, -0.5, -0.5,
                     0.999924004,    -0.00871835742, -0.00871835742,
                     0.00871835742,   0.999961972,   -3.80063248e-05,
                     0.00871835742,  -3.80063248e-05,  0.999961972
@@ -34654,7 +34666,9 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://7775027413",
                 texId  = "http://www.roblox.com/asset/?id=7775245551",
                 scale  = Vector3.new(0.05999999865889549, 0.05000000074505806, 0.05000000074505806),
-                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                -- FIX GRIP: identidad dejaba el mesh flotando en la palma sin orientación.
+                -- El Harvester gun necesita bajar el mango y rotar -90° en X para apuntar al frente.
+                grip   = CFrame.new(0, -0.9, 0) * CFrame.Angles(math.rad(-90), 0, 0),
                 dualGun = true,
             },
             {
@@ -34691,7 +34705,9 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://15374602183",
                 texId  = "rbxassetid://15409041564",
                 scale  = Vector3.new(0.08, 0.08, 0.08),
-                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                -- FIX GRIP: identidad dejaba el scope mal agarrado.
+                -- Unificado con el grip probado en _GUN_SKINS (Items Fake).
+                grip   = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0),
                 dualGun = true,
             },
         }
@@ -34796,15 +34812,8 @@ function CreatePremiumTab()
                     pcall(function() obj.TextureID = skin.texId end)
                 end
             end
-            -- Soldar al RightGrip (igual que hub)
-            local char = LocalPlayer.Character
-            local hand = char and (char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm"))
-            if hand then
-                local rg = hand:FindFirstChild("RightGrip")
-                if rg and (rg:IsA("Weld") or rg:IsA("Motor6D")) then
-                    pcall(function() rg.C1 = tool.Grip end)
-                end
-            end
+            -- FIX GRIP: NO tocar rg.C1 del Motor6D — Roblox lo maneja solo al equipar.
+            -- Pisar C1 manualmente corrompía el agarre al mezclar dos sistemas.
             -- -- FIN HOOK SONIDO (desactivado) ----------------------------
 
             -- HOOK DUAL GUN: sincronizar skin al DK_Clone si dual gun esta activo
