@@ -7606,7 +7606,7 @@ _G._bindablePosSave   = _G._bindablePosSave   or {}
 -- Cada vez que se crea un bindable se registra; al destruirse se libera
 _G._bindableActiveSlots = _G._bindableActiveSlots or {}  -- label -> slotIndex asignado
 
-_BIND_CS    = 80   -- tamaño del circulo
+_BIND_CS    = 55   -- tamaño del circulo
 _BIND_GAP   = 12
 _BIND_COLS  = 10  -- muchas columnas para que queden en fila arriba
 _BIND_PAD_X = 12
@@ -50557,7 +50557,7 @@ particles = {}
         _oval.AnchorPoint = Vector2.new(0.5, 0.5)
         _oval.Position = UDim2.new(0.5, 0, 0.5, 0)
         _oval.Size = UDim2.new(0, 0, 0, 0)
-        _oval.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        _oval.BackgroundColor3 = ThemeColors.Primary
         _oval.BackgroundTransparency = 0.35
         _oval.BorderSizePixel = 0
         _oval.ZIndex = 5
@@ -50566,7 +50566,7 @@ particles = {}
         _ovalCorner.CornerRadius = UDim.new(0.5, 0)   -- ovalo perfecto
 
         local _ovalStroke = Instance.new("UIStroke", _oval)
-        _ovalStroke.Color = Color3.fromRGB(140, 140, 140)
+        _ovalStroke.Color = ThemeColors.Primary
         _ovalStroke.Thickness = 3
         _ovalStroke.Transparency = 0.1
         _ovalStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -50622,7 +50622,7 @@ particles = {}
         end)
         -- Fondo del ovalo mantiene semitransparencia (se ve el juego detras)
         TweenService:Create(_oval, TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-            BackgroundColor3 = Color3.fromRGB(80, 80, 80),
+            BackgroundColor3 = ThemeColors.Primary,
             BackgroundTransparency = 0.35,
         }):Play()
         -- Borde pasa de azul brillante a color del hub
