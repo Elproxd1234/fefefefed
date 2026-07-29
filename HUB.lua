@@ -50318,10 +50318,10 @@ particles = {}
     sideLayout.Padding = UDim.new(0, 6)
     sideLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
-    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "FARM"}
+    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "FARM", "EMOTES"}
     local tabFunctions = {CreateMainTab, CreateWorldTab, CreateVisualsTab, CreatePremiumTab, CreateExclusiveTab, CreateCombatTab,
         function() CreateUseTab() end,  -- late binding: CreateUseTab se define despues de esta tabla
-        CreateFarmTab}
+        CreateFarmTab, CreateEmotesTab}
     local tabIcons = {
         "rbxassetid://104322605423609",  -- MAIN
         "rbxassetid://105507739661539",  -- WORLD
@@ -50331,6 +50331,7 @@ particles = {}
         "rbxassetid://134041781822125",  -- COMBAT
         "rbxassetid://106189149164668",  -- USE
         "rbxassetid://104322605423609",  -- FARM (usa mismo icono que MAIN como fallback)
+        "rbxassetid://104322605423609",  -- EMOTES
     }
 
     local sideButtons = {}
@@ -52712,6 +52713,168 @@ function _applyGunSkin(skin)
 end
 
 
+
+-- ================================================================
+-- == PESTAÑA EMOTES (zerq emotes)
+-- ================================================================
+function CreateEmotesTab()
+    ClearContent()
+
+    -- ---- Colores del hub (cyan/acento) ----
+    local HUB_COLOR   = Color3.fromRGB(0, 195, 255)   -- cian principal del hub
+    local HUB_DARK    = Color3.fromRGB(0, 120, 180)   -- cian oscuro para hover
+    local TEXT_COLOR  = Color3.fromRGB(255, 255, 255)
+
+    -- ---- Lista de emotes ----
+    local _emotes = {
+        { name = "Zerq Emote 1",  id = "rbxassetid://83796130837213"  },
+        { name = "Zerq Emote 2",  id = "rbxassetid://82253590215395"  },
+        { name = "Zerq Emote 3",  id = "rbxassetid://134048087973127" },
+        { name = "Zerq Emote 4",  id = "rbxassetid://123761889433592" },
+        { name = "Zerq Emote 5",  id = "rbxassetid://137704682075613" },
+        { name = "Zerq Emote 6",  id = "rbxassetid://139395178419877" },
+        { name = "Zerq Emote 7",  id = "rbxassetid://126264342780589" },
+        { name = "Zerq Emote 8",  id = "rbxassetid://133422692462315" },
+        { name = "Zerq Emote 9",  id = "rbxassetid://80007036319743"  },
+        { name = "Zerq Emote 10", id = "rbxassetid://90018336892195"  },
+        { name = "Zerq Emote 11", id = "rbxassetid://118417760427139" },
+        { name = "Zerq Emote 12", id = "rbxassetid://124089479921926" },
+        { name = "Zerq Emote 13", id = "rbxassetid://93166693202615"  },
+        { name = "Zerq Emote 14", id = "rbxassetid://133566007754001" },
+        { name = "Zerq Emote 15", id = "rbxassetid://73061206570424"  },
+        { name = "Zerq Emote 16", id = "rbxassetid://140435143190786" },
+        { name = "Zerq Emote 17", id = "rbxassetid://74895458261666"  },
+        { name = "Zerq Emote 18", id = "rbxassetid://123097403881274" },
+    }
+
+    -- ---- Helper: ejecutar emote ----
+    local function _playEmote(emoteId)
+        local char = LocalPlayer and LocalPlayer.Character
+        if not char then
+            CreateCustomNotification("EMOTES", "Sin personaje", 2)
+            return
+        end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum then
+            CreateCustomNotification("EMOTES", "Sin humanoid", 2)
+            return
+        end
+        -- Intentar via AnimateScript primero (MM2 style)
+        local ok = false
+        pcall(function()
+            local animScript = char:FindFirstChild("Animate") or char:FindFirstChild("AnimationScript")
+            if animScript then
+                local emoteFunc = animScript:FindFirstChild("PlayEmote")
+                if emoteFunc then
+                    emoteFunc:Fire(emoteId)
+                    ok = true
+                end
+            end
+        end)
+        if not ok then
+            -- Fallback: cargar Animation y reproducir
+            pcall(function()
+                local anim = Instance.new("Animation")
+                anim.AnimationId = emoteId
+                local track = hum:LoadAnimation(anim)
+                track:Play()
+                ok = true
+            end)
+        end
+        if ok then
+            CreateCustomNotification("EMOTES", "Reproduciendo emote", 1.5)
+        else
+            CreateCustomNotification("EMOTES", "No se pudo reproducir el emote", 2)
+        end
+    end
+
+    -- ---- ScrollingFrame principal ----
+    local scroll = Instance.new("ScrollingFrame", contentContainer)
+    scroll.Name                    = "EmotesScroll"
+    scroll.Size                    = UDim2.new(1, 0, 1, 0)
+    scroll.Position                = UDim2.new(0, 0, 0, 0)
+    scroll.BackgroundTransparency  = 1
+    scroll.BorderSizePixel         = 0
+    scroll.ScrollBarThickness      = 4
+    scroll.ScrollBarImageColor3    = HUB_COLOR
+    scroll.CanvasSize              = UDim2.new(0, 0, 0, 0)
+    scroll.AutomaticCanvasSize     = Enum.AutomaticSize.Y
+    scroll.ClipsDescendants        = true
+
+    -- ---- Grid layout 2 columnas ----
+    local grid = Instance.new("UIGridLayout", scroll)
+    grid.CellSize      = UDim2.new(0.47, 0, 0, 90)
+    grid.CellPadding   = UDim2.new(0.02, 0, 0, 10)
+    grid.SortOrder     = Enum.SortOrder.LayoutOrder
+    grid.FillDirection = Enum.FillDirection.Horizontal
+
+    local pad = Instance.new("UIPadding", scroll)
+    pad.PaddingTop    = UDim.new(0, 12)
+    pad.PaddingBottom = UDim.new(0, 12)
+    pad.PaddingLeft   = UDim.new(0, 10)
+    pad.PaddingRight  = UDim.new(0, 10)
+
+    -- ---- Crear botón por emote ----
+    for idx, emote in ipairs(_emotes) do
+        local btn = Instance.new("TextButton", scroll)
+        btn.Name                  = "EmoteBtn_" .. idx
+        btn.Text                  = ""
+        btn.AutoButtonColor       = false
+        btn.BackgroundColor3      = HUB_COLOR
+        btn.BackgroundTransparency= 0.15
+        btn.BorderSizePixel       = 0
+        btn.LayoutOrder           = idx
+
+        local corner = Instance.new("UICorner", btn)
+        corner.CornerRadius = UDim.new(0, 12)
+
+        local stroke = Instance.new("UIStroke", btn)
+        stroke.Color     = HUB_COLOR
+        stroke.Thickness = 2
+        stroke.Transparency = 0.3
+
+        -- Etiqueta centrada
+        local lbl = Instance.new("TextLabel", btn)
+        lbl.Size                  = UDim2.new(1, -6, 1, 0)
+        lbl.Position              = UDim2.new(0, 3, 0, 0)
+        lbl.BackgroundTransparency= 1
+        lbl.Text                  = emote.name
+        lbl.TextColor3            = TEXT_COLOR
+        lbl.FontFace              = Font.fromEnum(Enum.Font.GothamBold)
+        lbl.TextSize              = 14
+        lbl.TextWrapped           = true
+        lbl.TextXAlignment        = Enum.TextXAlignment.Center
+        lbl.TextYAlignment        = Enum.TextYAlignment.Center
+        lbl.TextStrokeTransparency= 0.6
+        lbl.ZIndex                = 2
+
+        -- Efectos hover / click
+        local _ti = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        btn.MouseEnter:Connect(function()
+            TweenService:Create(btn, _ti, {BackgroundTransparency = 0, BackgroundColor3 = HUB_DARK}):Play()
+            TweenService:Create(stroke, _ti, {Transparency = 0}):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            TweenService:Create(btn, _ti, {BackgroundTransparency = 0.15, BackgroundColor3 = HUB_COLOR}):Play()
+            TweenService:Create(stroke, _ti, {Transparency = 0.3}):Play()
+        end)
+        btn.MouseButton1Down:Connect(function()
+            TweenService:Create(btn, _ti, {BackgroundTransparency = 0.4}):Play()
+        end)
+        btn.MouseButton1Up:Connect(function()
+            TweenService:Create(btn, _ti, {BackgroundTransparency = 0}):Play()
+        end)
+        btn.MouseButton1Click:Connect(function()
+            PlayTabSound()
+            _playEmote(emote.id)
+        end)
+    end
+
+    CreateCustomNotification("EMOTES", "Pestaña de emotes cargada (" .. #_emotes .. " emotes)", 2)
+end
+-- ================================================================
+-- == FIN PESTAÑA EMOTES
+-- ================================================================
 
 end -- cierra abrirHub
 
