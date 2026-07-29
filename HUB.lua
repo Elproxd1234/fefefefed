@@ -26765,7 +26765,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         _G._toggleStates[nombre] = estado
         ApplyState(estado, true)
         PlayToggleSound(estado)
-        if callback then callback(estado) end
+        -- OPT: callback en task.spawn para no bloquear el hilo de render
+        if callback then task.spawn(callback, estado) end
         -- FIX: forzar tick inmediato del instanceLoop para que los visuals
         -- se apliquen o limpien en el proximo Heartbeat sin esperar el intervalo
         _G._forceInstanceTick = true
@@ -26842,7 +26843,10 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
             or lower:find("spoof method") or lower:find("shoot condition")
             or lower:find("spoof") or lower:find("secure tp")
         if not isPhysical then
+            -- OPT: escalonar cada auto-activacion con un yield minimo
+            -- para que no ejecuten todos en el mismo frame y causen lag de carga
             task.defer(function()
+                task.wait()  -- ceder un frame antes de ejecutar
                 local _orig = CreateCustomNotification
                 CreateCustomNotification = function() end
                 pcall(callback, true)
@@ -52721,10 +52725,10 @@ function CreateEmotesTab()
     -- NO llamar ClearContent() - el sistema de cache de tabs ya maneja esto
     -- contentContainer en este punto apunta al tabFrame del cache
 
-    -- ---- Colores del hub (cyan/acento) ----
-    local HUB_COLOR  = Color3.fromRGB(0, 195, 255)
-    local HUB_DARK   = Color3.fromRGB(0, 120, 180)
-    local TEXT_COLOR = Color3.fromRGB(255, 255, 255)
+    -- ---- Colores del hub (usa el tema activo del hub) ----
+    local HUB_COLOR  = ThemeColors.Primary
+    local HUB_DARK   = ThemeColors.Secondary
+    local TEXT_COLOR = ThemeColors.TextPrimary
 
     -- ---- Lista de emotes ----
     local _emotes = {
@@ -52866,7 +52870,7 @@ function CreateEmotesTab()
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel        = 0
     scroll.ScrollBarThickness     = 5
-    scroll.ScrollBarImageColor3   = HUB_COLOR
+    scroll.ScrollBarImageColor3   = ThemeColors.Accent
     scroll.CanvasSize             = UDim2.new(0, 0, 0, 0)
     scroll.AutomaticCanvasSize    = Enum.AutomaticSize.Y
     scroll.ClipsDescendants       = true
@@ -52942,6 +52946,156 @@ function CreateEmotesTab()
             _playEmote(emote.id)
         end)
     end
+
+    -- ---- Separador / título sección bindables ----
+    local secFrame = Instance.new("Frame")
+    secFrame.Name                   = "EmoteBindSection"
+    secFrame.Size                   = UDim2.new(1, 0, 0, 28)
+    secFrame.BackgroundColor3       = ThemeColors.Primary
+    secFrame.BackgroundTransparency = 0.5
+    secFrame.BorderSizePixel        = 0
+    secFrame.Parent                 = root
+
+    local secCorner = Instance.new("UICorner", secFrame)
+    secCorner.CornerRadius = UDim.new(0, 8)
+
+    local secLbl = Instance.new("TextLabel", secFrame)
+    secLbl.Size                   = UDim2.new(1, 0, 1, 0)
+    secLbl.BackgroundTransparency = 1
+    secLbl.Text                   = "⬛ BINDABLES DE EMOTES"
+    secLbl.TextColor3             = TEXT_COLOR
+    secLbl.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
+    secLbl.TextSize               = 12
+    secLbl.TextXAlignment         = Enum.TextXAlignment.Center
+
+    -- ---- ScrollingFrame para bindables ----
+    local bindScroll = Instance.new("ScrollingFrame")
+    bindScroll.Name                   = "BindScroll"
+    bindScroll.Size                   = UDim2.new(1, 0, 0, 0)  -- altura calculada tras crear items
+    bindScroll.Position               = UDim2.new(0, 0, 0, 0)
+    bindScroll.BackgroundTransparency = 1
+    bindScroll.BorderSizePixel        = 0
+    bindScroll.ScrollBarThickness     = 4
+    bindScroll.ScrollBarImageColor3   = ThemeColors.Accent
+    bindScroll.CanvasSize             = UDim2.new(0, 0, 0, 0)
+    bindScroll.AutomaticCanvasSize    = Enum.AutomaticSize.Y
+    bindScroll.ClipsDescendants       = true
+    bindScroll.Parent                 = root
+
+    local bindList = Instance.new("UIListLayout", bindScroll)
+    bindList.SortOrder     = Enum.SortOrder.LayoutOrder
+    bindList.Padding       = UDim.new(0, 6)
+    bindList.FillDirection = Enum.FillDirection.Vertical
+
+    local bindPad = Instance.new("UIPadding", bindScroll)
+    bindPad.PaddingTop    = UDim.new(0, 6)
+    bindPad.PaddingBottom = UDim.new(0, 6)
+    bindPad.PaddingLeft   = UDim.new(0, 8)
+    bindPad.PaddingRight  = UDim.new(0, 8)
+
+    -- Tabla de estados de bindables activos
+    local _bindActive = {}
+
+    for idx, emote in ipairs(_emotes) do
+        local bindKey = "Emote_Bind_" .. idx
+
+        local row = Instance.new("Frame")
+        row.Name                   = "BindRow_" .. idx
+        row.Size                   = UDim2.new(1, 0, 0, 38)
+        row.BackgroundColor3       = ThemeColors.Secondary
+        row.BackgroundTransparency = 0.4
+        row.BorderSizePixel        = 0
+        row.LayoutOrder            = idx
+        row.Parent                 = bindScroll
+
+        local rowCorner = Instance.new("UICorner", row)
+        rowCorner.CornerRadius = UDim.new(0, 8)
+
+        -- Etiqueta del emote
+        local rowLbl = Instance.new("TextLabel", row)
+        rowLbl.Size                   = UDim2.new(1, -80, 1, 0)
+        rowLbl.Position               = UDim2.new(0, 10, 0, 0)
+        rowLbl.BackgroundTransparency = 1
+        rowLbl.Text                   = emote.name
+        rowLbl.TextColor3             = TEXT_COLOR
+        rowLbl.FontFace               = Font.fromEnum(Enum.Font.GothamMedium)
+        rowLbl.TextSize               = 12
+        rowLbl.TextXAlignment         = Enum.TextXAlignment.Left
+        rowLbl.TextYAlignment         = Enum.TextYAlignment.Center
+
+        -- Botón ON/OFF cuadrado
+        local togBtn = Instance.new("TextButton", row)
+        togBtn.Name                   = "TogBtn"
+        togBtn.Size                   = UDim2.new(0, 60, 0, 26)
+        togBtn.AnchorPoint            = Vector2.new(1, 0.5)
+        togBtn.Position               = UDim2.new(1, -8, 0.5, 0)
+        togBtn.BackgroundColor3       = ThemeColors.Primary
+        togBtn.BackgroundTransparency = 0.3
+        togBtn.BorderSizePixel        = 0
+        togBtn.Text                   = "OFF"
+        togBtn.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
+        togBtn.TextSize               = 11
+        togBtn.TextColor3             = TEXT_COLOR
+        togBtn.AutoButtonColor        = false
+
+        local togCorner = Instance.new("UICorner", togBtn)
+        togCorner.CornerRadius = UDim.new(0, 6)
+
+        local togStroke = Instance.new("UIStroke", togBtn)
+        togStroke.Color        = ThemeColors.Primary
+        togStroke.Thickness    = 1.5
+        togStroke.Transparency = 0.3
+
+        local _ti2 = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+        togBtn.MouseButton1Click:Connect(function()
+            PlayTabSound()
+            _bindActive[bindKey] = not _bindActive[bindKey]
+            local on = _bindActive[bindKey]
+
+            if on then
+                -- Crear bindable cuadrado
+                local bg = MakeCapyBindableFrame(row, emote.name, function()
+                    _playEmote(emote.id)
+                end)
+                -- Forzar forma cuadrada
+                if bg and bg.SetShape then bg:SetShape("square") end
+
+                togBtn.Text = "ON"
+                TweenService:Create(togBtn, _ti2, {BackgroundColor3 = Color3.fromRGB(0, 180, 80), BackgroundTransparency = 0.1}):Play()
+                TweenService:Create(togStroke, _ti2, {Color = Color3.fromRGB(0, 220, 100), Transparency = 0}):Play()
+            else
+                -- Destruir bindable
+                DestroyCapyBind(emote.name)
+                togBtn.Text = "OFF"
+                TweenService:Create(togBtn, _ti2, {BackgroundColor3 = ThemeColors.Primary, BackgroundTransparency = 0.3}):Play()
+                TweenService:Create(togStroke, _ti2, {Color = ThemeColors.Primary, Transparency = 0.3}):Play()
+            end
+        end)
+    end
+
+    -- ---- Layout dinámico: scroll emotes arriba, bindables abajo ----
+    -- Calculamos posiciones después de que UIGridLayout determine alturas
+    task.defer(function()
+        if not root or not root.Parent then return end
+
+        local PADDING    = 8
+        local SEC_H      = 32
+        local totalH     = root.AbsoluteSize.Y
+
+        -- La mitad superior para emotes, mitad inferior para bindables
+        local emotesH  = math.floor(totalH * 0.50) - PADDING
+        local bindsH   = math.floor(totalH * 0.50) - SEC_H - PADDING * 2
+
+        scroll.Size     = UDim2.new(1, 0, 0, emotesH)
+        scroll.Position = UDim2.new(0, 0, 0, 0)
+
+        secFrame.Size     = UDim2.new(1, 0, 0, SEC_H)
+        secFrame.Position = UDim2.new(0, 0, 0, emotesH + PADDING)
+
+        bindScroll.Size     = UDim2.new(1, 0, 0, bindsH)
+        bindScroll.Position = UDim2.new(0, 0, 0, emotesH + PADDING + SEC_H + PADDING)
+    end)
 
     CreateCustomNotification("EMOTES", "Emotes listos (" .. #_emotes .. ")", 1.5)
 end
