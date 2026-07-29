@@ -6675,115 +6675,79 @@ function _doStealFling(targetHRP, skipReturn)
     end
 
     -- ═══════════════════════════════════════════════════════
-    -- GHOST FORCE FLING v3 — FIX: NO teleportar al jugador
-    -- local dentro del target. Usamos firetouchinterest para
-    -- registrar colision SIN mover nuestro personaje.
-    -- La velocidad extrema se aplica SOLO al target.
+    -- ATOMIC GHOST FLING v5
+    -- TP al target + velocidad + return a safePos TODO dentro
+    -- de un SOLO pcall sin yields entre medio.
+    -- El servidor solo ve la posicion final (safePos), nunca
+    -- la posicion intermedia dentro del sheriff.
+    -- safePos se actualiza cada frame para estar siempre fresh.
     -- ═══════════════════════════════════════════════════════
     local _RS = game:GetService("RunService")
     local _targetLaunched = false
     local _stickyConn
-    local _flingFrameCount = 0
 
-    -- Helper: zerear velocidad propia inmediatamente
-    local function _zeroSelfDS()
-        for _pz = 1, 3 do
-            pcall(function()
-                RootPart.AssemblyLinearVelocity  = Vector3.zero
-                RootPart.AssemblyAngularVelocity = Vector3.zero
-                RootPart.Velocity    = Vector3.zero
-                RootPart.RotVelocity = Vector3.zero
-            end)
-        end
-    end
-
-    -- Capturar posicion segura de retorno ANTES de cualquier TP
-    -- El jugador local NO se mueve en ningun momento del fling.
-    local _safeReturnCFrame = _flingLastSafePos or RootPart.CFrame
-    local _stickyTimeout = tick() + 5  -- maximo 5s (antes era 10, causaba quedarse pegado)
-    _flingFrameCount = 0
-
-    -- Recolectar partes del cuerpo del jugador local para firetouchinterest
-    local _myParts = {}
-    for _, part in ipairs(Character:GetChildren()) do
-        if part:IsA("BasePart") then
-            table.insert(_myParts, part)
-        end
-    end
+    -- safePos se renueva cada frame ANTES del TP, usando la
+    -- posicion actual del jugador (que no cambio, porque aun
+    -- no hicimos el TP de colision).
+    local _safePos = RootPart.CFrame
+    local _stickyTimeout = tick() + 8
 
     _stickyConn = _RS.Heartbeat:Connect(function()
         if not TRootPart or not TRootPart.Parent then
             _targetLaunched = true
-            _zeroSelfDS()
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
-
-        -- Si el target ya salio volando (vel alta), listo
-        local tVel = TRootPart.AssemblyLinearVelocity.Magnitude
-        if tVel > 120 then
+        if TRootPart.AssemblyLinearVelocity.Magnitude > 120 then
             _targetLaunched = true
-            _zeroSelfDS()
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
-
-        -- Timeout alcanzado
         if tick() > _stickyTimeout then
             _targetLaunched = true
-            _zeroSelfDS()
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
 
-        _flingFrameCount = _flingFrameCount + 1
+        -- Capturar safePos AHORA (jugador todavia no se movio este frame)
+        local _curPos = RootPart.CFrame
+        local _curY   = _curPos.Position.Y
+        if _curY > 2 and _curY < 800 then
+            _safePos = _curPos
+        end
 
-        -- FIX v3: aplicar velocidad extrema al target directamente.
-        -- Usar firetouchinterest para registrar colision SIN mover al jugador local.
-        -- El jugador local NUNCA se teleporta dentro del sheriff.
+        -- TODO en un solo pcall sin yields: TP -> velocidad -> return
+        -- Al ser instrucciones consecutivas en Lua, el engine las agrupa
+        -- en el mismo paso de fisica y el servidor recibe solo _safePos.
         pcall(function()
+            -- 1) TP al target para registrar colision
+            RootPart.CFrame = TRootPart.CFrame
+            -- 2) Velocidad extrema al target
             TRootPart.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
             TRootPart.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
+            -- 3) Volver INMEDIATAMENTE a safePos — misma instruccion, mismo frame
+            RootPart.CFrame                   = _safePos
+            RootPart.AssemblyLinearVelocity   = Vector3.zero
+            RootPart.AssemblyAngularVelocity  = Vector3.zero
         end)
-        -- Registrar colision con firetouchinterest sin moverse
-        if firetouchinterest then
-            pcall(function()
-                firetouchinterest(RootPart, TRootPart, 0)
-                firetouchinterest(RootPart, TRootPart, 1)
-            end)
-            -- Tambien con partes del target para mayor efectividad
-            for _, tPart in ipairs(TCharacter:GetChildren()) do
-                if tPart:IsA("BasePart") then
-                    pcall(function()
-                        firetouchinterest(RootPart, tPart, 0)
-                        firetouchinterest(RootPart, tPart, 1)
-                    end)
-                end
-            end
-        end
-        -- Asegurarse de que el jugador local no se mueva
-        _zeroSelfDS()
     end)
 
-    -- Esperar hasta que el target sea lanzado o timeout
     local _waitLimit = 0
     repeat
         task.wait(0.05)
         _waitLimit = _waitLimit + 0.05
-    until _targetLaunched or _waitLimit > 6
+    until _targetLaunched or _waitLimit > 9
 
-    -- Asegurar desconexion del Heartbeat
     if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
 
-    -- Restaurar estado fisico propio (triple zereo final)
-    _zeroSelfDS()
-    task.wait(0.05)
-    _zeroSelfDS()
+    pcall(function()
+        RootPart.CFrame                  = _safePos
+        RootPart.AssemblyLinearVelocity  = Vector3.zero
+        RootPart.AssemblyAngularVelocity = Vector3.zero
+    end)
     pcall(function() workspace.CurrentCamera.CameraSubject = Humanoid end)
 
-    -- Liberar el guard ANTES del return para que el boton pueda volver a activarse
     _flingActive = false
-    -- TP de retorno a la ultima posicion segura
     if not skipReturn then _flingDoReturn(Character, RootPart, Humanoid) end
 end
 
@@ -29624,35 +29588,22 @@ function CreateWorldUI_InfinityJumpMovement()
         _G._ijState = _G._ijState or { enabled = false, power = 50, conn = nil, stateConn = nil, charConn = nil, maxJumps = 0, jumpCount = 0 }
         local ijState = _G._ijState
 
-        -- FIX: helper para conectar el sistema de salto a un humanoid/char dado
         local function _ijConnectChar(char, hum)
-            -- Limpiar conexiones viejas
             if ijState.conn      then ijState.conn:Disconnect();      ijState.conn = nil end
             if ijState.stateConn then ijState.stateConn:Disconnect(); ijState.stateConn = nil end
             if not char or not hum then return end
             ijState.jumpCount = 0
-
-            -- Conexion principal: detectar salto
             ijState.conn = hum:GetPropertyChangedSignal("Jump"):Connect(function()
-                if not ijState.enabled then return end
-                if hum.Jump then
-                    if ijState.maxJumps == 0 or ijState.jumpCount < ijState.maxJumps then
-                        ijState.jumpCount = ijState.jumpCount + 1
-                        local hrp = char:FindFirstChild("HumanoidRootPart")
-                        if hrp then
-                            hrp.AssemblyLinearVelocity = Vector3.new(
-                                hrp.AssemblyLinearVelocity.X,
-                                ijState.power,
-                                hrp.AssemblyLinearVelocity.Z
-                            )
-                        end
-                    end
+                if not ijState.enabled or not hum.Jump then return end
+                if ijState.maxJumps ~= 0 and ijState.jumpCount >= ijState.maxJumps then return end
+                ijState.jumpCount = ijState.jumpCount + 1
+                local r = char:FindFirstChild("HumanoidRootPart")
+                if r then
+                    r.AssemblyLinearVelocity = Vector3.new(
+                        r.AssemblyLinearVelocity.X, ijState.power, r.AssemblyLinearVelocity.Z)
                 end
             end)
-
-            -- FIX: resetear jumpCount cuando el personaje toca el suelo (Landed)
-            -- Antes solo se reseteaba cuando hum.Jump == false, lo cual es poco
-            -- confiable en muchos executors. StateChanged es mas robusto.
+            -- FIX: StateChanged es mas confiable que hum.Jump==false para resetear en aterrizaje
             ijState.stateConn = hum.StateChanged:Connect(function(_, newState)
                 if not ijState.enabled then return end
                 if newState == Enum.HumanoidStateType.Landed
@@ -29671,10 +29622,8 @@ function CreateWorldUI_InfinityJumpMovement()
             end
             if enabled then
                 local char = LocalPlayer.Character
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                local hum  = char and char:FindFirstChildOfClass("Humanoid")
                 _ijConnectChar(char, hum)
-
-                -- Reconectar al respawnear
                 if ijState.charConn then ijState.charConn:Disconnect() end
                 ijState.charConn = LocalPlayer.CharacterAdded:Connect(function(c)
                     if not ijState.enabled then return end
@@ -33473,52 +33422,10 @@ local function _sgFlingPlayer(TargetPlayer)
         end
     end
 
-    -- == FASE 3: volver a la posicion donde estaba ANTES del fling ==
-    -- Se usa _sgSafePosBefore capturada al inicio (antes de cualquier TP de agarre)
-    -- para evitar que el personaje quede pegado donde cayo la gun.
-    _flingActive = false
-    task.spawn(function()
-        task.wait(0.05)
-        local mc = LocalPlayer.Character
-        local mh = mc and mc:FindFirstChild("HumanoidRootPart")
-        local mm = mc and mc:FindFirstChildOfClass("Humanoid")
-        if not mh or not mm then return end
-        -- Prioridad: posicion capturada antes del fling
-        local _returnCF = _sgSafePosBefore
-        -- Fallback: _flingLastSafePos / OldPos si no hay captura previa
-        if not _returnCF then
-            local _lsp = _flingLastSafePos or _G.OldPos
-            if _lsp then
-                local _ly = _lsp.Position and _lsp.Position.Y or 0
-                if _ly > 2 and _ly < 800 then
-                    _returnCF = _lsp
-                end
-            end
-        end
-        if _returnCF then
-            -- TP directo a la posicion pre-fling con intentos multiples
-            if not _flingReturning then
-                _flingReturning = true
-                for _i = 1, 5 do
-                    pcall(function()
-                        mh.CFrame = _returnCF * CFrame.new(0, 0.5, 0)
-                        mh.AssemblyLinearVelocity  = Vector3.zero
-                        mh.AssemblyAngularVelocity = Vector3.zero
-                    end)
-                    task.wait(0.06)
-                    if not (mc and mc.Parent) then break end
-                end
-                mm.PlatformStand = false
-                pcall(function() mm:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-                _flingReturning = false
-            end
-        else
-            -- Ultimo fallback: usar _flingDoReturn normal
-            if not _flingReturning then
-                _flingDoReturn(mc, mh, mm)
-            end
-        end
-    end)
+    -- FASE 3: no hace falta TP de retorno extra.
+    -- _doStealFling (ATOMIC GHOST FLING v5) ya restaura RootPart.CFrame
+    -- a safePos al final de cada frame y al salir del loop.
+    -- El jugador queda en su lugar original sin TPs adicionales.
 
     if grabbed then
         CreateCustomNotification("STEAL GUN", "Gun robada de " .. TargetPlayer.Name .. "!", 2.5)
