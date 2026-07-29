@@ -27329,6 +27329,10 @@ function CreateWorldUI_Emotes()
             EmoteState.moveConn:Disconnect()
             EmoteState.moveConn = nil
         end
+        if EmoteState._jumpConn then
+            pcall(function() EmoteState._jumpConn:Disconnect() end)
+            EmoteState._jumpConn = nil
+        end
     end
 
     local function PlayEmote(animId, emoteName)
@@ -27362,13 +27366,25 @@ function CreateWorldUI_Emotes()
         track:Play()
         EmoteState.currentTrack = track
 
+        -- Detener emote si el humanoid muere o cambia de personaje
+        local _emoteJumpConn = humanoid.StateChanged:Connect(function(_, newState)
+            if newState == Enum.HumanoidStateType.Jumping
+            or newState == Enum.HumanoidStateType.Freefall
+            or newState == Enum.HumanoidStateType.Dead then
+                StopEmote()
+            end
+        end)
+        -- Guardar conexion de salto para limpiarla junto con moveConn
+        local _prevMoveConn = EmoteState.moveConn
+        EmoteState._jumpConn = _emoteJumpConn
+
         local _hbEmote = 0
         EmoteState.moveConn = RunService.Heartbeat:Connect(function()
             _hbEmote = _hbEmote + 1; if _hbEmote < 3 then return end; _hbEmote = 0
             local hrp2 = char:FindFirstChild("HumanoidRootPart")
             if hrp2 then
                 local vel = hrp2.AssemblyLinearVelocity
-                if vel and vel.Magnitude > 1.5 then
+                if vel and (vel.X*vel.X + vel.Z*vel.Z) > 2.25 then
                     StopEmote()
                 end
             end
@@ -27539,10 +27555,22 @@ function CreateWorldUI_Emotes()
         _currentMainSectionFrame = _savedSection
     end
 
-    _makeTPButton("Stop Current Emote", function()
+    local _stopEmoteContainer = _makeTPButton("Stop Current Emote", function()
         StopEmote()
         CreateCustomNotification("EMOTE", "Emote detenido.", 2)
     end, _emotesSec)
+    -- Hacer el boton Stop completamente transparente (invisible pero funcional)
+    if _stopEmoteContainer then
+        local _stopBtn = _stopEmoteContainer:FindFirstChildWhichIsA("TextButton")
+        if _stopBtn then
+            _stopBtn.BackgroundTransparency = 1
+            local _stopStroke = _stopBtn:FindFirstChildOfClass("UIStroke")
+            if _stopStroke then _stopStroke.Transparency = 1 end
+            _stopBtn.TextTransparency = 1
+            -- Mantener hitbox pero invisible
+            _stopBtn.AutoButtonColor = false
+        end
+    end
 
     _makeTPButton("Disable All Bindable Emote Buttons", function()
         for _, emote in ipairs(EMOTES) do
