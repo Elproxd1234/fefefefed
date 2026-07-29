@@ -33381,9 +33381,11 @@ local function _sgFlingPlayer(TargetPlayer)
             if p and p:IsA("Model") and p:FindFirstChildOfClass("Humanoid") then return false end
             local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
             if not handle then return false end
-            -- TP al handle y firetouchinterest
-            pcall(function() myHRP.CFrame = handle.CFrame end)
-            pcall(function() myChar:SetPrimaryPartCFrame(handle.CFrame) end)
+            -- FIX TP: mover el handle hacia el jugador (NO TP del jugador al handle)
+            -- Antes hacía myHRP.CFrame = handle.CFrame → se teleportaba DENTRO del sheriff
+            -- Ahora movemos la gun al jugador para agarrarla sin teleportarnos
+            pcall(function() handle.CFrame = CFrame.new(myHRP.Position) end)
+            pcall(function() obj:PivotTo(CFrame.new(myHRP.Position)) end)
             task.wait(0.05)
             pcall(function()
                 firetouchinterest(myHRP, handle, 0)
@@ -46910,10 +46912,11 @@ minimizeBtn.MouseButton1Click:Connect(function()
     else
         local uiScaleClose = mainFrame:FindFirstChildOfClass("UIScale")
         if uiScaleClose then
-            TweenService:Create(uiScaleClose, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Scale = 0}):Play()
+            -- Animacion de cierre lenta y suave: escala baja con Quint + fade
+            TweenService:Create(uiScaleClose, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Scale = 0}):Play()
         end
-        TweenService:Create(mainFrame, TweenInfo.new(0.25), {BackgroundTransparency = 1}):Play()
-        task.wait(0.32)
+        TweenService:Create(mainFrame, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
+        task.wait(0.58)
         hubGui.Enabled = false
         _G._hubHidden  = true
     end
@@ -46995,7 +46998,7 @@ minimizeBtn.MouseButton1Click:Connect(function()
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
                     uiScale.Scale = 0
-                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                    TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
                 end
                 -- NO llamar _reloadActiveTab: no es necesario y disparaba
                 -- la pantalla de disculpas del premium al reconstruir el tab.
@@ -47262,7 +47265,7 @@ closeBtn.MouseButton1Click:Connect(function()
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
                     uiScale.Scale = 0
-                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                    TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
                 end
                 -- NO llamar _reloadActiveTab: causaba el popup de premium
             else
@@ -48621,7 +48624,7 @@ function abrirHub()
         local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
         if uiScale then
             uiScale.Scale = 0
-            TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+            TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
         end
         -- FIX: recargar el tab activo para restaurar bindables y botones
         task.defer(function()
