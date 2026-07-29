@@ -73,18 +73,17 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 local Players = game:GetService("Players")
 
 -- ================================================================
--- == BLOQUE DE OPTIMIZACIONES DE STARTUP (ejecutado UNA sola vez)
+-- == BLOQUE DE OPTIMIZACIONES DE STARTUP v19 (ejecutado UNA sola vez)
 -- ================================================================
 do
     -- OPT-1: Cache de servicios frecuentes como upvalues locales
     -- Evita llamar game:GetService() repetidamente en loops calientes
     local _svcCache = {}
-    local _getServiceOrig = game.GetService
     setmetatable(_svcCache, {__mode = "v"})
     local _criticalServices = {
         "Players","RunService","UserInputService","TweenService",
         "CoreGui","Lighting","Debris","TeleportService",
-        "HttpService","ReplicatedStorage","Workspace"
+        "HttpService","ReplicatedStorage","Workspace","Stats"
     }
     for _, svcName in ipairs(_criticalServices) do
         pcall(function()
@@ -96,23 +95,17 @@ do
     -- OPT-2: Limpieza agresiva de conexiones huerfanas de ejecuciones anteriores
     -- Desconecta todo lo que el hub anterior haya podido dejar colgado
     if _G._hubConnections then
-        local _dead = 0
         for i = #_G._hubConnections, 1, -1 do
             local c = _G._hubConnections[i]
-            if c then
-                pcall(function() c:Disconnect() end)
-                _dead = _dead + 1
-            end
+            if c then pcall(function() c:Disconnect() end) end
         end
         _G._hubConnections = {}
     end
 
-    -- OPT-3: Limpiar tareas de GC acumuladas por runs anteriores
-    -- Forzar GC al inicio para liberar memoria de la ejecucion previa
+    -- OPT-3: Forzar GC al inicio para liberar memoria de la ejecucion previa
     pcall(function() gcinfo() end)  -- warm-up del GC
 
     -- OPT-4: Pre-localizar funciones matematicas usadas en loops calientes
-    -- Ahorra la busqueda de tabla global en cada llamada dentro de Heartbeat/RenderStepped
     if not _G._mathCache then
         _G._mathCache = {
             abs    = math.abs,
@@ -124,17 +117,17 @@ do
             sqrt   = math.sqrt,
             huge   = math.huge,
             random = math.random,
+            pi     = math.pi,
+            sin    = math.sin,
+            cos    = math.cos,
+            atan2  = math.atan2,
         }
     end
 
     -- OPT-5: Throttle global de Heartbeat compartido
-    -- Los sistemas que no necesitan correr cada frame usan este contador
-    -- en vez de tener su propio _tick local (ahorra variables y ramas)
-    if not _G._hbSharedTick then
-        _G._hbSharedTick = 0
-    end
+    if not _G._hbSharedTick then _G._hbSharedTick = 0 end
 
-    -- OPT-6: Precalentar table.* usados frecuentemente como upvalues
+    -- OPT-6: Precalentar table.* como upvalues
     if not _G._tableCache then
         _G._tableCache = {
             insert = table.insert,
@@ -142,26 +135,22 @@ do
             clear  = table.clear,
             unpack = table.unpack or unpack,
             concat = table.concat,
+            sort   = table.sort,
+            move   = table.move,
         }
     end
 
     -- OPT-7: Detectar si el executor soporta identidad elevada
-    -- Si no, algunos sistemas de bypass se deshabilitan para no desperdiciar ciclos
     _G._hasElevatedIdentity = (syn ~= nil) or (KRNL_LOADED ~= nil) or
                                (getidentity ~= nil) or (identifyexecutor ~= nil) or
                                (gethui ~= nil)
 
-    -- OPT-8: Reducir frecuencia del garbage collector durante el arranque
-    -- El GC por defecto puede pausar la ejecucion en el momento de cargar la UI
-    -- Lo restauramos a normal despues de que _hubReady sea true
+    -- OPT-8: Reducir frecuencia del GC durante carga, restaurar al terminar
     pcall(function()
-        -- Solo reducir el paso del GC, no desactivarlo (seguro)
-        -- Roblox no expone collectgarbage() en todos los executors
         if collectgarbage then
-            collectgarbage("setstepmul", 80)  -- default=200, reducir a 80 alivia pauses de carga
+            collectgarbage("setstepmul", 80)
         end
     end)
-    -- Restaurar el GC despues de que el hub este listo
     task.defer(function()
         local _waited = 0
         while not _G._hubReady and _waited < 15 do
@@ -169,14 +158,144 @@ do
             _waited = _waited + 0.5
         end
         pcall(function()
-            if collectgarbage then
-                collectgarbage("setstepmul", 200)  -- restaurar default
-            end
+            if collectgarbage then collectgarbage("setstepmul", 200) end
         end)
     end)
+
+    -- OPT-9: Destruir GUIs huerfanas de ejecuciones previas (evita acumulacion de frames)
+    -- Limpia tanto PlayerGui como CoreGui/gethui para no acumular instancias
+    pcall(function()
+        local lp = game:GetService("Players").LocalPlayer
+        local pg = lp and lp:FindFirstChild("PlayerGui")
+        if pg then
+            for _, g in ipairs(pg:GetChildren()) do
+                if g.Name == "f" or g.Name == "BypasHubMM2" or
+                   g.Name == "RexHub" or g.Name == "_hubReopener" then
+                    pcall(function() g:Destroy() end)
+                end
+            end
+        end
+        -- Limpiar en CoreGui si el executor lo permite
+        local cg = pcall(function()
+            local cg = game:GetService("CoreGui")
+            for _, g in ipairs(cg:GetChildren()) do
+                if g.Name == "f" or g.Name == "BypasHubMM2" or
+                   g.Name == "_hubReopener" then
+                    pcall(function() g:Destroy() end)
+                end
+            end
+        end)
+        -- Limpiar gethui si disponible
+        if gethui then
+            pcall(function()
+                for _, g in ipairs(gethui():GetChildren()) do
+                    if g.Name == "f" or g.Name == "BypasHubMM2" then
+                        pcall(function() g:Destroy() end)
+                    end
+                end
+            end)
+        end
+    end)
+
+    -- OPT-10: Limpiar threads/spawns huerfanos de ejecuciones previas
+    -- Si el hub anterior quedo en loop (ESP, Silent Aim, etc.) y no se
+    -- desconectaron las conexiones de RunService, los cancelamos aqui.
+    if _G._hubRunServiceConns then
+        for _, conn in ipairs(_G._hubRunServiceConns) do
+            pcall(function() conn:Disconnect() end)
+        end
+        _G._hubRunServiceConns = {}
+    else
+        _G._hubRunServiceConns = {}
+    end
+
+    -- OPT-11: Cache de Color3 mas usados como constantes globales
+    -- Evita recrear Color3.fromRGB en cada frame de ESP/UI
+    if not _G._colorCache then
+        _G._colorCache = {
+            white   = Color3.fromRGB(255, 255, 255),
+            black   = Color3.fromRGB(0,   0,   0),
+            red     = Color3.fromRGB(255, 50,  50),
+            green   = Color3.fromRGB(50,  255, 100),
+            blue    = Color3.fromRGB(80,  120, 255),
+            yellow  = Color3.fromRGB(255, 220, 50),
+            orange  = Color3.fromRGB(255, 140, 30),
+            purple  = Color3.fromRGB(170, 80,  255),
+            gray    = Color3.fromRGB(150, 150, 150),
+            darkBg  = Color3.fromRGB(20,  20,  26),
+            accent  = Color3.fromRGB(90,  120, 255),
+        }
+    end
+
+    -- OPT-12: Cache de TweenInfo comunes para UI
+    -- Evita crear instancias TweenInfo.new() repetidamente por cada toggle/boton
+    if not _G._tweenInfoCache then
+        _G._tweenInfoCache = {
+            fast   = TweenInfo.new(0.12, Enum.EasingStyle.Quad,  Enum.EasingDirection.Out),
+            normal = TweenInfo.new(0.25, Enum.EasingStyle.Quad,  Enum.EasingDirection.Out),
+            slow   = TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+            spring = TweenInfo.new(0.35, Enum.EasingStyle.Back,  Enum.EasingDirection.Out),
+        }
+    end
+
+    -- OPT-13: Pool de Vector3 y CFrame reutilizables para Silent Aim / ESP
+    -- Reduce la presion del GC al reutilizar objetos en vez de crear nuevos por frame
+    if not _G._v3Zero then
+        _G._v3Zero    = Vector3.new(0, 0, 0)
+        _G._v3One     = Vector3.new(1, 1, 1)
+        _G._v3Up      = Vector3.new(0, 1, 0)
+        _G._cfIdentity = CFrame.new()
+    end
+
+    -- OPT-14: Indice de jugadores local con acceso O(1) por nombre/instancia
+    -- Los loops de ESP y Combat recorren jugadores muchas veces por segundo;
+    -- este indice evita iterar GetPlayers() cada vez.
+    if not _G._playerIndex then
+        _G._playerIndex = {}   -- [Player] = true
+        _G._playerByName = {}  -- [string] = Player
+        local _Players = game:GetService("Players")
+        for _, p in ipairs(_Players:GetPlayers()) do
+            _G._playerIndex[p]       = true
+            _G._playerByName[p.Name] = p
+        end
+        _Players.PlayerAdded:Connect(function(p)
+            _G._playerIndex[p]       = true
+            _G._playerByName[p.Name] = p
+        end)
+        _Players.PlayerRemoving:Connect(function(p)
+            _G._playerIndex[p]       = nil
+            _G._playerByName[p.Name] = nil
+        end)
+    end
+
+    -- OPT-15: Precache del LocalPlayer y su Character para acceso rapido en loops
+    if not _G._lp then
+        _G._lp = game:GetService("Players").LocalPlayer
+        _G._lpChar = _G._lp and _G._lp.Character
+        if _G._lp then
+            _G._lp.CharacterAdded:Connect(function(c)
+                _G._lpChar = c
+            end)
+            _G._lp.CharacterRemoving:Connect(function()
+                _G._lpChar = nil
+            end)
+        end
+    end
+
+    -- OPT-16: Deferral de sistemas no criticos al frame siguiente
+    -- Los sistemas de ESP, Farm y UI decorativa esperan a que el hub
+    -- este dibujado antes de inicializarse, reduciendo el lag de carga.
+    if not _G._deferredInits then _G._deferredInits = {} end
+    _G._registerDeferredInit = function(fn)
+        if _G._hubReady then
+            task.spawn(fn)
+        else
+            table.insert(_G._deferredInits, fn)
+        end
+    end
 end
 -- ================================================================
--- == FIN BLOQUE DE OPTIMIZACIONES DE STARTUP
+-- == FIN BLOQUE DE OPTIMIZACIONES DE STARTUP v19
 -- ================================================================
 
 -- == FLAG DE CARGA -- sistemas pesados esperan a que el hub termine de dibujar ==
@@ -21063,9 +21182,16 @@ function FireKnifeOnTarget(knife, targetHrp)
             end
         end
     end)
-    -- NO llamamos knife:Activate() aqui — romperia la animacion slash del jugador
-    -- Los RemoteEvents de arriba son suficientes para matar en el servidor
-    -- Restaurar posicion inmediatamente para que el personaje NO se mueva
+    pcall(function()
+        cam  = _Camera
+        origCam = cam.CFrame
+        if hrp then
+            cam.CFrame = CFrame.lookAt(hrp.Position, targetHrp.Position)
+        end
+        knife:Activate()
+        cam.CFrame = origCam
+    end)
+    -- Restaurar posicin inmediatamente para que el personaje NO se mueva
     if hrp and savedCF then
         _sp(function()
             pcall(function()
@@ -26586,15 +26712,15 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     -- Detectar móvil para ajustar tamaños
     local _isMobileTog = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
-    local _toggleBgW   = _isMobileTog and 52 or 44
-    local _toggleBgH   = _isMobileTog and 26 or 22
-    local _knobSize    = _isMobileTog and 18 or 16
-    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -20
-    local _knobOffL    = 3
-    local _labelTxtSz  = _isMobileTog and 13 or 13
+    local _toggleBgW   = _isMobileTog and 52 or 65
+    local _toggleBgH   = _isMobileTog and 26 or 32
+    local _knobSize    = _isMobileTog and 18 or 24
+    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -28
+    local _knobOffL    = 4
+    local _labelTxtSz  = _isMobileTog and 13 or 18
     local _labelWScale = _isMobileTog and 0.55 or 0.6
-    local _rowH        = _isMobileTog and 44 or 36
-    local _toggleRightOff = _isMobileTog and -8 or -10
+    local _rowH        = _isMobileTog and 44 or 55
+    local _toggleRightOff = _isMobileTog and -8 or -15
 
     -- Marco principal ancho (600px simulado con 1, 0) -- transparente con borde blanco
     local container = Instance.new("Frame", actualParent)
@@ -28572,30 +28698,60 @@ function CreateWorldUI_AutoGrabGun()
                     return
                 end
 
-                -- METODO 3: mover la GUN al jugador (sin TP del personaje)
-                local gOrigCF   = gPart.CFrame
-                local gAnchored = gPart.Anchored
-                local targetPos = root.Position + Vector3.new(0, -1.2, 0)
+                -- METODO 3: blink del HRP a la gun, firetouchinterest, volver
+                local savedCF2 = root.CFrame
+                local gunPos2  = gPart.Position
                 pcall(function()
-                    gPart.Anchored = false
-                    gPart.CFrame = CFrame.new(targetPos)
-                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(targetPos)) end
+                    root.CFrame = CFrame.new(gunPos2 + Vector3.new(0, 1.5, 0))
+                    root.AssemblyLinearVelocity = Vector3.zero
                 end)
+                task.wait(0)
                 pcall(function()
                     firetouchinterest(root, gPart, 0)
                     firetouchinterest(root, gPart, 1)
                 end)
                 task.wait(0)
+                pcall(function()
+                    root.CFrame = savedCF2
+                    root.AssemblyLinearVelocity  = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                end)
                 if _findGun(char) then
                     CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
                     return
                 end
 
-                -- METODO 4: segundo intento sobre el HRP
+                -- METODO 4: segundo blink mas cercano
+                local savedCF = root.CFrame
                 pcall(function()
-                    gPart.CFrame = CFrame.new(root.Position + Vector3.new(0, 0.5, 0))
-                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(root.Position + Vector3.new(0, 0.5, 0))) end
+                    root.CFrame = gPart.CFrame + Vector3.new(0, 1.2, 0)
+                    root.AssemblyLinearVelocity = Vector3.zero
                 end)
+                task.wait(0.015)
+                pcall(function()
+                    firetouchinterest(root, gPart, 0)
+                    firetouchinterest(root, gPart, 1)
+                end)
+                task.wait(0.015)
+                pcall(function()
+                    root.CFrame = savedCF
+                    root.AssemblyLinearVelocity  = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                end)
+                if _findGun(char) then
+                    CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
+                    return
+                end
+
+                -- METODO 5: mover la GUN al jugador y restaurar
+                local gOrigCF   = gPart.CFrame
+                local gAnchored = gPart.Anchored
+                pcall(function()
+                    gPart.Anchored = false
+                    gPart.CFrame = CFrame.new(root.Position + Vector3.new(0, -1, 0))
+                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(root.Position + Vector3.new(0, -1, 0))) end
+                end)
+                task.wait(0)
                 pcall(function()
                     firetouchinterest(root, gPart, 0)
                     firetouchinterest(root, gPart, 1)
@@ -28604,19 +28760,11 @@ function CreateWorldUI_AutoGrabGun()
                 if _findGun(char) then
                     CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
                 else
-                    -- EquipTool forzado como ultimo intento
-                    if gunDrop:IsA("Tool") and gunDrop.Parent then
-                        pcall(function() hum:EquipTool(gunDrop) end)
-                    end
-                    if _findGun(char) then
-                        CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
-                    else
-                        pcall(function()
-                            gPart.CFrame   = gOrigCF
-                            gPart.Anchored = gAnchored
-                        end)
-                        CreateCustomNotification("GRAB GUN", "Arma encontrada pero no se pudo agarrar.", 2)
-                    end
+                    pcall(function()
+                        gPart.CFrame   = gOrigCF
+                        gPart.Anchored = gAnchored
+                    end)
+                    CreateCustomNotification("GRAB GUN", "Arma encontrada pero no se pudo agarrar.", 2)
                 end
             end)
         end)
@@ -28855,44 +29003,50 @@ function CreateWorldUI_AutoGrabGun()
                     end
                 end
 
-                -- METODO 2: mover la GUN al jugador (sin TP del personaje)
-                local agOrigCF   = gPart.CFrame
-                local agAnchored = gPart.Anchored
-                local agTarget   = root.Position + Vector3.new(0, -1.2, 0)
+                -- METODO 2: blink del HRP a la gun, firetouchinterest, volver
+                local savedCF2 = root.CFrame
+                local gunPos2  = gPart.Position
                 pcall(function()
-                    gPart.Anchored = false
-                    gPart.CFrame = CFrame.new(agTarget)
-                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(agTarget)) end
+                    root.CFrame = CFrame.new(gunPos2 + Vector3.new(0, 1.5, 0))
+                    root.AssemblyLinearVelocity = Vector3.zero
                 end)
+                task.wait(0)
                 pcall(function()
                     firetouchinterest(root, gPart, 0)
                     firetouchinterest(root, gPart, 1)
                 end)
                 task.wait(0)
+                pcall(function()
+                    root.CFrame = savedCF2
+                    root.AssemblyLinearVelocity  = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                end)
                 if _findGun(char) then
                     GrabState._cachedDrop = nil
                     CreateCustomNotification("AUTO GRAB GUN", "Gun agarrada!", 2)
                     return
                 end
 
-                -- METODO 3: segundo intento sobre el HRP
+                -- METODO 3: segundo intento de blink mas cercano
+                local savedCF = root.CFrame
                 pcall(function()
-                    gPart.CFrame = CFrame.new(root.Position + Vector3.new(0, 0.5, 0))
-                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(root.Position + Vector3.new(0, 0.5, 0))) end
+                    root.CFrame = gPart.CFrame + Vector3.new(0, 1.2, 0)
+                    root.AssemblyLinearVelocity = Vector3.zero
                 end)
+                task.wait(0.015)
                 pcall(function()
                     firetouchinterest(root, gPart, 0)
                     firetouchinterest(root, gPart, 1)
                 end)
                 task.wait(0.015)
+                pcall(function()
+                    root.CFrame = savedCF
+                    root.AssemblyLinearVelocity  = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                end)
                 if _findGun(char) then
                     GrabState._cachedDrop = nil
                     CreateCustomNotification("AUTO GRAB GUN", "Gun agarrada!", 2)
-                else
-                    pcall(function()
-                        gPart.CFrame   = agOrigCF
-                        gPart.Anchored = agAnchored
-                    end)
                 end
             end)
             task.wait(0.02)
@@ -33078,11 +33232,9 @@ function StealGunLoop()
                 continue
             end
 
-            -- Refrescar cache en cada iteracion para detectar cambios de sheriff/hero
+            -- Refrescar cache en cada iteracion para detectar cambios de sheriff
             _refreshRoleCache()
-            -- Prioridad: Sheriff primero, si no hay -> Hero (quien levanto la gun)
-            local target = (_roleCache and _roleCache.sheriff)
-                        or (_roleCache and _roleCache.hero)
+            local target = _roleCache and _roleCache.sheriff
             StealGunSystem.sheriffOriginalFound = target
 
             if target and target.Character and target.Parent then
@@ -33149,12 +33301,8 @@ function StealGunLoop()
                     -- Sheriff muerto o invalido: limpiar estado y buscar nuevo sheriff
                     CreateCustomNotification("STEAL GUN", target.Name .. " murio, buscando nuevo sheriff...", 3)
                     local deadUserId = target.UserId
-                    -- Limpiar estado del sheriff/hero muerto
+                    -- Limpiar estado del sheriff muerto
                     _roleCache.sheriff    = nil
-                    -- Solo limpiar hero si era el mismo jugador que murió
-                    if _roleCache.hero and _roleCache.hero.UserId == deadUserId then
-                        _roleCache.hero = nil
-                    end
                     _roleCache.lastUpdate = 0  -- forzar refresh inmediato en siguiente llamada
                     StealGunSystem.sheriffOriginalFound = nil
                     StealGunSystem.sheriffDeadDetected  = false
@@ -33182,9 +33330,7 @@ function StealGunLoop()
                         _roleCache.lastUpdate = 0
                         _refreshRoleCache()
 
-                        -- Sheriff o Hero (quien levanto la gun del sheriff muerto)
                         local newSheriff = _roleCache.sheriff
-                                       or _roleCache.hero
 
                         -- Fallback visual: buscar manualmente quien tiene la gun en mano
                         if (not newSheriff or newSheriff.UserId == deadUserId) and _findGunIn then
@@ -33214,7 +33360,7 @@ function StealGunLoop()
                             StealGunSystem.gunInBackpackMode    = false
                             -- Re-hookear muerte del nuevo sheriff
                             task.defer(function() pcall(_hookSheriffDeath, newSheriff) end)
-                            CreateCustomNotification("STEAL GUN", "Nuevo objetivo: " .. newSheriff.Name .. " flingeando!", 2.5)
+                            CreateCustomNotification("STEAL GUN", "Nuevo sheriff: " .. newSheriff.Name .. " flingeando!", 2.5)
                             -- FIX FLING NUEVO SHERIFF: flingear inmediatamente sin esperar
                             -- la proxima iteracion del loop (evita el task.wait(0.8) de abajo)
                             _flingActive    = false
@@ -34520,6 +34666,990 @@ function CreatePremiumTab()
 
 end  -- cierra CreatePremiumTab
 
+-- ======================================================================
+-- FARM TAB
+-- ======================================================================
+function CreateFarmTab()
+    if not contentContainer or not contentContainer.Parent then
+        task.wait(0.15)
+        if not contentContainer or not contentContainer.Parent then return end
+    end
+    ClearContent()
+    _makeTwoColumns()
+
+    -- =====================================================================
+    -- COIN FARM
+    -- =====================================================================
+    CreateSection(leftColumn, "", "COIN FARM", ThemeColors.Aurora2)
+
+    -- =====================================================================
+    -- AUTO FARM v2 - Logica multi-toque, noclip, BodyVelocity, sin movimiento
+    -- =====================================================================
+    do
+        -- =====================================================================
+        -- AUTO FARM — logica reemplazada (multi-metodo, noclip, vuelo, touch)
+        -- =====================================================================
+        local _afEnabled      = false
+        local _afThread       = nil
+        local _afNoclipConn   = nil
+        local _afStateConn    = nil
+        local _afAntiSpinConn = nil
+        local _afBlacklist    = {}
+        local _afSpeed        = 100   -- studs/s
+        local _afAlturaOffset = 1.80  -- studs bajo la moneda
+        local _afGrabDelay    = 0     -- delay entre intentos de toque
+
+        if _G._sliderVals then
+            _G._sliderVals["Auto Farm Offset Bajo Moneda|1|100"] = nil
+            _G._sliderVals["Auto Farm Offset Bajo Moneda|5|100"] = nil
+            _G._sliderVals["Auto Farm Delay Agarre (x0.01s)|1|50"] = nil
+            _G._sliderVals["Auto Farm Delay Agarre (x0.01s)|0|50"] = nil
+        end
+
+        -- Buscar CoinContainer en el workspace de forma robusta
+        local function _afFindContainer()
+            local direct = workspace:FindFirstChild("CoinContainer")
+            if direct then return direct end
+            local wp = workspace:FindFirstChild("Workplace")
+            if wp and wp:FindFirstChild("CoinContainer") then return wp.CoinContainer end
+            local mn = workspace:FindFirstChild("Mansion2")
+            if mn and mn:FindFirstChild("CoinContainer") then return mn.CoinContainer end
+            for _, desc in pairs(workspace:GetDescendants()) do
+                if desc.Name == "CoinContainer" then return desc end
+            end
+            return nil
+        end
+
+        -- Obtener la coin mas cercana (misma logica que el script de referencia)
+        local function _afGetNearest(root)
+            local nearest, minDist = nil, math.huge
+            local container = _afFindContainer()
+            if not container then return nil end
+
+            for _, coinFolder in pairs(container:GetChildren()) do
+                if not _afBlacklist[coinFolder] then
+                    local coinVisual = coinFolder:FindFirstChild("CoinVisual")
+                    if coinVisual then
+                        local mainCoin = coinVisual:FindFirstChild("MainCoin")
+                        if mainCoin and mainCoin:IsA("BasePart") and mainCoin.Transparency < 1 then
+                            local d = (mainCoin.Position - root.Position).Magnitude
+                            if d < minDist then
+                                minDist = d
+                                nearest = { Container = coinFolder, Part = mainCoin }
+                            end
+                        end
+                    else
+                        -- Fallback: buscar MainCoin directamente en cualquier descendiente
+                        for _, obj in pairs(coinFolder:GetDescendants()) do
+                            if obj.Name == "MainCoin" and obj:IsA("BasePart") and obj.Transparency < 1 then
+                                local d = (obj.Position - root.Position).Magnitude
+                                if d < minDist then
+                                    minDist = d
+                                    nearest = { Container = coinFolder, Part = obj }
+                                end
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            return nearest
+        end
+
+        -- Cleanup completo
+        local function _afCleanup()
+            if _afNoclipConn   then _afNoclipConn:Disconnect();   _afNoclipConn   = nil end
+            if _afStateConn    then _afStateConn:Disconnect();     _afStateConn    = nil end
+            if _afAntiSpinConn then _afAntiSpinConn:Disconnect();  _afAntiSpinConn = nil end
+            pcall(function()
+                local char = LocalPlayer.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                if hrp then
+                    local bv = hrp:FindFirstChild("FarmAntiGravity")
+                    if bv then bv:Destroy() end
+                    hrp.Anchored = false
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                    hrp.CFrame = CFrame.new(hrp.Position)
+                end
+                if hum then
+                    hum.PlatformStand = false
+                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+                end
+                if char then
+                    for _, part in ipairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            pcall(function() part.CanCollide = true end)
+                        end
+                    end
+                end
+            end)
+            table.clear(_afBlacklist)
+        end
+
+        -- ---------------------------------------------------------------
+        -- Toggle principal
+        -- ---------------------------------------------------------------
+        CreateAuroraToggle(leftColumn, "Auto Farm", function(en)
+            _afEnabled = en
+            if _afThread then task.cancel(_afThread); _afThread = nil end
+            _afCleanup()
+
+            if not en then
+                CreateCustomNotification("AUTO FARM", "OFF", 1)
+                return
+            end
+
+            -- Noclip constante en Stepped (throttle: cada 6 frames para reducir lag)
+            local _afNoclipTick = 0
+            _afNoclipConn = RunService.Stepped:Connect(function()
+                if not _afEnabled then return end
+                _afNoclipTick = _afNoclipTick + 1
+                if _afNoclipTick < 6 then return end
+                _afNoclipTick = 0
+                local char = LocalPlayer.Character
+                if not char then return end
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        pcall(function() part.CanCollide = false end)
+                    end
+                end
+            end)
+
+            -- PlatformStand + Physics state en Heartbeat (throttle: cada 10 frames)
+            local _afStateTick = 0
+            _afStateConn = RunService.Heartbeat:Connect(function()
+                if not _afEnabled then return end
+                _afStateTick = _afStateTick + 1
+                if _afStateTick < 10 then return end
+                _afStateTick = 0
+                local char = LocalPlayer.Character
+                if not char then return end
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    hum.PlatformStand = true
+                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Physics) end)
+                end
+            end)
+
+            -- Anti-spin en RenderStepped
+            _afAntiSpinConn = RunService.RenderStepped:Connect(function()
+                if not _afEnabled then return end
+                local char = LocalPlayer.Character
+                if not char then return end
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.RotVelocity = Vector3.zero end
+            end)
+
+            -- Loop principal
+            _afThread = task.spawn(function()
+                while _afEnabled do
+                    local char = LocalPlayer.Character
+                    if not (char and char:FindFirstChild("HumanoidRootPart")) then
+                        task.wait(0.5)
+                        continue
+                    end
+
+                    local hrp = char.HumanoidRootPart
+                    hrp.Anchored = false
+
+                    -- Anti-gravedad via BodyVelocity
+                    local bv = hrp:FindFirstChild("FarmAntiGravity")
+                    if not bv then
+                        bv = Instance.new("BodyVelocity")
+                        bv.Name     = "FarmAntiGravity"
+                        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                        bv.Velocity = Vector3.zero
+                        bv.Parent   = hrp
+                    end
+
+                    local coinData = _afGetNearest(hrp)
+
+                    if coinData and coinData.Container and coinData.Container.Parent
+                       and coinData.Part and coinData.Part.Parent then
+
+                        local coinPart  = coinData.Part
+                        local flatAngle = CFrame.Angles(math.rad(90), 0, 0)
+
+                        -- Fase 1: volar hacia la moneda (recalcula coin mas cercana cada 10 frames)
+                        local _recalcTick = 0
+                        while _afEnabled and coinData.Container.Parent
+                              and coinPart.Parent and coinPart.Transparency < 1 do
+
+                            _recalcTick = _recalcTick + 1
+                            if _recalcTick >= 10 then
+                                _recalcTick = 0
+                                local newData = _afGetNearest(hrp)
+                                if newData and newData.Part then
+                                    coinData = newData
+                                    coinPart = newData.Part
+                                end
+                            end
+
+                            local targetPos = Vector3.new(
+                                coinPart.Position.X,
+                                coinPart.Position.Y - _afAlturaOffset,
+                                coinPart.Position.Z
+                            )
+                            local dir  = targetPos - hrp.Position
+                            local dist = dir.Magnitude
+
+                            if dist < 1 then
+                                bv.Velocity = Vector3.zero
+                                break
+                            end
+
+                            local dt   = RunService.Heartbeat:Wait()
+                            local step = dir.Unit * math.min(_afSpeed * dt, dist)
+                            hrp.CFrame = CFrame.new(hrp.Position + step) * flatAngle
+                        end
+
+                        -- Fase 2: multi-metodo de recoleccion (igual al script de referencia)
+                        if _afEnabled and coinData.Container.Parent
+                           and coinPart.Parent and coinPart.Transparency < 1 then
+
+                            local startTime = tick()
+                            local grabWindow = _afGrabDelay > 0 and (_afGrabDelay * 12) or 0.6
+
+                            while _afEnabled and coinData.Container.Parent
+                                  and coinPart.Parent and coinPart.Transparency < 1
+                                  and (tick() - startTime) < grabWindow do
+
+                                -- Metodo 1: firetouchinterest estandar y reverso
+                                if firetouchinterest then
+                                    pcall(function()
+                                        firetouchinterest(hrp, coinPart, 0)
+                                        firetouchinterest(hrp, coinPart, 1)
+                                        firetouchinterest(coinPart, hrp,  0)
+                                        firetouchinterest(coinPart, hrp,  1)
+                                    end)
+                                end
+
+                                -- Metodo 2: TouchTransmitter / TouchInterest en todos los descendientes
+                                pcall(function()
+                                    for _, obj in pairs(coinData.Container:GetDescendants()) do
+                                        if obj:IsA("TouchTransmitter") or obj.ClassName == "TouchInterest" then
+                                            if firetouchinterest then
+                                                firetouchinterest(hrp, obj.Parent, 0)
+                                                firetouchinterest(hrp, obj.Parent, 1)
+                                            end
+                                        end
+                                    end
+                                end)
+
+                                task.wait(0.05)
+                            end
+
+                            _afBlacklist[coinData.Container] = true
+                        end
+
+                    else
+                        if bv then bv.Velocity = Vector3.zero end
+                        table.clear(_afBlacklist)
+                        task.wait(0.05)
+                    end
+                end
+
+                _afCleanup()
+                CreateCustomNotification("AUTO FARM", "OFF", 1)
+            end)
+
+            CreateCustomNotification("AUTO FARM", "ON - volando hacia monedas", 2)
+        end, false)
+
+        -- Slider: altura bajo la moneda
+        CreateSlider(leftColumn, "Auto Farm Offset Bajo Moneda", 0.5, 10, 1.5, function(v)
+            _afAlturaOffset = v
+        end)
+
+        -- Slider: velocidad de vuelo
+        CreateSlider(leftColumn, "Auto Farm Velocidad (studs/s)", 10, 300, 100, function(v)
+            _afSpeed = v
+        end)
+
+        -- Slider: delay entre intentos de agarre
+        CreateSlider(leftColumn, "Auto Farm Delay Agarre (x0.01s)", 0, 50, 0, function(v)
+            _afGrabDelay = v / 100
+        end)
+    end
+
+    -- =====================================================================
+    -- AUTO RESET INOCENT SHERIFF MURDER
+    -- Al llegar a 40 monedas, resetea el personaje (mata al humanoid para
+    -- forzar respawn), reiniciando la bolsa. Solo reset, sin fling al murder.
+    -- Detecta las 40 monedas via CoinCollected.OnClientEvent o fallback Heartbeat.
+    do
+        local _arismEnabled  = false
+        local _arismConn     = nil
+        local _arismCooldown = false
+
+        local function _arismDoReset()
+            if _arismCooldown then return end
+            _arismCooldown = true
+            task.spawn(function()
+                CreateCustomNotification("AUTO RESET", "40 monedas — reseteando personaje!", 2)
+
+                -- Matar al personaje para forzar respawn (reinicia la bolsa en MM2)
+                local char = LocalPlayer.Character
+                local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    hum.Health = 0
+                end
+                -- Fallback: LoadCharacter si el kill no hizo nada en 2s
+                task.wait(2)
+                if LocalPlayer.Character == char then
+                    pcall(function() LocalPlayer:LoadCharacter() end)
+                end
+
+                -- Esperar a que el personaje respawnee
+                local newChar = LocalPlayer.Character
+                if newChar == char or not newChar then
+                    newChar = LocalPlayer.CharacterAdded:Wait()
+                end
+
+                -- Esperar a que HRP y Humanoid esten completamente listos
+                local _waitStart = tick()
+                repeat task.wait(0.1) until
+                    (LocalPlayer.Character and
+                     LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and
+                     LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and
+                     LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Health > 0)
+                    or tick() - _waitStart > 6
+
+                task.wait(0.5)
+                CreateCustomNotification("AUTO RESET", "Personaje reseteado! Farmeando de nuevo...", 2)
+
+                task.wait(2)
+                _arismCooldown = false
+            end)
+        end
+
+        CreateAuroraToggle(leftColumn, "Auto Reset Inocent Sheriff Murder", function(en)
+            _arismEnabled  = en
+            _arismCooldown = false
+            if _arismConn then pcall(function() _arismConn:Disconnect() end); _arismConn = nil end
+
+            if not en then
+                CreateCustomNotification("AUTO RESET", "OFF", 1)
+                return
+            end
+
+            task.spawn(function()
+                -- Buscar el remote CoinCollected (mismo que usan los otros toggles de 40 monedas)
+                local CoinCollected = nil
+                pcall(function()
+                    local RS      = game:GetService("ReplicatedStorage")
+                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
+                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
+                    CoinCollected = Gameplay and (Gameplay:FindFirstChild("CoinCollected") or Gameplay:WaitForChild("CoinCollected", 8))
+                end)
+
+                if CoinCollected then
+                    _arismConn = CoinCollected.OnClientEvent:Connect(function(bagName, current, max)
+                        if not _arismEnabled then return end
+                        local cur = tonumber(current) or 0
+                        if cur >= 40 then
+                            _arismDoReset()
+                        end
+                    end)
+                    CreateCustomNotification("AUTO RESET", "ON — detectando 40 monedas", 2)
+                else
+                    -- Fallback: monitorear _inventoryCoins via Heartbeat
+                    local _hbTick = 0
+                    _arismConn = RunService.Heartbeat:Connect(function()
+                        if not _arismEnabled then return end
+                        _hbTick = _hbTick + 1; if _hbTick < 30 then return end; _hbTick = 0
+                        local cur = _inventoryCoins or 0
+                        if cur >= 40 then
+                            _inventoryCoins = 0
+                            _arismDoReset()
+                        end
+                    end)
+                    CreateCustomNotification("AUTO RESET", "ON (fallback) — monitoreo de monedas", 2)
+                end
+            end)
+        end, false)
+    end
+
+    -- =====================================================================
+    -- FARM 40 KILL ALL MURDER
+    -- Al llegar a 40 monedas, activa Kill All usando la logica de Combat
+    -- =====================================================================
+    do
+        local _f40kaEnabled  = false
+        local _f40kaFired    = false
+        local _f40kaConn     = nil
+        local _f40kaCooldown = false
+
+        -- Logica Kill All (misma que Combat tab: equipa knife, mata a todos)
+        local function _f40doKillAll()
+            if _f40kaCooldown then return end
+            _f40kaCooldown = true
+
+            task.spawn(function()
+                -- Solo actuar si somos Murderer
+                local myRole = _roleCache and _roleCache.localRole
+                if myRole ~= "Murderer" then
+                    CreateCustomNotification("FARM 40 KILL ALL", "Solo funciona como Murderer", 2)
+                    _f40kaCooldown = false
+                    return
+                end
+
+                local knife = EquipKnife and EquipKnife()
+                if not knife then
+                    CreateCustomNotification("FARM 40 KILL ALL", "No hay Knife equipada", 2)
+                    _f40kaCooldown = false
+                    return
+                end
+
+                -- Recopilar targets vivos
+                local targets = {}
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p == LocalPlayer then continue end
+                    local ch  = p.Character
+                    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+                    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                    if not hrp or not hum or hum.Health <= 0 then continue end
+                    table.insert(targets, { player = p, hrp = hrp })
+                end
+
+                if #targets == 0 then
+                    CreateCustomNotification("FARM 40 KILL ALL", "Sin targets disponibles", 2)
+                    _f40kaCooldown = false
+                    return
+                end
+
+                CreateCustomNotification("FARM 40 KILL ALL", "Kill All activado! Atacando " .. #targets .. " jugadores...", 3)
+
+                local _kaRunning = true
+                for _, entry in ipairs(targets) do
+                    if not _kaRunning then break end
+                    -- Refrescar knife si se perdio
+                    if not knife or not knife.Parent then
+                        knife = EquipKnife and EquipKnife()
+                        if not knife then break end
+                    end
+                    local hrp = entry.hrp
+                    if hrp and hrp.Parent then
+                        pcall(function() FireKnifeOnTarget(knife, hrp) end)
+                    end
+                    task.wait(0.08)
+                end
+
+                CreateCustomNotification("FARM 40 KILL ALL", "Kill All terminado", 2)
+
+                -- Cooldown de 10s para evitar re-activacion inmediata
+                task.wait(10)
+                _f40kaFired    = false
+                _f40kaCooldown = false
+            end)
+        end
+
+        CreateAuroraToggle(leftColumn, "Farm 40 Kill All Murder", function(en)
+            _f40kaEnabled  = en
+            _f40kaFired    = false
+            _f40kaCooldown = false
+            if _f40kaConn then pcall(function() _f40kaConn:Disconnect() end); _f40kaConn = nil end
+
+            if not en then
+                CreateCustomNotification("FARM 40 KILL ALL", "OFF", 1)
+                return
+            end
+
+            task.spawn(function()
+                -- Intentar conectar via CoinCollected remote (igual que End Round)
+                local CoinCollected = nil
+                pcall(function()
+                    local RS      = game:GetService("ReplicatedStorage")
+                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
+                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
+                    CoinCollected = Gameplay and (Gameplay:FindFirstChild("CoinCollected") or Gameplay:WaitForChild("CoinCollected", 8))
+                end)
+
+                if CoinCollected then
+                    _f40kaConn = CoinCollected.OnClientEvent:Connect(function(bagName, current, max)
+                        if not _f40kaEnabled then return end
+                        local cur = tonumber(current) or 0
+                        if cur >= 40 and not _f40kaFired and not _f40kaCooldown then
+                            _f40kaFired = true
+                            _f40doKillAll()
+                        end
+                    end)
+                    CreateCustomNotification("FARM 40 KILL ALL", "ON — esperando 40 monedas...", 2)
+                else
+                    -- Fallback: monitorear _inventoryCoins via Heartbeat
+                    local _hbTick = 0
+                    _f40kaConn = RunService.Heartbeat:Connect(function()
+                        if not _f40kaEnabled then return end
+                        _hbTick = _hbTick + 1; if _hbTick < 30 then return end; _hbTick = 0
+                        local cur = _inventoryCoins or 0
+                        if cur >= 40 and not _f40kaFired and not _f40kaCooldown then
+                            _f40kaFired = true
+                            _f40doKillAll()
+                        end
+                    end)
+                    CreateCustomNotification("FARM 40 KILL ALL", "ON (fallback) — monitoreo de monedas", 2)
+                end
+            end)
+        end, false)
+    end
+
+    -- =====================================================================
+    -- FARM 40 SHOOT MURDER
+    -- Al llegar a 40 monedas, hace TP detras del murder y dispara
+    -- (usa la misma logica de StartShootMurder de Combat)
+    -- =====================================================================
+    do
+        local _f40smEnabled  = false
+        local _f40smFired    = false
+        local _f40smConn     = nil
+        local _f40smCooldown = false
+
+        local function _f40doShootMurder()
+            if _f40smCooldown then return end
+            _f40smCooldown = true
+            task.spawn(function()
+                CreateCustomNotification("SHOOT MURDER 40", "40 monedas — disparando al Murder!", 2)
+
+                local char = LocalPlayer.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                if not hrp or not hum or hum.Health <= 0 then
+                    _f40smCooldown = false; _f40smFired = false; return
+                end
+
+                -- Guardar posicion para volver luego
+                local savedCF = hrp.CFrame
+
+                -- Restaurar personaje si estaba en modo farm
+                if hum.PlatformStand then
+                    hum.PlatformStand = false
+                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+                end
+                hrp.AssemblyLinearVelocity  = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+                task.wait(0.15)
+
+                -- Buscar gun equipada o en backpack
+                local gun = _findGunIn and _findGunIn(char)
+                if not gun then
+                    gun = _findGun and _findGun(char)
+                    if gun then
+                        pcall(function() hum:EquipTool(gun) end)
+                        task.wait(0.2)
+                        gun = _findGunIn and _findGunIn(char)
+                    end
+                end
+
+                -- Si tampoco hay gun, buscar GunDrop en workspace
+                if not gun then
+                    local playerChars = {}
+                    for _, p in ipairs(_cachedPlayers) do
+                        if p.Character then playerChars[p.Character] = true end
+                    end
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if (obj.Name == "GunDrop" or obj.Name == "Gun")
+                        and obj:IsA("Tool")
+                        and not playerChars[obj.Parent] then
+                            local gPart = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+                            if gPart then
+                                pcall(function()
+                                    gPart.CFrame = CFrame.new(hrp.Position)
+                                    firetouchinterest(hrp, gPart, 0)
+                                    firetouchinterest(hrp, gPart, 1)
+                                end)
+                                task.wait(0.1)
+                                gun = _findGunIn and _findGunIn(char)
+                            end
+                            if gun then break end
+                        end
+                    end
+                end
+
+                if not gun then
+                    CreateCustomNotification("SHOOT MURDER 40", "Sin gun disponible!", 2)
+                    pcall(function() hrp.CFrame = savedCF end)
+                    task.wait(8)
+                    _f40smFired    = false
+                    _f40smCooldown = false
+                    return
+                end
+
+                -- TP detras del murder y disparar (igual que StartShootMurder)
+                local murder = findMurderer and findMurderer()
+                if murder and murder.Character then
+                    local mHRP = murder.Character:FindFirstChild("HumanoidRootPart")
+                    local mHum = murder.Character:FindFirstChildOfClass("Humanoid")
+
+                    if mHRP and mHum and mHum.Health > 0
+                    and not (_G._betweenRounds)
+                    and mHRP.Position.Y <= 70 then
+
+                        -- TP detras del murder
+                        local mCF = mHRP.CFrame
+                        pcall(function()
+                            hrp.CFrame = CFrame.new(mCF.Position - mCF.LookVector * 4, mHRP.Position)
+                        end)
+                        task.wait(0.15)
+
+                        -- Disparar
+                        local shootRem = gun:FindFirstChild("Shoot")
+                        if not shootRem then
+                            for _, v in ipairs(gun:GetDescendants()) do
+                                if v:IsA("RemoteEvent") then shootRem = v; break end
+                            end
+                        end
+                        if not shootRem then
+                            shootRem = getShootRemote and getShootRemote(gun)
+                        end
+
+                        if shootRem and shootRem:IsA("RemoteEvent") then
+                            local graNode = hrp:FindFirstChild("GunRaycastAttachment")
+                            local graCF   = graNode and graNode.WorldCFrame or hrp.CFrame
+                            local tCF     = CFrame.new(mHRP.Position, mHRP.Position + Vector3.new(0,1,0))
+                            pcall(function() shootRem:FireServer(graCF, tCF) end)
+                            task.wait(0.05)
+                            pcall(function() shootRem:FireServer(graCF, tCF) end)
+                        else
+                            if _fireGunMM2 then
+                                _fireGunMM2(gun)
+                                task.wait(0.05)
+                                _fireGunMM2(gun)
+                            end
+                        end
+
+                        CreateCustomNotification("SHOOT MURDER 40", "Disparado -> " .. murder.Name, 2)
+                    else
+                        CreateCustomNotification("SHOOT MURDER 40", "Murder no encontrado o en lobby", 2)
+                    end
+                else
+                    CreateCustomNotification("SHOOT MURDER 40", "No hay Murder activo", 2)
+                end
+
+                -- Volver a la posicion del farm
+                task.wait(0.3)
+                pcall(function()
+                    hrp.CFrame = savedCF
+                    hrp.AssemblyLinearVelocity  = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                end)
+
+                -- Cooldown de 8s para no re-disparar inmediatamente
+                task.wait(8)
+                _f40smFired    = false
+                _f40smCooldown = false
+            end)
+        end
+
+        CreateAuroraToggle(leftColumn, "Farm 40 Shoot Murder", function(en)
+            _f40smEnabled  = en
+            _f40smFired    = false
+            _f40smCooldown = false
+            if _f40smConn then pcall(function() _f40smConn:Disconnect() end); _f40smConn = nil end
+
+            if not en then
+                CreateCustomNotification("SHOOT MURDER 40", "OFF", 1)
+                return
+            end
+
+            task.spawn(function()
+                -- Usar CoinCollected remote (igual que End Round y Farm 40 Kill All)
+                local CoinCollected = nil
+                pcall(function()
+                    local RS      = game:GetService("ReplicatedStorage")
+                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
+                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
+                    CoinCollected = Gameplay and (Gameplay:FindFirstChild("CoinCollected") or Gameplay:WaitForChild("CoinCollected", 8))
+                end)
+
+                if CoinCollected then
+                    _f40smConn = CoinCollected.OnClientEvent:Connect(function(bagName, current, max)
+                        if not _f40smEnabled then return end
+                        local cur = tonumber(current) or 0
+                        if cur >= 40 and not _f40smFired and not _f40smCooldown then
+                            _f40smFired = true
+                            _f40doShootMurder()
+                        end
+                    end)
+                    CreateCustomNotification("SHOOT MURDER 40", "ON — esperando 40 monedas...", 2)
+                else
+                    -- Fallback: monitorear _inventoryCoins via Heartbeat
+                    local _hbTick = 0
+                    _f40smConn = RunService.Heartbeat:Connect(function()
+                        if not _f40smEnabled then return end
+                        _hbTick = _hbTick + 1; if _hbTick < 30 then return end; _hbTick = 0
+                        local cur = _inventoryCoins or 0
+                        if cur >= 40 and not _f40smFired and not _f40smCooldown then
+                            _f40smFired = true
+                            _f40doShootMurder()
+                        end
+                    end)
+                    CreateCustomNotification("SHOOT MURDER 40", "ON (fallback) — monitoreo de monedas", 2)
+                end
+            end)
+        end, false)
+    end
+
+    -- =====================================================================
+    -- UNDER MAP FARM (monedas bajo el mapa)
+    -- =====================================================================
+    CreateSection(leftColumn, "", "UNDER MAP FARM", ThemeColors.Aurora3)
+
+    -- =====================================================================
+    -- AUTO PRESTIGE / XP FARM
+    -- =====================================================================
+    CreateSection(leftColumn, "", "AUTO PRESTIGE / XP", ThemeColors.Primary)
+
+    do
+        local _prestigeRunning = false
+        local _prestigeThread  = nil
+
+        -- Auto Prestige Loop
+        CreateAuroraToggle(leftColumn, "Auto Prestige Loop", function(en)
+            _prestigeRunning = en
+            if _prestigeThread then task.cancel(_prestigeThread); _prestigeThread = nil end
+            if not en then
+                CreateCustomNotification("AUTO PRESTIGE", "OFF", 1)
+                return
+            end
+            _prestigeThread = task.spawn(function()
+                CreateCustomNotification("AUTO PRESTIGE", "ON — buscando boton de prestige...", 2)
+                while _prestigeRunning do
+                    pcall(function()
+                        -- Buscar el ProximityPrompt o boton de prestige en el lobby
+                        for _, obj in ipairs(workspace:GetDescendants()) do
+                            local n = obj.Name:lower()
+                            if n:find("prestige") then
+                                if obj:IsA("ProximityPrompt") then
+                                    fireproximityprompt(obj)
+                                elseif obj:IsA("BasePart") or obj:IsA("TextButton") then
+                                    local pp = obj:FindFirstChildOfClass("ProximityPrompt")
+                                    if pp then fireproximityprompt(pp) end
+                                end
+                            end
+                        end
+                        -- Tambien intentar via click en ClickDetector
+                        for _, obj in ipairs(workspace:GetDescendants()) do
+                            local n = obj.Name:lower()
+                            if n:find("prestige") then
+                                local cd = obj:FindFirstChildOfClass("ClickDetector")
+                                if cd then fireclickdetector(cd) end
+                            end
+                        end
+                    end)
+                    task.wait(1)
+                end
+            end)
+            CreateCustomNotification("AUTO PRESTIGE", "ON", 2)
+        end, false)
+    end
+
+    -- =====================================================================
+    -- COLUMNA DERECHA: STATS Y HERRAMIENTAS
+    -- =====================================================================
+
+    -- INFO DE FARM
+    CreateSection(rightColumn, "", "FARM INFO", ThemeColors.Aurora1)
+
+    do
+        local _infoFrame = Instance.new("Frame", rightColumn)
+        _infoFrame.Size = UDim2.new(1, -8, 0, 0)
+        _infoFrame.AutomaticSize = Enum.AutomaticSize.Y
+        _infoFrame.BackgroundColor3 = ThemeColors.Background
+        _infoFrame.BackgroundTransparency = 0.85
+        _infoFrame.BorderSizePixel = 0
+        Instance.new("UICorner", _infoFrame).CornerRadius = UDim.new(0, 8)
+        Instance.new("UIStroke", _infoFrame).Color = ThemeColors.Aurora1
+        local _infoPad = Instance.new("UIPadding", _infoFrame)
+        _infoPad.PaddingLeft = UDim.new(0, 10)
+        _infoPad.PaddingRight = UDim.new(0, 10)
+        _infoPad.PaddingTop = UDim.new(0, 8)
+        _infoPad.PaddingBottom = UDim.new(0, 8)
+        local _infoLayout = Instance.new("UIListLayout", _infoFrame)
+        _infoLayout.Padding = UDim.new(0, 4)
+        _infoLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local function _makeInfoRow(lbl, valInit)
+            local row = Instance.new("Frame", _infoFrame)
+            row.Size = UDim2.new(1, 0, 0, 18)
+            row.BackgroundTransparency = 1
+            row.BorderSizePixel = 0
+            local l = Instance.new("TextLabel", row)
+            l.Size = UDim2.new(0.55, 0, 1, 0)
+            l.BackgroundTransparency = 1
+            l.Text = lbl
+            l.FontFace = Font.fromEnum(Enum.Font.Montserrat)
+            l.TextSize = 11
+            l.TextColor3 = ThemeColors.TextSecondary
+            l.TextXAlignment = Enum.TextXAlignment.Left
+            local v = Instance.new("TextLabel", row)
+            v.Size = UDim2.new(0.45, 0, 1, 0)
+            v.Position = UDim2.new(0.55, 0, 0, 0)
+            v.BackgroundTransparency = 1
+            v.Text = valInit
+            v.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+            v.TextSize = 11
+            v.TextColor3 = ThemeColors.Aurora2
+            v.TextXAlignment = Enum.TextXAlignment.Right
+            return v
+        end
+
+        local coinCountLbl  = _makeInfoRow("Monedas en mapa:", "...")
+        local playerCoinsLbl = _makeInfoRow("Tus monedas:", "...")
+        local roundLbl      = _makeInfoRow("Estado ronda:", "...")
+
+        -- Actualizar info cada 2s
+        local _hbInfoT = 0
+        local _infoConn = RunService.Heartbeat:Connect(function()
+            _hbInfoT = _hbInfoT + 1; if _hbInfoT < 120 then return end; _hbInfoT = 0
+            -- Contar monedas en mapa
+            pcall(function()
+                local count = 0
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    local n = obj.Name:lower()
+                    if obj:IsA("BasePart") and (n == "coin" or n == "goldcoin" or n:find("coin")) then
+                        count = count + 1
+                    end
+                end
+                coinCountLbl.Text = tostring(count)
+            end)
+            -- Monedas del jugador (leaderstats)
+            pcall(function()
+                local ls = LocalPlayer:FindFirstChild("leaderstats")
+                if ls then
+                    local coins = ls:FindFirstChild("Coins") or ls:FindFirstChild("Gold") or ls:FindFirstChild("Money")
+                    if coins then playerCoinsLbl.Text = tostring(coins.Value) end
+                end
+            end)
+            -- Estado del round
+            pcall(function()
+                if _G._visualRoundOver then
+                    roundLbl.Text = "Fin de ronda"
+                else
+                    local rc = _roleCache
+                    if rc and rc.murderer then
+                        roundLbl.Text = "En juego"
+                    else
+                        roundLbl.Text = "Lobby/Espera"
+                    end
+                end
+            end)
+        end)
+    end
+
+    -- ANTI AFK
+    CreateSection(rightColumn, "", "ANTI AFK", ThemeColors.Aurora4)
+
+    do
+        local _antiAfkEnabled = false
+        local _antiAfkConn    = nil
+
+        CreateAuroraToggle(rightColumn, "Anti AFK", function(en)
+            _antiAfkEnabled = en
+            if _antiAfkConn then _antiAfkConn:Disconnect(); _antiAfkConn = nil end
+            if not en then
+                CreateCustomNotification("ANTI AFK", "OFF", 1)
+                return
+            end
+            local _afkTick = 0
+            _antiAfkConn = RunService.Heartbeat:Connect(function()
+                if not _antiAfkEnabled then return end
+                _afkTick = _afkTick + 1; if _afkTick < 1200 then return end; _afkTick = 0
+                -- Simular movimiento minimo para resetear el timer AFK
+                pcall(function()
+                    local vjs = game:GetService("VirtualInputManager")
+                    if vjs then
+                        vjs:SendKeyEvent(true,  Enum.KeyCode.W, false, game)
+                        task.wait(0.1)
+                        vjs:SendKeyEvent(false, Enum.KeyCode.W, false, game)
+                    end
+                end)
+                -- Fallback: mover la camara un pixel
+                pcall(function()
+                    local cam = workspace.CurrentCamera
+                    if cam then cam.CFrame = cam.CFrame * CFrame.Angles(0, 0.001, 0) end
+                end)
+            end)
+            CreateCustomNotification("ANTI AFK", "ON", 2)
+        end, false)
+    end
+
+    -- AUTO REJOIN AL FIN DE RONDA
+    CreateSection(rightColumn, "", "AUTO REJOIN", ThemeColors.Aurora3)
+
+    do
+        local _arEnabled  = false
+        local _arConn     = nil
+        local _arDelay    = 3
+
+        CreateAuroraToggle(rightColumn, "Auto Rejoin", function(en)
+            _arEnabled = en
+            if _arConn then pcall(function() _arConn:Disconnect() end); _arConn = nil end
+            if not en then
+                CreateCustomNotification("AUTO REJOIN", "OFF", 1)
+                return
+            end
+            task.spawn(function()
+                -- Escuchar fin de ronda via remote
+                local RoundOver = nil
+                pcall(function()
+                    local RS      = game:GetService("ReplicatedStorage")
+                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
+                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
+                    RoundOver = Gameplay and (Gameplay:FindFirstChild("RoundOver") or Gameplay:WaitForChild("RoundOver", 5))
+                end)
+
+                if RoundOver then
+                    _arConn = RoundOver.OnClientEvent:Connect(function()
+                        if not _arEnabled then return end
+                        CreateCustomNotification("AUTO REJOIN", "Fin de ronda — rejoineando en " .. _arDelay .. "s...", _arDelay)
+                        task.wait(_arDelay)
+                        if not _arEnabled then return end
+                        pcall(function()
+                            local TeleportService = game:GetService("TeleportService")
+                            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+                        end)
+                    end)
+                    CreateCustomNotification("AUTO REJOIN", "ON — esperando fin de ronda", 2)
+                else
+                    -- Fallback: detectar via _G._visualRoundOver
+                    local _wasInRound = false
+                    _arConn = RunService.Heartbeat:Connect(function()
+                        if not _arEnabled then return end
+                        local inRound = not _G._visualRoundOver
+                        if _wasInRound and _G._visualRoundOver then
+                            _wasInRound = false
+                            task.spawn(function()
+                                CreateCustomNotification("AUTO REJOIN", "Fin de ronda — rejoineando en " .. _arDelay .. "s...", _arDelay)
+                                task.wait(_arDelay)
+                                if not _arEnabled then return end
+                                pcall(function()
+                                    local TeleportService = game:GetService("TeleportService")
+                                    TeleportService:Teleport(game.PlaceId, LocalPlayer)
+                                end)
+                            end)
+                        end
+                        if inRound then _wasInRound = true end
+                    end)
+                    CreateCustomNotification("AUTO REJOIN", "ON (fallback)", 2)
+                end
+            end)
+        end, false)
+
+        CreateSlider(rightColumn, "Delay Rejoin (seg)", 1, 15, _arDelay, function(v)
+            _arDelay = v
+        end)
+    end
+
+    -- REJOIN MANUAL
+    _makeTPButton("Rejoin Manual", function()
+        pcall(function()
+            local TeleportService = game:GetService("TeleportService")
+            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+        end)
+        CreateCustomNotification("FARM", "Rejoineando...", 2)
+    end, rightColumn)
+end
 
 function CreateExclusiveTab()
     ClearContent()
@@ -40665,8 +41795,12 @@ function CreateCombatTab()
                 if child:IsA("RemoteEvent") then pcall(function() child:FireServer(targetHrp) end) end
             end
         end)
-        -- Metodo 3 (Activate) eliminado: rompía la animacion slash del jugador.
-        -- Los metodos 1 y 2 (RemoteEvents) son suficientes para matar en el servidor.
+        -- Metodo 3: Activar el tool directamente
+        pcall(function()
+            local hum = char:FindFirstChildOfClass("Humanoid")  -- FIX: variable local, no global
+            if hum then hum:EquipTool(knife) end
+            knife:Activate()
+        end)
     end
 
     -- OPT: cache de HumanoidRootParts por player — se actualiza solo cuando
@@ -47961,7 +49095,7 @@ Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
 -- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
 -- El UIScale que se aplica abajo se encarga de que entre en pantalla.
-mainFrame.Size = UDim2.new(0, 580, 0, 400)
+mainFrame.Size = UDim2.new(0, 730, 0, 430)
 
 -- ==============================================================
 -- FONDO AZUL SLIDO  sin aurora animada, sin pulse dot
@@ -48988,10 +50122,10 @@ particles = {}
     sideLayout.Padding = UDim.new(0, 6)
     sideLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
-    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE"}
+    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "FARM"}
     local tabFunctions = {CreateMainTab, CreateWorldTab, CreateVisualsTab, CreatePremiumTab, CreateExclusiveTab, CreateCombatTab,
         function() CreateUseTab() end,  -- late binding: CreateUseTab se define despues de esta tabla
-}
+        CreateFarmTab}
     local tabIcons = {
         "rbxassetid://104322605423609",  -- MAIN
         "rbxassetid://105507739661539",  -- WORLD
@@ -49000,6 +50134,7 @@ particles = {}
         "rbxassetid://103503754018914",  -- SETTINGS
         "rbxassetid://134041781822125",  -- COMBAT
         "rbxassetid://106189149164668",  -- USE
+        "rbxassetid://104322605423609",  -- FARM (usa mismo icono que MAIN como fallback)
     }
 
     local sideButtons = {}
