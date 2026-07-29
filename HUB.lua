@@ -28389,54 +28389,55 @@ function CreateWorldUI_QuickFlingButtons()
                     _flingLastSafePos = _fmSafePos
                 end
 
-                -- Sticky force fling al murder durante 5 segundos
+                -- == STICKY FLING por 5 segundos -- misma logica exacta que _stickyFlingOne ==
+                -- Nos metemos en el cuerpo del murder y aplicamos velocidad en NUESTRO HRP
                 local _RS = game:GetService("RunService")
                 local _launched = false
                 local _fmConn
                 local _timeStart = tick()
-                local _safePos = myHRP.CFrame
+
+                local function _fmZeroSelf()
+                    for _p = 1, 3 do
+                        pcall(function()
+                            myHRP.AssemblyLinearVelocity  = Vector3.zero
+                            myHRP.AssemblyAngularVelocity = Vector3.zero
+                            myHRP.Velocity    = Vector3.zero
+                            myHRP.RotVelocity = Vector3.zero
+                        end)
+                    end
+                end
 
                 pcall(function() myHum.PlatformStand = true end)
 
                 _fmConn = _RS.Heartbeat:Connect(function()
-                    -- Condiciones de salida
-                    if not _qfState.flingMurderActive then
-                        _launched = true
-                        if _fmConn then _fmConn:Disconnect(); _fmConn = nil end
-                        return
-                    end
-                    if tick() - _timeStart >= 5 then
-                        _launched = true
-                        if _fmConn then _fmConn:Disconnect(); _fmConn = nil end
-                        return
-                    end
                     if not tHRP or not tHRP.Parent then
                         _launched = true
+                        _fmZeroSelf()
                         if _fmConn then _fmConn:Disconnect(); _fmConn = nil end
                         return
                     end
-                    if tHRP.AssemblyLinearVelocity.Magnitude > 120 then
+                    local tVel = tHRP.AssemblyLinearVelocity.Magnitude
+                    if tVel > 120 or tick() - _timeStart >= 5 then
                         _launched = true
+                        _fmZeroSelf()
+                        pcall(function() myHum.PlatformStand = false end)
                         if _fmConn then _fmConn:Disconnect(); _fmConn = nil end
                         return
                     end
-
-                    -- Renovar safePos si seguimos en un lugar valido
-                    if myHRP and myHRP.Parent then
-                        local _cy = myHRP.Position.Y
-                        if _cy > 2 and _cy < 800 then
-                            _safePos = myHRP.CFrame
-                        end
+                    if not _qfState.flingMurderActive then
+                        _launched = true
+                        _fmZeroSelf()
+                        if _fmConn then _fmConn:Disconnect(); _fmConn = nil end
+                        return
                     end
-
-                    -- Atomic ghost fling: TP al murder -> velocidad -> volver
+                    -- Meterme en el cuerpo del murder y aplicar velocidad en MI HRP
                     pcall(function()
                         myHRP.CFrame = tHRP.CFrame
-                        tHRP.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
-                        tHRP.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
-                        myHRP.CFrame                  = _safePos
-                        myHRP.AssemblyLinearVelocity  = Vector3.zero
-                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        myChar:SetPrimaryPartCFrame(tHRP.CFrame)
+                    end)
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
+                        myHRP.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
                     end)
                 end)
 
@@ -28448,17 +28449,19 @@ function CreateWorldUI_QuickFlingButtons()
                 until _launched or _waited > 6
 
                 if _fmConn then _fmConn:Disconnect(); _fmConn = nil end
+                -- Triple zereo post-loop igual que _stickyFlingOne
                 pcall(function()
-                    local c2 = LocalPlayer.Character
-                    local h2 = c2 and c2:FindFirstChildOfClass("Humanoid")
-                    if h2 then h2.PlatformStand = false end
-                    if myHRP and myHRP.Parent then
-                        myHRP.CFrame = _safePos
-                        myHRP.AssemblyLinearVelocity  = Vector3.zero
-                        myHRP.AssemblyAngularVelocity = Vector3.zero
-                    end
+                    myHRP.AssemblyLinearVelocity  = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                    myHRP.Velocity    = Vector3.zero
+                    myHRP.RotVelocity = Vector3.zero
+                    myHum.PlatformStand = false
                 end)
-
+                task.wait(0.05)
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                end)
                 -- Limpiar estado
                 _qfState.flingMurderActive = false
                 FlingSystem.flingMurder    = false
@@ -28593,53 +28596,55 @@ function CreateWorldUI_QuickFlingButtons()
                 _gunDropped = _gunDropped or obj
             end)
 
-            -- == STICKY FLING por 5 segundos (misma logica que flingAll) ==
+            -- == STICKY FLING por 5 segundos -- misma logica exacta que _stickyFlingOne ==
+            -- Nos metemos en el cuerpo del portador y aplicamos velocidad en NUESTRO HRP
             local _RS = game:GetService("RunService")
             local _launched = false
             local _sgFlingConn
             local _timeStart = tick()
-            local _safePos = myHRP.CFrame
+
+            local function _sgZeroSelf()
+                for _p = 1, 3 do
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.zero
+                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        myHRP.Velocity    = Vector3.zero
+                        myHRP.RotVelocity = Vector3.zero
+                    end)
+                end
+            end
 
             pcall(function() myHum.PlatformStand = true end)
 
             _sgFlingConn = _RS.Heartbeat:Connect(function()
-                if not _qfState.stealGunActive then
-                    _launched = true
-                    if _sgFlingConn then _sgFlingConn:Disconnect(); _sgFlingConn = nil end
-                    return
-                end
-                if tick() - _timeStart >= 5 then
-                    _launched = true
-                    if _sgFlingConn then _sgFlingConn:Disconnect(); _sgFlingConn = nil end
-                    return
-                end
                 if not tHRP or not tHRP.Parent then
                     _launched = true
+                    _sgZeroSelf()
                     if _sgFlingConn then _sgFlingConn:Disconnect(); _sgFlingConn = nil end
                     return
                 end
-                if tHRP.AssemblyLinearVelocity.Magnitude > 120 then
+                local tVel = tHRP.AssemblyLinearVelocity.Magnitude
+                if tVel > 120 or tick() - _timeStart >= 5 then
                     _launched = true
+                    _sgZeroSelf()
+                    pcall(function() myHum.PlatformStand = false end)
                     if _sgFlingConn then _sgFlingConn:Disconnect(); _sgFlingConn = nil end
                     return
                 end
-
-                -- Renovar safePos frame a frame
-                if myHRP and myHRP.Parent then
-                    local _cy = myHRP.Position.Y
-                    if _cy > 2 and _cy < 800 then
-                        _safePos = myHRP.CFrame
-                    end
+                if not _qfState.stealGunActive then
+                    _launched = true
+                    _sgZeroSelf()
+                    if _sgFlingConn then _sgFlingConn:Disconnect(); _sgFlingConn = nil end
+                    return
                 end
-
-                -- Atomic ghost fling: TP al portador -> velocidad -> volver
+                -- Meterme en el cuerpo del portador y aplicar velocidad en MI HRP
                 pcall(function()
                     myHRP.CFrame = tHRP.CFrame
-                    tHRP.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
-                    tHRP.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
-                    myHRP.CFrame                  = _safePos
-                    myHRP.AssemblyLinearVelocity  = Vector3.zero
-                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                    myChar:SetPrimaryPartCFrame(tHRP.CFrame)
+                end)
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
+                    myHRP.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
                 end)
             end)
 
@@ -28652,71 +28657,62 @@ function CreateWorldUI_QuickFlingButtons()
 
             if _sgFlingConn then _sgFlingConn:Disconnect(); _sgFlingConn = nil end
             pcall(function() _dropConn:Disconnect() end)
-
+            -- Triple zereo post-loop igual que _stickyFlingOne
             pcall(function()
-                local c2 = LocalPlayer.Character
-                local h2 = c2 and c2:FindFirstChildOfClass("Humanoid")
-                if h2 then h2.PlatformStand = false end
-                if myHRP and myHRP.Parent then
-                    myHRP.CFrame = _safePos
-                    myHRP.AssemblyLinearVelocity  = Vector3.zero
-                    myHRP.AssemblyAngularVelocity = Vector3.zero
-                end
+                myHRP.AssemblyLinearVelocity  = Vector3.zero
+                myHRP.AssemblyAngularVelocity = Vector3.zero
+                myHRP.Velocity    = Vector3.zero
+                myHRP.RotVelocity = Vector3.zero
+                myHum.PlatformStand = false
             end)
-
-            -- Intentar agarrar la gun si fue dropeada durante el fling
-            local grabbed = _sgLocalHasGun()
-            if not grabbed then
-                local function _grabDrop(obj)
-                    if not obj or not obj.Parent then return false end
-                    local p = obj.Parent
-                    if p and p:IsA("Model") and p:FindFirstChildOfClass("Humanoid") then return false end
-                    local myC = LocalPlayer.Character
-                    local myH = myC and myC:FindFirstChild("HumanoidRootPart")
-                    local myM = myC and myC:FindFirstChildOfClass("Humanoid")
-                    if not myH or not myM or myM.Health <= 0 then return false end
-                    local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
-                    if not handle then return false end
-                    pcall(function() handle.CFrame = CFrame.new(myH.Position) end)
-                    pcall(function() obj:PivotTo(CFrame.new(myH.Position)) end)
-                    task.wait(0.05)
-                    pcall(function()
-                        firetouchinterest(myH, handle, 0)
-                        task.wait(0.03)
-                        firetouchinterest(myH, handle, 1)
-                    end)
-                    task.wait(0.08)
-                    return _sgLocalHasGun()
-                end
-                if _gunDropped then grabbed = _grabDrop(_gunDropped) end
-                if not grabbed then
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if obj:IsA("Tool") and _SG_DROP_NAMES[obj.Name] then
-                            local p = obj.Parent
-                            if not (p and p:IsA("Model") and p:FindFirstChildOfClass("Humanoid")) then
-                                grabbed = _grabDrop(obj)
-                                if grabbed then break end
-                            end
-                        end
-                    end
-                end
-            end
-
-            if grabbed then
-                CreateCustomNotification("STEAL GUN", "Gun robada de " .. currentGunHolder.Name .. "!", 2.5)
-            else
-                CreateCustomNotification("STEAL GUN", "Fling terminado - no se pudo robar la gun", 2)
-            end
-
-            -- Limpiar estado
+            task.wait(0.05)
+            pcall(function()
+                myHRP.AssemblyLinearVelocity  = Vector3.zero
+                myHRP.AssemblyAngularVelocity = Vector3.zero
+            end)
+            -- Limpiar estado ANTES del TP para que nada bloquee
             StealGunSystem.enabled  = false
             _qfState.stealGunActive = false
             _flingActive            = false
             _flingReturning         = false
 
-            -- TP al mapa usando la deteccion de World tab
-            task.wait(0.2)
-            TeleportToMap()
+            -- TP al mapa inmediatamente (en spawn separado para que nunca quede bloqueado)
+            task.spawn(function()
+                task.wait(0.15)
+                TeleportToMap()
+                CreateCustomNotification("STEAL GUN", "Fling terminado - volviendo al mapa...", 2)
+            end)
+
+            -- Intentar agarrar la gun en paralelo (no bloquea el TP)
+            task.spawn(function()
+                local grabbed = _sgLocalHasGun()
+                if not grabbed and _gunDropped then
+                    local myC = LocalPlayer.Character
+                    local myH = myC and myC:FindFirstChild("HumanoidRootPart")
+                    local obj = _gunDropped
+                    if obj and obj.Parent and myH then
+                        local p = obj.Parent
+                        if not (p and p:IsA("Model") and p:FindFirstChildOfClass("Humanoid")) then
+                            local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+                            if handle then
+                                pcall(function() handle.CFrame = CFrame.new(myH.Position) end)
+                                pcall(function() obj:PivotTo(CFrame.new(myH.Position)) end)
+                                task.wait(0.05)
+                                pcall(function()
+                                    firetouchinterest(myH, handle, 0)
+                                    task.wait(0.03)
+                                    firetouchinterest(myH, handle, 1)
+                                end)
+                                task.wait(0.05)
+                                grabbed = _sgLocalHasGun()
+                            end
+                        end
+                    end
+                end
+                if grabbed then
+                    CreateCustomNotification("STEAL GUN", "Gun robada de " .. currentGunHolder.Name .. "!", 2.5)
+                end
+            end)
         end)
     end)
 end
