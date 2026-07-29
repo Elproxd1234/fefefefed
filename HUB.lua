@@ -7606,7 +7606,7 @@ _G._bindablePosSave   = _G._bindablePosSave   or {}
 -- Cada vez que se crea un bindable se registra; al destruirse se libera
 _G._bindableActiveSlots = _G._bindableActiveSlots or {}  -- label -> slotIndex asignado
 
-_BIND_CS    = 55   -- tamaño del circulo
+_BIND_CS    = 44   -- tamaño del circulo
 _BIND_GAP   = 12
 _BIND_COLS  = 10  -- muchas columnas para que queden en fila arriba
 _BIND_PAD_X = 12
@@ -7750,8 +7750,8 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
     fill.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
     fill.AnchorPoint            = Vector2.new(0.5, 0.5)
     fill.Position               = UDim2.fromScale(0.5, 0.5)
-    fill.BackgroundColor3       = Color3.fromRGB(30, 30, 30)
-    fill.BackgroundTransparency = 0.35
+    fill.BackgroundColor3       = ThemeColors.Aurora3
+    fill.BackgroundTransparency = 0.45
     fill.BorderSizePixel        = 0
     fill.Text                   = ""
     fill.AutoButtonColor        = false
@@ -7761,7 +7761,7 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
 
     -- Borde gris claro (igual al Shoot Murderer)
     local fillStroke = Instance.new("UIStroke", fill)
-    fillStroke.Color           = Color3.fromRGB(160, 160, 160)
+    fillStroke.Color           = ThemeColors.Aurora3
     fillStroke.Thickness       = 2
     fillStroke.Transparency    = 0.1
     fillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -7859,10 +7859,10 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
     end
 
     -- Colores del hub (igual que CreateButton)
-    local _C_IDLE_BG    = Color3.fromRGB(30, 30, 30)
-    local _C_HOVER_BG   = Color3.fromRGB(60, 60, 60)
-    local _C_CLICK_BG   = Color3.fromRGB(100, 100, 100)
-    local _C_TEXT_IDLE  = Color3.fromRGB(220, 220, 220)
+    local _C_IDLE_BG    = ThemeColors.Aurora3
+    local _C_HOVER_BG   = ThemeColors.Aurora1
+    local _C_CLICK_BG   = ThemeColors.Primary
+    local _C_TEXT_IDLE  = Color3.fromRGB(255, 255, 255)
     local _C_TEXT_WHITE = Color3.fromRGB(255, 255, 255)
 
     -- Hover
@@ -7882,12 +7882,12 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
     fill.MouseButton1Down:Connect(function()
         if _moved then return end
         TweenService:Create(fill, TweenInfo.new(0.07), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
-        TweenService:Create(fillStroke, TweenInfo.new(0.07), {Color=Color3.fromRGB(220,220,220)}):Play()
+        TweenService:Create(fillStroke, TweenInfo.new(0.07), {Color=ThemeColors.Primary}):Play()
     end)
     fill.MouseButton1Up:Connect(function()
         if _moved then return end
-        TweenService:Create(fill, TweenInfo.new(0.15), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.35}):Play()
-        TweenService:Create(fillStroke, TweenInfo.new(0.15), {Color=Color3.fromRGB(160,160,160)}):Play()
+        TweenService:Create(fill, TweenInfo.new(0.15), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
+        TweenService:Create(fillStroke, TweenInfo.new(0.15), {Color=ThemeColors.Aurora3}):Play()
         if callback then task.spawn(function() callback(_capyIsActive) end) end
     end)
 
@@ -7896,10 +7896,10 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
         _capyIsActive = on
         if on then
             TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
-            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0, Thickness=2.5, Color=Color3.fromRGB(200,200,200)}):Play()
+            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0, Thickness=2.5, Color=ThemeColors.Primary}):Play()
         else
-            TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.35}):Play()
-            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0.1, Thickness=2, Color=Color3.fromRGB(160,160,160)}):Play()
+            TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
+            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0.1, Thickness=2, Color=ThemeColors.Aurora3}):Play()
         end
     end
     fill.SetActiveState  = function(self, on) _setActive(on) end
@@ -50557,7 +50557,10 @@ particles = {}
         _oval.AnchorPoint = Vector2.new(0.5, 0.5)
         _oval.Position = UDim2.new(0.5, 0, 0.5, 0)
         _oval.Size = UDim2.new(0, 0, 0, 0)
-        _oval.BackgroundColor3 = ThemeColors.Primary
+        local _loaderAccent = (Themes[currentThemeName] and Themes[currentThemeName].Aurora3)
+                           or (Themes[currentThemeName] and Themes[currentThemeName].Primary)
+                           or ThemeColors.Accent
+        _oval.BackgroundColor3 = _loaderAccent
         _oval.BackgroundTransparency = 0.35
         _oval.BorderSizePixel = 0
         _oval.ZIndex = 5
@@ -50566,7 +50569,7 @@ particles = {}
         _ovalCorner.CornerRadius = UDim.new(0.5, 0)   -- ovalo perfecto
 
         local _ovalStroke = Instance.new("UIStroke", _oval)
-        _ovalStroke.Color = ThemeColors.Primary
+        _ovalStroke.Color = _loaderAccent
         _ovalStroke.Thickness = 3
         _ovalStroke.Transparency = 0.1
         _ovalStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -50622,12 +50625,12 @@ particles = {}
         end)
         -- Fondo del ovalo mantiene semitransparencia (se ve el juego detras)
         TweenService:Create(_oval, TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-            BackgroundColor3 = ThemeColors.Primary,
+            BackgroundColor3 = _loaderAccent,
             BackgroundTransparency = 0.35,
         }):Play()
         -- Borde pasa de azul brillante a color del hub
         TweenService:Create(_ovalStroke, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-            Color = ThemeColors.Primary,
+            Color = _loaderAccent,
             Thickness = 2.0,
             Transparency = 0.3,
         }):Play()
