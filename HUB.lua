@@ -20060,11 +20060,24 @@ FarmSystem = {
         FarmSystem._lastCoinRefresh = 0
     end,
 
+    -- FIX LAG: cachear partes del char para no llamar GetDescendants en cada NC()
+    _ncCache = nil,
+    _ncCacheChar = nil,
     NC = function()
         local char = LocalPlayer.Character
         if not char then return end
-        for _, p in pairs(char:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide = false end
+        -- Reconstruir cache solo si el personaje cambio
+        if FarmSystem._ncCacheChar ~= char or not FarmSystem._ncCache then
+            FarmSystem._ncCacheChar = char
+            FarmSystem._ncCache = {}
+            for _, p in pairs(char:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    FarmSystem._ncCache[#FarmSystem._ncCache+1] = p
+                end
+            end
+        end
+        for _, p in ipairs(FarmSystem._ncCache) do
+            if p.Parent then p.CanCollide = false end
         end
     end,
 
@@ -20137,11 +20150,18 @@ FarmSystem = {
         lastClean = tick()
         lastDelay = tick()
 
+        local _fConnTick = 0
+        local _fConnNcTick = 0
         F.conn = RunService.Heartbeat:Connect(function()
             if not F.on then
                 F.conn:Disconnect(); F.conn = nil
                 return
             end
+
+            -- FIX LAG PC: throttle principal a ~30Hz (cada 2 frames)
+            _fConnTick = _fConnTick + 1
+            if _fConnTick < 2 then return end
+            _fConnTick = 0
 
             local char = LocalPlayer.Character
             local hrp  = char and char:FindFirstChild("HumanoidRootPart")
@@ -20166,7 +20186,12 @@ FarmSystem = {
             hrp.AssemblyLinearVelocity  = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
 
-            FarmSystem.NC()
+            -- FIX LAG: NC solo cada 6 frames (~10Hz) -- CanCollide no necesita 60Hz
+            _fConnNcTick = _fConnNcTick + 1
+            if _fConnNcTick >= 3 then
+                _fConnNcTick = 0
+                FarmSystem.NC()
+            end
 
             -- OPT: os.clock() > tick() en loops calientes
             local _fcNow = os.clock()
@@ -21653,11 +21678,16 @@ function _restoreBelowMapPose(char)
             pcall(function() _gBelowFloatConn:Disconnect() end)
             _gBelowFloatConn = nil
         end
+        local _gbfTick = 0
         _gBelowFloatConn = RunService.Heartbeat:Connect(function()
             if not _gFarmRunning or _autoFarmMode ~= "BelowMap" then
                 if _gBelowFloatConn then _gBelowFloatConn:Disconnect(); _gBelowFloatConn = nil end
                 return
             end
+            -- FIX LAG: throttle a 10Hz (cada 6 frames) -- PlatformStand no necesita 60Hz
+            _gbfTick = _gbfTick + 1
+            if _gbfTick < 6 then return end
+            _gbfTick = 0
             local c   = LocalPlayer.Character
             local h   = c and c:FindFirstChildOfClass("Humanoid")
             if h and h.Health > 0 then
@@ -21824,30 +21854,51 @@ function StartAutoFarm()
     local player = LocalPlayer
 
     -- Loop principal: solo firetouchinterest, sin mover el personaje en absoluto
+    -- FIX LAG PC: cache de monedas + throttle agresivo
+    local _farmNcTick = 0
+    local _farmCoinCache = nil
+    local _farmCoinCacheTs = 0
     _farmNcConn = RunService.Heartbeat:Connect(function()
         if not _gFarmRunning then return end
+        -- FIX: throttle a ~20Hz (cada 3 frames a 60fps) -- no necesita frame-perfect
+        _farmNcTick = _farmNcTick + 1
+        if _farmNcTick < 3 then return end
+        _farmNcTick = 0
+
         local character = player.Character
         if not character then return end
         local rootPart = character:FindFirstChild("HumanoidRootPart")
         if not rootPart then return end
 
-        -- Buscar moneda mas cercana
-        local best, bestD = nil, math.huge
-        local mansion = workspace:FindFirstChild("Mansion2")
-        if mansion and mansion:FindFirstChild("CoinContainer") then
-            for _, v in pairs(mansion.CoinContainer:GetDescendants()) do
-                if v.Name == "MainCoin" and v:IsA("BasePart") and not _farmBlacklist[v] then
-                    local d = (v.Position - rootPart.Position).Magnitude
-                    if d < bestD then bestD = d; best = v end
+        -- FIX LAG: cachear lista de monedas cada 0.8s en vez de llamar GetDescendants cada frame
+        local now = os.clock()
+        if not _farmCoinCache or (now - _farmCoinCacheTs) > 0.8 then
+            _farmCoinCache = {}
+            local mansion = workspace:FindFirstChild("Mansion2")
+            local container = (mansion and mansion:FindFirstChild("CoinContainer"))
+                or workspace:FindFirstChild("CoinContainer")
+            if container then
+                for _, v in pairs(container:GetDescendants()) do
+                    if v.Name == "MainCoin" and v:IsA("BasePart") then
+                        _farmCoinCache[#_farmCoinCache+1] = v
+                    end
+                end
+            else
+                for _, v in pairs(workspace:GetDescendants()) do
+                    if v.Name == "MainCoin" and v:IsA("BasePart") then
+                        _farmCoinCache[#_farmCoinCache+1] = v
+                    end
                 end
             end
+            _farmCoinCacheTs = now
         end
-        if not best then
-            for _, v in pairs(workspace:GetDescendants()) do
-                if v.Name == "MainCoin" and v:IsA("BasePart") and not _farmBlacklist[v] then
-                    local d = (v.Position - rootPart.Position).Magnitude
-                    if d < bestD then bestD = d; best = v end
-                end
+
+        -- Buscar moneda mas cercana del cache
+        local best, bestD = nil, math.huge
+        for _, v in ipairs(_farmCoinCache) do
+            if v.Parent and not _farmBlacklist[v] then
+                local d = (v.Position - rootPart.Position).Magnitude
+                if d < bestD then bestD = d; best = v end
             end
         end
 
@@ -32984,39 +33035,46 @@ function CreateWorldTab()
         end
     end
 
-    -- LAG FIX: task.wait() entre grupos de safeCall cede el hilo al renderer
-    -- evitando el freeze visible al cargar el hub por primera vez.
+    -- LAG FIX: task.wait(0) entre grupos de safeCall cede el hilo al renderer
+    -- evitando el freeze visible al cargar el hub por primera vez en PC.
     _safeCall(CreateWorldUI_GameUtilities,             "GameUtilities")
     _safeCall(CreateWorldUI_BombJump, "BombJump")
     _safeCall(CreateWorldUI_GoldBomb, "GoldBomb")
     -- FakeBombCustomization e InfinityJump eliminados del World tab
+    task.wait(0)  -- ceder al renderer entre grupos
     _safeCall(CreateWorldUI_Emotes, "Emotes")
     _safeCall(CreateWorldUI_GotoPlayers, "GotoPlayers")
     _safeCall(CreateWorldUI_Spectate, "Spectate")
     _safeCall(CreateWorldUI_FakeLag, "FakeLag")
+    task.wait(0)
     _safeCall(CreateWorldUI_OrbitPlayer, "OrbitPlayer")
     _safeCall(CreateWorldUI_FlingOrbit, "FlingOrbit")
     _safeCall(CreateWorldUI_QuickFlingButtons, "QuickFlingButtons")
 
     -- FreezeCharacter eliminado del World tab
+    task.wait(0)
     _safeCall(CreateWorldUI_AutoVote, "AutoVote")
     _safeCall(CreateWorldUI_TeleportUniversal, "TeleportUniversal")
     _safeCall(CreateWorldUI_ProximityPromptSection, "ProximityPromptSection")
     _safeCall(CreateWorldUI_SpinSection, "SpinSection")
     -- ClutchSection y TeleportAboveMap eliminados del World tab
+    task.wait(0)
     _safeCall(CreateWorldUI_VoidTeleport, "VoidTeleport")
     _safeCall(CreateWorldUI_ExposeRoles, "ExposeRoles")
     _safeCall(CreateWorldUI_TeleportLobby, "TeleportLobby")
     _safeCall(CreateWorldUI_TeleportVotingMap, "TeleportVotingMap")
     _safeCall(CreateWorldUI_TeleportToMap, "TeleportToMap")
+    task.wait(0)
     _safeCall(CreateWorldUI_StretchScreen, "StretchScreen")
     _safeCall(CreateWorldUI_AutoGrabGun, "AutoGrabGun")
     _safeCall(CreateWorldUI_Performance, "Performance")
     CreateWorldUI_InformationBindables()
+    task.wait(0)
     _safeCall(CreateWorldUI_RompGun,                   "RompGun")
     _safeCall(CreateWorldUI_SendToChat,                "SendToChat")
     _safeCall(CreateWorldUI_AutoPrestige,              "AutoPrestige")
     _safeCall(CreateWorldUI_Teleports,                 "Teleports")
+    task.wait(0)
     _safeCall(CreateWorldUI_TeleportToVoid,            "TeleportToVoid")
     _safeCall(CreateWorldUI_TeleportSheriffBindable,   "TeleportSheriffBindable")
     _safeCall(CreateWorldUI_TeleportMurdererBindable,  "TeleportMurdererBindable")
@@ -35000,17 +35058,28 @@ function CreateFarmTab()
                 return
             end
 
-            -- Noclip constante en Stepped (throttle: cada 6 frames para reducir lag)
+            -- Noclip constante en Stepped (throttle: cada 12 frames para reducir lag)
+            -- FIX LAG PC: aumentado throttle de 6 a 12 y cacheando partes del char
             local _afNoclipTick = 0
+            local _afNcCache = nil
+            local _afNcCacheChar = nil
             _afNoclipConn = RunService.Stepped:Connect(function()
                 if not _afEnabled then return end
                 _afNoclipTick = _afNoclipTick + 1
-                if _afNoclipTick < 6 then return end
+                if _afNoclipTick < 12 then return end
                 _afNoclipTick = 0
                 local char = LocalPlayer.Character
                 if not char then return end
-                for _, part in pairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then
+                -- FIX LAG: cache de partes
+                if _afNcCacheChar ~= char or not _afNcCache then
+                    _afNcCacheChar = char
+                    _afNcCache = {}
+                    for _, part in pairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then _afNcCache[#_afNcCache+1] = part end
+                    end
+                end
+                for _, part in ipairs(_afNcCache) do
+                    if part.Parent then
                         pcall(function() part.CanCollide = false end)
                     end
                 end
@@ -35032,9 +35101,13 @@ function CreateFarmTab()
                 end
             end)
 
-            -- Anti-spin en RenderStepped
+            -- Anti-spin en RenderStepped (throttle a 15Hz -- cada 4 frames)
+            local _afSpinTick = 0
             _afAntiSpinConn = RunService.RenderStepped:Connect(function()
                 if not _afEnabled then return end
+                _afSpinTick = _afSpinTick + 1
+                if _afSpinTick < 4 then return end
+                _afSpinTick = 0
                 local char = LocalPlayer.Character
                 if not char then return end
                 local hrp = char:FindFirstChild("HumanoidRootPart")
