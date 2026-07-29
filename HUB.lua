@@ -50321,7 +50321,7 @@ particles = {}
     local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "FARM", "EMOTES"}
     local tabFunctions = {CreateMainTab, CreateWorldTab, CreateVisualsTab, CreatePremiumTab, CreateExclusiveTab, CreateCombatTab,
         function() CreateUseTab() end,  -- late binding: CreateUseTab se define despues de esta tabla
-        CreateFarmTab, CreateEmotesTab}
+        CreateFarmTab, function() CreateEmotesTab() end}  -- late binding: CreateEmotesTab se define despues
     local tabIcons = {
         "rbxassetid://104322605423609",  -- MAIN
         "rbxassetid://105507739661539",  -- WORLD
@@ -52718,12 +52718,13 @@ end
 -- == PESTAÑA EMOTES (zerq emotes)
 -- ================================================================
 function CreateEmotesTab()
-    ClearContent()
+    -- NO llamar ClearContent() - el sistema de cache de tabs ya maneja esto
+    -- contentContainer en este punto apunta al tabFrame del cache
 
     -- ---- Colores del hub (cyan/acento) ----
-    local HUB_COLOR   = Color3.fromRGB(0, 195, 255)   -- cian principal del hub
-    local HUB_DARK    = Color3.fromRGB(0, 120, 180)   -- cian oscuro para hover
-    local TEXT_COLOR  = Color3.fromRGB(255, 255, 255)
+    local HUB_COLOR  = Color3.fromRGB(0, 195, 255)
+    local HUB_DARK   = Color3.fromRGB(0, 120, 180)
+    local TEXT_COLOR = Color3.fromRGB(255, 255, 255)
 
     -- ---- Lista de emotes ----
     local _emotes = {
@@ -52750,29 +52751,25 @@ function CreateEmotesTab()
     -- ---- Helper: ejecutar emote ----
     local function _playEmote(emoteId)
         local char = LocalPlayer and LocalPlayer.Character
-        if not char then
-            CreateCustomNotification("EMOTES", "Sin personaje", 2)
-            return
-        end
+        if not char then CreateCustomNotification("EMOTES", "Sin personaje", 2); return end
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum then
-            CreateCustomNotification("EMOTES", "Sin humanoid", 2)
-            return
-        end
-        -- Intentar via AnimateScript primero (MM2 style)
+        if not hum then CreateCustomNotification("EMOTES", "Sin humanoid", 2); return end
         local ok = false
+        -- Metodo 1: AnimationController / Animator
         pcall(function()
-            local animScript = char:FindFirstChild("Animate") or char:FindFirstChild("AnimationScript")
-            if animScript then
-                local emoteFunc = animScript:FindFirstChild("PlayEmote")
-                if emoteFunc then
-                    emoteFunc:Fire(emoteId)
-                    ok = true
-                end
+            local animator = hum:FindFirstChildOfClass("Animator")
+            if not animator then
+                animator = Instance.new("Animator")
+                animator.Parent = hum
             end
+            local anim = Instance.new("Animation")
+            anim.AnimationId = emoteId
+            local track = animator:LoadAnimation(anim)
+            track:Play()
+            ok = true
         end)
+        -- Metodo 2: hum:LoadAnimation fallback
         if not ok then
-            -- Fallback: cargar Animation y reproducir
             pcall(function()
                 local anim = Instance.new("Animation")
                 anim.AnimationId = emoteId
@@ -52782,84 +52779,96 @@ function CreateEmotesTab()
             end)
         end
         if ok then
-            CreateCustomNotification("EMOTES", "Reproduciendo emote", 1.5)
+            CreateCustomNotification("EMOTES", "▶ " .. emoteId:gsub("rbxassetid://", ""), 1.5)
         else
-            CreateCustomNotification("EMOTES", "No se pudo reproducir el emote", 2)
+            CreateCustomNotification("EMOTES", "No se pudo reproducir", 2)
         end
     end
 
-    -- ---- ScrollingFrame principal ----
-    local scroll = Instance.new("ScrollingFrame", contentContainer)
-    scroll.Name                    = "EmotesScroll"
-    scroll.Size                    = UDim2.new(1, 0, 1, 0)
-    scroll.Position                = UDim2.new(0, 0, 0, 0)
-    scroll.BackgroundTransparency  = 1
-    scroll.BorderSizePixel         = 0
-    scroll.ScrollBarThickness      = 4
-    scroll.ScrollBarImageColor3    = HUB_COLOR
-    scroll.CanvasSize              = UDim2.new(0, 0, 0, 0)
-    scroll.AutomaticCanvasSize     = Enum.AutomaticSize.Y
-    scroll.ClipsDescendants        = true
+    -- ---- Contenedor raiz dentro del tabFrame del cache ----
+    local root = Instance.new("Frame")
+    root.Name                   = "EmotesRoot"
+    root.Size                   = UDim2.new(1, 0, 1, 0)
+    root.Position               = UDim2.new(0, 0, 0, 0)
+    root.BackgroundTransparency = 1
+    root.BorderSizePixel        = 0
+    root.Parent                 = contentContainer
 
-    -- ---- Grid layout 2 columnas ----
-    local grid = Instance.new("UIGridLayout", scroll)
-    grid.CellSize      = UDim2.new(0.47, 0, 0, 90)
-    grid.CellPadding   = UDim2.new(0.02, 0, 0, 10)
+    -- ---- ScrollingFrame ----
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Name                   = "EmotesScroll"
+    scroll.Size                   = UDim2.new(1, 0, 1, 0)
+    scroll.Position               = UDim2.new(0, 0, 0, 0)
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel        = 0
+    scroll.ScrollBarThickness     = 5
+    scroll.ScrollBarImageColor3   = HUB_COLOR
+    scroll.CanvasSize             = UDim2.new(0, 0, 0, 0)
+    scroll.AutomaticCanvasSize    = Enum.AutomaticSize.Y
+    scroll.ClipsDescendants       = true
+    scroll.Parent                 = root
+
+    -- ---- Grid 2 columnas ----
+    local grid = Instance.new("UIGridLayout")
+    grid.CellSize      = UDim2.new(0.46, 0, 0, 85)
+    grid.CellPadding   = UDim2.new(0.02, 0, 0, 8)
     grid.SortOrder     = Enum.SortOrder.LayoutOrder
     grid.FillDirection = Enum.FillDirection.Horizontal
+    grid.Parent        = scroll
 
-    local pad = Instance.new("UIPadding", scroll)
-    pad.PaddingTop    = UDim.new(0, 12)
-    pad.PaddingBottom = UDim.new(0, 12)
-    pad.PaddingLeft   = UDim.new(0, 10)
-    pad.PaddingRight  = UDim.new(0, 10)
+    local pad = Instance.new("UIPadding")
+    pad.PaddingTop    = UDim.new(0, 10)
+    pad.PaddingBottom = UDim.new(0, 10)
+    pad.PaddingLeft   = UDim.new(0, 8)
+    pad.PaddingRight  = UDim.new(0, 8)
+    pad.Parent        = scroll
 
-    -- ---- Crear botón por emote ----
+    -- ---- Botones de emotes ----
     for idx, emote in ipairs(_emotes) do
-        local btn = Instance.new("TextButton", scroll)
-        btn.Name                  = "EmoteBtn_" .. idx
-        btn.Text                  = ""
-        btn.AutoButtonColor       = false
-        btn.BackgroundColor3      = HUB_COLOR
-        btn.BackgroundTransparency= 0.15
-        btn.BorderSizePixel       = 0
-        btn.LayoutOrder           = idx
+        local btn = Instance.new("TextButton")
+        btn.Name                   = "EmoteBtn_" .. idx
+        btn.Text                   = ""
+        btn.AutoButtonColor        = false
+        btn.BackgroundColor3       = HUB_COLOR
+        btn.BackgroundTransparency = 0.2
+        btn.BorderSizePixel        = 0
+        btn.LayoutOrder            = idx
+        btn.Parent                 = scroll
 
         local corner = Instance.new("UICorner", btn)
         corner.CornerRadius = UDim.new(0, 12)
 
         local stroke = Instance.new("UIStroke", btn)
-        stroke.Color     = HUB_COLOR
-        stroke.Thickness = 2
-        stroke.Transparency = 0.3
+        stroke.Color        = HUB_COLOR
+        stroke.Thickness    = 2
+        stroke.Transparency = 0.4
 
-        -- Etiqueta centrada
         local lbl = Instance.new("TextLabel", btn)
-        lbl.Size                  = UDim2.new(1, -6, 1, 0)
-        lbl.Position              = UDim2.new(0, 3, 0, 0)
-        lbl.BackgroundTransparency= 1
-        lbl.Text                  = emote.name
-        lbl.TextColor3            = TEXT_COLOR
-        lbl.FontFace              = Font.fromEnum(Enum.Font.GothamBold)
-        lbl.TextSize              = 14
-        lbl.TextWrapped           = true
-        lbl.TextXAlignment        = Enum.TextXAlignment.Center
-        lbl.TextYAlignment        = Enum.TextYAlignment.Center
-        lbl.TextStrokeTransparency= 0.6
-        lbl.ZIndex                = 2
+        lbl.Size                   = UDim2.new(1, -8, 1, 0)
+        lbl.Position               = UDim2.new(0, 4, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text                   = emote.name
+        lbl.TextColor3             = TEXT_COLOR
+        lbl.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
+        lbl.TextSize               = 13
+        lbl.TextWrapped            = true
+        lbl.TextXAlignment         = Enum.TextXAlignment.Center
+        lbl.TextYAlignment         = Enum.TextYAlignment.Center
+        lbl.TextStrokeTransparency = 0.5
+        lbl.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
+        lbl.ZIndex                 = 2
 
-        -- Efectos hover / click
         local _ti = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         btn.MouseEnter:Connect(function()
             TweenService:Create(btn, _ti, {BackgroundTransparency = 0, BackgroundColor3 = HUB_DARK}):Play()
             TweenService:Create(stroke, _ti, {Transparency = 0}):Play()
         end)
         btn.MouseLeave:Connect(function()
-            TweenService:Create(btn, _ti, {BackgroundTransparency = 0.15, BackgroundColor3 = HUB_COLOR}):Play()
-            TweenService:Create(stroke, _ti, {Transparency = 0.3}):Play()
+            TweenService:Create(btn, _ti, {BackgroundTransparency = 0.2, BackgroundColor3 = HUB_COLOR}):Play()
+            TweenService:Create(stroke, _ti, {Transparency = 0.4}):Play()
         end)
         btn.MouseButton1Down:Connect(function()
-            TweenService:Create(btn, _ti, {BackgroundTransparency = 0.4}):Play()
+            TweenService:Create(btn, _ti, {BackgroundTransparency = 0.5}):Play()
         end)
         btn.MouseButton1Up:Connect(function()
             TweenService:Create(btn, _ti, {BackgroundTransparency = 0}):Play()
@@ -52870,7 +52879,7 @@ function CreateEmotesTab()
         end)
     end
 
-    CreateCustomNotification("EMOTES", "Pestaña de emotes cargada (" .. #_emotes .. " emotes)", 2)
+    CreateCustomNotification("EMOTES", "Emotes listos (" .. #_emotes .. ")", 1.5)
 end
 -- ================================================================
 -- == FIN PESTAÑA EMOTES
