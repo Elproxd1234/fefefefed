@@ -27352,15 +27352,13 @@ end
 
 function CreateWorldUI_Emotes()
     local EMOTES = {
-        { name = "Zerq Emote 1", key = "Z", keyCode = Enum.KeyCode.Z, id = "92587731065850" },
-        { name = "Zerq Emote 2", key = "X", keyCode = Enum.KeyCode.X, id = "10714061912" },
-        { name = "Zerq Emote 3", key = "C", keyCode = Enum.KeyCode.C, id = "76510079095692" },
-        { name = "Zerq Emote 4", key = "V", keyCode = Enum.KeyCode.V, id = "10714347256" },
-        { name = "Zerq Emote 5", key = "B", keyCode = Enum.KeyCode.B, id = "10714352626" },
-        { name = "Zerq Emote 6", key = "N", keyCode = Enum.KeyCode.N, id = "10921258489" },
-        { name = "Zerq Emote 7", key = "M", keyCode = Enum.KeyCode.M, id = "10214314957" },
-        { name = "Zerq Emote 8", key = "Q", keyCode = Enum.KeyCode.Q, id = "10713981723" },
-        { name = "Zerq Emote 9", key = "E", keyCode = Enum.KeyCode.E, id = "14352340648" },
+        { name = "Sit",      key = "Z", keyCode = Enum.KeyCode.Z, id = "2431845940" },
+        { name = "Ninja",    key = "X", keyCode = Enum.KeyCode.X, id = "2431864798" },
+        { name = "Dab",      key = "C", keyCode = Enum.KeyCode.C, id = "2445521505" },
+        { name = "Floss",    key = "V", keyCode = Enum.KeyCode.V, id = "2452938820" },
+        { name = "Headless", key = "B", keyCode = Enum.KeyCode.B, id = "2513664073" },
+        { name = "Zombie",   key = "N", keyCode = Enum.KeyCode.N, id = "2513692312" },
+        { name = "Zen",      key = "M", keyCode = Enum.KeyCode.M, id = "2431812646" },
     }
 
     for _, emote in ipairs(EMOTES) do
@@ -31070,6 +31068,70 @@ function CreateWorldUI_GameUtilities()
             end
         end
 
+        local function _restoreAllPets()
+            for _, char in ipairs(workspace:GetChildren()) do
+                local pet = char:FindFirstChild("Pet")
+                if pet then
+                    local body = pet:FindFirstChild("Body")
+                    if body then
+                        pcall(function() body.LocalTransparencyModifier = 0 end)
+                        pcall(function() body.Transparency = 0 end)
+                        for _, desc in ipairs(body:GetDescendants()) do
+                            if desc:IsA("BasePart") then
+                                pcall(function() desc.LocalTransparencyModifier = 0 end)
+                                pcall(function() desc.Transparency = 0 end)
+                            end
+                            if desc:IsA("ParticleEmitter") or desc:IsA("Fire") or desc:IsA("Trail") or desc:IsA("Beam") then
+                                pcall(function() desc.Enabled = true end)
+                            end
+                            if desc:IsA("BillboardGui") then
+                                pcall(function() desc.Enabled = true end)
+                            end
+                        end
+                    end
+                end
+                for _, child in ipairs(char:GetChildren()) do
+                    if child.Name == "Pet" and child:IsA("StringValue") then
+                        local body2 = child:FindFirstChild("Body")
+                        if body2 then
+                            pcall(function() body2.LocalTransparencyModifier = 0 end)
+                            pcall(function() body2.Transparency = 0 end)
+                            for _, desc in ipairs(body2:GetDescendants()) do
+                                if desc:IsA("BasePart") then
+                                    pcall(function() desc.LocalTransparencyModifier = 0 end)
+                                    pcall(function() desc.Transparency = 0 end)
+                                end
+                                if desc:IsA("ParticleEmitter") or desc:IsA("Fire") or desc:IsA("Trail") or desc:IsA("Beam") then
+                                    pcall(function() desc.Enabled = true end)
+                                end
+                                if desc:IsA("BillboardGui") then
+                                    pcall(function() desc.Enabled = true end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj.Name == "Body" and obj.Parent and obj.Parent.Name == "Pet" then
+                    pcall(function() obj.LocalTransparencyModifier = 0 end)
+                    pcall(function() obj.Transparency = 0 end)
+                    for _, desc in ipairs(obj:GetDescendants()) do
+                        if desc:IsA("BasePart") then
+                            pcall(function() desc.LocalTransparencyModifier = 0 end)
+                            pcall(function() desc.Transparency = 0 end)
+                        end
+                        if desc:IsA("ParticleEmitter") or desc:IsA("Fire") or desc:IsA("Trail") or desc:IsA("Beam") then
+                            pcall(function() desc.Enabled = true end)
+                        end
+                        if desc:IsA("BillboardGui") then
+                            pcall(function() desc.Enabled = true end)
+                        end
+                    end
+                end
+            end
+        end
+
         CreateAuroraToggle(leftColumn, "Auto Remove Pets", function(en)
             _petRemEnabled = en
             if _petRemConn    then pcall(function() _petRemConn:Disconnect()    end); _petRemConn    = nil end
@@ -31094,6 +31156,7 @@ function CreateWorldUI_GameUtilities()
                 end)
  CreateCustomNotification("AUTO REMOVE", "Pets ocultos", 2)
             else
+                _restoreAllPets()
  CreateCustomNotification("AUTO REMOVE", "Pets visibles de nuevo", 2)
             end
         end, false)
@@ -31148,6 +31211,37 @@ function CreateWorldUI_GameUtilities()
             end)
         end
 
+        local function _restoreAllTraps()
+            for _, obj in ipairs(workspace:GetChildren()) do
+                if obj:FindFirstChild("TrapVisual") and obj:FindFirstChild("PlacedPlayer") then
+                    local tv = obj:FindFirstChild("TrapVisual")
+                    if tv then
+                        pcall(function() tv.Transparency = 0 end)
+                        pcall(function() tv.LocalTransparencyModifier = 0 end)
+                        pcall(function() tv.CanCollide = true end)
+                    end
+                    for _, desc in ipairs(obj:GetDescendants()) do
+                        if desc:IsA("BillboardGui") then
+                            pcall(function() desc.Enabled = true end)
+                        end
+                        if desc:IsA("BasePart") then
+                            pcall(function() desc.LocalTransparencyModifier = 0 end)
+                            pcall(function() desc.CanCollide = true end)
+                        end
+                    end
+                end
+            end
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj.Name == "TrapVisual" and obj:IsA("BasePart") then
+                    pcall(function()
+                        obj.LocalTransparencyModifier = 0
+                        obj.Transparency = 0
+                        obj.CanCollide = true
+                    end)
+                end
+            end
+        end
+
         CreateAuroraToggle(leftColumn, "Auto Remove Traps", function(en)
             _trapRemEnabled = en
             if _trapRemConn then pcall(function() _trapRemConn:Disconnect() end); _trapRemConn = nil end
@@ -31179,6 +31273,7 @@ function CreateWorldUI_GameUtilities()
                 end)
  CreateCustomNotification("AUTO REMOVE", "Trampas ocultas", 2)
             else
+                _restoreAllTraps()
  CreateCustomNotification("AUTO REMOVE", "Trampas visibles de nuevo", 2)
             end
         end, false)
@@ -50976,38 +51071,18 @@ function CreateEmotesTab()
     local ES = _G._emoteState
 
     local EMOTES = {
-        { name = "Default Dance",  id = "rbxassetid://507771019"  },
-        { name = "Wave",           id = "rbxassetid://507770239"  },
-        { name = "Point",          id = "rbxassetid://507770453"  },
-        { name = "Cheer",          id = "rbxassetid://507770677"  },
-        { name = "Laugh",          id = "rbxassetid://507770818"  },
-        { name = "Dance 2",        id = "rbxassetid://507776043"  },
-        { name = "Dance 3",        id = "rbxassetid://507777268"  },
-        { name = "Stadium Dance",  id = "rbxassetid://1654235468" },
-        { name = "Samba",          id = "rbxassetid://1654220869" },
-        { name = "Headbang",       id = "rbxassetid://2326985806" },
-        { name = "Robot",          id = "rbxassetid://2327032509" },
-        { name = "Breakdance",     id = "rbxassetid://3360689775" },
-        { name = "Gangnam Style",  id = "rbxassetid://3360686446" },
-        { name = "Floss",          id = "rbxassetid://4187501413" },
-        { name = "C Walk",         id = "rbxassetid://4187492070" },
-        { name = "Griddy",         id = "rbxassetid://10921008575"},
-        { name = "Wobble",         id = "rbxassetid://7717786309" },
-        { name = "Shuffle",        id = "rbxassetid://6716167174" },
-        { name = "Backflip",       id = "rbxassetid://3360694880" },
-        { name = "Bboy Freeze",    id = "rbxassetid://4187498982" },
+        { name = "Zerq 1",  id = "rbxassetid://92587731065850" },
+        { name = "Zerq 2",  id = "rbxassetid://10714061912"    },
+        { name = "Zerq 3",  id = "rbxassetid://76510079095692" },
+        { name = "Zerq 4",  id = "rbxassetid://10714347256"    },
+        { name = "Zerq 5",  id = "rbxassetid://10714352626"    },
+        { name = "Zerq 6",  id = "rbxassetid://10921258489"    },
+        { name = "Zerq 7",  id = "rbxassetid://10214314957"    },
+        { name = "Zerq 8",  id = "rbxassetid://10713981723"    },
+        { name = "Zerq 9",  id = "rbxassetid://14352340648"    },
     }
 
-    local POSES = {
-        { name = "Salute",         id = "rbxassetid://3360692827" },
-        { name = "T-Pose",         id = "rbxassetid://3360693119" },
-        { name = "Shrug",          id = "rbxassetid://3360690148" },
-        { name = "Air Guitar",     id = "rbxassetid://4187511026" },
-        { name = "Levitate",       id = "rbxassetid://7717694100" },
-        { name = "Tilt",           id = "rbxassetid://507770847"  },
-        { name = "Swim",           id = "rbxassetid://1108307876" },
-        { name = "Sit",            id = "rbxassetid://2506281703" },
-    }
+    local POSES = {}
 
     local function _getAnimator()
         local char = LocalPlayer.Character
