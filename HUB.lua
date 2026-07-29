@@ -52749,13 +52749,30 @@ function CreateEmotesTab()
     }
 
     -- ---- Helper: ejecutar emote ----
+    local _activeTrack = nil  -- track activo actual
     local function _playEmote(emoteId)
         local char = LocalPlayer and LocalPlayer.Character
         if not char then CreateCustomNotification("EMOTES", "Sin personaje", 2); return end
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum then CreateCustomNotification("EMOTES", "Sin humanoid", 2); return end
+
+        -- Detener track anterior
+        if _activeTrack then
+            pcall(function() _activeTrack:Stop(0) end)
+            _activeTrack = nil
+        end
+        -- Detener TODAS las animaciones activas del humanoid
+        pcall(function()
+            local animator = hum:FindFirstChildOfClass("Animator")
+            if animator then
+                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                    pcall(function() track:Stop(0) end)
+                end
+            end
+        end)
+
         local ok = false
-        -- Metodo 1: AnimationController / Animator
+        -- Metodo 1: Animator (preferido)
         pcall(function()
             local animator = hum:FindFirstChildOfClass("Animator")
             if not animator then
@@ -52765,7 +52782,9 @@ function CreateEmotesTab()
             local anim = Instance.new("Animation")
             anim.AnimationId = emoteId
             local track = animator:LoadAnimation(anim)
+            track.Priority = Enum.AnimationPriority.Action4
             track:Play()
+            _activeTrack = track
             ok = true
         end)
         -- Metodo 2: hum:LoadAnimation fallback
@@ -52774,12 +52793,14 @@ function CreateEmotesTab()
                 local anim = Instance.new("Animation")
                 anim.AnimationId = emoteId
                 local track = hum:LoadAnimation(anim)
+                track.Priority = Enum.AnimationPriority.Action4
                 track:Play()
+                _activeTrack = track
                 ok = true
             end)
         end
         if ok then
-            CreateCustomNotification("EMOTES", "▶ " .. emoteId:gsub("rbxassetid://", ""), 1.5)
+            CreateCustomNotification("EMOTES", "▶ Reproduciendo emote", 1.2)
         else
             CreateCustomNotification("EMOTES", "No se pudo reproducir", 2)
         end
