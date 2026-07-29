@@ -3437,11 +3437,9 @@ end
 
 function _fluidGrabGun(child)
     -- -- Throttle global ----------------------------------------------
-    -- FIX: solo throttlear si el ultimo grab fue EXITOSO (return true al final)
-    -- Si fallo, permitir reintento inmediato para no perder la gun
     local now = os.clock()
-    if now - _grabGunLastTime < 0.05 then return false end
-    -- No actualizar _grabGunLastTime aqui; se actualiza al final si tuvo exito
+    if now - _grabGunLastTime < 0.05 then return false end  -- FIX v5: 0.08->0.05s, mas responsivo
+    _grabGunLastTime = now
 
     local char = LocalPlayer.Character
     local hrp  = char and char:FindFirstChild("HumanoidRootPart")
@@ -3480,10 +3478,6 @@ function _fluidGrabGun(child)
     -- Movemos la parte de la gun al HRP usando CFrame client-side.
     -- El servidor detecta la proximidad y da la gun al jugador.
     -- El personaje NUNCA se teletransporta.
-
-    -- FIX: actualizar timestamp AHORA (antes de los intentos) para evitar
-    -- llamadas paralelas simultaneas que compitan entre si
-    _grabGunLastTime = now
 
     -- PASO 1: EquipTool directo (funciona si ya esta en backpack/workspace)
     if child:IsA("Tool") then
@@ -3530,43 +3524,17 @@ function _fluidGrabGun(child)
     if _hasGun() then return true end
 
     -- PASO 5: EquipTool forzado si la gun sigue en workspace
-    if child:IsA("Tool") and child.Parent then
-        pcall(function() hum:EquipTool(child) end)
-        if _hasGun() then return true end
-    end
-
-    -- PASO 6 (FIX): blink del HRP a la gun como ultimo recurso
-    -- Solo si no se agarro con ningun metodo anterior
     task.defer(function()
         if _hasGun() then return end
-        local char2 = LocalPlayer.Character
-        local hrp2  = char2 and char2:FindFirstChild("HumanoidRootPart")
-        local hum2  = char2 and char2:FindFirstChildOfClass("Humanoid")
-        if not hrp2 or not hum2 or hum2.Health <= 0 then
-            -- Restaurar posicion original si no se pudo agarrar
-            pcall(function() part.CFrame = origCF; part.Anchored = origAnch end)
-            return
+        if child:IsA("Tool") and child.Parent then
+            pcall(function() hum:EquipTool(child) end)
         end
-        local savedCF = hrp2.CFrame
+        if _hasGun() then return end
+        -- Restaurar posicion original si no se agarro (limpieza)
         pcall(function()
-            hrp2.CFrame = CFrame.new(part.Position + Vector3.new(0, 1.5, 0))
-            hrp2.AssemblyLinearVelocity = Vector3.zero
+            part.CFrame   = origCF
+            part.Anchored = origAnch
         end)
-        task.wait(0)
-        pcall(function()
-            firetouchinterest(hrp2, part, 0)
-            firetouchinterest(hrp2, part, 1)
-        end)
-        task.wait(0)
-        pcall(function()
-            hrp2.CFrame = savedCF
-            hrp2.AssemblyLinearVelocity  = Vector3.zero
-            hrp2.AssemblyAngularVelocity = Vector3.zero
-        end)
-        if not _hasGun() then
-            -- No se agarro: restaurar posicion de la gun
-            pcall(function() part.CFrame = origCF; part.Anchored = origAnch end)
-        end
     end)
 
     return true
@@ -28843,31 +28811,15 @@ function CreateWorldUI_AutoGrabGun()
         end
         GrabState._cachedDrop = nil
 
-        -- FIX: buscar GunDrop y nombres alternativos (antes solo "GunDrop" exacto)
-        local function _isLooseGun(obj)
-            if not obj or not obj:IsA("Tool") then return false end
-            local n = obj.Name:lower()
-            return obj.Name == "GunDrop" or obj.Name == "DropGun"
-                or obj.Name == "SheriffGun" or obj.Name == "HeroGun"
-                or n == "gun" or n:find("revolver") or n:find("sheriff")
-        end
-        local function _notInAnyPlayer(obj)
-            for _, p in pairs(_cachedPlayers) do
-                local c = p.Character; local b = p.Backpack
-                if (c and obj:IsDescendantOf(c)) or (b and obj:IsDescendantOf(b)) then
-                    return false
-                end
-            end
-            return true
-        end
-
+        -- 2. Solo hijos directos de workspace -- SOLO GunDrop (nombre exacto)
         for _, obj in ipairs(workspace:GetChildren()) do
-            if _isLooseGun(obj) and _notInAnyPlayer(obj) then
+            if obj.Name == "GunDrop" then
                 GrabState._cachedDrop = obj; return obj
             end
+            -- GunDrop dentro de un Model (un nivel)
             if obj:IsA("Model") then
                 for _, child in ipairs(obj:GetChildren()) do
-                    if _isLooseGun(child) and _notInAnyPlayer(child) then
+                    if child.Name == "GunDrop" then
                         GrabState._cachedDrop = child; return child
                     end
                 end
@@ -28907,8 +28859,7 @@ function CreateWorldUI_AutoGrabGun()
         if GrabState._agBusy then return end
         GrabState._agBusy = true
         task.spawn(function()
-            -- FIX: usar xpcall para garantizar que _agBusy siempre se libera
-            local _ok, _err = xpcall(function()
+            pcall(function()
                 local char = LocalPlayer.Character
                 local root = char and char:FindFirstChild("HumanoidRootPart")
                 local hum  = char and char:FindFirstChildOfClass("Humanoid")
@@ -28918,24 +28869,7 @@ function CreateWorldUI_AutoGrabGun()
                 if (_roleCache.localRole or "") == "Murderer" then return end
                 if _findGun(char) then return end
 
-                -- FIX: buscar tambien por nombres alternativos (SheriffGun, Gun, HeroGun)
                 local gunDrop = _agFindGunDrop()
-                if not gunDrop then
-                    -- Fallback: buscar en workspace con nombres extendidos
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if obj:IsA("Tool") then
-                            local n = obj.Name:lower()
-                            if n == "gundrop" or n == "gun" or n:find("sheriff") or n:find("revolver") or n:find("hero") then
-                                local inPlayer = false
-                                for _, p in pairs(_cachedPlayers) do
-                                    local c = p.Character; local b = p.Backpack
-                                    if (c and obj:IsDescendantOf(c)) or (b and obj:IsDescendantOf(b)) then inPlayer = true; break end
-                                end
-                                if not inPlayer then gunDrop = obj; break end
-                            end
-                        end
-                    end
-                end
                 if not gunDrop then return end
                 local gPart = _agGetPart(gunDrop)
                 if not gPart then return end
@@ -28995,8 +28929,7 @@ function CreateWorldUI_AutoGrabGun()
                     GrabState._cachedDrop = nil
                     CreateCustomNotification("AUTO GRAB GUN", "Gun agarrada!", 2)
                 end
-            end, function(err) warn("[AUTO GRAB GUN] error: " .. tostring(err)) end)
-            -- FIX: liberar _agBusy siempre, incluso si xpcall fallo
+            end)
             task.wait(0.02)
             GrabState._agBusy = false
         end)
@@ -29020,13 +28953,8 @@ function CreateWorldUI_AutoGrabGun()
             GrabState._agConn = workspace.DescendantAdded:Connect(function(obj)
                 if not GrabState.autoEnabled then return end
                 if _findGun(LocalPlayer.Character) then return end
-                -- FIX: aceptar GunDrop, Gun, SheriffGun, HeroGun, Revolver (antes solo GunDrop exacto)
-                if not obj:IsA("Tool") then return end
-                local n = obj.Name:lower()
-                local isGun = (obj.Name == "GunDrop" or n == "gun" or n:find("sheriff")
-                    or n:find("revolver") or n:find("herog") or obj.Name == "HeroGun"
-                    or obj.Name == "SheriffGun" or obj.Name == "DropGun")
-                if not isGun then return end
+                -- Solo GunDrop (nombre exacto)
+                if obj.Name ~= "GunDrop" then return end
                 do
                     local inPlayer = false
                     for _, p in pairs(_cachedPlayers) do
@@ -29036,45 +28964,26 @@ function CreateWorldUI_AutoGrabGun()
                         end
                     end
                     if not inPlayer then
-                        GrabState._cachedDrop = obj
-                        -- Intentar primero _fluidGrabGun (sin blink del HRP)
-                        -- y como respaldo _agTryGrab si falla
-                        task.spawn(function()
-                            local ok = pcall(_fluidGrabGun, obj)
-                            if not ok or not _findGun(LocalPlayer.Character) then
-                                task.wait(0.05)
-                                pcall(_agTryGrab)
-                            end
-                        end)
+                        -- FIX: usar _fluidGrabGun -- mueve la GUN al player, no al reves
+                        -- Sin blink del HRP -> sin lag visible para el jugador
+                        task.spawn(function() pcall(_fluidGrabGun, obj) end)
                     end
                 end
             end)
 
-            -- FIX: Heartbeat fallback reducido a 0.2s (antes 0.5s, muy lento)
+            -- Heartbeat fallback cada 0.5s
             if GrabState._hbConn then GrabState._hbConn:Disconnect() end
             local _hbT = 0
             GrabState._hbConn = RunService.Heartbeat:Connect(function(dt)
                 if not GrabState.autoEnabled then return end
-                if _G._visualRoundOver then return end
+                if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
                 _hbT = _hbT + dt
-                if _hbT < 0.2 then return end  -- FIX: 0.5 -> 0.2s, mas responsivo
+                if _hbT < 0.5 then return end
                 _hbT = 0
                 local c = LocalPlayer.Character
-                if not c then return end
-                if _findGun(c) then return end
-                -- FIX: si hay gun suelta, intentar con _agTryGrab (que limpia _agBusy)
-                -- y como segundo metodo _fluidGrabGun directo
-                local drop = _agFindGunDrop()
-                if drop then
-                    task.spawn(function()
-                        -- Primero intentar grab fluido (sin blink del jugador)
-                        pcall(_fluidGrabGun, drop)
-                        -- Si fallo, intentar _agTryGrab como respaldo
-                        task.wait(0.05)
-                        if not _findGun(LocalPlayer.Character) then
-                            pcall(_agTryGrab)
-                        end
-                    end)
+                if c and not _findGun(c) then
+                    local drop = _agFindGunDrop()
+                    if drop then task.spawn(function() pcall(_fluidGrabGun, drop) end) end
                 end
             end)
 
@@ -36186,6 +36095,166 @@ function CreateExclusiveTab()
         betaLabel.Font = Enum.Font.GothamBold
         betaLabel.TextColor3 = Color3.fromRGB(220, 160, 255)
         betaLabel.TextXAlignment = Enum.TextXAlignment.Center
+    end
+
+    -- ================================================================
+    -- SOCIAL / COMUNIDAD
+    -- ================================================================
+    do
+        local socialSec = CreateBorderedSectionGlobal(leftColumn, "")
+
+        -- Marco contenedor
+        local socialFrame = Instance.new("Frame", socialSec)
+        socialFrame.Size = UDim2.new(1, -8, 0, 0)
+        socialFrame.AutomaticSize = Enum.AutomaticSize.Y
+        socialFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 20)
+        socialFrame.BackgroundTransparency = 0.3
+        socialFrame.BorderSizePixel = 0
+        Instance.new("UICorner", socialFrame).CornerRadius = UDim.new(0, 10)
+        local socialStroke = Instance.new("UIStroke", socialFrame)
+        socialStroke.Color = Color3.fromRGB(88, 101, 242)
+        socialStroke.Thickness = 1.5
+        socialStroke.Transparency = 0.2
+        local socialPad = Instance.new("UIPadding", socialFrame)
+        socialPad.PaddingTop    = UDim.new(0, 10)
+        socialPad.PaddingBottom = UDim.new(0, 10)
+        socialPad.PaddingLeft   = UDim.new(0, 10)
+        socialPad.PaddingRight  = UDim.new(0, 10)
+        local socialLayout = Instance.new("UIListLayout", socialFrame)
+        socialLayout.Padding = UDim.new(0, 8)
+        socialLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        -- Titulo de seccion
+        local socialTitle = Instance.new("TextLabel", socialFrame)
+        socialTitle.Size = UDim2.new(1, 0, 0, 20)
+        socialTitle.BackgroundTransparency = 1
+        socialTitle.Text = "🌐  COMUNIDAD & REDES"
+        socialTitle.TextSize = 13
+        socialTitle.Font = Enum.Font.GothamBold
+        socialTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+        socialTitle.TextXAlignment = Enum.TextXAlignment.Left
+        socialTitle.LayoutOrder = 1
+
+        -- Separador
+        local sep1 = Instance.new("Frame", socialFrame)
+        sep1.Size = UDim2.new(1, 0, 0, 1)
+        sep1.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+        sep1.BackgroundTransparency = 0.5
+        sep1.BorderSizePixel = 0
+        sep1.LayoutOrder = 2
+
+        -- TikTok row
+        local tiktokRow = Instance.new("Frame", socialFrame)
+        tiktokRow.Size = UDim2.new(1, 0, 0, 28)
+        tiktokRow.BackgroundTransparency = 1
+        tiktokRow.BorderSizePixel = 0
+        tiktokRow.LayoutOrder = 3
+
+        local tiktokIcon = Instance.new("TextLabel", tiktokRow)
+        tiktokIcon.Size = UDim2.new(0, 28, 1, 0)
+        tiktokIcon.BackgroundTransparency = 1
+        tiktokIcon.Text = "🎵"
+        tiktokIcon.TextSize = 16
+        tiktokIcon.Font = Enum.Font.GothamBold
+        tiktokIcon.TextXAlignment = Enum.TextXAlignment.Center
+
+        local tiktokLabelName = Instance.new("TextLabel", tiktokRow)
+        tiktokLabelName.Size = UDim2.new(0, 55, 1, 0)
+        tiktokLabelName.Position = UDim2.new(0, 30, 0, 0)
+        tiktokLabelName.BackgroundTransparency = 1
+        tiktokLabelName.Text = "TikTok:"
+        tiktokLabelName.TextSize = 11
+        tiktokLabelName.Font = Enum.Font.Montserrat
+        tiktokLabelName.TextColor3 = Color3.fromRGB(160, 160, 180)
+        tiktokLabelName.TextXAlignment = Enum.TextXAlignment.Left
+
+        local tiktokValue = Instance.new("TextLabel", tiktokRow)
+        tiktokValue.Size = UDim2.new(1, -90, 1, 0)
+        tiktokValue.Position = UDim2.new(0, 88, 0, 0)
+        tiktokValue.BackgroundTransparency = 1
+        tiktokValue.Text = "@zerqonhub"
+        tiktokValue.TextSize = 12
+        tiktokValue.Font = Enum.Font.GothamBold
+        tiktokValue.TextColor3 = Color3.fromRGB(255, 80, 80)
+        tiktokValue.TextXAlignment = Enum.TextXAlignment.Left
+
+        -- Mensaje de apoyo
+        local supportRow = Instance.new("Frame", socialFrame)
+        supportRow.Size = UDim2.new(1, 0, 0, 0)
+        supportRow.AutomaticSize = Enum.AutomaticSize.Y
+        supportRow.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
+        supportRow.BackgroundTransparency = 0.4
+        supportRow.BorderSizePixel = 0
+        supportRow.LayoutOrder = 4
+        Instance.new("UICorner", supportRow).CornerRadius = UDim.new(0, 6)
+        local supPad = Instance.new("UIPadding", supportRow)
+        supPad.PaddingLeft   = UDim.new(0, 8)
+        supPad.PaddingRight  = UDim.new(0, 8)
+        supPad.PaddingTop    = UDim.new(0, 6)
+        supPad.PaddingBottom = UDim.new(0, 6)
+
+        local supportLbl = Instance.new("TextLabel", supportRow)
+        supportLbl.Size = UDim2.new(1, 0, 0, 0)
+        supportLbl.AutomaticSize = Enum.AutomaticSize.Y
+        supportLbl.BackgroundTransparency = 1
+        supportLbl.Text = "💜  Si te gusta el script, apoyanos siguiendo el TikTok y uniendote al Discord. ¡Tu apoyo hace que sigamos mejorando!"
+        supportLbl.TextSize = 11
+        supportLbl.Font = Enum.Font.Montserrat
+        supportLbl.TextColor3 = Color3.fromRGB(200, 190, 255)
+        supportLbl.TextXAlignment = Enum.TextXAlignment.Left
+        supportLbl.TextWrapped = true
+
+        -- Boton Discord
+        local discordBtn = Instance.new("TextButton", socialFrame)
+        discordBtn.Size = UDim2.new(1, 0, 0, 38)
+        discordBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+        discordBtn.BackgroundTransparency = 0.15
+        discordBtn.BorderSizePixel = 0
+        discordBtn.Text = "🔗  Copiar enlace Discord"
+        discordBtn.TextSize = 13
+        discordBtn.Font = Enum.Font.GothamBold
+        discordBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        discordBtn.AutoButtonColor = false
+        discordBtn.LayoutOrder = 5
+        Instance.new("UICorner", discordBtn).CornerRadius = UDim.new(0, 8)
+        local discStroke = Instance.new("UIStroke", discordBtn)
+        discStroke.Color = Color3.fromRGB(88, 101, 242)
+        discStroke.Thickness = 1.5
+        discStroke.Transparency = 0.2
+
+        -- Hover
+        discordBtn.MouseEnter:Connect(function()
+            TweenService:Create(discordBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(100, 115, 255)}):Play()
+        end)
+        discordBtn.MouseLeave:Connect(function()
+            TweenService:Create(discordBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.15, BackgroundColor3 = Color3.fromRGB(88, 101, 242)}):Play()
+        end)
+
+        -- Click: copiar link y cambiar texto temporalmente
+        discordBtn.MouseButton1Click:Connect(function()
+            pcall(function() setclipboard("https://discord.gg/H5htgFHfP8") end)
+            discordBtn.Text = "✅  ¡Enlace copiado!"
+            discordBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 100)
+            discordBtn.BackgroundTransparency = 0.1
+            CreateCustomNotification("DISCORD", "Enlace copiado — ¡nos vemos en el server!", 3)
+            task.wait(2.5)
+            pcall(function()
+                discordBtn.Text = "🔗  Copiar enlace Discord"
+                discordBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+                discordBtn.BackgroundTransparency = 0.15
+            end)
+        end)
+
+        -- Pulso sutil en el borde del boton
+        task.spawn(function()
+            while discordBtn and discordBtn.Parent do
+                TweenService:Create(discStroke, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.6}):Play()
+                task.wait(1.4)
+                if not (discordBtn and discordBtn.Parent) then break end
+                TweenService:Create(discStroke, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.1}):Play()
+                task.wait(1.4)
+            end
+        end)
     end
 
 end
