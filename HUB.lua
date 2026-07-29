@@ -8296,7 +8296,7 @@ function updateBindables()
     if Settings.combat.bindable.shoot then
         if not shootBtnGui then
             shootBtnGui = createBindableButton("SHOOT MURDERER", ThemeColors.Primary)
-            shootBtnGui.Frame.MouseButton1Click:Connect(function()
+            local function _doShootMurderer()
                 local gun = LocalPlayer.Character and _findGunIn(LocalPlayer.Character)
                 if gun then
                     local murderer = findMurderer()
@@ -8317,6 +8317,22 @@ function updateBindables()
                         end
                     end
                 end
+            end
+            -- PC: click izquierdo
+            shootBtnGui.Frame.MouseButton1Click:Connect(_doShootMurderer)
+            -- MOBILE: touch (TouchTap o Activated)
+            pcall(function()
+                shootBtnGui.Frame.TouchTap:Connect(function()
+                    _doShootMurderer()
+                end)
+            end)
+            -- Fallback mobile: InputBegan sobre el boton
+            pcall(function()
+                shootBtnGui.Frame.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.Touch then
+                        _doShootMurderer()
+                    end
+                end)
             end)
         end
     else
@@ -27336,13 +27352,15 @@ end
 
 function CreateWorldUI_Emotes()
     local EMOTES = {
-        { name = "Sit",      key = "Z", keyCode = Enum.KeyCode.Z, id = "2431845940" },
-        { name = "Ninja",    key = "X", keyCode = Enum.KeyCode.X, id = "2431864798" },
-        { name = "Dab",      key = "C", keyCode = Enum.KeyCode.C, id = "2445521505" },
-        { name = "Floss",    key = "V", keyCode = Enum.KeyCode.V, id = "2452938820" },
-        { name = "Headless", key = "B", keyCode = Enum.KeyCode.B, id = "2513664073" },
-        { name = "Zombie",   key = "N", keyCode = Enum.KeyCode.N, id = "2513692312" },
-        { name = "Zen",      key = "M", keyCode = Enum.KeyCode.M, id = "2431812646" },
+        { name = "Zerq Emote 1", key = "Z", keyCode = Enum.KeyCode.Z, id = "92587731065850" },
+        { name = "Zerq Emote 2", key = "X", keyCode = Enum.KeyCode.X, id = "10714061912" },
+        { name = "Zerq Emote 3", key = "C", keyCode = Enum.KeyCode.C, id = "76510079095692" },
+        { name = "Zerq Emote 4", key = "V", keyCode = Enum.KeyCode.V, id = "10714347256" },
+        { name = "Zerq Emote 5", key = "B", keyCode = Enum.KeyCode.B, id = "10714352626" },
+        { name = "Zerq Emote 6", key = "N", keyCode = Enum.KeyCode.N, id = "10921258489" },
+        { name = "Zerq Emote 7", key = "M", keyCode = Enum.KeyCode.M, id = "10214314957" },
+        { name = "Zerq Emote 8", key = "Q", keyCode = Enum.KeyCode.Q, id = "10713981723" },
+        { name = "Zerq Emote 9", key = "E", keyCode = Enum.KeyCode.E, id = "14352340648" },
     }
 
     for _, emote in ipairs(EMOTES) do
@@ -31567,6 +31585,130 @@ end
 -- ==============================================================
 -- SPIN UNIVERSAL
 -- ==============================================================
+-- ==============================================================
+-- SHIFT LOCK BINDABLE
+-- Toggle: activa/desactiva Shift Lock. Bindable: boton en pantalla
+-- que al tocarse activa el Shift Lock (util en mobile).
+-- ==============================================================
+function CreateWorldUI_ShiftLock()
+    local sec = CreateSection(rightColumn, "", "SHIFT LOCK", ThemeColors.Aurora2)
+    _currentMainSectionFrame = sec
+
+    local subLbl = Instance.new("TextLabel", sec)
+    subLbl.Size = UDim2.new(1,-12,0,14)
+    subLbl.BackgroundTransparency = 1
+    subLbl.Text = "UNIVERSAL"
+    subLbl.Font = Enum.Font.Montserrat
+    subLbl.TextSize = 10
+    subLbl.TextColor3 = Color3.fromRGB(0, 210, 180)
+    subLbl.TextXAlignment = Enum.TextXAlignment.Left
+    subLbl.ZIndex = 13
+
+    -- Estado persistente entre visitas al tab
+    if _G._shiftLockState then
+        if _G._shiftLockState.keyConn  then pcall(function() _G._shiftLockState.keyConn:Disconnect()  end) end
+        if _G._shiftLockState.charConn then pcall(function() _G._shiftLockState.charConn:Disconnect() end) end
+    end
+    _G._shiftLockState = _G._shiftLockState or {}
+    local SL = _G._shiftLockState
+    SL.enabled     = false
+    SL.bindEnabled = false
+    SL.keyConn     = nil
+    SL.charConn    = nil
+
+    -- Helpers para activar/desactivar shift lock via PlayerModule o fallback
+    local function _activateShiftLock()
+        pcall(function()
+            -- Metodo 1: forzar MouseBehavior a LockCenter (funciona en la mayoria de executors)
+            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        end)
+        pcall(function()
+            -- Metodo 2: habilitar MouseLock via PlayerModule (mas oficial)
+            local pm = require(Players.LocalPlayer.PlayerScripts:WaitForChild("PlayerModule", 3))
+            if pm and pm.controls and pm.controls.mouselock then
+                pm.controls.mouselock:Enable()
+            end
+        end)
+        pcall(function()
+            -- Metodo 3: DevEnableMouseLock en el LocalPlayer
+            LocalPlayer.DevEnableMouseLock = true
+        end)
+        SL.enabled = true
+        CreateCustomNotification("SHIFT LOCK", "Shift Lock ON", 1.5)
+    end
+
+    local function _deactivateShiftLock()
+        pcall(function()
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        end)
+        pcall(function()
+            local pm = require(Players.LocalPlayer.PlayerScripts:WaitForChild("PlayerModule", 3))
+            if pm and pm.controls and pm.controls.mouselock then
+                pm.controls.mouselock:Disable()
+            end
+        end)
+        SL.enabled = false
+        CreateCustomNotification("SHIFT LOCK", "Shift Lock OFF", 1.5)
+    end
+
+    local function _toggleShiftLock()
+        if SL.enabled then
+            _deactivateShiftLock()
+        else
+            _activateShiftLock()
+        end
+    end
+
+    -- Toggle principal: activa shift lock directamente
+    CreateAuroraToggle(sec, "Activar Shift Lock", function(on)
+        if on then
+            _activateShiftLock()
+        else
+            _deactivateShiftLock()
+        end
+    end, false)
+
+    -- Toggle bindable: muestra un boton en pantalla que al tocarse activa/desactiva shift lock
+    CreateAuroraToggle(sec, "Activar Shift Lock Bindable", function(on)
+        SL.bindEnabled = on
+        -- Limpiar bindable anterior
+        pcall(function() destroyBindableButton("SHIFT LOCK") end)
+        if SL.keyConn then pcall(function() SL.keyConn:Disconnect() end) SL.keyConn = nil end
+
+        if on then
+            -- Crear boton bindable en pantalla
+            local _slBtn = createBindableButton("SHIFT LOCK", ThemeColors.Aurora2)
+
+            local function _onPress()
+                _toggleShiftLock()
+                -- Feedback visual: cambiar color del boton segun estado
+                pcall(function()
+                    local fill = _slBtn and _slBtn.Frame
+                    if fill then
+                        fill.BackgroundColor3 = SL.enabled
+                            and Color3.fromRGB(0, 200, 120)   -- verde = ON
+                            or  Color3.fromRGB(80, 40, 180)   -- violeta = OFF
+                    end
+                end)
+            end
+
+            -- PC: click
+            pcall(function() _slBtn.Frame.MouseButton1Click:Connect(_onPress) end)
+            -- Mobile: touch
+            pcall(function()
+                _slBtn.Frame.TouchTap:Connect(_onPress)
+            end)
+            pcall(function()
+                _slBtn.Frame.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.Touch then
+                        _onPress()
+                    end
+                end)
+            end)
+        end
+    end, false)
+end
+
 function CreateWorldUI_SpinSection()
     local sec = CreateSection(rightColumn, "", "SPIN", ThemeColors.Primary)
     _currentMainSectionFrame = sec
@@ -32795,6 +32937,8 @@ function CreateWorldTab()
     if _G._toggleStates then
         _G._toggleStates["Spin"] = false
         _G._toggleStates["Enable Spin Bindable Button"] = false
+        _G._toggleStates["Activar Shift Lock"] = false
+        _G._toggleStates["Activar Shift Lock Bindable"] = false
     end
     ClearContent()
     _makeTwoColumns()  -- FIX: llamar ANTES de las funciones CreateWorldUI_
@@ -32893,6 +33037,12 @@ function CreateWorldTab()
             pcall(function() _G._freezeCharState.heartConn:Disconnect() end)
             _G._freezeCharState.heartConn = nil
         end
+        -- ShiftLock conns
+        if _G._shiftLockState then
+            if _G._shiftLockState.keyConn  then pcall(function() _G._shiftLockState.keyConn:Disconnect()  end) _G._shiftLockState.keyConn  = nil end
+            if _G._shiftLockState.charConn then pcall(function() _G._shiftLockState.charConn:Disconnect() end) _G._shiftLockState.charConn = nil end
+            _G._shiftLockState.bindEnabled = false
+        end
         -- TP Bindable conns -- desconectar y resetear enabled
         if _G._tpAboveMap then
             if _G._tpAboveMap.conn then pcall(function() _G._tpAboveMap.conn:Disconnect() end) _G._tpAboveMap.conn = nil end
@@ -32961,6 +33111,7 @@ function CreateWorldTab()
     _safeCall(CreateWorldUI_TeleportUniversal, "TeleportUniversal")
     _safeCall(CreateWorldUI_ProximityPromptSection, "ProximityPromptSection")
     _safeCall(CreateWorldUI_SpinSection, "SpinSection")
+    _safeCall(CreateWorldUI_ShiftLock,   "ShiftLock")
     -- ClutchSection y TeleportAboveMap eliminados del World tab
     _safeCall(CreateWorldUI_VoidTeleport, "VoidTeleport")
     _safeCall(CreateWorldUI_ExposeRoles, "ExposeRoles")
@@ -34874,19 +35025,25 @@ function CreateExclusiveTab()
     local HS = _G._hubSettings
     local function _hs() return _G._hubSettings end
 
-    -- FIX ESCALA: al abrir Settings NO sobreescribir el UIScale con hubScale/100 a secas,
-    -- porque eso ignora la escala de dispositivo calculada por _getTargetScale().
-    -- La escala real = _getTargetScale() * (hubScale / 100).
-    -- Solo re-aplicar si el UIScale se perdio (Scale == 0 o no existe).
+    -- FIX ESCALA: guardar y bloquear el UIScale actual para que abrir Settings
+    -- NO cambie el ancho/tamaño del hub. El valor correcto ya fue calculado
+    -- por _getTargetScale() al iniciar; aqui solo lo protegemos.
+    local _frozenScale = nil
     pcall(function()
-        local sc = mainFrame:FindFirstChildOfClass("UIScale")
-        if not sc then sc = Instance.new("UIScale", mainFrame) end
-        -- Recalcular escala combinando dispositivo + preferencia de usuario
-        local baseScale  = (_getTargetScale and _getTargetScale()) or 1
-        local userFactor = (_G._hubSettings.hubScale or 100) / 100
-        local targetScale = baseScale * userFactor
-        if math.abs(sc.Scale - targetScale) > 0.001 then
-            sc.Scale = targetScale
+        local _sc = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
+        if _sc then
+            _frozenScale = _sc.Scale
+        end
+    end)
+    -- Restaurar la escala congelada al final del frame (evita que algun hijo la altere)
+    task.defer(function()
+        if _frozenScale then
+            pcall(function()
+                local _sc = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
+                if _sc and math.abs(_sc.Scale - _frozenScale) > 0.001 then
+                    _sc.Scale = _frozenScale
+                end
+            end)
         end
     end)
 
@@ -35146,7 +35303,9 @@ function CreateExclusiveTab()
         pcall(function()
             local sc = mainFrame:FindFirstChildOfClass("UIScale")
             if not sc then sc = Instance.new("UIScale", mainFrame) end
-            sc.Scale = v / 100
+            -- Combinar escala de dispositivo + preferencia usuario para no romper el auto-fit
+            local baseScale = (_getTargetScale and _getTargetScale()) or 1
+            sc.Scale = baseScale * (v / 100)
         end)
     end)
 
@@ -43666,11 +43825,36 @@ function CreateCombatTab()
             if _ssEnabled then _ssApplyDisable() end
             _ourConn=gun.Activated:Connect(function()
                 if _ssEnabled then
-                    _sp(function() _ssFire(gun) end)
+                    -- En mobile, Activated se dispara con touch; ejecutar inmediatamente
+                    local now = tick()
+                    if now - _ssLast >= _ssCD then
+                        _ssLast = now
+                        _sp(function() _ssFire(gun) end)
+                    end
                 end
                 -- Si _ssEnabled=false: no hacer nada, las conexiones originales
                 -- siguen habilitadas y manejan el disparo normalmente
             end)
+            -- MOBILE EXTRA: hookear TouchTap directo en la gun como fallback
+            -- (en algunos devices Activated no se dispara si el juego consume el touch)
+            if UserInputService.TouchEnabled then
+                pcall(function()
+                    local _touchConn = gun.InputBegan:Connect(function(inp)
+                        if not _ssEnabled then return end
+                        if inp.UserInputType == Enum.UserInputType.Touch then
+                            local now = tick()
+                            if now - _ssLast >= _ssCD then
+                                _ssLast = now
+                                _sp(function() _ssFire(gun) end)
+                            end
+                        end
+                    end)
+                    -- Desconectar si la gun cambia
+                    gun.AncestryChanged:Connect(function()
+                        if not gun.Parent then pcall(function() _touchConn:Disconnect() end) end
+                    end)
+                end)
+            end
         end
         local function _ssTryHook()
             local char=LocalPlayer.Character; if not char then return end
@@ -43689,9 +43873,12 @@ function CreateCombatTab()
                 if _hookedGun then _ssApplyDisable() end
                 -- LMB / Touch: solo dispara si la gun esta EQUIPADA en el personaje
                 _ssLmbConn = UserInputService.InputBegan:Connect(function(i, gp)
-                    if gp or not _ssEnabled then return end
-                    if i.UserInputType ~= Enum.UserInputType.MouseButton1
-                       and i.UserInputType ~= Enum.UserInputType.Touch then return end
+                    if not _ssEnabled then return end
+                    local isTouch = i.UserInputType == Enum.UserInputType.Touch
+                    local isMouse = i.UserInputType == Enum.UserInputType.MouseButton1
+                    -- En mobile (touch) no bloquear por gameProcessed, en PC si
+                    if not isTouch and not isMouse then return end
+                    if gp and not isTouch then return end
                     -- Verificar que la gun este equipada (en el Character, NO en Backpack)
                     local char = LocalPlayer.Character
                     if not char then return end
@@ -48485,6 +48672,77 @@ do
     workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(_applyScale)
 
     print("[ZerqonHUB] Escala aplicada: " .. tostring(uiScale.Scale))
+
+    -- == COLOR SATURACION HUB (igual en PC y mobile) ==
+    -- Aplica el mismo tinte purpura/violeta al fondo del hub
+    -- para que la saturacion se vea igual en celular que en PC.
+    pcall(function()
+        local _isMobileColor = UserInputService.TouchEnabled
+
+        -- Eliminar gradiente anterior si existe (evita duplicados al re-ejecutar)
+        local _oldGrad = mainFrame:FindFirstChild("_HubSatGrad")
+        if _oldGrad then _oldGrad:Destroy() end
+        local _oldOrb = mainFrame:FindFirstChild("_HubSatOrb")
+        if _oldOrb then _oldOrb:Destroy() end
+        local _oldOrbBot = mainFrame:FindFirstChild("_HubSatOrbBot")
+        if _oldOrbBot then _oldOrbBot:Destroy() end
+
+        -- Gradiente diagonal: esquina superior izquierda mas clara, inferior derecha mas oscura
+        -- En mobile intensificamos un poco para que se vea igual con pantalla brillante
+        local satGrad = Instance.new("UIGradient", mainFrame)
+        satGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,   Color3.fromRGB(_isMobileColor and 55 or 40,  _isMobileColor and 22 or 18,  _isMobileColor and 100 or 80)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(_isMobileColor and 22 or 18,  _isMobileColor and 12 or 10,  _isMobileColor and 50  or 40)),
+            ColorSequenceKeypoint.new(1,   Color3.fromRGB(_isMobileColor and 12 or 10,  _isMobileColor and 6  or 5,   _isMobileColor and 30  or 25)),
+        })
+        satGrad.Transparency = NumberSequence.new(0)
+        satGrad.Rotation = 135  -- diagonal
+        satGrad.Name = "_HubSatGrad"
+        satGrad.ZOffset = 0
+
+        -- Capa de brillo purpura superior (orb ambient) - DENTRO del hub para mobile
+        -- En mobile el orb va dentro del frame (position 0.5, 0.05) para no quedar cortado
+        local satOrb = Instance.new("ImageLabel", mainFrame)
+        satOrb.Name          = "_HubSatOrb"
+        satOrb.Size          = UDim2.new(_isMobileColor and 1.0 or 0.8, 0, _isMobileColor and 0.7 or 0.8, 0)
+        satOrb.AnchorPoint   = Vector2.new(0.5, 0)
+        satOrb.Position      = UDim2.new(0.5, 0, _isMobileColor and 0.0 or -0.2, 0)
+        satOrb.BackgroundTransparency = 1
+        satOrb.Image         = "rbxassetid://4996318945"  -- radial glow
+        satOrb.ImageColor3   = Color3.fromRGB(_isMobileColor and 90 or 80, _isMobileColor and 45 or 40, _isMobileColor and 200 or 180)
+        satOrb.ImageTransparency = _isMobileColor and 0.60 or 0.72
+        satOrb.ScaleType     = Enum.ScaleType.Fit
+        satOrb.ZIndex        = 2
+        satOrb.BorderSizePixel = 0
+
+        -- Orb inferior sutil (solo mobile, da profundidad en pantalla pequena)
+        if _isMobileColor then
+            local satOrbBot = Instance.new("ImageLabel", mainFrame)
+            satOrbBot.Name          = "_HubSatOrbBot"
+            satOrbBot.Size          = UDim2.new(0.7, 0, 0.5, 0)
+            satOrbBot.AnchorPoint   = Vector2.new(0.5, 1)
+            satOrbBot.Position      = UDim2.new(0.5, 0, 1.0, 0)
+            satOrbBot.BackgroundTransparency = 1
+            satOrbBot.Image         = "rbxassetid://4996318945"
+            satOrbBot.ImageColor3   = Color3.fromRGB(60, 20, 140)
+            satOrbBot.ImageTransparency = 0.75
+            satOrbBot.ScaleType     = Enum.ScaleType.Fit
+            satOrbBot.ZIndex        = 2
+            satOrbBot.BorderSizePixel = 0
+        end
+
+        -- Stroke del borde ya existente: asegurar que siempre sea purpura neon
+        if glowBorder then
+            glowBorder.Color     = Color3.fromRGB(110, 60, 220)
+            glowBorder.Thickness = _isMobileColor and 2.5 or 2.0
+            glowBorder.Transparency = 0.05
+        end
+
+        -- En mobile: color base del mainFrame ligeramente mas saturado
+        if _isMobileColor then
+            mainFrame.BackgroundColor3 = Color3.fromRGB(20, 10, 45)
+        end
+    end)
 end
 -- ================================================================
 -- == FIN AUTO SCALE
