@@ -962,13 +962,18 @@ function RegisterLangLabel(obj, key, prefix, suffix)
     table.insert(_LangObjects, {obj=obj, key=key, prefix=prefix, suffix=suffix})
 end
 
+-- OPT: funcion nombrada para el pcall de ApplyLanguage
+-- Evita crear una closure nueva en cada iteracion del loop (antes: O(n) closures)
+local _applyLangEntry, _applyLangText
+local function _setLangText() _applyLangEntry.obj.Text = _applyLangText end
 function ApplyLanguage(langName)
     _G.HubLanguage = langName
     local dict = _LangStrings[langName] or _LangStrings[" English"]
     for _, entry in ipairs(_LangObjects) do
         if entry.obj and entry.obj.Parent then
-            local translated = dict[entry.key] or entry.obj.Text
- pcall(function() entry.obj.Text = entry.prefix .. translated .. entry.suffix end)
+            _applyLangEntry = entry
+            _applyLangText  = entry.prefix .. (dict[entry.key] or entry.obj.Text) .. entry.suffix
+            pcall(_setLangText)
         end
     end
 end
@@ -2570,10 +2575,11 @@ function _resetHist(userId)
         -- [WIFI PRED] Per-player network estimation
         pingEMA       = 80,   -- EMA del lag del jugador en ms (estimado)
         pingJitter    = 0,    -- varianza reciente del lag
-        pingHistory   = {},   -- ultimas N estimaciones para tendencia
+        -- OPT-RB: pingHistory y receiveDeltas como ring buffers O(1)
+        pingHistory   = table.create(20, 0), _phHead = 1, _phCount = 0,
+        receiveDeltas = table.create(16, 0), _rdHead = 1, _rdCount = 0,
         lastSeenT     = 0,    -- tick() de la ultima posicion recibida
         lastSeenPos   = nil,  -- ultima posicion guardada
-        receiveDeltas = {},   -- intervalos entre actualizaciones (~ lag del target)
     }
     _histTimers[userId] = 0
 end
@@ -2618,7 +2624,7 @@ end
 
 -- Call this every frame from the main tracking loop
 function updatePredHistoryFor(userId, pos, vel)
-    local now  = tick()
+    local now  = os.clock()  -- OPT: os.clock() > tick() (deprecated)
     local last = _histTimers[userId] or 0
     if now - last < HIST_INTERVAL then return end
     _histTimers[userId] = now
@@ -2698,7 +2704,7 @@ _histLastUpdate  = 0
 RunService.Heartbeat:Connect(function()
     -- Guard: solo correr si algun Silent Aim esta activo
     if not KnifeSAState.enabled and not (CombatTabState and CombatTabState.silentAimEnabled) then return end
-    local now = tick()
+    local now = os.clock()  -- OPT: os.clock() > tick() (tick deprecated, mas overhead)
     if now - _histLastUpdate < HIST_INTERVAL_HZ then return end
     _histLastUpdate = now
     if _G._visualRoundOver then return end
@@ -2713,8 +2719,7 @@ RunService.Heartbeat:Connect(function()
 
             -- [WIFI PRED] Estimar ping del jugador midiendo el intervalo entre
             -- actualizaciones de posicion que llegan al cliente.
-            -- En Roblox, las posiciones se replican al ritmo del ping del dueno.
-            -- Si el intervalo entre updates es mayor al nuestro -> ese jugador tiene mas lag.
+            -- OPT: _now reutiliza os.clock() ya calculado al inicio del frame
             local _h = _getHist(p.UserId)
             local _now = now
             if _h.lastSeenPos then
@@ -2724,19 +2729,19 @@ RunService.Heartbeat:Connect(function()
                     local _delta = (_now - _h.lastSeenT) * 1000  -- ms entre updates
                     -- Clamp: ignora deltas absurdos (lag spikes > 800ms o < 8ms)
                     _delta = math.clamp(_delta, 8, 800)
-                    -- Guardar ultimas 16 deltas para EMA y jitter
-                    local _rd = _h.receiveDeltas
-                    table.insert(_rd, _delta)
-                    if #_rd > 16 then table.remove(_rd, 1) end
+                    -- OPT-RB: ring buffer O(1) -- sin table.insert/remove O(n)
+                    _h.receiveDeltas[_h._rdHead] = _delta
+                    _h._rdHead = (_h._rdHead % 16) + 1
+                    if _h._rdCount < 16 then _h._rdCount = _h._rdCount + 1 end
                     -- EMA del delta (~ ping estimado del jugador)
                     _h.pingEMA = _h.pingEMA * 0.70 + _delta * 0.30
                     -- Jitter = varianza suavizada del delta
                     local _jRaw = math.abs(_delta - _h.pingEMA)
                     _h.pingJitter = _h.pingJitter * 0.75 + _jRaw * 0.25
-                    -- Guardar en pingHistory para tendencia
-                    local _ph = _h.pingHistory
-                    table.insert(_ph, _h.pingEMA)
-                    if #_ph > 20 then table.remove(_ph, 1) end
+                    -- OPT-RB: pingHistory ring buffer O(1)
+                    _h.pingHistory[_h._phHead] = _h.pingEMA
+                    _h._phHead = (_h._phHead % 20) + 1
+                    if _h._phCount < 20 then _h._phCount = _h._phCount + 1 end
                     _h.lastSeenT = _now
                     _h.lastSeenPos = hrp.Position
                 end
@@ -2917,21 +2922,34 @@ _BULLET_GRAVITY = 0.0
 _BASE_MAX_OFFSET = 6  -- reducido: mismo techo que SA_PRED_MAX_OFFSET
 _MAX_CHAR_SPEED  = 220
 
--- Historial de posiciones reales por jugador
+-- Historial de posiciones reales por jugador (OPT: ring buffer O(1))
 _posHistory    = {}
 _POS_HIST_SIZE = 6
 
 local function _pushPosHist(uid, pos, t)
-    if not _posHistory[uid] then _posHistory[uid] = {} end
     local h = _posHistory[uid]
-    table.insert(h, {pos = pos, t = t})
-    if #h > _POS_HIST_SIZE then table.remove(h, 1) end
+    if not h then
+        h = { entries = table.create(6), _head = 1, _count = 0 }
+        for i = 1, 6 do h.entries[i] = false end
+        _posHistory[uid] = h
+    end
+    -- OPT-RB: O(1) -- sin table.insert/remove O(n)
+    h.entries[h._head] = { pos = pos, t = t }
+    h._head = (h._head % _POS_HIST_SIZE) + 1
+    if h._count < _POS_HIST_SIZE then h._count = h._count + 1 end
 end
 
 local function _getPosHistVel(uid, fallbackVel)
     local h = _posHistory[uid]
-    if not h or #h < 2 then return fallbackVel end
-    local newest = h[#h]; local oldest = h[1]
+    if not h or h._count < 2 then return fallbackVel end
+    -- Newest: slot antes de _head; Oldest: slot mas antiguo en el ring
+    local newestIdx = (h._head - 2) % _POS_HIST_SIZE + 1
+    local oldestIdx = h._count < _POS_HIST_SIZE
+        and ((h._head - h._count - 1) % _POS_HIST_SIZE + 1)
+        or  h._head  -- cuando lleno, _head apunta al mas viejo
+    local newest = h.entries[newestIdx]
+    local oldest = h.entries[oldestIdx]
+    if not newest or not oldest then return fallbackVel end
     local dt = newest.t - oldest.t
     if dt < 0.005 then return fallbackVel end
     local hv = (newest.pos - oldest.pos) / dt
@@ -4178,6 +4196,64 @@ local Themes = {
 -- Tema Overdrive Aurora: fondo violeta oscuro / negro para que el verde neon resalte
 currentThemeName = "Neon Green"
 
+-- ================================================================
+-- == MOBILE COLOR BOOST
+-- Las pantallas de celular muestran colores mas apagados que PC.
+-- Este sistema detecta si es mobile y sube la saturacion/luminosidad
+-- de todos los colores del tema para que se vean igual de vividos.
+-- ================================================================
+local _isMobilePlatform = (function()
+    local ok, res = pcall(function() return game:GetService("UserInputService").TouchEnabled end)
+    return ok and res == true
+end)()
+
+-- Boost: convierte un Color3 a HSV, sube saturacion y value, vuelve a RGB
+-- satBoost: cuanto sube la saturacion (0-1 adicional)
+-- valBoost: cuanto sube el brillo    (0-1 adicional)
+-- Se clampea a 1 para no pasarse del maximo
+local function _boostColor(color, satBoost, valBoost)
+    local h, s, v = Color3.toHSV(color)
+    -- No tocar colores muy oscuros (Background) ni blancos puros (TextPrimary)
+    -- para no romper el contraste del hub
+    if v < 0.08 then
+        -- muy oscuro: solo subir brillo levemente para que no sea negro puro en OLED
+        v = math.min(v + 0.04, 1)
+    elseif v > 0.92 and s < 0.08 then
+        -- blanco/gris muy claro: no tocar
+    else
+        s = math.min(s + satBoost, 1)
+        v = math.min(v + valBoost, 1)
+    end
+    return Color3.fromHSV(h, s, v)
+end
+
+-- Aplica el boost a una tabla de colores de tema (modifica in-place una copia)
+local _SAT_BOOST = 0.18   -- +18% saturacion en mobile
+local _VAL_BOOST = 0.12   -- +12% brillo en mobile
+local function _applyMobileBoost(themeTable)
+    if not _isMobilePlatform then return themeTable end
+    local boosted = {}
+    for k, v in pairs(themeTable) do
+        if typeof(v) == "Color3" then
+            boosted[k] = _boostColor(v, _SAT_BOOST, _VAL_BOOST)
+        else
+            boosted[k] = v
+        end
+    end
+    return boosted
+end
+
+-- Aplicar boost a todos los temas en Themes{}
+-- Se hace una sola vez al cargar, no en cada frame
+if _isMobilePlatform then
+    for themeName, themeData in pairs(Themes) do
+        Themes[themeName] = _applyMobileBoost(themeData)
+    end
+end
+-- ================================================================
+-- == FIN MOBILE COLOR BOOST
+-- ================================================================
+
 local ThemeColors = {
     Primary         = Color3.fromRGB(120, 60, 220),   -- violeta principal
     Secondary       = Color3.fromRGB(40, 30, 100),    -- violeta oscuro profundo
@@ -4191,6 +4267,14 @@ local ThemeColors = {
     Aurora3         = Color3.fromRGB(100, 60, 200),   -- violeta medio
     Aurora4         = Color3.fromRGB(50, 90, 200),    -- azul profundo
 }
+-- Aplicar boost al ThemeColors inicial tambien (es el tema por defecto en memoria)
+if _isMobilePlatform then
+    for k, v in pairs(ThemeColors) do
+        if typeof(v) == "Color3" then
+            ThemeColors[k] = _boostColor(v, _SAT_BOOST, _VAL_BOOST)
+        end
+    end
+end
 
 ThemeObjects = {}
 
@@ -6534,25 +6618,38 @@ function _doStealFling(targetHRP, skipReturn)
     local _RS = game:GetService("RunService")
     local _targetLaunched = false
     local _stickyConn
+    -- FIX SALIR VOLANDO: guard para cortar inyeccion de velocidad
+    -- en el mismo frame de la desconexion (evita race condition del Heartbeat)
+    local _scActive = true
 
     -- Activar ragdoll propio para no resistir el movimiento
     pcall(function() Humanoid.PlatformStand = true end)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
 
-    local _stickyTimeout = tick() + 10  -- 10 segundos pegado al target
+    local _stickyTimeout = os.clock() + 10  -- OPT: os.clock() > tick()
     _stickyConn = _RS.Heartbeat:Connect(function()
+        -- FIX: check de guard ANTES de cualquier otra cosa
+        if not _scActive then return end
         if not TRootPart or not TRootPart.Parent then
+            _scActive = false
             _targetLaunched = true
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
 
         -- Timeout de 10s alcanzado: cortar y volver
-        if tick() > _stickyTimeout then
+        if os.clock() > _stickyTimeout then
+            -- FIX: desactivar guard PRIMERO
+            _scActive = false
             _targetLaunched = true
+            -- FIX: zerear TODOS los parts, no solo RootPart
             pcall(function()
-                RootPart.AssemblyLinearVelocity  = Vector3.zero
-                RootPart.AssemblyAngularVelocity = Vector3.zero
+                for _, x in ipairs(Character:GetDescendants()) do
+                    if x:IsA("BasePart") then
+                        x.AssemblyLinearVelocity  = Vector3.zero
+                        x.AssemblyAngularVelocity = Vector3.zero
+                    end
+                end
                 Humanoid.PlatformStand = false
             end)
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
@@ -6579,16 +6676,29 @@ function _doStealFling(targetHRP, skipReturn)
         _waitLimit = _waitLimit + 0.05
     until _targetLaunched or _waitLimit > 11
 
-    -- Asegurar desconexion del Heartbeat
+    -- Asegurar desconexion y guard apagado
+    _scActive = false
     if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
 
-    -- Restaurar estado fisico propio
+    -- FIX: zerear character completo en el cleanup final
     pcall(function()
-        RootPart.AssemblyLinearVelocity  = Vector3.zero
-        RootPart.AssemblyAngularVelocity = Vector3.zero
+        for _, x in ipairs(Character:GetDescendants()) do
+            if x:IsA("BasePart") then
+                x.AssemblyLinearVelocity  = Vector3.zero
+                x.AssemblyAngularVelocity = Vector3.zero
+            end
+        end
         Humanoid.PlatformStand = false
     end)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+    -- FIX: segundo pass 1 frame despues para cancelar inercia residual del servidor
+    task.wait()
+    pcall(function()
+        if RootPart and RootPart.Parent then
+            RootPart.AssemblyLinearVelocity  = Vector3.zero
+            RootPart.AssemblyAngularVelocity = Vector3.zero
+        end
+    end)
     pcall(function() workspace.CurrentCamera.CameraSubject = Humanoid end)
 
     -- Liberar el guard ANTES del return para que el boton pueda volver a activarse
@@ -6800,20 +6910,35 @@ function StartFlingSystem()
             if not tHRP or not tHRP.Parent then return false end
             local launched = false
             local conn
+            -- FIX SALIR VOLANDO: flag para cortar la inyeccion de velocidad
+            -- dentro del mismo frame en que se detecta el lanzamiento.
+            -- Sin esto, Heartbeat puede ejecutar un frame extra tras Disconnect()
+            -- inyectando 50000 al propio jugador.
+            local _connActive = true
             pcall(function() myHum.PlatformStand = true end)
-            local timeout = tick() + 3
+            local timeout = os.clock() + 3  -- OPT: os.clock() > tick()
             conn = _RS.Heartbeat:Connect(function()
+                -- FIX: check de guard ANTES de cualquier otra cosa
+                if not _connActive then return end
                 if not tHRP.Parent then
+                    _connActive = false
                     launched = true
                     if conn then conn:Disconnect(); conn = nil end
                     return
                 end
                 local tVel = tHRP.AssemblyLinearVelocity.Magnitude
-                if tVel > 120 or tick() > timeout then
+                if tVel > 120 or os.clock() > timeout then
+                    -- FIX RACE: desactivar PRIMERO el guard, LUEGO desconectar
+                    _connActive = false
                     launched = true
+                    -- Zerear TODOS los parts del character, no solo HRP
                     pcall(function()
-                        myHRP.AssemblyLinearVelocity  = Vector3.zero
-                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        for _, x in ipairs(myChar:GetDescendants()) do
+                            if x:IsA("BasePart") then
+                                x.AssemblyLinearVelocity  = Vector3.zero
+                                x.AssemblyAngularVelocity = Vector3.zero
+                            end
+                        end
                         myHum.PlatformStand = false
                     end)
                     if conn then conn:Disconnect(); conn = nil end
@@ -6830,11 +6955,26 @@ function StartFlingSystem()
             end)
             local w = 0
             repeat task.wait(0.05); w = w + 0.05 until launched or w > 4
+            -- Asegurar desconexion y zereo final aunque el loop haya terminado por timeout
+            _connActive = false
             if conn then conn:Disconnect(); conn = nil end
+            -- FIX: zerear character completo en el cleanup final tambien
             pcall(function()
-                myHRP.AssemblyLinearVelocity  = Vector3.zero
-                myHRP.AssemblyAngularVelocity = Vector3.zero
+                for _, x in ipairs(myChar:GetDescendants()) do
+                    if x:IsA("BasePart") then
+                        x.AssemblyLinearVelocity  = Vector3.zero
+                        x.AssemblyAngularVelocity = Vector3.zero
+                    end
+                end
                 myHum.PlatformStand = false
+            end)
+            -- FIX: segundo pass 1 frame despues para cancelar inercia residual del servidor
+            task.wait()
+            pcall(function()
+                if myHRP and myHRP.Parent then
+                    myHRP.AssemblyLinearVelocity  = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                end
             end)
             return launched
         end
@@ -20028,18 +20168,20 @@ FarmSystem = {
 
             FarmSystem.NC()
 
-            if tick() - lastClean >= 3 then
-                lastClean = tick()
+            -- OPT: os.clock() > tick() en loops calientes
+            local _fcNow = os.clock()
+            if _fcNow - lastClean >= 3 then
+                lastClean = _fcNow
                 FarmSystem.Clean()
             end
 
-            if F.dly > 0 and tick() - lastDelay < F.dly then return end
-            lastDelay = tick()
+            if F.dly > 0 and _fcNow - lastDelay < F.dly then return end
+            lastDelay = _fcNow
 
             coin, dist = FarmSystem.GetNearest()
             if not coin then
                 F.grabbed = {}
-                lastClean = tick()
+                lastClean = os.clock()
                 -- Sin coins: enderezar personaje y quedarse quieto
                 if hrp and hum and hum.Health > 0 then
                     hum.PlatformStand = false
@@ -22205,23 +22347,36 @@ _G._vsColors = _G._vsColors or {
     tracer   = Color3.fromRGB(255,  60,  60),   -- rojo por defecto
 }
 
+-- OPT-DIRTY: cada subtabla de VisualState usa __newindex para marcar
+-- _G._anyVisualDirty=true cuando un toggle cambia, evitando la re-evaluacion
+-- de 40+ OR booleanos en cada frame del instanceLoop.
+local function _makeVisualSubtable(t)
+    local _raw = t
+    return setmetatable({}, {
+        __index    = _raw,
+        __newindex = function(_, k, v)
+            _raw[k] = v
+            _G._anyVisualDirty = true  -- instruct instanceLoop to recompute
+        end,
+    })
+end
 VisualState = {
-    esp      = { everyone=false, murderer=false, sheriff=false, hero=false,
+    esp      = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
                  assassin=false, dead=false, survivor=false, zombie=false,
-                 knife=false, gun=false, coins=false, distance=false },
-    cham     = { everyone=false, murderer=false, sheriff=false, hero=false,
+                 knife=false, gun=false, coins=false, distance=false }),
+    cham     = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
                  assassin=false, dead=false, survivor=false, zombie=false,
-                 knife=false, coins=false },
-    outline  = { everyone=false, murderer=false, sheriff=false, hero=false,
-                 assassin=false, dead=false, survivor=false, zombie=false, knife=false },
-    box      = { everyone=false, murderer=false, sheriff=false, hero=false,
-                 assassin=false, dead=false, survivor=false, zombie=false, knife=false },
-    skeleton = { everyone=false, murderer=false, sheriff=false, hero=false,
-                 assassin=false, dead=false, survivor=false, zombie=false, knife=false },
-    tracer   = { everyone=false, murderer=false, sheriff=false, hero=false,
+                 knife=false, coins=false }),
+    outline  = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
+                 assassin=false, dead=false, survivor=false, zombie=false, knife=false }),
+    box      = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
+                 assassin=false, dead=false, survivor=false, zombie=false, knife=false }),
+    skeleton = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
+                 assassin=false, dead=false, survivor=false, zombie=false, knife=false }),
+    tracer   = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
                  assassin=false, dead=false, survivor=false, zombie=false,
-                 knife=false, gun=false, droppedknife=false },
-    coins    = { esp=false },
+                 knife=false, gun=false, droppedknife=false }),
+    coins    = _makeVisualSubtable({ esp=false }),
 }
 
 LinePool = {}
@@ -24540,12 +24695,17 @@ do
     local _tickHum   = {}
     -- FIX REPINTADO INMEDIATO: flag para que RoundStart fuerce el tick sin esperar el intervalo
     _G._forceInstanceTick = _G._forceInstanceTick or false
-    instanceLoop = RunService.Heartbeat:Connect(function(dt)
-        ticker = ticker + dt
-        -- LAG FIX: si no hay ningun visual activo, correr a 2s para no consumir CPU
+
+    -- OPT-ANYVISUAL: cachear _anyVisual fuera del Heartbeat.
+    -- Antes se evaluaban 40+ OR booleanos en CADA frame (60fps = 2400 checks/s).
+    -- Ahora se recalcula solo cuando _G._forceInstanceTick=true (inicio de ronda)
+    -- o cuando cambia algun toggle de visual (el toggle escribe _anyVisualDirty=true).
+    local _anyVisualCached = false
+    local _anyVisualDirty  = true   -- true = recalcular en el proximo frame
+    _G._anyVisualDirty = true       -- exponer para que los toggles lo marquen dirty
+    local function _recomputeAnyVisual()
         local _vs = VisualState
-        -- FIX: incluir hero/assassin/zombie/skeleton/tracer en el check de visuals activos
-        local _anyVisual = _vs and (
+        _anyVisualCached = _vs ~= nil and (
             (_vs.esp    and (_vs.esp.everyone    or _vs.esp.murderer    or _vs.esp.sheriff
                           or _vs.esp.hero        or _vs.esp.assassin    or _vs.esp.zombie
                           or _vs.esp.survivor    or _vs.esp.dead        or _vs.esp.knife
@@ -24565,8 +24725,20 @@ do
             (_vs.tracer  and (_vs.tracer.everyone  or _vs.tracer.murderer  or _vs.tracer.sheriff
                           or _vs.tracer.hero     or _vs.tracer.assassin  or _vs.tracer.zombie
                           or _vs.tracer.knife    or _vs.tracer.gun       or _vs.tracer.droppedknife))
-        )
-        local _timeSinceRS   = tick() - (_G._roundStartTime or 0)
+        ) or false
+        _anyVisualDirty = false
+        _G._anyVisualDirty = false
+    end
+
+    instanceLoop = RunService.Heartbeat:Connect(function(dt)
+        ticker = ticker + dt
+        -- OPT-ANYVISUAL: recalcular solo si algun toggle cambio (dirty flag)
+        if _anyVisualDirty or _G._anyVisualDirty then
+            _recomputeAnyVisual()
+        end
+        local _anyVisual = _anyVisualCached
+        -- OPT: os.clock() es mas rapido que tick() (deprecated)
+        local _timeSinceRS   = os.clock() - (_G._roundStartTime or 0)
         local _isEarlyRound  = _timeSinceRS < 12
         -- FIX REPINTADO: intervalo adaptativo
         --   - Sin visuals activos: 2s (LAG FIX -- no hacer nada si no hay nada que pintar)
