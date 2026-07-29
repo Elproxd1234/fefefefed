@@ -6686,10 +6686,33 @@ function _doStealFling(targetHRP, skipReturn)
     pcall(function() Humanoid.PlatformStand = true end)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
 
+    -- Helper: zerear velocidad propia inmediatamente
+    local function _zeroSelfDS()
+        for _pz = 1, 3 do
+            pcall(function()
+                RootPart.AssemblyLinearVelocity  = Vector3.zero
+                RootPart.AssemblyAngularVelocity = Vector3.zero
+                RootPart.Velocity    = Vector3.zero
+                RootPart.RotVelocity = Vector3.zero
+            end)
+        end
+    end
+
     local _stickyTimeout = tick() + 10  -- 10 segundos pegado al target
     _stickyConn = _RS.Heartbeat:Connect(function()
         if not TRootPart or not TRootPart.Parent then
             _targetLaunched = true
+            _zeroSelfDS()  -- FIX: zerear antes de disconnect
+            if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
+            return
+        end
+
+        -- FIX: si el target ya salio volando (vel alta), cortar inmediatamente
+        local tVel = TRootPart.AssemblyLinearVelocity.Magnitude
+        if tVel > 120 then
+            _targetLaunched = true
+            _zeroSelfDS()
+            pcall(function() Humanoid.PlatformStand = false end)
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
@@ -6697,11 +6720,8 @@ function _doStealFling(targetHRP, skipReturn)
         -- Timeout de 10s alcanzado: cortar y volver
         if tick() > _stickyTimeout then
             _targetLaunched = true
-            pcall(function()
-                RootPart.AssemblyLinearVelocity  = Vector3.zero
-                RootPart.AssemblyAngularVelocity = Vector3.zero
-                Humanoid.PlatformStand = false
-            end)
+            _zeroSelfDS()
+            pcall(function() Humanoid.PlatformStand = false end)
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
@@ -6729,10 +6749,11 @@ function _doStealFling(targetHRP, skipReturn)
     -- Asegurar desconexion del Heartbeat
     if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
 
-    -- Restaurar estado fisico propio
+    -- Restaurar estado fisico propio (triple zereo)
+    _zeroSelfDS()
+    task.wait(0.05)
+    _zeroSelfDS()
     pcall(function()
-        RootPart.AssemblyLinearVelocity  = Vector3.zero
-        RootPart.AssemblyAngularVelocity = Vector3.zero
         Humanoid.PlatformStand = false
     end)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
@@ -6949,18 +6970,33 @@ function StartFlingSystem()
             local conn
             pcall(function() myHum.PlatformStand = true end)
             local timeout = tick() + 3
+
+            -- Helper: zerear velocidad propia INMEDIATAMENTE (3 passes para anular inercia)
+            local function _zeroSelf()
+                for _p = 1, 3 do
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.zero
+                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        myHRP.Velocity    = Vector3.zero
+                        myHRP.RotVelocity = Vector3.zero
+                    end)
+                end
+            end
+
             conn = _RS.Heartbeat:Connect(function()
                 if not tHRP.Parent then
                     launched = true
+                    _zeroSelf()  -- FIX: zerear inmediatamente al perder al target
                     if conn then conn:Disconnect(); conn = nil end
                     return
                 end
                 local tVel = tHRP.AssemblyLinearVelocity.Magnitude
                 if tVel > 120 or tick() > timeout then
                     launched = true
+                    -- FIX: zerear ANTES de desconectar para no recibir un frame
+                    -- mas de velocidad despues del disconnect
+                    _zeroSelf()
                     pcall(function()
-                        myHRP.AssemblyLinearVelocity  = Vector3.zero
-                        myHRP.AssemblyAngularVelocity = Vector3.zero
                         myHum.PlatformStand = false
                     end)
                     if conn then conn:Disconnect(); conn = nil end
@@ -6978,10 +7014,18 @@ function StartFlingSystem()
             local w = 0
             repeat task.wait(0.05); w = w + 0.05 until launched or w > 4
             if conn then conn:Disconnect(); conn = nil end
+            -- FIX: triple zereo post-loop por si quedo inercia de un frame tardio
             pcall(function()
                 myHRP.AssemblyLinearVelocity  = Vector3.zero
                 myHRP.AssemblyAngularVelocity = Vector3.zero
+                myHRP.Velocity    = Vector3.zero
+                myHRP.RotVelocity = Vector3.zero
                 myHum.PlatformStand = false
+            end)
+            task.wait(0.05)
+            pcall(function()
+                myHRP.AssemblyLinearVelocity  = Vector3.zero
+                myHRP.AssemblyAngularVelocity = Vector3.zero
             end)
             return launched
         end
@@ -6992,9 +7036,21 @@ function StartFlingSystem()
             local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
             if not myHRP or not myHum or myHum.Health <= 0 then task.wait(0.1); continue end
 
-            -- Si yo mismo sali volando, volver rapido
-            if myHRP.AssemblyLinearVelocity.Magnitude > 200 then
-                task.spawn(function() task.wait(0.05); if _flingReturnToLastPos and not _flingReturning then _flingReturnToLastPos() end end)
+            -- FIX ANTI-SALIDA: si el jugador está muy alto o muy bajo, o con velocidad alta,
+            -- el fling lo está arrastrando. Zerear y TP de emergencia inmediato.
+            local myY = myHRP.Position.Y
+            if myHRP.AssemblyLinearVelocity.Magnitude > 80 or myY < -30 or myY > 900 then
+                -- Zerear en 3 passes antes de siquiera esperar
+                for _pz = 1, 3 do
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.zero
+                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        myHRP.Velocity    = Vector3.zero
+                        myHRP.RotVelocity = Vector3.zero
+                    end)
+                end
+                pcall(function() myHum.PlatformStand = false end)
+                if _flingReturnToLastPos and not _flingReturning then _flingReturnToLastPos() end
                 task.wait(0.2); continue
             end
 
@@ -34528,7 +34584,23 @@ function CreatePremiumTab()
         -- Oyente automatico
         -- FIX: en MM2 la Gun vive en workspace.NombreJugador.Gun (no como Tool hijo directo del char raiz)
         -- Se usa _findGun() que ya maneja la busqueda correcta, y se escucha ChildAdded en el char de workspace
-        if not _skinState._charConn then
+        -- FIX MOBILE REBUILD: limpiar conexiones viejas siempre que el tab se reconstruya,
+        -- para que el listener se vuelva a registrar correctamente (evita que el guard
+        -- "if not _charConn" bloquee el re-registro tras destruir y recrear el tab Premium).
+        do
+            if _skinState._charConn then
+                pcall(function() _skinState._charConn:Disconnect() end)
+                _skinState._charConn = nil
+            end
+            if _skinState._wsConn then
+                pcall(function() _skinState._wsConn:Disconnect() end)
+                _skinState._wsConn = nil
+            end
+            if _skinState._charPickupConn then
+                pcall(function() _skinState._charPickupConn:Disconnect() end)
+                _skinState._charPickupConn = nil
+            end
+
             -- FIX MOBILE: en celu la gun llega via DescendantAdded del workspace,
             -- no necesariamente como ChildAdded del char. Usamos DescendantAdded
             -- para capturar cualquier Tool que aparezca (gun en char o en workspace).
@@ -34540,15 +34612,22 @@ function CreatePremiumTab()
             end
 
             local function _scSetupListener(char)
-                -- Listener en el char (PC y algunos mobile)
-                char.ChildAdded:Connect(function(child)
+                -- Listener en el char (PC y mobile - tool equipada directamente)
+                if _skinState._charPickupConn then
+                    pcall(function() _skinState._charPickupConn:Disconnect() end)
+                end
+                _skinState._charPickupConn = char.ChildAdded:Connect(function(child)
                     if child:IsA("Tool") then
                         task.spawn(_scTryApplyGun)
                     end
                 end)
                 -- Listener en DescendantAdded del workspace (mobile / MM2 gun model)
-                -- Solo re-aplicar si es una Tool que puede ser la gun
-                workspace.DescendantAdded:Connect(function(obj)
+                -- Solo re-aplicar si es una Tool que puede ser la gun.
+                -- FIX: guardamos la conexion para poder limpiarla al reconstruir el tab.
+                if _skinState._wsConn then
+                    pcall(function() _skinState._wsConn:Disconnect() end)
+                end
+                _skinState._wsConn = workspace.DescendantAdded:Connect(function(obj)
                     if not _skinState.enabled then return end
                     if obj:IsA("Tool") then
                         local n = obj.Name:lower()
@@ -34795,14 +34874,19 @@ function CreateExclusiveTab()
     local HS = _G._hubSettings
     local function _hs() return _G._hubSettings end
 
-    -- FIX ESCALA: re-aplicar UIScale guardada al abrir el tab Settings
-    -- (el UIScale del mainFrame puede haberse perdido si el hub se recreo)
+    -- FIX ESCALA: al abrir Settings NO sobreescribir el UIScale con hubScale/100 a secas,
+    -- porque eso ignora la escala de dispositivo calculada por _getTargetScale().
+    -- La escala real = _getTargetScale() * (hubScale / 100).
+    -- Solo re-aplicar si el UIScale se perdio (Scale == 0 o no existe).
     pcall(function()
-        local savedScale = (_G._hubSettings.hubScale or 100) / 100
         local sc = mainFrame:FindFirstChildOfClass("UIScale")
         if not sc then sc = Instance.new("UIScale", mainFrame) end
-        if math.abs(sc.Scale - savedScale) > 0.001 then
-            sc.Scale = savedScale
+        -- Recalcular escala combinando dispositivo + preferencia de usuario
+        local baseScale  = (_getTargetScale and _getTargetScale()) or 1
+        local userFactor = (_G._hubSettings.hubScale or 100) / 100
+        local targetScale = baseScale * userFactor
+        if math.abs(sc.Scale - targetScale) > 0.001 then
+            sc.Scale = targetScale
         end
     end)
 
@@ -34933,6 +35017,14 @@ function CreateExclusiveTab()
         _hsr.crosshairHidden    = false
         _hsr.hudHidden          = false
         _hsr.lowRenderQuality   = false
+        -- Resetear optimizaciones
+        _hsr.noParticles        = false
+        _hsr.noDecals           = false
+        _hsr.noDecoration       = false
+        _hsr.noSounds           = false
+        _hsr.noPostFX           = false
+        _hsr.renderDistance     = 0
+        _hsr.noBillboards       = false
         _G._hubDisableKeybinds    = false
         _G._hubUndraggableButtons = false
         _G._hubDisableAnimations  = false
@@ -34941,10 +35033,10 @@ function CreateExclusiveTab()
         -- Detener FPS cap si estaba activo
         _G._fpsCap = nil
         if _G._fpsCapConn then _G._fpsCapConn:Disconnect(); _G._fpsCapConn = nil end
-        -- Restaurar escala del hub
+        -- Restaurar escala del hub (usar escala de dispositivo, no 1 fijo)
         pcall(function()
             local sc = mainFrame:FindFirstChildOfClass("UIScale")
-            if sc then sc.Scale = 1 end
+            if sc then sc.Scale = _getTargetScale and _getTargetScale() or 1 end
         end)
         -- Restaurar opacidad del hub
         pcall(function() mainFrame.BackgroundTransparency = 1 end)
@@ -35310,6 +35402,258 @@ function CreateExclusiveTab()
         credPad.PaddingBottom = UDim.new(0, 8)
         credPad.PaddingLeft = UDim.new(0, 6)
         credPad.PaddingRight = UDim.new(0, 6)
+    end
+
+    -- ================================================================
+    -- OPTIMIZACIONES DEL JUEGO
+    -- Reducen carga del cliente sin afectar el gameplay
+    -- ================================================================
+    do
+        local optSec = CreateBorderedSectionGlobal(rightColumn, " OPTIMIZACIONES")
+
+        -- Persistir estados en _hubSettings
+        _G._hubSettings.noParticles      = _G._hubSettings.noParticles      or false
+        _G._hubSettings.noDecals         = _G._hubSettings.noDecals         or false
+        _G._hubSettings.noDecoration     = _G._hubSettings.noDecoration     or false
+        _G._hubSettings.noSounds         = _G._hubSettings.noSounds         or false
+        _G._hubSettings.noPostFX         = _G._hubSettings.noPostFX         or false
+        _G._hubSettings.renderDistance   = _G._hubSettings.renderDistance   or 0
+        _G._hubSettings.noBillboards     = _G._hubSettings.noBillboards     or false
+
+        -- ── ELIMINAR PARTÍCULAS (ParticleEmitter / Smoke / Fire / Sparkles) ──
+        -- Mejora fps significativamente en mapas con efectos visuales pesados
+        local _partConns = {}
+        local function _killParticlesInst(obj)
+            if obj:IsA("ParticleEmitter") or obj:IsA("Smoke")
+            or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                pcall(function() obj.Enabled = false end)
+                pcall(function() obj.Rate = 0 end)
+            end
+        end
+        local function _enableParticles(obj)
+            if obj:IsA("ParticleEmitter") or obj:IsA("Smoke")
+            or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                pcall(function() obj.Enabled = true end)
+                -- Rate no restaurable sin backup — se deja al juego reactivarlos
+            end
+        end
+        CreateAuroraToggle(optSec, "No Particles (FPS ++)", function(on)
+            _hs().noParticles = on
+            for _, c in ipairs(_partConns) do pcall(function() c:Disconnect() end) end
+            _partConns = {}
+            if on then
+                -- Apagar todas las existentes
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    _killParticlesInst(obj)
+                end
+                -- Apagar las que lleguen en el futuro
+                _partConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noParticles then _killParticlesInst(obj) end
+                end)
+            else
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    _enableParticles(obj)
+                end
+            end
+            CreateCustomNotification("OPT", on and "Particulas OFF" or "Particulas ON", 1.5)
+        end, _G._hubSettings.noParticles)
+
+        -- ── ELIMINAR DECALS / TEXTURAS DECORATIVAS ──
+        -- Reduce uso de memoria de texturas (util en mobile)
+        local _decalConns = {}
+        CreateAuroraToggle(optSec, "No Decals (memoria --)", function(on)
+            _hs().noDecals = on
+            for _, c in ipairs(_decalConns) do pcall(function() c:Disconnect() end) end
+            _decalConns = {}
+            if on then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Decal") or obj:IsA("Texture") then
+                        pcall(function() obj.Transparency = 1 end)
+                    end
+                end
+                _decalConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noDecals and (obj:IsA("Decal") or obj:IsA("Texture")) then
+                        pcall(function() obj.Transparency = 1 end)
+                    end
+                end)
+            else
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Decal") or obj:IsA("Texture") then
+                        pcall(function() obj.Transparency = 0 end)
+                    end
+                end
+            end
+            CreateCustomNotification("OPT", on and "Decals OFF" or "Decals ON", 1.5)
+        end, _G._hubSettings.noDecals)
+
+        -- ── ELIMINAR DECORACIONES DEL MAPA (Scripts decorativos, Beams, Trails) ──
+        local _decoConns = {}
+        local function _killDeco(obj)
+            if obj:IsA("Beam") or obj:IsA("Trail") or obj:IsA("SelectionBox") then
+                pcall(function() obj.Enabled = false end)
+            end
+        end
+        CreateAuroraToggle(optSec, "No Beams/Trails (FPS +)", function(on)
+            _hs().noDecoration = on
+            for _, c in ipairs(_decoConns) do pcall(function() c:Disconnect() end) end
+            _decoConns = {}
+            if on then
+                for _, obj in ipairs(workspace:GetDescendants()) do _killDeco(obj) end
+                _decoConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noDecoration then _killDeco(obj) end
+                end)
+            else
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Beam") or obj:IsA("Trail") or obj:IsA("SelectionBox") then
+                        pcall(function() obj.Enabled = true end)
+                    end
+                end
+            end
+            CreateCustomNotification("OPT", on and "Beams/Trails OFF" or "Beams/Trails ON", 1.5)
+        end, _G._hubSettings.noDecoration)
+
+        -- ── SILENCIAR TODOS LOS SONIDOS DEL JUEGO ──
+        -- Util para streamers o para reducir carga de audio
+        local _soundConns = {}
+        CreateAuroraToggle(optSec, "Silenciar Sonidos del Juego", function(on)
+            _hs().noSounds = on
+            for _, c in ipairs(_soundConns) do pcall(function() c:Disconnect() end) end
+            _soundConns = {}
+            local function _muteSound(obj)
+                if obj:IsA("Sound") then
+                    if on then
+                        pcall(function() obj.Volume = 0 end)
+                    end
+                end
+            end
+            if on then
+                -- Silenciar todas las existentes en workspace y SoundService
+                for _, obj in ipairs(workspace:GetDescendants()) do _muteSound(obj) end
+                _soundConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noSounds then _muteSound(obj) end
+                end)
+                -- Bajar volumen master del SoundService
+                pcall(function()
+                    game:GetService("SoundService").MasterVolume = 0
+                end)
+            else
+                pcall(function()
+                    game:GetService("SoundService").MasterVolume = 0.5
+                end)
+                -- Restaurar sonidos individuales (best-effort: el juego los restaura solo)
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Sound") then
+                        pcall(function()
+                            -- Intentar restaurar al volumen por defecto del juego
+                            if obj.Volume == 0 then obj.Volume = 0.5 end
+                        end)
+                    end
+                end
+            end
+            CreateCustomNotification("OPT", on and "Sonidos del juego OFF" or "Sonidos del juego ON", 1.5)
+        end, _G._hubSettings.noSounds)
+
+        -- ── DESHABILITAR POST-PROCESSING (Blur, ColorCorrection, SunRays) ──
+        -- Los efectos de postprocesado de Lighting consumen GPU innecesariamente
+        local _savedPostFX = {}
+        CreateAuroraToggle(optSec, "No Post-FX (GPU +)", function(on)
+            _hs().noPostFX = on
+            local L = game:GetService("Lighting")
+            if on then
+                for _, obj in ipairs(L:GetChildren()) do
+                    if obj:IsA("BlurEffect") or obj:IsA("ColorCorrectionEffect")
+                    or obj:IsA("SunRaysEffect") or obj:IsA("DepthOfFieldEffect")
+                    or obj:IsA("BloomEffect") then
+                        _savedPostFX[obj] = obj.Enabled
+                        pcall(function() obj.Enabled = false end)
+                    end
+                end
+            else
+                for obj, wasEnabled in pairs(_savedPostFX) do
+                    if obj and obj.Parent then
+                        pcall(function() obj.Enabled = wasEnabled end)
+                    end
+                end
+                _savedPostFX = {}
+            end
+            CreateCustomNotification("OPT", on and "Post-FX OFF" or "Post-FX restaurado", 1.5)
+        end, _G._hubSettings.noPostFX)
+
+        -- ── OCULTAR BILLBOARDS / SURFACE GUIS ──
+        -- MM2 tiene muchos billboards de nombre/score que consumen draw calls
+        local _bbConns = {}
+        CreateAuroraToggle(optSec, "No BillboardGuis (draw calls --)", function(on)
+            _hs().noBillboards = on
+            for _, c in ipairs(_bbConns) do pcall(function() c:Disconnect() end) end
+            _bbConns = {}
+            local function _hideBB(obj)
+                if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+                    pcall(function() obj.Enabled = not on end)
+                end
+            end
+            for _, obj in ipairs(workspace:GetDescendants()) do _hideBB(obj) end
+            if on then
+                _bbConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noBillboards then _hideBB(obj) end
+                end)
+            end
+            CreateCustomNotification("OPT", on and "BillboardGuis OFF" or "BillboardGuis ON", 1.5)
+        end, _G._hubSettings.noBillboards)
+
+        -- ── RENDER DISTANCE (MaxDistance de la cámara) ──
+        -- 0 = sin limite (default de Roblox)
+        CreateSlider(optSec, "Render Distance (0=max)", 0, 512, _G._hubSettings.renderDistance or 0, function(v)
+            _hs().renderDistance = v
+            pcall(function()
+                local cam = workspace.CurrentCamera
+                -- MaxActivationDistance no existe en todas las versiones;
+                -- usamos FarPlaneDistance que si es estandar
+                if v > 0 then
+                    workspace.StreamingMinRadius  = math.min(v, 256)
+                    workspace.StreamingTargetRadius = v
+                else
+                    workspace.StreamingMinRadius    = 64
+                    workspace.StreamingTargetRadius = 1024
+                end
+            end)
+            CreateCustomNotification("OPT", v > 0 and ("Render dist: " .. v) or "Render dist: MAX", 1.5)
+        end)
+
+        -- ── PURGAR PARTÍCULAS MANUALMENTE ──
+        -- Un click elimina todos los emitters existentes en ese momento
+        local purgeBtn = Instance.new("TextButton", optSec)
+        purgeBtn.Size = UDim2.new(1, -8, 0, 30)
+        purgeBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 80)
+        purgeBtn.BackgroundTransparency = 0.2
+        purgeBtn.BorderSizePixel = 0
+        purgeBtn.Text = "  Purgar Partículas Ahora"
+        purgeBtn.TextColor3 = Color3.fromRGB(200, 160, 255)
+        purgeBtn.FontFace = Font.fromEnum(Enum.Font.GothamSemibold)
+        purgeBtn.TextSize = 11
+        purgeBtn.AutoButtonColor = false
+        purgeBtn.ZIndex = 13
+        Instance.new("UICorner", purgeBtn).CornerRadius = UDim.new(0, 8)
+        local purgeStroke = Instance.new("UIStroke", purgeBtn)
+        purgeStroke.Color = Color3.fromRGB(120, 60, 220)
+        purgeStroke.Thickness = 1
+        purgeStroke.Transparency = 0.3
+        purgeBtn.MouseEnter:Connect(function()
+            TweenService:Create(purgeBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0}):Play()
+        end)
+        purgeBtn.MouseLeave:Connect(function()
+            TweenService:Create(purgeBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.2}):Play()
+        end)
+        purgeBtn.MouseButton1Click:Connect(function()
+            local n = 0
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("ParticleEmitter") or obj:IsA("Smoke")
+                or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                    pcall(function() obj.Enabled = false; obj.Rate = 0 end)
+                    n = n + 1
+                end
+            end
+            CreateCustomNotification("OPT", "Purgados " .. n .. " emitters", 2)
+        end)
     end
 
     -- BETA LABEL
@@ -42370,12 +42714,37 @@ function CreateCombatTab()
                     end
                 end)
 
+                -- FIX: tambien escuchar Character.ChildAdded por si la gun llega
+                -- directamente equipada al char (no pasa por Backpack en MM2).
+                if _G._dualGunCharPickupConn then
+                    pcall(function() _G._dualGunCharPickupConn:Disconnect() end)
+                    _G._dualGunCharPickupConn = nil
+                end
+                local _dgChar = LocalPlayer.Character
+                if _dgChar then
+                    _G._dualGunCharPickupConn = _dgChar.ChildAdded:Connect(function(tool)
+                        if not (state and state.enabled) then return end
+                        if not tool:IsA("Tool") then return end
+                        if _dualGunKeywords[tool.Name] then
+                            task.wait(0.1)
+                            if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
+                            if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
+                            if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
+                            _dualStartArm(state, _dualGunKeywords)
+                        end
+                    end)
+                end
+
                 CreateCustomNotification("DUAL GUN", "OK Activado  Click Derecho para atacar", 3)
             else
                 _dualStopArm(state)
                 if _G._dualGunBpConn then
                     pcall(function() _G._dualGunBpConn:Disconnect() end)
                     _G._dualGunBpConn = nil
+                end
+                if _G._dualGunCharPickupConn then
+                    pcall(function() _G._dualGunCharPickupConn:Disconnect() end)
+                    _G._dualGunCharPickupConn = nil
                 end
                 CreateCustomNotification("DUAL GUN", "X Desactivado", 2)
             end
