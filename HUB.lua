@@ -826,7 +826,7 @@ local _LangStrings = {
     [" English"] = {
         boost = "BOOST", combat = "COMBAT", farm = "FARM", main = "MAIN",
         premium = "PREMIUM", settings = "SETTINGS", use = "USE",
-        visuals = "VISUALS", world = "WORLD",
+        visuals = "VISUALS", world = "WORLD", emotes = "EMOTES",
         fling = "FLING", hitbox_expander = "HITBOX EXPANDER",
         walkspeed = "WalkSpeed", jumppower = "JumpPower",
         movement = "MOVEMENT", protections = "PROTECTIONS",
@@ -857,7 +857,7 @@ local _LangStrings = {
     [" Espanol"] = {
         boost = "BOOST", combat = "COMBATE", farm = "GRANJA", main = "PRINCIPAL",
         premium = "PREMIUM", settings = "CONFIGURACION", use = "USO",
-        visuals = "VISUALES", world = "MUNDO",
+        visuals = "VISUALES", world = "MUNDO", emotes = "EMOTES",
         fling = "LANZAR", hitbox_expander = "EXPANDIR HITBOX",
         walkspeed = "Velocidad", jumppower = "Poder de Salto",
         movement = "MOVIMIENTO", protections = "PROTECCIONES",
@@ -49452,9 +49452,10 @@ particles = {}
     sideLayout.Padding = UDim.new(0, 6)
     sideLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
-    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE"}
+    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "EMOTES"}
     local tabFunctions = {CreateMainTab, CreateWorldTab, CreateVisualsTab, CreatePremiumTab, CreateExclusiveTab, CreateCombatTab,
-        function() CreateUseTab() end}  -- late binding: CreateUseTab se define despues de esta tabla
+        function() CreateUseTab() end,      -- late binding: CreateUseTab se define despues de esta tabla
+        function() CreateEmotesTab() end}   -- late binding: CreateEmotesTab
     local tabIcons = {
         "rbxassetid://104322605423609",  -- MAIN
         "rbxassetid://105507739661539",  -- WORLD
@@ -49463,6 +49464,7 @@ particles = {}
         "rbxassetid://103503754018914",  -- SETTINGS
         "rbxassetid://134041781822125",  -- COMBAT
         "rbxassetid://106189149164668",  -- USE
+        "rbxassetid://106189149164668",  -- EMOTES
     }
 
     local sideButtons = {}
@@ -49737,7 +49739,7 @@ particles = {}
         dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
         dockLayout.Padding = UDim.new(0, 2)
         dockPad.PaddingTop    = UDim.new(0, 6)
-        dockPad.PaddingBottom = UDim.new(0, 6)
+        dockPad.PaddingBottom = UDim.new(0, 0)
         dockPad.PaddingLeft   = UDim.new(0, 4)
         dockPad.PaddingRight  = UDim.new(0, 4)
     end
@@ -50696,6 +50698,349 @@ LocalPlayer.CharacterAdded:Connect(function()
 end)
 
 
+
+-- ================================================================
+-- == EMOTES TAB
+-- ================================================================
+function CreateEmotesTab()
+    if not contentContainer or not contentContainer.Parent then
+        task.wait(0.15)
+        if not contentContainer or not contentContainer.Parent then return end
+    end
+    _makeTwoColumns()
+
+    _G._emoteState = _G._emoteState or {
+        loopConn     = nil,
+        loopActive   = false,
+        currentTrack = nil,
+        loopSpeed    = 1.0,
+    }
+    local ES = _G._emoteState
+
+    local EMOTES = {
+        { name = "Default Dance",  id = "rbxassetid://507771019"  },
+        { name = "Wave",           id = "rbxassetid://507770239"  },
+        { name = "Point",          id = "rbxassetid://507770453"  },
+        { name = "Cheer",          id = "rbxassetid://507770677"  },
+        { name = "Laugh",          id = "rbxassetid://507770818"  },
+        { name = "Dance 2",        id = "rbxassetid://507776043"  },
+        { name = "Dance 3",        id = "rbxassetid://507777268"  },
+        { name = "Stadium Dance",  id = "rbxassetid://1654235468" },
+        { name = "Samba",          id = "rbxassetid://1654220869" },
+        { name = "Headbang",       id = "rbxassetid://2326985806" },
+        { name = "Robot",          id = "rbxassetid://2327032509" },
+        { name = "Breakdance",     id = "rbxassetid://3360689775" },
+        { name = "Gangnam Style",  id = "rbxassetid://3360686446" },
+        { name = "Floss",          id = "rbxassetid://4187501413" },
+        { name = "C Walk",         id = "rbxassetid://4187492070" },
+        { name = "Griddy",         id = "rbxassetid://10921008575"},
+        { name = "Wobble",         id = "rbxassetid://7717786309" },
+        { name = "Shuffle",        id = "rbxassetid://6716167174" },
+        { name = "Backflip",       id = "rbxassetid://3360694880" },
+        { name = "Bboy Freeze",    id = "rbxassetid://4187498982" },
+    }
+
+    local POSES = {
+        { name = "Salute",         id = "rbxassetid://3360692827" },
+        { name = "T-Pose",         id = "rbxassetid://3360693119" },
+        { name = "Shrug",          id = "rbxassetid://3360690148" },
+        { name = "Air Guitar",     id = "rbxassetid://4187511026" },
+        { name = "Levitate",       id = "rbxassetid://7717694100" },
+        { name = "Tilt",           id = "rbxassetid://507770847"  },
+        { name = "Swim",           id = "rbxassetid://1108307876" },
+        { name = "Sit",            id = "rbxassetid://2506281703" },
+    }
+
+    local function _getAnimator()
+        local char = LocalPlayer.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        return hum and hum:FindFirstChildOfClass("Animator")
+    end
+
+    local function _stopEmote()
+        if ES.loopConn then
+            pcall(function() ES.loopConn:Disconnect() end)
+            ES.loopConn = nil
+        end
+        ES.loopActive = false
+        if ES.currentTrack then
+            pcall(function() ES.currentTrack:Stop() end)
+            ES.currentTrack = nil
+        end
+    end
+
+    local function _playEmote(animId, loop)
+        _stopEmote()
+        local animr = _getAnimator()
+        if not animr then
+            CreateCustomNotification("EMOTES", "Personaje no disponible", 2)
+            return
+        end
+        local anim = Instance.new("Animation")
+        anim.AnimationId = animId
+        local ok, track = pcall(function() return animr:LoadAnimation(anim) end)
+        if not ok or not track then
+            CreateCustomNotification("EMOTES", "Error al cargar animacion", 2)
+            return
+        end
+        track:AdjustSpeed(ES.loopSpeed)
+        track.Looped = loop
+        track:Play()
+        ES.currentTrack = track
+        if loop then
+            ES.loopActive = true
+            ES.loopConn = track.Stopped:Connect(function()
+                if ES.loopActive then
+                    task.defer(function()
+                        if ES.loopActive then _playEmote(animId, true) end
+                    end)
+                end
+            end)
+        end
+    end
+
+    -- SECCION: CONTROLES
+    local ctrlSec = CreateBorderedSectionGlobal(leftColumn, "CONTROLES")
+
+    CreateAuroraToggle(ctrlSec, "Loop Emote (repite automaticamente)", function(on)
+        if on then
+            ES.loopActive = true
+            if ES.currentTrack and ES.currentTrack.IsPlaying then
+                local animId = ES.currentTrack.Animation and ES.currentTrack.Animation.AnimationId
+                if animId then _playEmote(animId, true) end
+            else
+                CreateCustomNotification("EMOTES", "Activa Loop y luego elige un emote", 2)
+            end
+        else
+            ES.loopActive = false
+            if ES.loopConn then
+                pcall(function() ES.loopConn:Disconnect() end)
+                ES.loopConn = nil
+            end
+        end
+    end, false)
+
+    -- Velocidad
+    do
+        local speedRow = Instance.new("Frame", ctrlSec)
+        speedRow.Size = UDim2.new(1, -8, 0, 30)
+        speedRow.BackgroundTransparency = 1
+        speedRow.BorderSizePixel = 0
+
+        local speedLbl = Instance.new("TextLabel", speedRow)
+        speedLbl.Size = UDim2.new(0.58, 0, 1, 0)
+        speedLbl.Position = UDim2.new(0, 6, 0, 0)
+        speedLbl.BackgroundTransparency = 1
+        speedLbl.Text = "Velocidad: 1.0x"
+        speedLbl.TextColor3 = Color3.fromRGB(200, 200, 220)
+        speedLbl.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+        speedLbl.TextSize = 11
+        speedLbl.TextXAlignment = Enum.TextXAlignment.Left
+        speedLbl.ZIndex = 14
+
+        local speeds  = {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0}
+        local speedIdx = 4
+
+        local function _applySpeed()
+            ES.loopSpeed = speeds[speedIdx]
+            speedLbl.Text = "Velocidad: " .. tostring(speeds[speedIdx]) .. "x"
+            if ES.currentTrack and ES.currentTrack.IsPlaying then
+                pcall(function() ES.currentTrack:AdjustSpeed(ES.loopSpeed) end)
+            end
+        end
+
+        local _ti = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+        local btnMinus = Instance.new("TextButton", speedRow)
+        btnMinus.Size = UDim2.new(0, 26, 0, 22)
+        btnMinus.Position = UDim2.new(0.6, 0, 0.12, 0)
+        btnMinus.BackgroundColor3 = Color3.fromRGB(60, 30, 120)
+        btnMinus.BorderSizePixel = 0
+        btnMinus.Text = "-"
+        btnMinus.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btnMinus.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        btnMinus.TextSize = 14
+        btnMinus.ZIndex = 14
+        Instance.new("UICorner", btnMinus).CornerRadius = UDim.new(0, 5)
+        btnMinus.MouseButton1Click:Connect(function()
+            if speedIdx > 1 then speedIdx = speedIdx - 1; _applySpeed() end
+        end)
+
+        local btnPlus = Instance.new("TextButton", speedRow)
+        btnPlus.Size = UDim2.new(0, 26, 0, 22)
+        btnPlus.Position = UDim2.new(0.6, 32, 0.12, 0)
+        btnPlus.BackgroundColor3 = Color3.fromRGB(60, 30, 120)
+        btnPlus.BorderSizePixel = 0
+        btnPlus.Text = "+"
+        btnPlus.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btnPlus.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        btnPlus.TextSize = 14
+        btnPlus.ZIndex = 14
+        Instance.new("UICorner", btnPlus).CornerRadius = UDim.new(0, 5)
+        btnPlus.MouseButton1Click:Connect(function()
+            if speedIdx < #speeds then speedIdx = speedIdx + 1; _applySpeed() end
+        end)
+    end
+
+    -- Boton Stop
+    do
+        local stopBtn = Instance.new("TextButton", ctrlSec)
+        stopBtn.Size = UDim2.new(1, -12, 0, 28)
+        stopBtn.BackgroundColor3 = Color3.fromRGB(110, 25, 55)
+        stopBtn.BorderSizePixel = 0
+        stopBtn.Text = "DETENER EMOTE"
+        stopBtn.TextColor3 = Color3.fromRGB(255, 200, 215)
+        stopBtn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        stopBtn.TextSize = 12
+        stopBtn.ZIndex = 14
+        Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 8)
+        local _ss = Instance.new("UIStroke", stopBtn)
+        _ss.Color = Color3.fromRGB(200, 50, 90)
+        _ss.Thickness = 1.5
+        _ss.Transparency = 0.3
+        stopBtn.MouseButton1Click:Connect(function()
+            _stopEmote()
+            CreateCustomNotification("EMOTES", "Emote detenido", 1.5)
+        end)
+    end
+
+    -- Custom ID
+    local customSec = CreateBorderedSectionGlobal(leftColumn, "CUSTOM EMOTE (ID)")
+    do
+        local hintLbl = Instance.new("TextLabel", customSec)
+        hintLbl.Size = UDim2.new(1, -8, 0, 18)
+        hintLbl.BackgroundTransparency = 1
+        hintLbl.Text = "Animation ID manual:"
+        hintLbl.TextColor3 = Color3.fromRGB(170, 150, 210)
+        hintLbl.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+        hintLbl.TextSize = 11
+        hintLbl.TextXAlignment = Enum.TextXAlignment.Left
+        hintLbl.ZIndex = 14
+        local _hp = Instance.new("UIPadding", hintLbl)
+        _hp.PaddingLeft = UDim.new(0, 6)
+
+        local inputBox = Instance.new("TextBox", customSec)
+        inputBox.Size = UDim2.new(1, -8, 0, 28)
+        inputBox.BackgroundColor3 = Color3.fromRGB(12, 6, 28)
+        inputBox.BackgroundTransparency = 0.3
+        inputBox.BorderSizePixel = 0
+        inputBox.PlaceholderText = "rbxassetid://000000000"
+        inputBox.PlaceholderColor3 = Color3.fromRGB(100, 80, 130)
+        inputBox.Text = ""
+        inputBox.TextColor3 = Color3.fromRGB(220, 200, 255)
+        inputBox.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+        inputBox.TextSize = 11
+        inputBox.ClearTextOnFocus = false
+        inputBox.ZIndex = 14
+        Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0, 8)
+        local _is = Instance.new("UIStroke", inputBox)
+        _is.Color = Color3.fromRGB(90, 50, 180)
+        _is.Thickness = 1
+        _is.Transparency = 0.4
+        local _ip2 = Instance.new("UIPadding", inputBox)
+        _ip2.PaddingLeft = UDim.new(0, 8)
+
+        local playBtn = Instance.new("TextButton", customSec)
+        playBtn.Size = UDim2.new(1, -8, 0, 28)
+        playBtn.BackgroundColor3 = Color3.fromRGB(60, 25, 150)
+        playBtn.BorderSizePixel = 0
+        playBtn.Text = "Reproducir Custom"
+        playBtn.TextColor3 = Color3.fromRGB(220, 200, 255)
+        playBtn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        playBtn.TextSize = 12
+        playBtn.ZIndex = 14
+        Instance.new("UICorner", playBtn).CornerRadius = UDim.new(0, 8)
+        local _pbs = Instance.new("UIStroke", playBtn)
+        _pbs.Color = Color3.fromRGB(120, 70, 255)
+        _pbs.Thickness = 1.5
+        _pbs.Transparency = 0.3
+
+        playBtn.MouseButton1Click:Connect(function()
+            local raw = inputBox.Text:gsub("%s", "")
+            if raw == "" then CreateCustomNotification("EMOTES", "Ingresa un ID primero", 2); return end
+            local finalId = raw
+            if not raw:find("rbxassetid://") then
+                local num = raw:match("%d+")
+                if not num then CreateCustomNotification("EMOTES", "ID invalido", 2); return end
+                finalId = "rbxassetid://" .. num
+            end
+            _playEmote(finalId, ES.loopActive)
+            CreateCustomNotification("EMOTES", "Custom: " .. finalId, 2)
+        end)
+    end
+
+    -- SECCION: LISTA DE EMOTES (columna izquierda abajo / derecha)
+    local emoteSec = CreateBorderedSectionGlobal(rightColumn, "EMOTES")
+    for _, emote in ipairs(EMOTES) do
+        local row = Instance.new("TextButton", emoteSec)
+        row.Size = UDim2.new(1, -8, 0, 30)
+        row.BackgroundColor3 = Color3.fromRGB(18, 8, 42)
+        row.BackgroundTransparency = 0.4
+        row.BorderSizePixel = 0
+        row.Text = "  " .. emote.name
+        row.TextColor3 = Color3.fromRGB(200, 180, 255)
+        row.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+        row.TextSize = 12
+        row.TextXAlignment = Enum.TextXAlignment.Left
+        row.ZIndex = 14
+        local _rp = Instance.new("UIPadding", row)
+        _rp.PaddingLeft = UDim.new(0, 10)
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+        local _rs = Instance.new("UIStroke", row)
+        _rs.Color = Color3.fromRGB(90, 50, 180)
+        _rs.Thickness = 1
+        _rs.Transparency = 0.5
+        local _tiE = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        row.MouseEnter:Connect(function()
+            TweenService:Create(row, _tiE, {BackgroundTransparency = 0.1, TextColor3 = Color3.fromRGB(235, 215, 255)}):Play()
+        end)
+        row.MouseLeave:Connect(function()
+            TweenService:Create(row, _tiE, {BackgroundTransparency = 0.4, TextColor3 = Color3.fromRGB(200, 180, 255)}):Play()
+        end)
+        local _eId = emote.id
+        local _eName = emote.name
+        row.MouseButton1Click:Connect(function()
+            _playEmote(_eId, ES.loopActive)
+            CreateCustomNotification("EMOTES", _eName .. (ES.loopActive and " (loop)" or ""), 1.5)
+        end)
+    end
+
+    -- SECCION: POSES
+    local posesSec = CreateBorderedSectionGlobal(rightColumn, "POSES Y ESPECIALES")
+    for _, pose in ipairs(POSES) do
+        local row = Instance.new("TextButton", posesSec)
+        row.Size = UDim2.new(1, -8, 0, 30)
+        row.BackgroundColor3 = Color3.fromRGB(8, 14, 42)
+        row.BackgroundTransparency = 0.4
+        row.BorderSizePixel = 0
+        row.Text = "  " .. pose.name
+        row.TextColor3 = Color3.fromRGB(180, 215, 255)
+        row.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+        row.TextSize = 12
+        row.TextXAlignment = Enum.TextXAlignment.Left
+        row.ZIndex = 14
+        local _rp2 = Instance.new("UIPadding", row)
+        _rp2.PaddingLeft = UDim.new(0, 10)
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+        local _rs2 = Instance.new("UIStroke", row)
+        _rs2.Color = Color3.fromRGB(50, 90, 180)
+        _rs2.Thickness = 1
+        _rs2.Transparency = 0.5
+        local _tiP = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        row.MouseEnter:Connect(function()
+            TweenService:Create(row, _tiP, {BackgroundTransparency = 0.1, TextColor3 = Color3.fromRGB(210, 235, 255)}):Play()
+        end)
+        row.MouseLeave:Connect(function()
+            TweenService:Create(row, _tiP, {BackgroundTransparency = 0.4, TextColor3 = Color3.fromRGB(180, 215, 255)}):Play()
+        end)
+        local _pId = pose.id
+        local _pName = pose.name
+        row.MouseButton1Click:Connect(function()
+            _playEmote(_pId, ES.loopActive)
+            CreateCustomNotification("EMOTES", _pName .. (ES.loopActive and " (loop)" or ""), 1.5)
+        end)
+    end
+end
 
 function CreateUseTab()
     ClearContent()
