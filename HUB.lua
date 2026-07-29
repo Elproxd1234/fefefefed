@@ -962,18 +962,13 @@ function RegisterLangLabel(obj, key, prefix, suffix)
     table.insert(_LangObjects, {obj=obj, key=key, prefix=prefix, suffix=suffix})
 end
 
--- OPT: funcion nombrada para el pcall de ApplyLanguage
--- Evita crear una closure nueva en cada iteracion del loop (antes: O(n) closures)
-local _applyLangEntry, _applyLangText
-local function _setLangText() _applyLangEntry.obj.Text = _applyLangText end
 function ApplyLanguage(langName)
     _G.HubLanguage = langName
     local dict = _LangStrings[langName] or _LangStrings[" English"]
     for _, entry in ipairs(_LangObjects) do
         if entry.obj and entry.obj.Parent then
-            _applyLangEntry = entry
-            _applyLangText  = entry.prefix .. (dict[entry.key] or entry.obj.Text) .. entry.suffix
-            pcall(_setLangText)
+            local translated = dict[entry.key] or entry.obj.Text
+ pcall(function() entry.obj.Text = entry.prefix .. translated .. entry.suffix end)
         end
     end
 end
@@ -1092,7 +1087,7 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
         subLabel.TextTruncate = Enum.TextTruncate.AtEnd
     end
 
-    local TRACK_W, TRACK_H = 95, 26
+    local TRACK_W, TRACK_H = 52, 26
     local THUMB_D = 20
     local THUMB_PAD = 3
 
@@ -1105,24 +1100,23 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
     track.ZIndex = 11
     track.ClipsDescendants = false
     Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-    -- Thumb: esquinas rectangulares con radio 6
 
     local trackStroke = Instance.new("UIStroke", track)
     trackStroke.Color = isToggled and C_TRACK_S_ON or C_TRACK_S_OFF
     trackStroke.Thickness = 2.0
     trackStroke.Transparency = 0.0
 
-    local POS_ON  = UDim2.new(1, -40, 0.5, -10)
-    local POS_OFF = UDim2.new(0, 4, 0.5, -10)
+    local POS_ON  = UDim2.new(1, -(THUMB_D + THUMB_PAD), 0.5, -THUMB_D/2)
+    local POS_OFF = UDim2.new(0, THUMB_PAD, 0.5, -THUMB_D/2)
 
     local thumb = Instance.new("Frame", track)
-    thumb.Size = UDim2.new(0, 36, 0, 20)
+    thumb.Size = UDim2.new(0, THUMB_D, 0, THUMB_D)
     thumb.Position = isToggled and POS_ON or POS_OFF
     thumb.BackgroundColor3 = ThemeColors.TextPrimary
     thumb.BackgroundTransparency = 0.15
     thumb.BorderSizePixel = 0
     thumb.ZIndex = 14
-    Instance.new("UICorner", thumb).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", thumb).CornerRadius = UDim.new(1, 0)
 
     local numLabel = Instance.new("TextLabel", track)
     numLabel.Size = UDim2.new(0.5, 0, 1, 0)
@@ -2575,11 +2569,10 @@ function _resetHist(userId)
         -- [WIFI PRED] Per-player network estimation
         pingEMA       = 80,   -- EMA del lag del jugador en ms (estimado)
         pingJitter    = 0,    -- varianza reciente del lag
-        -- OPT-RB: pingHistory y receiveDeltas como ring buffers O(1)
-        pingHistory   = table.create(20, 0), _phHead = 1, _phCount = 0,
-        receiveDeltas = table.create(16, 0), _rdHead = 1, _rdCount = 0,
+        pingHistory   = {},   -- ultimas N estimaciones para tendencia
         lastSeenT     = 0,    -- tick() de la ultima posicion recibida
         lastSeenPos   = nil,  -- ultima posicion guardada
+        receiveDeltas = {},   -- intervalos entre actualizaciones (~ lag del target)
     }
     _histTimers[userId] = 0
 end
@@ -2624,7 +2617,7 @@ end
 
 -- Call this every frame from the main tracking loop
 function updatePredHistoryFor(userId, pos, vel)
-    local now  = os.clock()  -- OPT: os.clock() > tick() (deprecated)
+    local now  = tick()
     local last = _histTimers[userId] or 0
     if now - last < HIST_INTERVAL then return end
     _histTimers[userId] = now
@@ -2704,7 +2697,7 @@ _histLastUpdate  = 0
 RunService.Heartbeat:Connect(function()
     -- Guard: solo correr si algun Silent Aim esta activo
     if not KnifeSAState.enabled and not (CombatTabState and CombatTabState.silentAimEnabled) then return end
-    local now = os.clock()  -- OPT: os.clock() > tick() (tick deprecated, mas overhead)
+    local now = tick()
     if now - _histLastUpdate < HIST_INTERVAL_HZ then return end
     _histLastUpdate = now
     if _G._visualRoundOver then return end
@@ -2719,7 +2712,8 @@ RunService.Heartbeat:Connect(function()
 
             -- [WIFI PRED] Estimar ping del jugador midiendo el intervalo entre
             -- actualizaciones de posicion que llegan al cliente.
-            -- OPT: _now reutiliza os.clock() ya calculado al inicio del frame
+            -- En Roblox, las posiciones se replican al ritmo del ping del dueno.
+            -- Si el intervalo entre updates es mayor al nuestro -> ese jugador tiene mas lag.
             local _h = _getHist(p.UserId)
             local _now = now
             if _h.lastSeenPos then
@@ -2729,19 +2723,19 @@ RunService.Heartbeat:Connect(function()
                     local _delta = (_now - _h.lastSeenT) * 1000  -- ms entre updates
                     -- Clamp: ignora deltas absurdos (lag spikes > 800ms o < 8ms)
                     _delta = math.clamp(_delta, 8, 800)
-                    -- OPT-RB: ring buffer O(1) -- sin table.insert/remove O(n)
-                    _h.receiveDeltas[_h._rdHead] = _delta
-                    _h._rdHead = (_h._rdHead % 16) + 1
-                    if _h._rdCount < 16 then _h._rdCount = _h._rdCount + 1 end
+                    -- Guardar ultimas 16 deltas para EMA y jitter
+                    local _rd = _h.receiveDeltas
+                    table.insert(_rd, _delta)
+                    if #_rd > 16 then table.remove(_rd, 1) end
                     -- EMA del delta (~ ping estimado del jugador)
                     _h.pingEMA = _h.pingEMA * 0.70 + _delta * 0.30
                     -- Jitter = varianza suavizada del delta
                     local _jRaw = math.abs(_delta - _h.pingEMA)
                     _h.pingJitter = _h.pingJitter * 0.75 + _jRaw * 0.25
-                    -- OPT-RB: pingHistory ring buffer O(1)
-                    _h.pingHistory[_h._phHead] = _h.pingEMA
-                    _h._phHead = (_h._phHead % 20) + 1
-                    if _h._phCount < 20 then _h._phCount = _h._phCount + 1 end
+                    -- Guardar en pingHistory para tendencia
+                    local _ph = _h.pingHistory
+                    table.insert(_ph, _h.pingEMA)
+                    if #_ph > 20 then table.remove(_ph, 1) end
                     _h.lastSeenT = _now
                     _h.lastSeenPos = hrp.Position
                 end
@@ -2922,34 +2916,21 @@ _BULLET_GRAVITY = 0.0
 _BASE_MAX_OFFSET = 6  -- reducido: mismo techo que SA_PRED_MAX_OFFSET
 _MAX_CHAR_SPEED  = 220
 
--- Historial de posiciones reales por jugador (OPT: ring buffer O(1))
+-- Historial de posiciones reales por jugador
 _posHistory    = {}
 _POS_HIST_SIZE = 6
 
 local function _pushPosHist(uid, pos, t)
+    if not _posHistory[uid] then _posHistory[uid] = {} end
     local h = _posHistory[uid]
-    if not h then
-        h = { entries = table.create(6), _head = 1, _count = 0 }
-        for i = 1, 6 do h.entries[i] = false end
-        _posHistory[uid] = h
-    end
-    -- OPT-RB: O(1) -- sin table.insert/remove O(n)
-    h.entries[h._head] = { pos = pos, t = t }
-    h._head = (h._head % _POS_HIST_SIZE) + 1
-    if h._count < _POS_HIST_SIZE then h._count = h._count + 1 end
+    table.insert(h, {pos = pos, t = t})
+    if #h > _POS_HIST_SIZE then table.remove(h, 1) end
 end
 
 local function _getPosHistVel(uid, fallbackVel)
     local h = _posHistory[uid]
-    if not h or h._count < 2 then return fallbackVel end
-    -- Newest: slot antes de _head; Oldest: slot mas antiguo en el ring
-    local newestIdx = (h._head - 2) % _POS_HIST_SIZE + 1
-    local oldestIdx = h._count < _POS_HIST_SIZE
-        and ((h._head - h._count - 1) % _POS_HIST_SIZE + 1)
-        or  h._head  -- cuando lleno, _head apunta al mas viejo
-    local newest = h.entries[newestIdx]
-    local oldest = h.entries[oldestIdx]
-    if not newest or not oldest then return fallbackVel end
+    if not h or #h < 2 then return fallbackVel end
+    local newest = h[#h]; local oldest = h[1]
     local dt = newest.t - oldest.t
     if dt < 0.005 then return fallbackVel end
     local hv = (newest.pos - oldest.pos) / dt
@@ -3362,9 +3343,11 @@ function startAutoReload()
     local C = Settings.combatSettings
     if not C.autoReload then return end
 
-    local _arTick = 0
+    local _hbTautoReload = 0
+    local _arTick=0
     CombatState.autoReloadConnection = RunService.Heartbeat:Connect(function()
         _arTick=_arTick+1; if _arTick<6 then return end; _arTick=0  -- OPT: ~10Hz para auto-reload
+        _hbTautoReload=_hbTautoReload+1; if _hbTautoReload<3 then return end; _hbTautoReload=0
         if not C.autoReload then return end
         if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
         -- FIX: buscar gun por _GUN_NAMES igual que autoShoot (no solo literal "Gun")
@@ -3454,9 +3437,11 @@ end
 
 function _fluidGrabGun(child)
     -- -- Throttle global ----------------------------------------------
+    -- FIX: solo throttlear si el ultimo grab fue EXITOSO (return true al final)
+    -- Si fallo, permitir reintento inmediato para no perder la gun
     local now = os.clock()
-    if now - _grabGunLastTime < 0.05 then return false end  -- FIX v5: 0.08->0.05s, mas responsivo
-    _grabGunLastTime = now
+    if now - _grabGunLastTime < 0.05 then return false end
+    -- No actualizar _grabGunLastTime aqui; se actualiza al final si tuvo exito
 
     local char = LocalPlayer.Character
     local hrp  = char and char:FindFirstChild("HumanoidRootPart")
@@ -3495,6 +3480,10 @@ function _fluidGrabGun(child)
     -- Movemos la parte de la gun al HRP usando CFrame client-side.
     -- El servidor detecta la proximidad y da la gun al jugador.
     -- El personaje NUNCA se teletransporta.
+
+    -- FIX: actualizar timestamp AHORA (antes de los intentos) para evitar
+    -- llamadas paralelas simultaneas que compitan entre si
+    _grabGunLastTime = now
 
     -- PASO 1: EquipTool directo (funciona si ya esta en backpack/workspace)
     if child:IsA("Tool") then
@@ -3541,17 +3530,43 @@ function _fluidGrabGun(child)
     if _hasGun() then return true end
 
     -- PASO 5: EquipTool forzado si la gun sigue en workspace
+    if child:IsA("Tool") and child.Parent then
+        pcall(function() hum:EquipTool(child) end)
+        if _hasGun() then return true end
+    end
+
+    -- PASO 6 (FIX): blink del HRP a la gun como ultimo recurso
+    -- Solo si no se agarro con ningun metodo anterior
     task.defer(function()
         if _hasGun() then return end
-        if child:IsA("Tool") and child.Parent then
-            pcall(function() hum:EquipTool(child) end)
+        local char2 = LocalPlayer.Character
+        local hrp2  = char2 and char2:FindFirstChild("HumanoidRootPart")
+        local hum2  = char2 and char2:FindFirstChildOfClass("Humanoid")
+        if not hrp2 or not hum2 or hum2.Health <= 0 then
+            -- Restaurar posicion original si no se pudo agarrar
+            pcall(function() part.CFrame = origCF; part.Anchored = origAnch end)
+            return
         end
-        if _hasGun() then return end
-        -- Restaurar posicion original si no se agarro (limpieza)
+        local savedCF = hrp2.CFrame
         pcall(function()
-            part.CFrame   = origCF
-            part.Anchored = origAnch
+            hrp2.CFrame = CFrame.new(part.Position + Vector3.new(0, 1.5, 0))
+            hrp2.AssemblyLinearVelocity = Vector3.zero
         end)
+        task.wait(0)
+        pcall(function()
+            firetouchinterest(hrp2, part, 0)
+            firetouchinterest(hrp2, part, 1)
+        end)
+        task.wait(0)
+        pcall(function()
+            hrp2.CFrame = savedCF
+            hrp2.AssemblyLinearVelocity  = Vector3.zero
+            hrp2.AssemblyAngularVelocity = Vector3.zero
+        end)
+        if not _hasGun() then
+            -- No se agarro: restaurar posicion de la gun
+            pcall(function() part.CFrame = origCF; part.Anchored = origAnch end)
+        end
     end)
 
     return true
@@ -4194,85 +4209,19 @@ local Themes = {
 -- Tema Overdrive Aurora: fondo violeta oscuro / negro para que el verde neon resalte
 currentThemeName = "Neon Green"
 
--- ================================================================
--- == MOBILE COLOR BOOST
--- Las pantallas de celular muestran colores mas apagados que PC.
--- Este sistema detecta si es mobile y sube la saturacion/luminosidad
--- de todos los colores del tema para que se vean igual de vividos.
--- ================================================================
-local _isMobilePlatform = (function()
-    local ok, res = pcall(function() return game:GetService("UserInputService").TouchEnabled end)
-    return ok and res == true
-end)()
-
--- Boost: convierte un Color3 a HSV, sube saturacion y value, vuelve a RGB
--- satBoost: cuanto sube la saturacion (0-1 adicional)
--- valBoost: cuanto sube el brillo    (0-1 adicional)
--- Se clampea a 1 para no pasarse del maximo
-local function _boostColor(color, satBoost, valBoost)
-    local h, s, v = Color3.toHSV(color)
-    -- No tocar colores muy oscuros (Background) ni blancos puros (TextPrimary)
-    -- para no romper el contraste del hub
-    if v < 0.08 then
-        -- muy oscuro: solo subir brillo levemente para que no sea negro puro en OLED
-        v = math.min(v + 0.04, 1)
-    elseif v > 0.92 and s < 0.08 then
-        -- blanco/gris muy claro: no tocar
-    else
-        s = math.min(s + satBoost, 1)
-        v = math.min(v + valBoost, 1)
-    end
-    return Color3.fromHSV(h, s, v)
-end
-
--- Aplica el boost a una tabla de colores de tema (modifica in-place una copia)
-local _SAT_BOOST = 0.18   -- +18% saturacion en mobile
-local _VAL_BOOST = 0.12   -- +12% brillo en mobile
-local function _applyMobileBoost(themeTable)
-    if not _isMobilePlatform then return themeTable end
-    local boosted = {}
-    for k, v in pairs(themeTable) do
-        if typeof(v) == "Color3" then
-            boosted[k] = _boostColor(v, _SAT_BOOST, _VAL_BOOST)
-        else
-            boosted[k] = v
-        end
-    end
-    return boosted
-end
-
--- Aplicar boost a todos los temas en Themes{}
--- Se hace una sola vez al cargar, no en cada frame
-if _isMobilePlatform then
-    for themeName, themeData in pairs(Themes) do
-        Themes[themeName] = _applyMobileBoost(themeData)
-    end
-end
--- ================================================================
--- == FIN MOBILE COLOR BOOST
--- ================================================================
-
 local ThemeColors = {
-    Primary         = Color3.fromRGB(120, 60, 220),   -- violeta principal
-    Secondary       = Color3.fromRGB(40, 30, 100),    -- violeta oscuro profundo
-    Accent          = Color3.fromRGB(80, 140, 255),   -- azul electrico (acento)
-    Background      = Color3.fromRGB(18, 12, 48),     -- azul-violeta muy oscuro (fondo)
-    BackgroundLight = Color3.fromRGB(55, 35, 130),    -- violeta medio
+    Primary         = Color3.fromRGB(80, 80, 80),    -- violeta principal
+    Secondary       = Color3.fromRGB(50, 50, 50),     -- violeta oscuro
+    Accent          = Color3.fromRGB(80, 80, 80),    -- verde/turquesa (acento)
+    Background      = Color3.fromRGB(80, 80, 80),    -- verde/turquesa oscuro (fondo)
+    BackgroundLight = Color3.fromRGB(20, 140, 115),   -- verde/turquesa medio
     TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
-    TextSecondary   = Color3.fromRGB(180, 160, 220),  -- lila suave
-    Aurora1         = Color3.fromRGB(140, 80, 255),   -- violeta neon
-    Aurora2         = Color3.fromRGB(70, 120, 255),   -- azul aurora
-    Aurora3         = Color3.fromRGB(100, 60, 200),   -- violeta medio
-    Aurora4         = Color3.fromRGB(50, 90, 200),    -- azul profundo
+    TextSecondary   = Color3.fromRGB(180, 180, 190),  -- gris suave
+    Aurora1         = Color3.fromRGB(80, 80, 80),    -- violeta principal
+    Aurora2         = Color3.fromRGB(50, 50, 50),     -- violeta oscuro
+    Aurora3         = Color3.fromRGB(80, 80, 80),    -- verde/turquesa
+    Aurora4         = Color3.fromRGB(80, 80, 80),    -- verde/turquesa oscuro
 }
--- Aplicar boost al ThemeColors inicial tambien (es el tema por defecto en memoria)
-if _isMobilePlatform then
-    for k, v in pairs(ThemeColors) do
-        if typeof(v) == "Color3" then
-            ThemeColors[k] = _boostColor(v, _SAT_BOOST, _VAL_BOOST)
-        end
-    end
-end
 
 ThemeObjects = {}
 
@@ -6616,38 +6565,25 @@ function _doStealFling(targetHRP, skipReturn)
     local _RS = game:GetService("RunService")
     local _targetLaunched = false
     local _stickyConn
-    -- FIX SALIR VOLANDO: guard para cortar inyeccion de velocidad
-    -- en el mismo frame de la desconexion (evita race condition del Heartbeat)
-    local _scActive = true
 
     -- Activar ragdoll propio para no resistir el movimiento
     pcall(function() Humanoid.PlatformStand = true end)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
 
-    local _stickyTimeout = os.clock() + 10  -- OPT: os.clock() > tick()
+    local _stickyTimeout = tick() + 10  -- 10 segundos pegado al target
     _stickyConn = _RS.Heartbeat:Connect(function()
-        -- FIX: check de guard ANTES de cualquier otra cosa
-        if not _scActive then return end
         if not TRootPart or not TRootPart.Parent then
-            _scActive = false
             _targetLaunched = true
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
 
         -- Timeout de 10s alcanzado: cortar y volver
-        if os.clock() > _stickyTimeout then
-            -- FIX: desactivar guard PRIMERO
-            _scActive = false
+        if tick() > _stickyTimeout then
             _targetLaunched = true
-            -- FIX: zerear TODOS los parts, no solo RootPart
             pcall(function()
-                for _, x in ipairs(Character:GetDescendants()) do
-                    if x:IsA("BasePart") then
-                        x.AssemblyLinearVelocity  = Vector3.zero
-                        x.AssemblyAngularVelocity = Vector3.zero
-                    end
-                end
+                RootPart.AssemblyLinearVelocity  = Vector3.zero
+                RootPart.AssemblyAngularVelocity = Vector3.zero
                 Humanoid.PlatformStand = false
             end)
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
@@ -6674,29 +6610,16 @@ function _doStealFling(targetHRP, skipReturn)
         _waitLimit = _waitLimit + 0.05
     until _targetLaunched or _waitLimit > 11
 
-    -- Asegurar desconexion y guard apagado
-    _scActive = false
+    -- Asegurar desconexion del Heartbeat
     if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
 
-    -- FIX: zerear character completo en el cleanup final
+    -- Restaurar estado fisico propio
     pcall(function()
-        for _, x in ipairs(Character:GetDescendants()) do
-            if x:IsA("BasePart") then
-                x.AssemblyLinearVelocity  = Vector3.zero
-                x.AssemblyAngularVelocity = Vector3.zero
-            end
-        end
+        RootPart.AssemblyLinearVelocity  = Vector3.zero
+        RootPart.AssemblyAngularVelocity = Vector3.zero
         Humanoid.PlatformStand = false
     end)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
-    -- FIX: segundo pass 1 frame despues para cancelar inercia residual del servidor
-    task.wait()
-    pcall(function()
-        if RootPart and RootPart.Parent then
-            RootPart.AssemblyLinearVelocity  = Vector3.zero
-            RootPart.AssemblyAngularVelocity = Vector3.zero
-        end
-    end)
     pcall(function() workspace.CurrentCamera.CameraSubject = Humanoid end)
 
     -- Liberar el guard ANTES del return para que el boton pueda volver a activarse
@@ -6908,35 +6831,20 @@ function StartFlingSystem()
             if not tHRP or not tHRP.Parent then return false end
             local launched = false
             local conn
-            -- FIX SALIR VOLANDO: flag para cortar la inyeccion de velocidad
-            -- dentro del mismo frame en que se detecta el lanzamiento.
-            -- Sin esto, Heartbeat puede ejecutar un frame extra tras Disconnect()
-            -- inyectando 50000 al propio jugador.
-            local _connActive = true
             pcall(function() myHum.PlatformStand = true end)
-            local timeout = os.clock() + 3  -- OPT: os.clock() > tick()
+            local timeout = tick() + 3
             conn = _RS.Heartbeat:Connect(function()
-                -- FIX: check de guard ANTES de cualquier otra cosa
-                if not _connActive then return end
                 if not tHRP.Parent then
-                    _connActive = false
                     launched = true
                     if conn then conn:Disconnect(); conn = nil end
                     return
                 end
                 local tVel = tHRP.AssemblyLinearVelocity.Magnitude
-                if tVel > 120 or os.clock() > timeout then
-                    -- FIX RACE: desactivar PRIMERO el guard, LUEGO desconectar
-                    _connActive = false
+                if tVel > 120 or tick() > timeout then
                     launched = true
-                    -- Zerear TODOS los parts del character, no solo HRP
                     pcall(function()
-                        for _, x in ipairs(myChar:GetDescendants()) do
-                            if x:IsA("BasePart") then
-                                x.AssemblyLinearVelocity  = Vector3.zero
-                                x.AssemblyAngularVelocity = Vector3.zero
-                            end
-                        end
+                        myHRP.AssemblyLinearVelocity  = Vector3.zero
+                        myHRP.AssemblyAngularVelocity = Vector3.zero
                         myHum.PlatformStand = false
                     end)
                     if conn then conn:Disconnect(); conn = nil end
@@ -6953,26 +6861,11 @@ function StartFlingSystem()
             end)
             local w = 0
             repeat task.wait(0.05); w = w + 0.05 until launched or w > 4
-            -- Asegurar desconexion y zereo final aunque el loop haya terminado por timeout
-            _connActive = false
             if conn then conn:Disconnect(); conn = nil end
-            -- FIX: zerear character completo en el cleanup final tambien
             pcall(function()
-                for _, x in ipairs(myChar:GetDescendants()) do
-                    if x:IsA("BasePart") then
-                        x.AssemblyLinearVelocity  = Vector3.zero
-                        x.AssemblyAngularVelocity = Vector3.zero
-                    end
-                end
+                myHRP.AssemblyLinearVelocity  = Vector3.zero
+                myHRP.AssemblyAngularVelocity = Vector3.zero
                 myHum.PlatformStand = false
-            end)
-            -- FIX: segundo pass 1 frame despues para cancelar inercia residual del servidor
-            task.wait()
-            pcall(function()
-                if myHRP and myHRP.Parent then
-                    myHRP.AssemblyLinearVelocity  = Vector3.zero
-                    myHRP.AssemblyAngularVelocity = Vector3.zero
-                end
             end)
             return launched
         end
@@ -7327,9 +7220,7 @@ function EnableNoclip()
         _rebuildCache(c)
     end)
     _rebuildCache(LocalPlayer.Character)
-    local _ncTick = 0
     Settings.connections.noclip = RunService.Stepped:Connect(function()
-        _ncTick = _ncTick + 1; if _ncTick < 3 then return end; _ncTick = 0  -- OPT: ~20Hz en vez de 60Hz
         local char = LocalPlayer.Character
         if not char then return end
         -- Reconstruir cache si el personaje cambio
@@ -8473,11 +8364,6 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
         if _locked then return end
         if isOpen then closeList() else openList() end
     end)
-    -- FIX MOBILE: soporte Touch para abrir/cerrar el selector
-    triggerBtn.TouchTap:Connect(function()
-        if _locked then return end
-        if isOpen then closeList() else openList() end
-    end)
 
     -- Construir opciones
     local function buildOptions(opts)
@@ -8542,17 +8428,14 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
                 end
             end)
 
-            local function _selectOption()
+            row.MouseButton1Click:Connect(function()
                 if _locked then return end
                 selectedValue     = name
                 selectedText.Text = name
                 refreshIndicators()
                 if callback then callback(name) end
                 closeList()
-            end
-            row.MouseButton1Click:Connect(_selectOption)
-            -- FIX MOBILE: soporte Touch para seleccionar opcion
-            row.TouchTap:Connect(_selectOption)
+            end)
 
             table.insert(optionBtns, wrapper)
         end
@@ -9202,7 +9085,7 @@ function CreateESP(player)
     -- no se actualizara cuando cambiaba el rol (Murder detectado, Sheriff muerto, etc.).
     -- Reducido a 18 (~0.3s) para sincronizar colores sin sobrecargar el Heartbeat.
     do local _espTick=0 espConnection = RunService.Heartbeat:Connect(function()
-        _espTick=_espTick+1; if _espTick<240 then return end; _espTick=0  -- OPT: 144→240 frames (~4s ciclo de color)
+        _espTick=_espTick+1; if _espTick<144 then return end; _espTick=0  -- OPT: 120→144 frames (~2.4s ciclo de color)
         if not (Settings.esp and (Settings.esp.enabled.Everyone or Settings.esp.enabled.MurdererOnly or Settings.esp.enabled.SheriffOnly)) then return end
         pcall(updateESP)
     end) end
@@ -9295,7 +9178,7 @@ function CreateChams(player)
     -- FIX HEARTBEAT: _chamTick<9999 equivale a ~166s de delay, nunca actualizaba.
     -- Reducido a 9 (~0.15s) para limpiar Highlights residuos de Settings.cham.objects.
     do local _chamTick=0 chamConnection = RunService.Heartbeat:Connect(function()
-        _chamTick=_chamTick+1; if _chamTick<180 then return end; _chamTick=0  -- OPT: 90→180 frames (~3s ciclo cham)
+        _chamTick=_chamTick+1; if _chamTick<90 then return end; _chamTick=0  -- OPT: 72→90 frames (~1.5s ciclo cham)
         if not (VisualState and (VisualState.cham and next(VisualState.cham))) then return end
         pcall(updateChams)
     end) end
@@ -9366,10 +9249,7 @@ local function _startEspBoxLoop()
     if _G._espBoxConn then return end
     _G._espBoxConn = task.spawn(function()
         while _G._espBoxEnabled do
-            -- OPT-COMBAT: cuando hay toggles pesados activos, reducir frecuencia del ESP
-            -- para no competir con los loops de Heartbeat de Silent Aim / Auto Shoot
-            local _espWait = _G._combatOpt_espThrottle and 1.5 or 0.5
-            wait(_espWait)
+            wait(0.5)
             local myChar = game.Players.LocalPlayer.Character
             for _, box in ipairs(workspace:GetDescendants()) do
                 if box:FindFirstChild("Humanoid") and box ~= myChar then
@@ -9513,7 +9393,7 @@ function CreateOutline(player)
     local _hbToutline = 0
     outlineConnection = RunService.Heartbeat:Connect(function()
         _hbToutline = _hbToutline + 1
-        if _hbToutline < 72 then return end  -- OPT: 36→72 frames (~1.2s)
+        if _hbToutline < 36 then return end
         _hbToutline = 0
         local _vo = VisualState and VisualState.outline
         if not (_vo and (_vo.everyone or _vo.murderer or _vo.sheriff or _vo.hero)) then
@@ -9606,7 +9486,7 @@ function CreateSkeleton(player)
     -- LAG FIX: skeleton solo corre si la feature esta activa
     local _hbTskeleton = 0
     skeletonConnection = RunService.Heartbeat:Connect(function()
-        _hbTskeleton=_hbTskeleton+1; if _hbTskeleton<72 then return end; _hbTskeleton=0  -- OPT: 36→72 frames (~1.2s)
+        _hbTskeleton=_hbTskeleton+1; if _hbTskeleton<36 then return end; _hbTskeleton=0  -- OPT: 30→36 frames
         local _vsk = VisualState and VisualState.skeleton
         if not (_vsk and (_vsk.everyone or _vsk.murderer or _vsk.sheriff)) then return end
         pcall(updateSkeleton)
@@ -9673,24 +9553,7 @@ function _getPlayerUserId(name)
     return nil
 end
 
--- OPT: dedup table - evita encolar la misma notif repetida en menos de 0.5s
-_notifLastSent = {}
-
 function CreateCustomNotification(titleRaw, message, duration)
-    -- Dedup: ignorar si ya se envio el mismo titulo+mensaje hace menos de 0.5s
-    local _deKey = tostring(titleRaw) .. "|" .. tostring(message)
-    local _deNow = os.clock()
-    if _notifLastSent[_deKey] and (_deNow - _notifLastSent[_deKey]) < 0.5 then return end
-    _notifLastSent[_deKey] = _deNow
-    -- Limpiar entradas viejas cada 50 notifs para no acumular memoria
-    if next(_notifLastSent) then
-        local _deCount = 0
-        for k, t in pairs(_notifLastSent) do
-            _deCount = _deCount + 1
-            if _deNow - t > 10 then _notifLastSent[k] = nil end
-        end
-    end
-
     table.insert(_notifQueue, function()
         duration = duration or (_G._notifDefaultDuration) or 4
 
@@ -10923,7 +10786,7 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     container.Name                   = "SliderWrapper_" .. nombre
     container.Size                   = UDim2.new(1, -4, 0, CONTAINER_H)
     container.BackgroundColor3       = C_BG
-    container.BackgroundTransparency = 1
+    container.BackgroundTransparency = 0.25
     container.BorderSizePixel        = 0
     container.ClipsDescendants       = false
     container.ZIndex                 = 10
@@ -10931,8 +10794,8 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     contCorner.CornerRadius          = UDim.new(0, 12)
     local contStroke = Instance.new("UIStroke", container)
     contStroke.Color           = C_STROKE
-    contStroke.Thickness       = 0
-    contStroke.Transparency    = 1
+    contStroke.Thickness       = 1
+    contStroke.Transparency    = 0.5
     contStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Titulo izquierda
@@ -16273,9 +16136,7 @@ function CreateMainUI_BackgroundSelector()
             local hrp = character and character:FindFirstChild("HumanoidRootPart")
             local hum = character and character:FindFirstChildOfClass("Humanoid")
             if not hrp or not hum then return end
-            local _stFloatTick = 0
             _st.floatConn = RunService.Heartbeat:Connect(function()
-                _stFloatTick = _stFloatTick + 1; if _stFloatTick < 3 then return end; _stFloatTick = 0  -- OPT: ~20Hz
                 if not _st.enabled then
                     pcall(function() _st.floatConn:Disconnect() end); _st.floatConn = nil
                     pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true) end)
@@ -17088,27 +16949,24 @@ function CreateMainUI_GameInfo()
             if murder then _hookMurderer(murder) end
         end)
 
-        -- OPT: timer solo cambia 1 vez por segundo -- reemplazar Heartbeat (60Hz) con loop 1Hz
-        local _timerLoopActive = true
-        local _hbConn = { Disconnect = function() _timerLoopActive = false end }
-        task.spawn(function()
-            while _timerLoopActive do
-                task.wait(0.5)  -- 2Hz es suficiente para un display de segundos
-                if not lbl or not lbl.Parent then _timerLoopActive = false; break end
-                if T.frozen then continue end
-                if not T.active then
-                    if lbl.Text ~= "--:--" then
-                        lbl.Text       = "--:--"
-                        lbl.TextColor3 = Color3.fromRGB(150, 150, 150)
-                    end
-                    continue
+        -- -- Display loop: Heartbeat, redibuja solo cuando cambia el segundo o el rol
+        -- -- Display loop: Heartbeat, redibuja solo cuando cambia el segundo
+        -- FIX: solo muestra el TIEMPO (sin rol) en el overlay principal
+        local _hbConn = RunService.Heartbeat:Connect(function()
+            if not lbl or not lbl.Parent then _hbConn:Disconnect(); return end
+            if T.frozen then return end
+            if not T.active then
+                if lbl.Text ~= "--:--" then
+                    lbl.Text       = "--:--"
+                    lbl.TextColor3 = Color3.fromRGB(150, 150, 150)
                 end
-                local secs = math.max(0, math.floor(T.value - (tick() - T.syncTick)))
-                if secs == T.lastSecs then continue end
-                T.lastSecs = secs
-                lbl.Text       = secs > 0 and _fmt(secs) or "--:--"
-                lbl.TextColor3 = _color(secs)
+                return
             end
+            local secs = math.max(0, math.floor(T.value - (tick() - T.syncTick)))
+            if secs == T.lastSecs then return end
+            T.lastSecs = secs
+            lbl.Text       = secs > 0 and _fmt(secs) or "--:--"
+            lbl.TextColor3 = _color(secs)
         end)
         _addConn(_hbConn)
 
@@ -17355,7 +17213,7 @@ function CreateMainUI_GameInfo()
 
         _hbTpctC = 0
         _gameInfoState.pctConn = RunService.Heartbeat:Connect(function()
-            _hbTpctC=_hbTpctC+1; if _hbTpctC<20 then return end; _hbTpctC=0  -- OPT: 4→20 frames (~3Hz)
+            _hbTpctC=_hbTpctC+1; if _hbTpctC<4 then return end; _hbTpctC=0
             if not _gameInfoState.pctEnabled then return end
  lbl.Text = "MURDER% " .. lastPct .. "%"
             n = tonumber(lastPct)
@@ -19096,9 +18954,7 @@ function CreateMainTab()
             if _mp.avSafeConn then pcall(function() _mp.avSafeConn:Disconnect() end); _mp.avSafeConn = nil end
             if not on then _mp.avSafePos = nil; return end
             -- OPT: un solo loop hace las dos cosas (guarda pos segura + detecta void)
-            local _avTick = 0
             _mp.avConn = _safeConnect(RunService.Heartbeat, function()
-                _avTick = _avTick + 1; if _avTick < 6 then return end; _avTick = 0  -- OPT: ~10Hz
                 local char = LocalPlayer.Character; if not char then return end
                 local hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
                 local y = hrp.Position.Y
@@ -19425,9 +19281,7 @@ function CreateMainTab()
             if _cs.fovConn then pcall(function() _cs.fovConn:Disconnect() end); _cs.fovConn = nil end
             if on then
                 pcall(function() _Camera.FieldOfView = _cs.fovValue end)
-                local _fovTick = 0
-                _cs.fovConn = _safeConnect(RunService.Heartbeat, function()
-                    _fovTick = _fovTick + 1; if _fovTick < 6 then return end; _fovTick = 0  -- OPT: ~10Hz
+                _cs.fovConn = _safeConnect(RunService.RenderStepped, function()
                     local cam = _Camera
                     if cam and math.abs(cam.FieldOfView - _cs.fovValue) > 0.5 then
                         cam.FieldOfView = _cs.fovValue
@@ -19536,9 +19390,7 @@ function CreateMainTab()
             if _sp.swConn then pcall(function() _sp.swConn:Disconnect() end); _sp.swConn = nil end
             if on then
                 _applyWS(_swVal)
-                local _swTick = 0
                 _sp.swConn = _safeConnect(RunService.Heartbeat, function()
-                    _swTick = _swTick + 1; if _swTick < 6 then return end; _swTick = 0  -- OPT: ~10Hz
                     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
                     if hum and hum.Health > 0 and math.abs(hum.WalkSpeed - _sp.swVal) > 0.5 then
                         pcall(function() hum.WalkSpeed = _sp.swVal end)
@@ -19578,9 +19430,7 @@ function CreateMainTab()
             if _sp.pjConn then pcall(function() _sp.pjConn:Disconnect() end); _sp.pjConn = nil end
             if on then
                 _applyJP(_pjVal)
-                local _pjTick = 0
                 _sp.pjConn = _safeConnect(RunService.Heartbeat, function()
-                    _pjTick = _pjTick + 1; if _pjTick < 6 then return end; _pjTick = 0  -- OPT: ~10Hz
                     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
                     if hum and hum.Health > 0 and math.abs(hum.JumpPower - _sp.pjVal) > 0.5 then
                         pcall(function() hum.JumpPower = _sp.pjVal end)
@@ -20090,24 +19940,11 @@ FarmSystem = {
         FarmSystem._lastCoinRefresh = 0
     end,
 
-    -- FIX LAG: cachear partes del char para no llamar GetDescendants en cada NC()
-    _ncCache = nil,
-    _ncCacheChar = nil,
     NC = function()
         local char = LocalPlayer.Character
         if not char then return end
-        -- Reconstruir cache solo si el personaje cambio
-        if FarmSystem._ncCacheChar ~= char or not FarmSystem._ncCache then
-            FarmSystem._ncCacheChar = char
-            FarmSystem._ncCache = {}
-            for _, p in pairs(char:GetDescendants()) do
-                if p:IsA("BasePart") then
-                    FarmSystem._ncCache[#FarmSystem._ncCache+1] = p
-                end
-            end
-        end
-        for _, p in ipairs(FarmSystem._ncCache) do
-            if p.Parent then p.CanCollide = false end
+        for _, p in pairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
         end
     end,
 
@@ -20180,18 +20017,11 @@ FarmSystem = {
         lastClean = tick()
         lastDelay = tick()
 
-        local _fConnTick = 0
-        local _fConnNcTick = 0
         F.conn = RunService.Heartbeat:Connect(function()
             if not F.on then
                 F.conn:Disconnect(); F.conn = nil
                 return
             end
-
-            -- FIX LAG PC: throttle principal a ~30Hz (cada 2 frames)
-            _fConnTick = _fConnTick + 1
-            if _fConnTick < 2 then return end
-            _fConnTick = 0
 
             local char = LocalPlayer.Character
             local hrp  = char and char:FindFirstChild("HumanoidRootPart")
@@ -20216,27 +20046,20 @@ FarmSystem = {
             hrp.AssemblyLinearVelocity  = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
 
-            -- FIX LAG: NC solo cada 6 frames (~10Hz) -- CanCollide no necesita 60Hz
-            _fConnNcTick = _fConnNcTick + 1
-            if _fConnNcTick >= 3 then
-                _fConnNcTick = 0
-                FarmSystem.NC()
-            end
+            FarmSystem.NC()
 
-            -- OPT: os.clock() > tick() en loops calientes
-            local _fcNow = os.clock()
-            if _fcNow - lastClean >= 3 then
-                lastClean = _fcNow
+            if tick() - lastClean >= 3 then
+                lastClean = tick()
                 FarmSystem.Clean()
             end
 
-            if F.dly > 0 and _fcNow - lastDelay < F.dly then return end
-            lastDelay = _fcNow
+            if F.dly > 0 and tick() - lastDelay < F.dly then return end
+            lastDelay = tick()
 
             coin, dist = FarmSystem.GetNearest()
             if not coin then
                 F.grabbed = {}
-                lastClean = os.clock()
+                lastClean = tick()
                 -- Sin coins: enderezar personaje y quedarse quieto
                 if hrp and hum and hum.Health > 0 then
                     hum.PlatformStand = false
@@ -21708,16 +21531,11 @@ function _restoreBelowMapPose(char)
             pcall(function() _gBelowFloatConn:Disconnect() end)
             _gBelowFloatConn = nil
         end
-        local _gbfTick = 0
         _gBelowFloatConn = RunService.Heartbeat:Connect(function()
             if not _gFarmRunning or _autoFarmMode ~= "BelowMap" then
                 if _gBelowFloatConn then _gBelowFloatConn:Disconnect(); _gBelowFloatConn = nil end
                 return
             end
-            -- FIX LAG: throttle a 10Hz (cada 6 frames) -- PlatformStand no necesita 60Hz
-            _gbfTick = _gbfTick + 1
-            if _gbfTick < 6 then return end
-            _gbfTick = 0
             local c   = LocalPlayer.Character
             local h   = c and c:FindFirstChildOfClass("Humanoid")
             if h and h.Health > 0 then
@@ -21884,51 +21702,30 @@ function StartAutoFarm()
     local player = LocalPlayer
 
     -- Loop principal: solo firetouchinterest, sin mover el personaje en absoluto
-    -- FIX LAG PC: cache de monedas + throttle agresivo
-    local _farmNcTick = 0
-    local _farmCoinCache = nil
-    local _farmCoinCacheTs = 0
     _farmNcConn = RunService.Heartbeat:Connect(function()
         if not _gFarmRunning then return end
-        -- FIX: throttle a ~20Hz (cada 3 frames a 60fps) -- no necesita frame-perfect
-        _farmNcTick = _farmNcTick + 1
-        if _farmNcTick < 3 then return end
-        _farmNcTick = 0
-
         local character = player.Character
         if not character then return end
         local rootPart = character:FindFirstChild("HumanoidRootPart")
         if not rootPart then return end
 
-        -- FIX LAG: cachear lista de monedas cada 0.8s en vez de llamar GetDescendants cada frame
-        local now = os.clock()
-        if not _farmCoinCache or (now - _farmCoinCacheTs) > 0.8 then
-            _farmCoinCache = {}
-            local mansion = workspace:FindFirstChild("Mansion2")
-            local container = (mansion and mansion:FindFirstChild("CoinContainer"))
-                or workspace:FindFirstChild("CoinContainer")
-            if container then
-                for _, v in pairs(container:GetDescendants()) do
-                    if v.Name == "MainCoin" and v:IsA("BasePart") then
-                        _farmCoinCache[#_farmCoinCache+1] = v
-                    end
-                end
-            else
-                for _, v in pairs(workspace:GetDescendants()) do
-                    if v.Name == "MainCoin" and v:IsA("BasePart") then
-                        _farmCoinCache[#_farmCoinCache+1] = v
-                    end
+        -- Buscar moneda mas cercana
+        local best, bestD = nil, math.huge
+        local mansion = workspace:FindFirstChild("Mansion2")
+        if mansion and mansion:FindFirstChild("CoinContainer") then
+            for _, v in pairs(mansion.CoinContainer:GetDescendants()) do
+                if v.Name == "MainCoin" and v:IsA("BasePart") and not _farmBlacklist[v] then
+                    local d = (v.Position - rootPart.Position).Magnitude
+                    if d < bestD then bestD = d; best = v end
                 end
             end
-            _farmCoinCacheTs = now
         end
-
-        -- Buscar moneda mas cercana del cache
-        local best, bestD = nil, math.huge
-        for _, v in ipairs(_farmCoinCache) do
-            if v.Parent and not _farmBlacklist[v] then
-                local d = (v.Position - rootPart.Position).Magnitude
-                if d < bestD then bestD = d; best = v end
+        if not best then
+            for _, v in pairs(workspace:GetDescendants()) do
+                if v.Name == "MainCoin" and v:IsA("BasePart") and not _farmBlacklist[v] then
+                    local d = (v.Position - rootPart.Position).Magnitude
+                    if d < bestD then bestD = d; best = v end
+                end
             end
         end
 
@@ -22428,36 +22225,23 @@ _G._vsColors = _G._vsColors or {
     tracer   = Color3.fromRGB(255,  60,  60),   -- rojo por defecto
 }
 
--- OPT-DIRTY: cada subtabla de VisualState usa __newindex para marcar
--- _G._anyVisualDirty=true cuando un toggle cambia, evitando la re-evaluacion
--- de 40+ OR booleanos en cada frame del instanceLoop.
-local function _makeVisualSubtable(t)
-    local _raw = t
-    return setmetatable({}, {
-        __index    = _raw,
-        __newindex = function(_, k, v)
-            _raw[k] = v
-            _G._anyVisualDirty = true  -- instruct instanceLoop to recompute
-        end,
-    })
-end
 VisualState = {
-    esp      = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
+    esp      = { everyone=false, murderer=false, sheriff=false, hero=false,
                  assassin=false, dead=false, survivor=false, zombie=false,
-                 knife=false, gun=false, coins=false, distance=false }),
-    cham     = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
+                 knife=false, gun=false, coins=false, distance=false },
+    cham     = { everyone=false, murderer=false, sheriff=false, hero=false,
                  assassin=false, dead=false, survivor=false, zombie=false,
-                 knife=false, coins=false }),
-    outline  = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
-                 assassin=false, dead=false, survivor=false, zombie=false, knife=false }),
-    box      = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
-                 assassin=false, dead=false, survivor=false, zombie=false, knife=false }),
-    skeleton = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
-                 assassin=false, dead=false, survivor=false, zombie=false, knife=false }),
-    tracer   = _makeVisualSubtable({ everyone=false, murderer=false, sheriff=false, hero=false,
+                 knife=false, coins=false },
+    outline  = { everyone=false, murderer=false, sheriff=false, hero=false,
+                 assassin=false, dead=false, survivor=false, zombie=false, knife=false },
+    box      = { everyone=false, murderer=false, sheriff=false, hero=false,
+                 assassin=false, dead=false, survivor=false, zombie=false, knife=false },
+    skeleton = { everyone=false, murderer=false, sheriff=false, hero=false,
+                 assassin=false, dead=false, survivor=false, zombie=false, knife=false },
+    tracer   = { everyone=false, murderer=false, sheriff=false, hero=false,
                  assassin=false, dead=false, survivor=false, zombie=false,
-                 knife=false, gun=false, droppedknife=false }),
-    coins    = _makeVisualSubtable({ esp=false }),
+                 knife=false, gun=false, droppedknife=false },
+    coins    = { esp=false },
 }
 
 LinePool = {}
@@ -24776,17 +24560,12 @@ do
     local _tickHum   = {}
     -- FIX REPINTADO INMEDIATO: flag para que RoundStart fuerce el tick sin esperar el intervalo
     _G._forceInstanceTick = _G._forceInstanceTick or false
-
-    -- OPT-ANYVISUAL: cachear _anyVisual fuera del Heartbeat.
-    -- Antes se evaluaban 40+ OR booleanos en CADA frame (60fps = 2400 checks/s).
-    -- Ahora se recalcula solo cuando _G._forceInstanceTick=true (inicio de ronda)
-    -- o cuando cambia algun toggle de visual (el toggle escribe _anyVisualDirty=true).
-    local _anyVisualCached = false
-    local _anyVisualDirty  = true   -- true = recalcular en el proximo frame
-    _G._anyVisualDirty = true       -- exponer para que los toggles lo marquen dirty
-    local function _recomputeAnyVisual()
+    instanceLoop = RunService.Heartbeat:Connect(function(dt)
+        ticker = ticker + dt
+        -- LAG FIX: si no hay ningun visual activo, correr a 2s para no consumir CPU
         local _vs = VisualState
-        _anyVisualCached = _vs ~= nil and (
+        -- FIX: incluir hero/assassin/zombie/skeleton/tracer en el check de visuals activos
+        local _anyVisual = _vs and (
             (_vs.esp    and (_vs.esp.everyone    or _vs.esp.murderer    or _vs.esp.sheriff
                           or _vs.esp.hero        or _vs.esp.assassin    or _vs.esp.zombie
                           or _vs.esp.survivor    or _vs.esp.dead        or _vs.esp.knife
@@ -24806,20 +24585,8 @@ do
             (_vs.tracer  and (_vs.tracer.everyone  or _vs.tracer.murderer  or _vs.tracer.sheriff
                           or _vs.tracer.hero     or _vs.tracer.assassin  or _vs.tracer.zombie
                           or _vs.tracer.knife    or _vs.tracer.gun       or _vs.tracer.droppedknife))
-        ) or false
-        _anyVisualDirty = false
-        _G._anyVisualDirty = false
-    end
-
-    instanceLoop = RunService.Heartbeat:Connect(function(dt)
-        ticker = ticker + dt
-        -- OPT-ANYVISUAL: recalcular solo si algun toggle cambio (dirty flag)
-        if _anyVisualDirty or _G._anyVisualDirty then
-            _recomputeAnyVisual()
-        end
-        local _anyVisual = _anyVisualCached
-        -- OPT: os.clock() es mas rapido que tick() (deprecated)
-        local _timeSinceRS   = os.clock() - (_G._roundStartTime or 0)
+        )
+        local _timeSinceRS   = tick() - (_G._roundStartTime or 0)
         local _isEarlyRound  = _timeSinceRS < 12
         -- FIX REPINTADO: intervalo adaptativo
         --   - Sin visuals activos: 2s (LAG FIX -- no hacer nada si no hay nada que pintar)
@@ -25475,8 +25242,8 @@ function CreateVisualsTab()
         MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 206, 76))
         CreateAuroraToggle(inner, "Cham Assassin Only", function(v) vc.assassin=v end, vc.assassin)
         MiniHeader(inner, "DEAD", Color3.fromRGB(255,120,120))
-        -- Cham Dead Only: muestra pose de muerte del jugador, dura TODA la ronda
-        CreateAuroraToggle(inner, "Cham Dead Only", function(v)
+ -- Cham Dead Only: muestra pose de muerte del jugador, dura TODA la ronda
+ CreateAuroraToggle(inner, "Cham Dead Only", function(v)
             VisualState.cham.dead = v
             DeathPoseState.enabled = v  -- vincular dead pose al mismo toggle
             if v and _vcRefreshAll then _vcRefreshAll() end
@@ -25503,10 +25270,10 @@ function CreateVisualsTab()
                 CreateCustomNotification("VISUALS", "Cham Dead OFF", 1)
             end
         end, VisualState.cham.dead or false)
-        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255,255,255))
-        CreateAuroraToggle(inner, "Cham Survivor Only", function(v) vc.survivor=v end, vc.survivor)
-        MiniHeader(inner, "COINS", Color3.fromRGB(255, 215, 0))
-        CreateAuroraToggle(inner, "Cham Coins", function(v)
+        MiniHeader(inner, " SURVIVOR",        Color3.fromRGB(255,255,255))
+ CreateAuroraToggle(inner, "Cham Survivor Only", function(v) vc.survivor=v end, vc.survivor)
+        MiniHeader(inner, " COINS",           Color3.fromRGB(255, 215, 0))
+ CreateAuroraToggle(inner, "Cham Coins", function(v)
             vc.coins = v
             _G._chamCoins = v
             -- Limpiar chams anteriores
@@ -25765,9 +25532,7 @@ end, _G._chamDropGun or false)
             local _egT = 0
             _G._espGunConn = _safeConnect(RunService.Heartbeat, function(dt)
                 if not _G._espGunEnabled then return end
-                -- OPT-COMBAT: cuando combat pesado activo, reducir Gun ESP a 0.6s
-                local _egThresh = _G._combatOpt_gunEspThrottle and 0.6 or 0.2
-                _egT = _egT + dt; if _egT < _egThresh then return end; _egT = 0
+                _egT = _egT + dt; if _egT < 0.2 then return end; _egT = 0
                 if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
                 local gun = workspace:FindFirstChild("GunDrop",    true)
                          or workspace:FindFirstChild("DropGun",    true)
@@ -25777,7 +25542,7 @@ end, _G._chamDropGun or false)
             end)
         end, _G._espGunEnabled or false)
 
-        CreateAuroraToggle(inner, "ESP Display Distance", function(v) ve.distance=v end, ve.distance)
+ CreateAuroraToggle(inner, "ESP Display Distance", function(v) ve.distance=v end, ve.distance)
         makeESPPlayerPin(inner, ve, ThemeColors.Accent)
     end
 
@@ -25831,21 +25596,13 @@ end, _G._chamDropGun or false)
         end, vh.zombie)
         MiniHeader(inner, "OUTLINE (pinta cuerpo entero)", Color3.fromRGB(160, 220, 255))
         local vo = VisualState.outline
-        local function _refreshOutline() _G._forceInstanceTick = true; if _vcRefreshAll then task.defer(_vcRefreshAll) end end
-        MiniHeader(inner, "EVERYONE", Color3.fromRGB(255,255,255))
-        CreateAuroraToggle(inner, "Outline Everyone", function(v) vo.everyone=v; _refreshOutline() end, vo.everyone)
-        MiniHeader(inner, "MURDERER", Color3.fromRGB(255,100,100))
-        CreateAuroraToggle(inner, "Outline Murderer Only", function(v) vo.murderer=v; _refreshOutline() end, vo.murderer)
-        MiniHeader(inner, "SHERIFF", Color3.fromRGB(75, 100, 230))
-        CreateAuroraToggle(inner, "Outline Sheriff Only", function(v) vo.sheriff=v; _refreshOutline() end, vo.sheriff)
-        MiniHeader(inner, "HERO", Color3.fromRGB(255, 181, 51))
-        CreateAuroraToggle(inner, "Outline Hero Only", function(v) vo.hero=v; _refreshOutline() end, vo.hero)
-        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 206, 76))
-        CreateAuroraToggle(inner, "Outline Assassin Only", function(v) vo.assassin=v; _refreshOutline() end, vo.assassin)
-        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 206, 76))
-        CreateAuroraToggle(inner, "Outline Survivor Only", function(v) vo.survivor=v; _refreshOutline() end, vo.survivor)
-        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(90, 120, 255))
-        CreateAuroraToggle(inner, "Outline Zombie Only", function(v) vo.zombie=v; _refreshOutline() end, vo.zombie)
+        CreateAuroraToggle(inner, "Outline Everyone", function(v) vo.everyone=v end, vo.everyone)
+        CreateAuroraToggle(inner, "Outline Murderer Only", function(v) vo.murderer=v end, vo.murderer)
+        CreateAuroraToggle(inner, "Outline Sheriff Only", function(v) vo.sheriff=v end, vo.sheriff)
+        CreateAuroraToggle(inner, "Outline Hero Only", function(v) vo.hero=v end, vo.hero)
+        CreateAuroraToggle(inner, "Outline Assassin Only", function(v) vo.assassin=v end, vo.assassin)
+        CreateAuroraToggle(inner, "Outline Survivor Only", function(v) vo.survivor=v end, vo.survivor)
+        CreateAuroraToggle(inner, "Outline Zombie Only", function(v) vo.zombie=v end, vo.zombie)
         MiniHeader(inner, "BY OBJECT", Color3.fromRGB(255,220,100))
         CreateAuroraToggle(inner, "Highlight Dropped Gun", function(v)
             _G._hlGunEnabled = v
@@ -25941,60 +25698,27 @@ end, _G._chamDropGun or false)
                 end
             end)
         end, _G._hlGunEnabled or false)
-        CreateAuroraToggle(inner, "Highlight Throwing Knives", function(v)
-            _G._tkHlEnabled = v
+ CreateAuroraToggle(inner, "Highlight Throwing Knives", function(v)
+            _G._tkHlEnabled=v
             if v then
-                -- Scan inicial: destacar cuchillos ya en el mapa al activar
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    pcall(function()
-                        local nm = obj.Name:lower()
-                        if (nm:find("knife") or nm:find("blade")) and not obj:IsDescendantOf(Players) then
-                            if obj.Parent and not obj.Parent:FindFirstChild("_TkHL") then
-                                local hl = Instance.new("Highlight")
-                                hl.Name = "_TkHL"
-                                hl.Adornee = obj.Parent
-                                hl.FillColor = Color3.fromRGB(255,60,30)
-                                hl.OutlineColor = Color3.fromRGB(255,150,100)
-                                hl.OutlineTransparency = 0
-                                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                                hl.Parent = obj.Parent
-                                hl.FillTransparency = 0.4
-                                _dl(3, function() pcall(function() if hl and hl.Parent then hl:Destroy() end end) end)
-                            end
-                        end
-                    end)
-                end
                 if not _G._tkHlConn then
-                    _G._tkHlConn = workspace.DescendantAdded:Connect(function(obj)
+                    _G._tkHlConn=workspace.DescendantAdded:Connect(function(obj)
                         if not _G._tkHlEnabled then return end
-                        local nm = obj.Name:lower()
-                        if not (nm:find("knife") or nm:find("blade")) then return end
+                        local nm=obj.Name:lower()
+                        if not(nm:find("knife") or nm:find("blade")) then return end
                         if obj:IsDescendantOf(Players) then return end
                         pcall(function()
-                            if obj.Parent and not obj.Parent:FindFirstChild("_TkHL") then
-                                local hl = Instance.new("Highlight")
-                                hl.Name = "_TkHL"
-                                hl.Adornee = obj.Parent
-                                hl.FillColor = Color3.fromRGB(255,60,30)
-                                hl.OutlineColor = Color3.fromRGB(255,150,100)
-                                hl.OutlineTransparency = 0
-                                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                                hl.Parent = obj.Parent
-                                hl.FillTransparency = 0.4
-                                _dl(3, function() pcall(function() if hl and hl.Parent then hl:Destroy() end end) end)
-                            end
+                            local hl=Instance.new("Highlight"); hl.Adornee=obj.Parent
+                            hl.FillColor=Color3.fromRGB(255,60,30); hl.OutlineColor=Color3.fromRGB(255,150,100)
+                            hl.OutlineTransparency=0
+                            hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop; hl.Parent=obj.Parent
+                            hl.FillTransparency=0.4
+                            _dl(3,function() pcall(function() if hl and hl.Parent then hl:Destroy() end end) end)
                         end)
                     end)
                 end
             else
-                if _G._tkHlConn then _G._tkHlConn:Disconnect(); _G._tkHlConn = nil end
-                -- Limpiar highlights de cuchillos existentes al apagar
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    pcall(function()
-                        local hl = obj:FindFirstChild("_TkHL")
-                        if hl then hl:Destroy() end
-                    end)
-                end
+                if _G._tkHlConn then _G._tkHlConn:Disconnect(); _G._tkHlConn=nil end
             end
         end, false)
         makeESPPlayerPin(inner, vh, ThemeColors.Aurora3)
@@ -26004,9 +25728,7 @@ end, _G._chamDropGun or false)
         -- == BOX ESP ================================================
         local inner = CreateVisualCard(leftColumn, "", "BOX ESP", ThemeColors.Aurora2)
         local vb = VisualState.box
-        -- OPT: no resetear _espBoxEnabled al reconstruir el tab (cache de pestaña),
-        -- el estado real lo dan los toggles via _G._toggleStates
-        _G._espBoxEnabled = _G._espBoxEnabled or false
+        _G._espBoxEnabled = false
 
         local function _refreshBoxESP()
             local anyOn = vb.everyone or vb.murderer or vb.sheriff or vb.hero or vb.assassin
@@ -26897,35 +26619,44 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local savedState = _G._toggleStates[nombre]
     local estado = (savedState ~= nil) and savedState or (initialValue or false)
 
-    -- ================================================================
-    -- NUEVO TOGGLE: horizontal ancho (130x35), perilla rectangular (50x27)
-    -- Verde ON (#00DC00), gris oscuro (#2D2D2D) OFF
-    -- Sin bordes en el container, sin borde en toggleBg
-    -- ================================================================
-    local C_TRACK_ON  = Color3.fromRGB(0, 220, 0)      -- verde ON
-    local C_TRACK_OFF = Color3.fromRGB(45, 45, 45)     -- gris oscuro OFF
-    local C_KNOB      = Color3.fromRGB(80, 80, 80)     -- perilla gris
-    local TWEEN_T     = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local C_IND_ON  = Color3.fromRGB(0, 200, 80)   -- verde cuando activo
+    local C_IND_OFF = Color3.fromRGB(255, 0, 0)     -- rojo cuando inactivo
+    local TWEEN_T   = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-    -- Detectar movil para ajustar tamanio de label
+    -- Detectar móvil para ajustar tamaños
     local _isMobileTog = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
-    local _labelTxtSz  = _isMobileTog and 9 or 11
-    local _rowH        = _isMobileTog and 24 or 32
+    local _toggleBgW   = _isMobileTog and 52 or 65
+    local _toggleBgH   = _isMobileTog and 26 or 32
+    local _knobSize    = _isMobileTog and 18 or 24
+    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -28
+    local _knobOffL    = 4
+    local _labelTxtSz  = _isMobileTog and 13 or 18
+    local _labelWScale = _isMobileTog and 0.55 or 0.6
+    local _rowH        = _isMobileTog and 44 or 55
+    local _toggleRightOff = _isMobileTog and -8 or -15
 
-    -- Marco principal: transparente, sin borde
+    -- Marco principal ancho (600px simulado con 1, 0) -- transparente con borde blanco
     local container = Instance.new("Frame", actualParent)
     container.Name                   = "AuroraToggleRow_" .. nombre
     container.Size                   = UDim2.new(1, -8, 0, _rowH)
-    container.BackgroundTransparency = 1
+    container.BackgroundTransparency = 1   -- completamente transparente
     container.BorderSizePixel        = 0
     container.ZIndex                 = 20
 
-    -- SIN UICorner NI UIStroke en el container (sin bordes)
+    -- Esquinas redondeadas para el marco
+    local mainCorner = Instance.new("UICorner", container)
+    mainCorner.CornerRadius = UDim.new(0, 8)
 
-    -- Etiqueta de texto (izquierda)
+    -- Borde blanco para el marco
+    local mainStroke = Instance.new("UIStroke", container)
+    mainStroke.Color = ThemeColors.Primary
+    mainStroke.Thickness = 2
+    mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- Etiqueta de texto (mitad izquierda)
     local label = Instance.new("TextLabel", container)
-    label.Size             = UDim2.new(1, -90, 1, 0)
-    label.Position         = UDim2.new(0, 6, 0, 0)
+    label.Size             = UDim2.new(_labelWScale, 0, 1, 0)
+    label.Position         = UDim2.new(0, 8, 0, 0)
     label.BackgroundTransparency = 1
     label.Text             = nombre
     label.TextSize         = _labelTxtSz
@@ -26947,37 +26678,37 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         end
     end
 
-    -- Track del toggle (ancho 72, alto 18) - SIN borde, esquinas muy redondeadas
+    -- Fondo del toggle (recuadro grisaceo a la derecha)
     local toggleBg = Instance.new("Frame", container)
     toggleBg.Name                   = "ToggleBackground"
-    toggleBg.Size                   = UDim2.new(0, 72, 0, 18)
+    toggleBg.Size                   = UDim2.new(0, _toggleBgW, 0, _toggleBgH)
     toggleBg.AnchorPoint            = Vector2.new(1, 0.5)
-    toggleBg.Position               = UDim2.new(1, -8, 0.5, 0)
-    toggleBg.BackgroundColor3       = estado and C_TRACK_ON or C_TRACK_OFF
-    toggleBg.BackgroundTransparency = 0
+    toggleBg.Position               = UDim2.new(1, _toggleRightOff, 0.5, 0)
+    toggleBg.BackgroundColor3       = ThemeColors.Secondary
+    toggleBg.BackgroundTransparency = 0.4
     toggleBg.BorderSizePixel        = 0
     toggleBg.ZIndex                 = 21
 
-    -- Esquinas pill (muy redondeadas)
     local toggleBgCorner = Instance.new("UICorner", toggleBg)
-    toggleBgCorner.CornerRadius = UDim.new(1, 0)
+    toggleBgCorner.CornerRadius = UDim.new(0, 8)
 
-    -- SIN UIStroke en toggleBg (sin borde)
+    local toggleBgStroke = Instance.new("UIStroke", toggleBg)
+    toggleBgStroke.Color = ThemeColors.Primary
+    toggleBgStroke.Thickness = 2
+    toggleBgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    -- Perilla rectangular (26x14) - esquinas redondeadas (radio 4)
-    local POS_ON  = UDim2.new(1, -30, 0.5, -7)
-    local POS_OFF = UDim2.new(0, 4, 0.5, -7)
-
+    -- Indicador cuadrado redondeado (rojo=off, verde=on)
     local indicator = Instance.new("Frame", toggleBg)
     indicator.Name             = "Knob"
-    indicator.Size             = UDim2.new(0, 26, 0, 14)
-    indicator.Position         = estado and POS_ON or POS_OFF
-    indicator.BackgroundColor3 = C_KNOB
+    indicator.Size             = UDim2.new(0, _knobSize, 0, _knobSize)
+    indicator.AnchorPoint      = Vector2.new(0, 0.5)
+    indicator.Position         = estado and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
+    indicator.BackgroundColor3 = estado and C_IND_ON or C_IND_OFF
     indicator.BorderSizePixel  = 0
     indicator.ZIndex           = 23
 
     local indCorner = Instance.new("UICorner", indicator)
-    indCorner.CornerRadius = UDim.new(0, 4)
+    indCorner.CornerRadius = UDim.new(0, 6)
 
     -- Boton invisible sobre todo el row
     local clickRow = Instance.new("TextButton", container)
@@ -26990,15 +26721,13 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Funcion de actualizacion visual
     local function ApplyState(on, animate)
         if animate then
-            TweenService:Create(toggleBg, TWEEN_T, {
-                BackgroundColor3 = on and C_TRACK_ON or C_TRACK_OFF,
-            }):Play()
             TweenService:Create(indicator, TWEEN_T, {
-                Position = on and POS_ON or POS_OFF,
+                BackgroundColor3 = on and C_IND_ON or C_IND_OFF,
+                Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0),
             }):Play()
         else
-            toggleBg.BackgroundColor3 = on and C_TRACK_ON or C_TRACK_OFF
-            indicator.Position = on and POS_ON or POS_OFF
+            indicator.BackgroundColor3 = on and C_IND_ON or C_IND_OFF
+            indicator.Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
         end
     end
     ApplyState(estado, false)
@@ -27012,8 +26741,7 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         _G._toggleStates[nombre] = estado
         ApplyState(estado, true)
         PlayToggleSound(estado)
-        -- OPT: callback en task.spawn para no bloquear el hilo de render
-        if callback then task.spawn(callback, estado) end
+        if callback then callback(estado) end
         -- FIX: forzar tick inmediato del instanceLoop para que los visuals
         -- se apliquen o limpien en el proximo Heartbeat sin esperar el intervalo
         _G._forceInstanceTick = true
@@ -27090,10 +26818,7 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
             or lower:find("spoof method") or lower:find("shoot condition")
             or lower:find("spoof") or lower:find("secure tp")
         if not isPhysical then
-            -- OPT: escalonar cada auto-activacion con un yield minimo
-            -- para que no ejecuten todos en el mismo frame y causen lag de carga
             task.defer(function()
-                task.wait()  -- ceder un frame antes de ejecutar
                 local _orig = CreateCustomNotification
                 CreateCustomNotification = function() end
                 pcall(callback, true)
@@ -29118,15 +28843,31 @@ function CreateWorldUI_AutoGrabGun()
         end
         GrabState._cachedDrop = nil
 
-        -- 2. Solo hijos directos de workspace -- SOLO GunDrop (nombre exacto)
+        -- FIX: buscar GunDrop y nombres alternativos (antes solo "GunDrop" exacto)
+        local function _isLooseGun(obj)
+            if not obj or not obj:IsA("Tool") then return false end
+            local n = obj.Name:lower()
+            return obj.Name == "GunDrop" or obj.Name == "DropGun"
+                or obj.Name == "SheriffGun" or obj.Name == "HeroGun"
+                or n == "gun" or n:find("revolver") or n:find("sheriff")
+        end
+        local function _notInAnyPlayer(obj)
+            for _, p in pairs(_cachedPlayers) do
+                local c = p.Character; local b = p.Backpack
+                if (c and obj:IsDescendantOf(c)) or (b and obj:IsDescendantOf(b)) then
+                    return false
+                end
+            end
+            return true
+        end
+
         for _, obj in ipairs(workspace:GetChildren()) do
-            if obj.Name == "GunDrop" then
+            if _isLooseGun(obj) and _notInAnyPlayer(obj) then
                 GrabState._cachedDrop = obj; return obj
             end
-            -- GunDrop dentro de un Model (un nivel)
             if obj:IsA("Model") then
                 for _, child in ipairs(obj:GetChildren()) do
-                    if child.Name == "GunDrop" then
+                    if _isLooseGun(child) and _notInAnyPlayer(child) then
                         GrabState._cachedDrop = child; return child
                     end
                 end
@@ -29166,7 +28907,8 @@ function CreateWorldUI_AutoGrabGun()
         if GrabState._agBusy then return end
         GrabState._agBusy = true
         task.spawn(function()
-            pcall(function()
+            -- FIX: usar xpcall para garantizar que _agBusy siempre se libera
+            local _ok, _err = xpcall(function()
                 local char = LocalPlayer.Character
                 local root = char and char:FindFirstChild("HumanoidRootPart")
                 local hum  = char and char:FindFirstChildOfClass("Humanoid")
@@ -29176,7 +28918,24 @@ function CreateWorldUI_AutoGrabGun()
                 if (_roleCache.localRole or "") == "Murderer" then return end
                 if _findGun(char) then return end
 
+                -- FIX: buscar tambien por nombres alternativos (SheriffGun, Gun, HeroGun)
                 local gunDrop = _agFindGunDrop()
+                if not gunDrop then
+                    -- Fallback: buscar en workspace con nombres extendidos
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if obj:IsA("Tool") then
+                            local n = obj.Name:lower()
+                            if n == "gundrop" or n == "gun" or n:find("sheriff") or n:find("revolver") or n:find("hero") then
+                                local inPlayer = false
+                                for _, p in pairs(_cachedPlayers) do
+                                    local c = p.Character; local b = p.Backpack
+                                    if (c and obj:IsDescendantOf(c)) or (b and obj:IsDescendantOf(b)) then inPlayer = true; break end
+                                end
+                                if not inPlayer then gunDrop = obj; break end
+                            end
+                        end
+                    end
+                end
                 if not gunDrop then return end
                 local gPart = _agGetPart(gunDrop)
                 if not gPart then return end
@@ -29236,7 +28995,8 @@ function CreateWorldUI_AutoGrabGun()
                     GrabState._cachedDrop = nil
                     CreateCustomNotification("AUTO GRAB GUN", "Gun agarrada!", 2)
                 end
-            end)
+            end, function(err) warn("[AUTO GRAB GUN] error: " .. tostring(err)) end)
+            -- FIX: liberar _agBusy siempre, incluso si xpcall fallo
             task.wait(0.02)
             GrabState._agBusy = false
         end)
@@ -29260,8 +29020,13 @@ function CreateWorldUI_AutoGrabGun()
             GrabState._agConn = workspace.DescendantAdded:Connect(function(obj)
                 if not GrabState.autoEnabled then return end
                 if _findGun(LocalPlayer.Character) then return end
-                -- Solo GunDrop (nombre exacto)
-                if obj.Name ~= "GunDrop" then return end
+                -- FIX: aceptar GunDrop, Gun, SheriffGun, HeroGun, Revolver (antes solo GunDrop exacto)
+                if not obj:IsA("Tool") then return end
+                local n = obj.Name:lower()
+                local isGun = (obj.Name == "GunDrop" or n == "gun" or n:find("sheriff")
+                    or n:find("revolver") or n:find("herog") or obj.Name == "HeroGun"
+                    or obj.Name == "SheriffGun" or obj.Name == "DropGun")
+                if not isGun then return end
                 do
                     local inPlayer = false
                     for _, p in pairs(_cachedPlayers) do
@@ -29271,26 +29036,45 @@ function CreateWorldUI_AutoGrabGun()
                         end
                     end
                     if not inPlayer then
-                        -- FIX: usar _fluidGrabGun -- mueve la GUN al player, no al reves
-                        -- Sin blink del HRP -> sin lag visible para el jugador
-                        task.spawn(function() pcall(_fluidGrabGun, obj) end)
+                        GrabState._cachedDrop = obj
+                        -- Intentar primero _fluidGrabGun (sin blink del HRP)
+                        -- y como respaldo _agTryGrab si falla
+                        task.spawn(function()
+                            local ok = pcall(_fluidGrabGun, obj)
+                            if not ok or not _findGun(LocalPlayer.Character) then
+                                task.wait(0.05)
+                                pcall(_agTryGrab)
+                            end
+                        end)
                     end
                 end
             end)
 
-            -- Heartbeat fallback cada 0.5s
+            -- FIX: Heartbeat fallback reducido a 0.2s (antes 0.5s, muy lento)
             if GrabState._hbConn then GrabState._hbConn:Disconnect() end
             local _hbT = 0
             GrabState._hbConn = RunService.Heartbeat:Connect(function(dt)
                 if not GrabState.autoEnabled then return end
-                if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
+                if _G._visualRoundOver then return end
                 _hbT = _hbT + dt
-                if _hbT < 0.5 then return end
+                if _hbT < 0.2 then return end  -- FIX: 0.5 -> 0.2s, mas responsivo
                 _hbT = 0
                 local c = LocalPlayer.Character
-                if c and not _findGun(c) then
-                    local drop = _agFindGunDrop()
-                    if drop then task.spawn(function() pcall(_fluidGrabGun, drop) end) end
+                if not c then return end
+                if _findGun(c) then return end
+                -- FIX: si hay gun suelta, intentar con _agTryGrab (que limpia _agBusy)
+                -- y como segundo metodo _fluidGrabGun directo
+                local drop = _agFindGunDrop()
+                if drop then
+                    task.spawn(function()
+                        -- Primero intentar grab fluido (sin blink del jugador)
+                        pcall(_fluidGrabGun, drop)
+                        -- Si fallo, intentar _agTryGrab como respaldo
+                        task.wait(0.05)
+                        if not _findGun(LocalPlayer.Character) then
+                            pcall(_agTryGrab)
+                        end
+                    end)
                 end
             end)
 
@@ -32456,253 +32240,160 @@ function CreateWorldUI_BombJump()
         end, false)
     end
 
-    -- ── Launch Bomb (sacar, equipar y lanzar FakeBomb via Remote) ──
-    do
-        local _lbBindGui   = nil
-        local _lbBindFrame = nil
-        local _lbCooldown  = 0
-        local LB_COOLDOWN  = 1.0  -- segundos entre lanzamientos
-
-        local function _doLaunchBomb()
-            local now = tick()
-            if now - _lbCooldown < LB_COOLDOWN then
-                CreateCustomNotification("LAUNCH BOMB", "Espera el cooldown!", 1)
-                return
-            end
-
-            local char = LocalPlayer.Character
-            local hum  = char and char:FindFirstChildOfClass("Humanoid")
-            if not hum or hum.Health <= 0 then
-                CreateCustomNotification("LAUNCH BOMB", "Personaje no disponible", 1.5)
-                return
-            end
-
-            -- Buscar FakeBomb en Backpack o Character
-            local fb = LocalPlayer.Backpack:FindFirstChild("FakeBomb")
-                    or (char and char:FindFirstChild("FakeBomb"))
-            if not fb then
-                pcall(function()
-                    fb = game:GetService("Players")[LocalPlayer.Name].Backpack:FindFirstChild("FakeBomb")
-                end)
-            end
-            if not fb then
-                CreateCustomNotification("LAUNCH BOMB", "No hay FakeBomb en el inventario", 2)
-                return
-            end
-
-            -- Equipar si no está en mano
-            local inHand = char:FindFirstChild("FakeBomb")
-            if not inHand then
-                pcall(function() hum:EquipTool(fb) end)
-                task.wait(0.1)
-            end
-
-            -- Obtener la herramienta ya equipada
-            local tool = char:FindFirstChild("FakeBomb")
-            if not tool then
-                CreateCustomNotification("LAUNCH BOMB", "No se pudo equipar la FakeBomb", 2)
-                return
-            end
-
-            -- Buscar el Remote (igual que el Client original: tool.Remote)
-            local remote = tool:FindFirstChild("Remote")
-                        or tool:FindFirstChildOfClass("RemoteEvent")
-            if not remote then
-                CreateCustomNotification("LAUNCH BOMB", "Remote no encontrado", 2)
-                return
-            end
-
-            -- Obtener Hit del mouse (igual que p1.Hit en el Client)
-            local mouse   = LocalPlayer:GetMouse()
-            local hitPos  = mouse.Hit
-            local power   = 50  -- mismo valor que el Client original
-
-            -- FireServer replicando exactamente el Client: FireServer(p1.Hit, power)
-            pcall(function() remote:FireServer(hitPos, power) end)
-            _lbCooldown = tick()
-            CreateCustomNotification("LAUNCH BOMB", "💣 Bomba lanzada!", 1.5)
+    -- Auto Teleport On Throw — cuando el LocalPlayer lanza la FakeBomb,
+    -- se teletransporta automáticamente a donde cae el Handle.
+    -- FIX: usa los mismos filtros del sistema principal (timestamp < 0.35s,
+    -- distancia < 8 studs, bomba más cercana a mí que a cualquier otro jugador).
+    CreateToggle(clutchSection, " Auto Teleport On Throw", function(enabled)
+        _G._autoTeleportOnThrow = enabled
+        CreateCustomNotification("AUTO TP ON THROW", enabled and "ON — te teleportas al lanzar!" or "OFF", 2)
+        if _G._autoTPThrowConn then
+            pcall(function() _G._autoTPThrowConn:Disconnect() end)
+            _G._autoTPThrowConn = nil
         end
-
-        -- Toggle Launch Bomb
-        CreateToggle(clutchSection, " Launch Bomb", function(enabled)
-            if enabled then
-                _doLaunchBomb()
-                CreateCustomNotification("LAUNCH BOMB", "Lanzando bomba...", 1)
+        if enabled then
+            local _atLastClick = 0
+            local _atCooldown  = 0
+            -- Registrar clicks del LocalPlayer (igual que el sistema principal)
+            if _G._autoTPClickConn then
+                pcall(function() _G._autoTPClickConn:Disconnect() end)
             end
-            -- El toggle es de disparo único: se desactiva solo tras lanzar
-            -- (no es un sistema continuo, es on-demand)
-        end, false)
-
-        -- Bindable Launch Bomb
-        CreateToggle(clutchSection, " Bindable Launch Bomb", function(on)
-            DestroyCapyBind("LAUNCH 💣")
-            if _lbBindGui then
-                pcall(function() _lbBindGui:Destroy() end); _lbBindGui = nil
-            end
-            if on then
-                local sg = Instance.new("ScreenGui")
-                sg.Name           = "LaunchBombBindable"
-                sg.ResetOnSpawn   = false
-                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                sg.IgnoreGuiInset = true
-                sg.DisplayOrder   = 9900
-                pcall(function() sg.Parent = game:GetService("CoreGui") end)
-                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
-                _lbBindGui = sg
-                _lbBindFrame = MakeCapyBindableFrame(sg, "LAUNCH 💣", function()
-                    task.spawn(_doLaunchBomb)
+            _G._autoTPClickConn = UserInputService.InputBegan:Connect(function(inp, gp)
+                if gp then return end
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                or inp.UserInputType == Enum.UserInputType.Touch then
+                    _atLastClick = tick()
+                end
+            end)
+            _G._autoTPThrowConn = workspace.ChildAdded:Connect(function(child)
+                if not _G._autoTeleportOnThrow then return end
+                -- Solo handles (bomba lanzada)
+                if child.Name ~= "Handle" or not child:IsA("BasePart") then return end
+                local now = tick()
+                -- Cooldown entre TPs (evitar spam)
+                if now - _atCooldown < DJ_COOLDOWN then return end
+                -- El click debe ser reciente (< 0.35s), igual que el filtro principal
+                if now - _atLastClick > 0.35 then return end
+                local c   = LocalPlayer.Character
+                local hrp = c and c:FindFirstChild("HumanoidRootPart")
+                local hum = c and c:FindFirstChildOfClass("Humanoid")
+                if not hrp or not hum or hum.Health <= 0 then return end
+                -- Bomba debe estar cerca de mí (< 8 studs)
+                local myDist = (child.Position - hrp.Position).Magnitude
+                if myDist > 8 then return end
+                -- Bomba debe ser más cercana a mí que a cualquier otro jugador
+                for _, p in ipairs(_cachedPlayers) do
+                    if p ~= LocalPlayer and p.Character then
+                        local oHRP = p.Character:FindFirstChild("HumanoidRootPart")
+                        if oHRP then
+                            local oDist = (child.Position - oHRP.Position).Magnitude
+                            if oDist < myDist then return end
+                        end
+                    end
+                end
+                _atCooldown = now
+                -- Esperar que el Handle tenga velocidad estable (igual que _doBombJumpV3)
+                task.spawn(function()
+                    task.wait(0.08)
+                    if not child or not child.Parent then return end
+                    local c2   = LocalPlayer.Character
+                    local hrp2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+                    local hum2 = c2 and c2:FindFirstChildOfClass("Humanoid")
+                    if not hrp2 or not hum2 or hum2.Health <= 0 then return end
+                    local bombPos = child.Position
+                    local tpPos   = Vector3.new(bombPos.X, bombPos.Y + DJ_TP_OFFSET_Y, bombPos.Z)
+                    pcall(function()
+                        hrp2.CFrame = CFrame.new(tpPos)
+                        hrp2.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    end)
+                    CreateCustomNotification("AUTO TP ON THROW", "¡Teleportado a la bomba!", 1)
                 end)
+            end)
+        else
+            if _G._autoTPClickConn then
+                pcall(function() _G._autoTPClickConn:Disconnect() end)
+                _G._autoTPClickConn = nil
             end
-        end, false)
-    end
+        end
+    end, false)
 
-    -- ── Double Jump (TP + Salto al lanzar FakeBomb) ──
-    do
-        local _djEnabled    = false
-        local _djConn       = nil
-        local _djBindGui    = nil
-        local _djBindFrame  = nil
+    -- Auto Jump When Teleported — cuando el toggle esté activo, cada vez que el
+    -- personaje sea teleportado encima de la bomba (por Auto Teleport On Throw O
+    -- por el sistema principal de BombJump), ejecuta un salto normal automático.
+    -- Funciona de forma independiente: NO requiere que Auto Teleport On Throw
+    -- ni BombJumpSystem estén activos. Detecta el Handle igual que esos sistemas
+    -- y hace el salto con Humanoid:ChangeState(Jumping) tras el TP (0.12s delay).
+    CreateToggle(clutchSection, " Auto Jump When Teleported", function(enabled)
+        _G._autoJumpAfterTP = enabled
+        CreateCustomNotification("AUTO JUMP AFTER TP", enabled and "ON — salta automático al ser teleportado!" or "OFF", 2)
+        if _G._autoJumpTPConn then
+            pcall(function() _G._autoJumpTPConn:Disconnect() end)
+            _G._autoJumpTPConn = nil
+        end
+        if _G._autoJumpClickConn then
+            pcall(function() _G._autoJumpClickConn:Disconnect() end)
+            _G._autoJumpClickConn = nil
+        end
+        if enabled then
+            local _ajCooldown  = 0
+            local _ajLastClick = 0
 
-        local function _djStart()
-            if _djConn then pcall(function() _djConn:Disconnect() end); _djConn = nil end
-            _djConn = workspace.ChildAdded:Connect(function(child)
-                if not _djEnabled then return end
-                if child.Name ~= "Handle" then return end
-                local character = LocalPlayer.Character
-                if not character then return end
-                local hasBomb = character:FindFirstChild("FakeBomb")
-                if not hasBomb then return end
-                local rootPart = character:FindFirstChild("HumanoidRootPart")
-                local humanoid = character:FindFirstChildOfClass("Humanoid")
-                if not rootPart or not humanoid then return end
-                task.wait(0.05)
-                rootPart.CFrame = child.CFrame * CFrame.new(0, 3, 0)
-                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            -- Registrar clicks del LocalPlayer para detectar lanzamiento propio
+            _G._autoJumpClickConn = UserInputService.InputBegan:Connect(function(inp, gp)
+                if gp then return end
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                or inp.UserInputType == Enum.UserInputType.Touch then
+                    _ajLastClick = tick()
+                end
+            end)
+
+            _G._autoJumpTPConn = workspace.ChildAdded:Connect(function(child)
+                if not _G._autoJumpAfterTP then return end
+                -- Solo Handles (bomba lanzada al workspace)
+                if child.Name ~= "Handle" or not child:IsA("BasePart") then return end
+                local now = tick()
+                -- Cooldown para evitar spam
+                if now - _ajCooldown < DJ_COOLDOWN then return end
+                -- El click/lanzamiento debe ser reciente (< 0.35s)
+                if now - _ajLastClick > 0.35 then return end
+                local c   = LocalPlayer.Character
+                local hrp = c and c:FindFirstChild("HumanoidRootPart")
+                local hum = c and c:FindFirstChildOfClass("Humanoid")
+                if not hrp or not hum or hum.Health <= 0 then return end
+                -- La bomba debe estar cerca del jugador (< 8 studs)
+                local myDist = (child.Position - hrp.Position).Magnitude
+                if myDist > 8 then return end
+                -- La bomba debe ser más cercana a mí que a cualquier otro jugador
+                for _, p in ipairs(_cachedPlayers) do
+                    if p ~= LocalPlayer and p.Character then
+                        local oHRP = p.Character:FindFirstChild("HumanoidRootPart")
+                        if oHRP then
+                            local oDist = (child.Position - oHRP.Position).Magnitude
+                            if oDist < myDist then return end
+                        end
+                    end
+                end
+                _ajCooldown = now
+                -- Esperar a que el TP haya ocurrido (Auto TP On Throw tarda ~0.08s,
+                -- BombJumpSystem tarda ~0.1-0.15s) y luego ejecutar salto normal
+                task.delay(0.18, function()
+                    if not _G._autoJumpAfterTP then return end
+                    local c2   = LocalPlayer.Character
+                    local hum2 = c2 and c2:FindFirstChildOfClass("Humanoid")
+                    if not hum2 or hum2.Health <= 0 then return end
+                    -- Salto normal de Humanoid (igual que presionar Space)
+                    pcall(function()
+                        hum2:ChangeState(Enum.HumanoidStateType.Jumping)
+                    end)
+                end)
             end)
         end
+    end, false)
 
-        local function _djStop()
-            if _djConn then pcall(function() _djConn:Disconnect() end); _djConn = nil end
-        end
-
-        CreateToggle(clutchSection, " Double Jump", function(enabled)
-            _djEnabled = enabled
-            if enabled then
-                _djStart()
-                CreateCustomNotification("DOUBLE JUMP", "ON — TP + salto al lanzar bomba!", 2)
-            else
-                _djStop()
-                CreateCustomNotification("DOUBLE JUMP", "OFF", 1.5)
-            end
-            if _djBindFrame then
-                pcall(function() _djBindFrame:SetActiveState(nil, enabled) end)
-            end
-        end, false)
-
-        -- Bindable Double Jump
-        CreateToggle(clutchSection, " Bindable Double Jump", function(on)
-            DestroyCapyBind("DBL JUMP")
-            if _djBindGui then
-                pcall(function() _djBindGui:Destroy() end); _djBindGui = nil
-            end
-            if on then
-                local sg = Instance.new("ScreenGui")
-                sg.Name           = "DoubleJumpBindable"
-                sg.ResetOnSpawn   = false
-                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                sg.IgnoreGuiInset = true
-                sg.DisplayOrder   = 9900
-                pcall(function() sg.Parent = game:GetService("CoreGui") end)
-                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
-                _djBindGui = sg
-                _djBindFrame = MakeCapyBindableFrame(sg, "DBL JUMP", function()
-                    _djEnabled = not _djEnabled
-                    if _djEnabled then
-                        _djStart()
-                        CreateCustomNotification("DOUBLE JUMP", "ON — TP + salto activado!", 2)
-                    else
-                        _djStop()
-                        CreateCustomNotification("DOUBLE JUMP", "OFF", 1.5)
-                    end
-                    pcall(function() _djBindFrame:SetActiveState(nil, _djEnabled) end)
-                end)
-            end
-        end, false)
-    end
-
-    -- ── TP Bomb (solo TP al lanzar FakeBomb, sin salto) ──
-    do
-        local _tpbEnabled   = false
-        local _tpbConn      = nil
-        local _tpbBindGui   = nil
-        local _tpbBindFrame = nil
-
-        local function _tpbStart()
-            if _tpbConn then pcall(function() _tpbConn:Disconnect() end); _tpbConn = nil end
-            _tpbConn = workspace.ChildAdded:Connect(function(child)
-                if not _tpbEnabled then return end
-                if child.Name ~= "Handle" then return end
-                local character = LocalPlayer.Character
-                if not character then return end
-                local hasBomb = character:FindFirstChild("FakeBomb")
-                if not hasBomb then return end
-                local rootPart = character:FindFirstChild("HumanoidRootPart")
-                local humanoid = character:FindFirstChildOfClass("Humanoid")
-                if not rootPart or not humanoid then return end
-                task.wait(0.05)
-                -- Solo TP, sin salto
-                rootPart.CFrame = child.CFrame * CFrame.new(0, 3, 0)
-            end)
-        end
-
-        local function _tpbStop()
-            if _tpbConn then pcall(function() _tpbConn:Disconnect() end); _tpbConn = nil end
-        end
-
-        CreateToggle(clutchSection, " TP Bomb", function(enabled)
-            _tpbEnabled = enabled
-            if enabled then
-                _tpbStart()
-                CreateCustomNotification("TP BOMB", "ON — TP al lanzar bomba!", 2)
-            else
-                _tpbStop()
-                CreateCustomNotification("TP BOMB", "OFF", 1.5)
-            end
-            if _tpbBindFrame then
-                pcall(function() _tpbBindFrame:SetActiveState(nil, enabled) end)
-            end
-        end, false)
-
-        -- Bindable TP Bomb
-        CreateToggle(clutchSection, " Bindable TP Bomb", function(on)
-            DestroyCapyBind("TP BOMB")
-            if _tpbBindGui then
-                pcall(function() _tpbBindGui:Destroy() end); _tpbBindGui = nil
-            end
-            if on then
-                local sg = Instance.new("ScreenGui")
-                sg.Name           = "TpBombBindable"
-                sg.ResetOnSpawn   = false
-                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                sg.IgnoreGuiInset = true
-                sg.DisplayOrder   = 9900
-                pcall(function() sg.Parent = game:GetService("CoreGui") end)
-                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
-                _tpbBindGui = sg
-                _tpbBindFrame = MakeCapyBindableFrame(sg, "TP BOMB", function()
-                    _tpbEnabled = not _tpbEnabled
-                    if _tpbEnabled then
-                        _tpbStart()
-                        CreateCustomNotification("TP BOMB", "ON — TP activado!", 2)
-                    else
-                        _tpbStop()
-                        CreateCustomNotification("TP BOMB", "OFF", 1.5)
-                    end
-                    pcall(function() _tpbBindFrame:SetActiveState(nil, _tpbEnabled) end)
-                end)
-            end
-        end, false)
-    end
+    -- ── Click Effect ──
+    CreateToggle(clutchSection, " Click Effect", function(on)
+        _clickEffectEnabled = on
+    end, _clickEffectEnabled)
 end
 
 
@@ -33065,46 +32756,39 @@ function CreateWorldTab()
         end
     end
 
-    -- LAG FIX: task.wait(0) entre grupos de safeCall cede el hilo al renderer
-    -- evitando el freeze visible al cargar el hub por primera vez en PC.
+    -- LAG FIX: task.wait() entre grupos de safeCall cede el hilo al renderer
+    -- evitando el freeze visible al cargar el hub por primera vez.
     _safeCall(CreateWorldUI_GameUtilities,             "GameUtilities")
     _safeCall(CreateWorldUI_BombJump, "BombJump")
     _safeCall(CreateWorldUI_GoldBomb, "GoldBomb")
     -- FakeBombCustomization e InfinityJump eliminados del World tab
-    task.wait(0)  -- ceder al renderer entre grupos
     _safeCall(CreateWorldUI_Emotes, "Emotes")
     _safeCall(CreateWorldUI_GotoPlayers, "GotoPlayers")
     _safeCall(CreateWorldUI_Spectate, "Spectate")
     _safeCall(CreateWorldUI_FakeLag, "FakeLag")
-    task.wait(0)
     _safeCall(CreateWorldUI_OrbitPlayer, "OrbitPlayer")
     _safeCall(CreateWorldUI_FlingOrbit, "FlingOrbit")
     _safeCall(CreateWorldUI_QuickFlingButtons, "QuickFlingButtons")
 
     -- FreezeCharacter eliminado del World tab
-    task.wait(0)
     _safeCall(CreateWorldUI_AutoVote, "AutoVote")
     _safeCall(CreateWorldUI_TeleportUniversal, "TeleportUniversal")
     _safeCall(CreateWorldUI_ProximityPromptSection, "ProximityPromptSection")
     _safeCall(CreateWorldUI_SpinSection, "SpinSection")
     -- ClutchSection y TeleportAboveMap eliminados del World tab
-    task.wait(0)
     _safeCall(CreateWorldUI_VoidTeleport, "VoidTeleport")
     _safeCall(CreateWorldUI_ExposeRoles, "ExposeRoles")
     _safeCall(CreateWorldUI_TeleportLobby, "TeleportLobby")
     _safeCall(CreateWorldUI_TeleportVotingMap, "TeleportVotingMap")
     _safeCall(CreateWorldUI_TeleportToMap, "TeleportToMap")
-    task.wait(0)
     _safeCall(CreateWorldUI_StretchScreen, "StretchScreen")
     _safeCall(CreateWorldUI_AutoGrabGun, "AutoGrabGun")
     _safeCall(CreateWorldUI_Performance, "Performance")
     CreateWorldUI_InformationBindables()
-    task.wait(0)
     _safeCall(CreateWorldUI_RompGun,                   "RompGun")
     _safeCall(CreateWorldUI_SendToChat,                "SendToChat")
     _safeCall(CreateWorldUI_AutoPrestige,              "AutoPrestige")
     _safeCall(CreateWorldUI_Teleports,                 "Teleports")
-    task.wait(0)
     _safeCall(CreateWorldUI_TeleportToVoid,            "TeleportToVoid")
     _safeCall(CreateWorldUI_TeleportSheriffBindable,   "TeleportSheriffBindable")
     _safeCall(CreateWorldUI_TeleportMurdererBindable,  "TeleportMurdererBindable")
@@ -33586,25 +33270,12 @@ function StealGunLoop()
                         _flingCooldowns[_tuid] = tick()
                     end
                 else
-                    -- Sheriff muerto o invalido: limpiar cadaver, buscar heroe con gun y flingearlo
-                    CreateCustomNotification("STEAL GUN", target.Name .. " murio, limpiando cadaver y buscando heroe...", 3)
+                    -- Sheriff muerto o invalido: limpiar estado y buscar nuevo sheriff
+                    CreateCustomNotification("STEAL GUN", target.Name .. " murio, buscando nuevo sheriff...", 3)
                     local deadUserId = target.UserId
-
-                    -- 1. Intentar limpiar gun del cadaver (si quedo pegada al body)
-                    pcall(function()
-                        local deadChar = target.Character
-                        if deadChar then
-                            for _, obj in ipairs(deadChar:GetChildren()) do
-                                if obj:IsA("Tool") and _SG_DROP_NAMES[obj.Name] then
-                                    obj.Parent = workspace
-                                end
-                            end
-                        end
-                    end)
-
                     -- Limpiar estado del sheriff muerto
                     _roleCache.sheriff    = nil
-                    _roleCache.lastUpdate = 0
+                    _roleCache.lastUpdate = 0  -- forzar refresh inmediato en siguiente llamada
                     StealGunSystem.sheriffOriginalFound = nil
                     StealGunSystem.sheriffDeadDetected  = false
                     StealGunSystem.gunInBackpackMode    = false
@@ -33612,25 +33283,28 @@ function StealGunLoop()
                     _backpackModeStart = 0
                     _lastFlingTarget = nil
                     _flingCount = 0
+                    -- Limpiar flingCooldown del muerto para no bloquear al nuevo
                     _flingCooldowns[deadUserId] = nil
+                    -- Limpiar dropConn del sheriff anterior
                     if _dropConn then
                         pcall(function() _dropConn:Disconnect() end)
                         _dropConn = nil
                     end
 
-                    -- 2. Esperar hasta encontrar heroe/nuevo sheriff vivo con la gun
+                    -- Esperar hasta que aparezca un nuevo sheriff vivo
+                    -- Bypassear throttle del cache para detectar al nuevo lo antes posible
                     local waited = 0
-                    local heroTarget = nil
                     repeat
                         task.wait(0.3)
                         waited = waited + 0.3
 
+                        -- Forzar refresh inmediato sin throttle
                         _roleCache.lastUpdate = 0
                         _refreshRoleCache()
 
                         local newSheriff = _roleCache.sheriff
 
-                        -- Buscar visualmente quien tiene la gun (heroe o inocente que la agarro)
+                        -- Fallback visual: buscar manualmente quien tiene la gun en mano
                         if (not newSheriff or newSheriff.UserId == deadUserId) and _findGunIn then
                             for _, p in ipairs(Players:GetPlayers()) do
                                 if p ~= LocalPlayer and p.UserId ~= deadUserId and p.Character then
@@ -33653,12 +33327,27 @@ function StealGunLoop()
                         and newSheriff.Character
                         and newSheriff.Character:FindFirstChildOfClass("Humanoid")
                         and newSheriff.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
-                            heroTarget = newSheriff
+                            StealGunSystem.sheriffOriginalFound = newSheriff
+                            StealGunSystem.sheriffDeadDetected  = false
+                            StealGunSystem.gunInBackpackMode    = false
+                            -- Re-hookear muerte del nuevo sheriff
+                            task.defer(function() pcall(_hookSheriffDeath, newSheriff) end)
+                            CreateCustomNotification("STEAL GUN", "Nuevo sheriff: " .. newSheriff.Name .. " flingeando!", 2.5)
+                            -- FIX FLING NUEVO SHERIFF: flingear inmediatamente sin esperar
+                            -- la proxima iteracion del loop (evita el task.wait(0.8) de abajo)
+                            _flingActive    = false
+                            _flingReturning = false
+                            task.spawn(function()
+                                pcall(_sgFlingPlayer, newSheriff)
+                                if StealGunSystem._roundToken == _loopToken then
+                                    _flingCooldowns[newSheriff.UserId] = tick()
+                                end
+                            end)
+                            break
                         elseif newSheriff and newSheriff.UserId == deadUserId then
                             _roleCache.sheriff = nil
                         end
-                    until heroTarget ~= nil
-                        or not StealGunSystem.enabled
+                    until not StealGunSystem.enabled
                         or StealGunSystem._roundToken ~= _loopToken
                         or waited > 25
                         or _sgLocalHasGun()
@@ -33666,31 +33355,11 @@ function StealGunLoop()
                     if _sgLocalHasGun() then
                         CreateCustomNotification("STEAL GUN", "Gun obtenida!", 2)
                         StealGunSystem.enabled = false
-                        if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end
                         break
                     end
-
-                    if heroTarget then
-                        -- 3. Flingear al heroe para que suelte la gun
-                        CreateCustomNotification("STEAL GUN", "Heroe detectado: " .. heroTarget.Name .. " — flingeando!", 2.5)
-                        StealGunSystem.sheriffOriginalFound = heroTarget
-                        StealGunSystem.sheriffDeadDetected  = false
-                        StealGunSystem.gunInBackpackMode    = false
-                        _roleCache.sheriff    = heroTarget
-                        _roleCache.lastUpdate = 0
-                        task.defer(function() pcall(_hookSheriffDeath, heroTarget) end)
-                        _flingActive    = false
-                        _flingReturning = false
-                        task.spawn(function()
-                            pcall(_sgFlingPlayer, heroTarget)
-                            if StealGunSystem._roundToken == _loopToken then
-                                _flingCooldowns[heroTarget.UserId] = tick()
-                            end
-                        end)
-                    else
-                        CreateCustomNotification("STEAL GUN", "No se encontro heroe con gun en 25s. Parando.", 3)
+                    if waited > 25 then
+                        CreateCustomNotification("STEAL GUN", "Sin nuevo sheriff en 25s. Parando.", 3)
                         StealGunSystem.enabled = false
-                        if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end
                         break
                     end
                 end
@@ -35103,28 +34772,17 @@ function CreateFarmTab()
                 return
             end
 
-            -- Noclip constante en Stepped (throttle: cada 12 frames para reducir lag)
-            -- FIX LAG PC: aumentado throttle de 6 a 12 y cacheando partes del char
+            -- Noclip constante en Stepped (throttle: cada 6 frames para reducir lag)
             local _afNoclipTick = 0
-            local _afNcCache = nil
-            local _afNcCacheChar = nil
             _afNoclipConn = RunService.Stepped:Connect(function()
                 if not _afEnabled then return end
                 _afNoclipTick = _afNoclipTick + 1
-                if _afNoclipTick < 12 then return end
+                if _afNoclipTick < 6 then return end
                 _afNoclipTick = 0
                 local char = LocalPlayer.Character
                 if not char then return end
-                -- FIX LAG: cache de partes
-                if _afNcCacheChar ~= char or not _afNcCache then
-                    _afNcCacheChar = char
-                    _afNcCache = {}
-                    for _, part in pairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then _afNcCache[#_afNcCache+1] = part end
-                    end
-                end
-                for _, part in ipairs(_afNcCache) do
-                    if part.Parent then
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
                         pcall(function() part.CanCollide = false end)
                     end
                 end
@@ -35146,13 +34804,9 @@ function CreateFarmTab()
                 end
             end)
 
-            -- Anti-spin en RenderStepped (throttle a 15Hz -- cada 4 frames)
-            local _afSpinTick = 0
+            -- Anti-spin en RenderStepped
             _afAntiSpinConn = RunService.RenderStepped:Connect(function()
                 if not _afEnabled then return end
-                _afSpinTick = _afSpinTick + 1
-                if _afSpinTick < 4 then return end
-                _afSpinTick = 0
                 local char = LocalPlayer.Character
                 if not char then return end
                 local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -35995,8 +35649,16 @@ function CreateExclusiveTab()
     local HS = _G._hubSettings
     local function _hs() return _G._hubSettings end
 
-    -- ESCALA: no re-aplicar al abrir Settings para evitar que pise la escala activa
-    -- El slider de Escala Hub (%) se encarga de cambiarla manualmente
+    -- FIX ESCALA: re-aplicar UIScale guardada al abrir el tab Settings
+    -- (el UIScale del mainFrame puede haberse perdido si el hub se recreo)
+    pcall(function()
+        local savedScale = (_G._hubSettings.hubScale or 100) / 100
+        local sc = mainFrame:FindFirstChildOfClass("UIScale")
+        if not sc then sc = Instance.new("UIScale", mainFrame) end
+        if math.abs(sc.Scale - savedScale) > 0.001 then
+            sc.Scale = savedScale
+        end
+    end)
 
     -- ============================================================
     -- COLUMNA IZQUIERDA
@@ -43497,43 +43159,6 @@ function CreateCombatTab()
             end
         end, false)
 
-        -- helper compartido: hookear backpack + char para re-armar dual gun cuando llega la gun
-        local function _dualGunHookPickup(gs)
-            -- Backpack: gun llega al backpack (pick-up del suelo)
-            if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end) end
-            _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
-                if not (gs and gs.enabled) then return end
-                if not tool:IsA("Tool") or not _dualGunKeywords[tool.Name] then return end
-                task.wait(0.1)
-                if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
-                if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
-                if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
-                _dualStartArm(gs, _dualGunKeywords)
-            end)
-            -- Char: gun equipada desde backpack (ChildAdded en el character)
-            if _G._dualGunCharPickupConn then pcall(function() _G._dualGunCharPickupConn:Disconnect() end) end
-            local char = LocalPlayer.Character
-            if char then
-                _G._dualGunCharPickupConn = char.ChildAdded:Connect(function(tool)
-                    if not (gs and gs.enabled) then return end
-                    if not tool:IsA("Tool") or not _dualGunKeywords[tool.Name] then return end
-                    task.wait(0.08)
-                    if not (gs and gs.enabled) then return end
-                    -- Destruir DK_Clone viejo antes de re-armar
-                    local c = LocalPlayer.Character
-                    if c then
-                        for _, obj in pairs(c:GetChildren()) do
-                            if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
-                        end
-                    end
-                    if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
-                    if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
-                    if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
-                    _dualStartArm(gs, _dualGunKeywords)
-                end)
-            end
-        end
-
         -- -- TOGGLE: DUAL GUN ----------------------------------------------
         CreatePremiumToggle(_dualSection, "Dual Gun", function(en)
             local state = _G._dualGunState
@@ -43544,13 +43169,9 @@ function CreateCombatTab()
                 end
                 state.enabled = true
                 _dualStartArm(state, _dualGunKeywords)
-                -- Hookear pick-up inmediatamente (no esperar CharacterAdded)
-                _dualGunHookPickup(state)
                 CreateCustomNotification("DUAL GUN", "OK Activado  Click Derecho para atacar", 3)
             else
                 _dualStopArm(state)
-                if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end); _G._dualGunBpConn = nil end
-                if _G._dualGunCharPickupConn then pcall(function() _G._dualGunCharPickupConn:Disconnect() end); _G._dualGunCharPickupConn = nil end
                 CreateCustomNotification("DUAL GUN", "X Desactivado", 2)
             end
         end, false)
@@ -43721,8 +43342,19 @@ function CreateCombatTab()
                     if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
                     _dualStartArm(gs, _dualGunKeywords)
 
-                    -- Hookear backpack + char para re-armar cuando llega la gun
-                    _dualGunHookPickup(gs)
+                    -- Tambien hookear el backpack: si la gun aparece mas tarde (pick-up), re-armar
+                    if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end) end
+                    _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
+                        if not (gs and gs.enabled) then return end
+                        if not tool:IsA("Tool") then return end
+                        if _dualGunKeywords[tool.Name] then
+                            task.wait(0.1)
+                            if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
+                            if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
+                            if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
+                            _dualStartArm(gs, _dualGunKeywords)
+                        end
+                    end)
                 end)
             end
         end)
@@ -47561,172 +47193,6 @@ function CreateCombatTab()
     -- ================================================================
     -- BOTONES FLOTANTES MOBILE DESACTIVADOS
 
-    -- ================================================================
-    -- OPTIMIZACIONES DE COMBAT
-    -- Se activan automáticamente cuando cualquier toggle pesado está ON.
-    -- Reduce lag, limpia memoria y prioriza los loops de disparo/aim.
-    -- ================================================================
-    do
-        -- Registro de qué toggles pesados están activos
-        _G._combatOptActive = _G._combatOptActive or {
-            silentAim    = false,
-            autoShoot    = false,
-            knifeAim     = false,
-            aimlock      = false,
-            hitbox       = false,
-        }
-
-        -- Cuántos toggles pesados están ON en este momento
-        local function _combatOptCount()
-            local n = 0
-            for _, v in pairs(_G._combatOptActive) do if v then n = n + 1 end end
-            return n
-        end
-
-        -- Aplicar optimizaciones cuando AL MENOS UN toggle pesado está ON
-        local function _applyOpts()
-            -- OPT-1: GC agresivo — libera memoria de frames anteriores de predicción
-            pcall(function()
-                if collectgarbage then
-                    collectgarbage("setstepmul", 50)  -- más agresivo que el default (200)
-                    collectgarbage("collect")
-                end
-            end)
-
-            -- OPT-2: Throttle del ESP Box — pasa de 0.5s a 1.5s para no competir con Heartbeat de disparo
-            if _G._espBoxEnabled then
-                _G._combatOpt_espWasEnabled = true
-                -- Marcar throttle: el loop de ESP lo lee para saltar iteraciones
-                _G._combatOpt_espThrottle = true
-            end
-
-            -- OPT-3: Reducir frecuencia del Gun ESP (RunService.Heartbeat) al mínimo durante combat
-            if _G._espGunEnabled and _G._espGunConn then
-                _G._combatOpt_gunEspThrottle = true
-            end
-
-            -- OPT-4: Forzar refresh de _cachedPlayers para que los sistemas de aim
-            -- tengan el cache más fresco sin esperar el próximo tick automático
-            pcall(function()
-                _cachedPlayers = game:GetService("Players"):GetPlayers()
-            end)
-
-            -- OPT-5: Limpiar snap viejo de Silent Aim para evitar dead-reckoning stale
-            _G._saClickSnap = nil
-
-            -- OPT-6: Resetear throttle compartido de Heartbeat para que el primer
-            -- frame de disparo no sea saltado por el throttle global
-            _G._hbSharedTick = 0
-        end
-
-        -- Revertir optimizaciones cuando TODOS los toggles pesados están OFF
-        local function _revertOpts()
-            -- OPT-1: Restaurar GC a default
-            pcall(function()
-                if collectgarbage then
-                    collectgarbage("setstepmul", 200)
-                end
-            end)
-
-            -- OPT-2/3: Quitar throttles de ESP
-            _G._combatOpt_espThrottle    = false
-            _G._combatOpt_gunEspThrottle = false
-
-            -- OPT-6: Limpiar snap residual
-            _G._saClickSnap = nil
-        end
-
-        -- Punto de entrada: llamar desde cada toggle pesado con su key y estado
-        function _G._combatOptToggle(key, enabled)
-            if _G._combatOptActive[key] == nil then return end
-            _G._combatOptActive[key] = enabled
-            local count = _combatOptCount()
-            if enabled and count == 1 then
-                -- Primer toggle pesado activado: aplicar optimizaciones
-                _applyOpts()
-                CreateCustomNotification("COMBAT OPT", "Optimizaciones activadas", 1.5)
-            elseif not enabled and count == 0 then
-                -- Último toggle pesado desactivado: revertir
-                _revertOpts()
-                CreateCustomNotification("COMBAT OPT", "Optimizaciones revertidas", 1.5)
-            elseif enabled then
-                -- Otro toggle pesado adicional: re-aplicar para garantizar el estado
-                _applyOpts()
-            end
-        end
-
-        -- Hook en los toggles pesados ya existentes —
-        -- inyección no-destructiva: envuelve sus estados internos
-        -- Silent Aim
-        local _saOrig = CombatTabState.silentAimEnabled
-        if _saOrig then _G._combatOptToggle("silentAim", true) end
-        local _saOrigSet = rawset
-        -- Usamos un proxy en CombatTabState para interceptar silentAimEnabled
-        -- sin tocar el toggle original (compatible con el hook de __namecall)
-        local _ctsMeta = getmetatable(CombatTabState)
-        if not _ctsMeta then
-            _ctsMeta = {}
-            setmetatable(CombatTabState, _ctsMeta)
-        end
-        local _ctsOldNewindex = _ctsMeta.__newindex
-        _ctsMeta.__newindex = function(t, k, v)
-            -- Interceptar los campos de estado de los toggles pesados
-            if k == "silentAimEnabled" then
-                _G._combatOptToggle("silentAim", v and true or false)
-            elseif k == "autoShootMurderEnabled" then
-                _G._combatOptToggle("autoShoot", v and true or false)
-            end
-            if _ctsOldNewindex then
-                return _ctsOldNewindex(t, k, v)
-            else
-                rawset(t, k, v)
-            end
-        end
-
-        -- Knife Silent Aim y Aimlock se activan vía _G — hookeamos directo
-        local _origKnifeSA = _G._toggleStates and _G._toggleStates["Knife Silent Aim"]
-        if _origKnifeSA then _G._combatOptToggle("knifeAim", true) end
-
-        -- Monitorear _G._toggleStates["Knife Silent Aim"] y "Aimlock"
-        -- con un polling liviano cada 0.5s (no usar __newindex en _G para no romper otros sistemas)
-        task.spawn(function()
-            local _lastKnife   = false
-            local _lastAimlock = false
-            local _lastHitbox  = false
-            while true do
-                task.wait(0.5)
-                -- Verificar si el tab sigue abierto (si no, detener el monitor)
-                if not (contentContainer and contentContainer.Parent) then break end
-
-                local _ts = _G._toggleStates or {}
-                local _kn = _ts["Knife Silent Aim"]  and true or false
-                local _al = _ts["Aimlock"]            and true or false
-                local _hb = _ts["Hitbox Expander"]    and true or false
-
-                if _kn ~= _lastKnife   then _G._combatOptToggle("knifeAim", _kn);   _lastKnife   = _kn   end
-                if _al ~= _lastAimlock  then _G._combatOptToggle("aimlock",  _al);   _lastAimlock = _al   end
-                if _hb ~= _lastHitbox   then _G._combatOptToggle("hitbox",   _hb);   _lastHitbox  = _hb   end
-            end
-        end)
-
-        -- Restaurar metamétodo al salir del tab (ClearContent lo destruye)
-        -- para no dejar el proxy activo en otros tabs
-        local _cleanupConn
-        _cleanupConn = contentContainer.AncestryChanged:Connect(function()
-            if not contentContainer.Parent then
-                pcall(function()
-                    _ctsMeta.__newindex = _ctsOldNewindex  -- restaurar o nil
-                end)
-                -- Revertir optimizaciones al salir del tab
-                if _combatOptCount() > 0 then _revertOpts() end
-                pcall(function() _cleanupConn:Disconnect() end)
-            end
-        end)
-    end
-    -- ================================================================
-    -- FIN OPTIMIZACIONES DE COMBAT
-    -- ================================================================
-
 end  -- close CreateCombatTab
 
 
@@ -49415,18 +48881,10 @@ function abrirHub()
         local _bg = Instance.new("Frame", _splashSG)
         _bg.Size                   = UDim2.new(1, 0, 1, 0)
         _bg.Position               = UDim2.new(0, 0, 0, 0)
-        _bg.BackgroundColor3       = Color3.fromRGB(18, 10, 55)
-        _bg.BackgroundTransparency = 0.10
+        _bg.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
+        _bg.BackgroundTransparency = 0.15
         _bg.BorderSizePixel        = 0
         _bg.ZIndex                 = 1
-        -- Gradiente violeta/azul en el fondo del splash
-        local _bgGrad = Instance.new("UIGradient", _bg)
-        _bgGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   Color3.fromRGB(55, 25, 130)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(20, 12, 65)),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(15, 30, 100)),
-        })
-        _bgGrad.Rotation = 135
 
         -- Imagen principal centrada (rbxassetid://135253670455066)
         -- Ajuste responsivo: en movil usar porcentaje de pantalla en vez de pixeles fijos
@@ -49451,24 +48909,17 @@ function abrirHub()
         -- En movil el offset vertical se calcula en base al alto de pantalla
         local _btnOffsetY = _isMobileSplash and math.floor(_vp.Y * 0.42) or 380
         _btn.Position               = UDim2.new(0.5, 0, 0.5, _btnOffsetY)
-        _btn.BackgroundColor3       = Color3.fromRGB(90, 45, 200)
+        _btn.BackgroundColor3       = Color3.fromRGB(20, 20, 20)
         _btn.BorderSizePixel        = 0
         _btn.Text                   = "CONTINUAR"
         _btn.TextColor3             = Color3.fromRGB(255, 255, 255)
         _btn.TextSize               = 18
         _btn.Font                   = Enum.Font.GothamBold
         _btn.ZIndex                 = 3
-        Instance.new("UICorner", _btn).CornerRadius = UDim.new(0, 10)
+        Instance.new("UICorner", _btn).CornerRadius = UDim.new(0, 8)
         local _btnStroke = Instance.new("UIStroke", _btn)
-        _btnStroke.Color     = Color3.fromRGB(130, 80, 255)
-        _btnStroke.Thickness = 1.8
-        -- Gradiente en el boton
-        local _btnGrad = Instance.new("UIGradient", _btn)
-        _btnGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   Color3.fromRGB(100, 55, 220)),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(55, 80, 200)),
-        })
-        _btnGrad.Rotation = 90
+        _btnStroke.Color     = Color3.fromRGB(180, 180, 180)
+        _btnStroke.Thickness = 1.5
 
         -- Bloquear la ejecucion hasta que el usuario presione CONTINUAR
         local _continued = false
@@ -49608,15 +49059,15 @@ print("3: mainFrame creado")
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 -- == ESTILO: Teal oscuro estilo MM2 hub ==
-mainFrame.BackgroundColor3 = Color3.fromRGB(30, 20, 70)
-mainFrame.BackgroundTransparency = 0.30
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+mainFrame.BackgroundTransparency = 1
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
 -- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
 -- El UIScale que se aplica abajo se encarga de que entre en pantalla.
-mainFrame.Size = UDim2.new(0, 850, 0, 470)
+mainFrame.Size = UDim2.new(0, 730, 0, 430)
 
 -- ==============================================================
 -- FONDO AZUL SLIDO  sin aurora animada, sin pulse dot
@@ -49630,7 +49081,7 @@ end
 
 -- Borde azul nen estilo OverdriveInterface
 glowBorder = Instance.new("UIStroke", mainFrame)
-glowBorder.Color = Color3.fromRGB(120, 60, 220)
+glowBorder.Color = Color3.fromRGB(80, 80, 80)
 glowBorder.Thickness = 2.0
 glowBorder.Transparency = 0.25
 glowBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -49644,43 +49095,27 @@ uiScale.Scale = 1
 -- En móvil se escala para que entre completo en pantalla.
 -- ================================================================
 do
-    local HUB_W = 850
-    local HUB_H = 470
+    local HUB_W = 730
+    local HUB_H = 430
 
-    -- ESCALA DINÁMICA: se calcula para que el hub siempre entre completo en pantalla
+    -- HELPER GLOBAL: devuelve la escala correcta según viewport actual.
+    -- Todos los reopeners/animaciones deben animar HASTA este valor, no hasta 1.
     _getTargetScale = function()
-        -- Respetar hubScale guardado si existe (ajuste manual del usuario)
-        local saved = _G._hubSettings and _G._hubSettings.hubScale
-        if saved then return saved / 100 end
-
         local vp = workspace.CurrentCamera.ViewportSize
-        local screenW = vp.X
-        local screenH = vp.Y
-
-        -- Margen de seguridad en píxeles para no pegar el hub al borde
-        local MARGIN = 16
-
-        -- Calcular cuánto escalar para que quepa en ambas dimensiones
-        local scaleW = (screenW - MARGIN * 2) / HUB_W
-        local scaleH = (screenH - MARGIN * 2) / HUB_H
-        local scale  = math.min(scaleW, scaleH)
-
-        -- En PC nunca agrandar más de 100%; en móvil ajustar sin límite inferior excesivo
         local isMobile = UserInputService.TouchEnabled
-        if isMobile then
-            -- Móvil: usar el scale calculado, mínimo 0.40 para que se pueda leer
-            scale = math.max(scale, 0.40)
-        else
-            -- PC: máximo 100%, no agrandar
-            scale = math.min(scale, 1.0)
-        end
-
-        return scale
+        local marginX = isMobile and 20 or 10
+        local marginY = isMobile and 30 or 10
+        local scaleX = (vp.X - marginX) / HUB_W
+        local scaleY = (vp.Y - marginY) / HUB_H
+        local scale  = math.min(scaleX, scaleY)
+        local minScale = isMobile and 0.30 or 0.5
+        return math.clamp(scale, minScale, 0.70)
     end
 
     local function _applyScale()
         local s = _getTargetScale()
         uiScale.Scale = s
+        -- Mantener el hub centrado en pantalla siempre
         mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
         mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
     end
@@ -49716,30 +49151,6 @@ _auroraContainer.ZIndex                 = 1
 _auroraContainer.ClipsDescendants       = false
 
 -- [FONDO DE ONDAS ELIMINADO]
-
--- ================================================================
--- FONDO GRADIENTE VIOLETA-AZUL
--- ================================================================
-do
-    local _hubBgFill = Instance.new("Frame", _auroraContainer)
-    _hubBgFill.Name                   = "HubBgGradient"
-    _hubBgFill.Size                   = UDim2.new(1, 0, 1, 0)
-    _hubBgFill.Position               = UDim2.new(0, 0, 0, 0)
-    _hubBgFill.BackgroundColor3       = Color3.fromRGB(55, 35, 120)
-    _hubBgFill.BackgroundTransparency = 0.45
-    _hubBgFill.BorderSizePixel        = 0
-    _hubBgFill.ZIndex                 = 2
-
-    local _hubBgGrad = Instance.new("UIGradient", _hubBgFill)
-    _hubBgGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,   Color3.fromRGB(70, 40, 160)),   -- violeta medio
-        ColorSequenceKeypoint.new(0.35,Color3.fromRGB(45, 28, 120)),   -- violeta oscuro
-        ColorSequenceKeypoint.new(0.65,Color3.fromRGB(30, 50, 150)),   -- azul-violeta
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(20, 40, 130)),   -- azul profundo
-    })
-    _hubBgGrad.Rotation = 135
-end
--- ================================================================
 
 
 
@@ -50599,7 +50010,7 @@ particles = {}
     _contentBg.Name = "ContentBackground"
     _contentBg.Size = UDim2.new(1, 0, 1, -36)
     _contentBg.Position = UDim2.new(0, 0, 0, 34)
-    _contentBg.BackgroundColor3 = Color3.fromRGB(35, 22, 85)
+    _contentBg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     _contentBg.BackgroundTransparency = 1
     _contentBg.BorderSizePixel = 0
     _contentBg.ZIndex = 5
@@ -50683,10 +50094,10 @@ particles = {}
     sideLayout.Padding = UDim.new(0, 6)
     sideLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
-    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "EMOTES"}
+    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "FARM"}
     local tabFunctions = {CreateMainTab, CreateWorldTab, CreateVisualsTab, CreatePremiumTab, CreateExclusiveTab, CreateCombatTab,
         function() CreateUseTab() end,  -- late binding: CreateUseTab se define despues de esta tabla
-        function() CreateEmotesTab() end}  -- late binding: CreateEmotesTab se define despues
+        CreateFarmTab}
     local tabIcons = {
         "rbxassetid://104322605423609",  -- MAIN
         "rbxassetid://105507739661539",  -- WORLD
@@ -50695,7 +50106,7 @@ particles = {}
         "rbxassetid://103503754018914",  -- SETTINGS
         "rbxassetid://134041781822125",  -- COMBAT
         "rbxassetid://106189149164668",  -- USE
-        "rbxassetid://104322605423609",  -- EMOTES
+        "rbxassetid://104322605423609",  -- FARM (usa mismo icono que MAIN como fallback)
     }
 
     local sideButtons = {}
@@ -50905,15 +50316,11 @@ particles = {}
 
     -- SIDEBAR: panel izquierdo en desktop, barra inferior en móvil
     local _vpNow = workspace.CurrentCamera.ViewportSize
-    -- Detectar si es móvil para usar layout de barra inferior en vez de sidebar lateral
-    -- En pantallas angostas (móvil portrait/landscape pequeño) la sidebar de 240px
-    -- consume demasiado espacio horizontal, así que se pone abajo como barra de tabs.
-    local _vpNowCheck = workspace.CurrentCamera.ViewportSize
-    -- Usar el tamaño REAL de pantalla (sin escala del UIScale aplicado) para decidir layout
-    -- Si la pantalla física es menor a 600px de ancho O es táctil → layout móvil
-    local _isMobileLayout = UserInputService.TouchEnabled or (_vpNowCheck.X < 600)
-    local SIDEBAR_W = _isMobileLayout and 0 or 240
-    local TAB_BAR_BOTTOM_H = _isMobileLayout and 56 or 0
+    -- SIEMPRE usar layout de PC (sidebar vertical) — el auto-scale se encarga
+    -- de que el hub entre completo en pantalla, tanto en PC como en móvil.
+    local _isMobileLayout = false
+    local SIDEBAR_W = 240
+    local TAB_BAR_BOTTOM_H = 0
 
     local tabDockFrame = Instance.new("Frame", mainFrame)
     tabDockFrame.Name = "TabDock"
@@ -50921,7 +50328,7 @@ particles = {}
     tabDockFrame.BorderSizePixel = 0
     tabDockFrame.ZIndex = 12
     tabDockFrame.ClipsDescendants = true
-    tabDockFrame.BackgroundColor3 = Color3.fromRGB(25, 15, 65)
+    tabDockFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 
     if _isMobileLayout then
         -- Móvil: barra horizontal en la parte inferior del hub
@@ -52610,15 +52017,13 @@ function CreateUseTab()
 
         -- Grid de swatches
         local swGrid = Instance.new("Frame", cpSec)
-        swGrid.Size = UDim2.new(1, -8, 0, 0)
-        swGrid.AutomaticSize = Enum.AutomaticSize.Y
+        swGrid.Size = UDim2.new(1, -8, 0, 96)
         swGrid.BackgroundTransparency = 1
         swGrid.BorderSizePixel = 0
         local swUIGrid = Instance.new("UIGridLayout", swGrid)
         swUIGrid.CellSize = UDim2.new(0, 30, 0, 30)
         swUIGrid.CellPadding = UDim2.new(0, 4, 0, 4)
         swUIGrid.SortOrder = Enum.SortOrder.LayoutOrder
-        swUIGrid.HorizontalAlignment = Enum.HorizontalAlignment.Left
 
         local _cpCustomR = ThemeColors.Primary.R * 255
         local _cpCustomG = ThemeColors.Primary.G * 255
@@ -52735,14 +52140,8 @@ function CreateUseTab()
             local dragging = false
             local UIS = game:GetService("UserInputService")
             local function updatePos(input)
-                local relX
-                if input and (input.UserInputType == Enum.UserInputType.Touch
-                           or input.UserInputType == Enum.UserInputType.MouseButton1) then
-                    relX = math.clamp(input.Position.X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
-                else
-                    relX = math.clamp(UIS:GetMouseLocation().X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
-                end
-                local frac = relX / math.max(track.AbsoluteSize.X, 1)
+                local relX = math.clamp(input.Position.X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
+                local frac = relX / track.AbsoluteSize.X
                 local val = math.floor(frac * 255)
                 fill.Size = UDim2.new(frac, 0, 1, 0)
                 thumb.Position = UDim2.new(frac, -7, 0.5, -7)
@@ -52751,52 +52150,20 @@ function CreateUseTab()
                 _applyHubColor()
                 previewLbl.Text = "RGB(" .. math.floor(_cpCustomR) .. "," .. math.floor(_cpCustomG) .. "," .. math.floor(_cpCustomB) .. ")"
             end
-            -- FIX MOBILE: soporte Touch ademas de MouseButton1
             track.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1
-                or inp.UserInputType == Enum.UserInputType.Touch then
-                    dragging = true; updatePos(inp)
-                end
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=true; updatePos(inp) end
             end)
             track.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1
-                or inp.UserInputType == Enum.UserInputType.Touch then
-                    dragging = false
-                end
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=false end
             end)
             UIS.InputChanged:Connect(function(inp)
-                if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement
-                              or inp.UserInputType == Enum.UserInputType.Touch) then
-                    updatePos(inp)
-                end
+                if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then updatePos(inp) end
             end)
         end
 
         makeRGBSlider(rgbContainer, "R", Color3.fromRGB(255,80,80),  _cpCustomR, function(v) _cpCustomR=v end)
         makeRGBSlider(rgbContainer, "G", Color3.fromRGB(80,255,100), _cpCustomG, function(v) _cpCustomG=v end)
         makeRGBSlider(rgbContainer, "B", Color3.fromRGB(80,150,255), _cpCustomB, function(v) _cpCustomB=v end)
-    end
-
-    -- == SLIDER ESCALA DEL HUB (USE tab) ==
-    do
-        local _scaleSec = CreateBorderedSectionGlobal(rightColumn, " ESCALA DEL HUB")
-        local _hs = function() return _G._hubSettings or {} end
-
-        CreateSlider(_scaleSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 100, function(v)
-            local hs = _G._hubSettings
-            if not hs then return end
-            hs.hubScale = math.floor(v)
-            -- Aplicar escala al frame principal del hub en tiempo real
-            local _hubGui = game:GetService("CoreGui"):FindFirstChild("f")
-                         or game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("f")
-            if not _hubGui then return end
-            local _mainF = _hubGui:FindFirstChildOfClass("Frame")
-            if not _mainF then return end
-            local scale = math.floor(v) / 100
-            local uiScale = _mainF:FindFirstChildOfClass("UIScale")
-            if not uiScale then uiScale = Instance.new("UIScale", _mainF) end
-            uiScale.Scale = scale
-        end)
     end
 
 end
@@ -53081,391 +52448,6 @@ function _applyGunSkin(skin)
 end
 
 
-
--- ================================================================
--- == PESTAÑA EMOTES (zerq emotes)
--- ================================================================
-function CreateEmotesTab()
-    -- NO llamar ClearContent() - el sistema de cache de tabs ya maneja esto
-    -- contentContainer en este punto apunta al tabFrame del cache
-
-    -- ---- Colores del hub (usa el tema activo del hub) ----
-    local HUB_COLOR  = ThemeColors.Primary
-    local HUB_DARK   = ThemeColors.Secondary
-    local TEXT_COLOR = ThemeColors.TextPrimary
-
-    -- ---- Lista de emotes ----
-    local _emotes = {
-        { name = "Zerq Emote 1",  id = "rbxassetid://83796130837213"  },
-        { name = "Zerq Emote 2",  id = "rbxassetid://82253590215395"  },
-        { name = "Zerq Emote 3",  id = "rbxassetid://134048087973127" },
-        { name = "Zerq Emote 4",  id = "rbxassetid://123761889433592" },
-        { name = "Zerq Emote 5",  id = "rbxassetid://137704682075613" },
-        { name = "Zerq Emote 6",  id = "rbxassetid://139395178419877" },
-        { name = "Zerq Emote 7",  id = "rbxassetid://126264342780589" },
-        { name = "Zerq Emote 8",  id = "rbxassetid://133422692462315" },
-        { name = "Zerq Emote 9",  id = "rbxassetid://80007036319743"  },
-        { name = "Zerq Emote 10", id = "rbxassetid://90018336892195"  },
-        { name = "Zerq Emote 11", id = "rbxassetid://118417760427139" },
-        { name = "Zerq Emote 12", id = "rbxassetid://124089479921926" },
-        { name = "Zerq Emote 13", id = "rbxassetid://93166693202615"  },
-        { name = "Zerq Emote 14", id = "rbxassetid://133566007754001" },
-        { name = "Zerq Emote 15", id = "rbxassetid://73061206570424"  },
-        { name = "Zerq Emote 16", id = "rbxassetid://140435143190786" },
-        { name = "Zerq Emote 17", id = "rbxassetid://74895458261666"  },
-        { name = "Zerq Emote 18", id = "rbxassetid://123097403881274" },
-    }
-
-    -- ---- Helper: ejecutar emote ----
-    local _activeTrack = nil
-    local _moveConn = nil
-
-    local function _stopActiveEmote()
-        if _activeTrack then
-            pcall(function() _activeTrack:Stop(0) end)
-            _activeTrack = nil
-        end
-        if _moveConn then
-            pcall(function() _moveConn:Disconnect() end)
-            _moveConn = nil
-        end
-    end
-
-    local function _playEmote(emoteId)
-        local char = LocalPlayer and LocalPlayer.Character
-        if not char then CreateCustomNotification("EMOTES", "Sin personaje", 2); return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum then CreateCustomNotification("EMOTES", "Sin humanoid", 2); return end
-
-        -- Parar emote anterior y su conector
-        _stopActiveEmote()
-
-        -- Parar todas las animaciones activas
-        pcall(function()
-            local animator = hum:FindFirstChildOfClass("Animator")
-            if animator then
-                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                    pcall(function() track:Stop(0) end)
-                end
-            end
-        end)
-
-        local ok = false
-        pcall(function()
-            local animator = hum:FindFirstChildOfClass("Animator")
-            if not animator then
-                animator = Instance.new("Animator")
-                animator.Parent = hum
-            end
-            local anim = Instance.new("Animation")
-            anim.AnimationId = emoteId
-            local track = animator:LoadAnimation(anim)
-            track.Priority = Enum.AnimationPriority.Action4
-            track:Play()
-            _activeTrack = track
-            ok = true
-
-            -- Detener emote al caminar
-            _moveConn = hum.Running:Connect(function(speed)
-                if speed > 0.5 then
-                    _stopActiveEmote()
-                end
-            end)
-
-            -- Auto-limpiar conector cuando el track termina solo
-            track.Stopped:Connect(function()
-                if _moveConn then
-                    pcall(function() _moveConn:Disconnect() end)
-                    _moveConn = nil
-                end
-                if _activeTrack == track then
-                    _activeTrack = nil
-                end
-            end)
-        end)
-
-        if not ok then
-            pcall(function()
-                local anim = Instance.new("Animation")
-                anim.AnimationId = emoteId
-                local track = hum:LoadAnimation(anim)
-                track.Priority = Enum.AnimationPriority.Action4
-                track:Play()
-                _activeTrack = track
-                ok = true
-
-                _moveConn = hum.Running:Connect(function(speed)
-                    if speed > 0.5 then
-                        _stopActiveEmote()
-                    end
-                end)
-
-                track.Stopped:Connect(function()
-                    if _moveConn then
-                        pcall(function() _moveConn:Disconnect() end)
-                        _moveConn = nil
-                    end
-                    if _activeTrack == track then _activeTrack = nil end
-                end)
-            end)
-        end
-
-        if ok then
-            CreateCustomNotification("EMOTES", "▶ Reproduciendo emote", 1.2)
-        else
-            CreateCustomNotification("EMOTES", "No se pudo reproducir", 2)
-        end
-    end
-
-    -- ---- Contenedor raiz dentro del tabFrame del cache ----
-    local root = Instance.new("Frame")
-    root.Name                   = "EmotesRoot"
-    root.Size                   = UDim2.new(1, 0, 1, 0)
-    root.Position               = UDim2.new(0, 0, 0, 0)
-    root.BackgroundTransparency = 1
-    root.BorderSizePixel        = 0
-    root.Parent                 = contentContainer
-
-    -- ---- ScrollingFrame ----
-    local scroll = Instance.new("ScrollingFrame")
-    scroll.Name                   = "EmotesScroll"
-    scroll.Size                   = UDim2.new(1, 0, 1, 0)
-    scroll.Position               = UDim2.new(0, 0, 0, 0)
-    scroll.BackgroundTransparency = 1
-    scroll.BorderSizePixel        = 0
-    scroll.ScrollBarThickness     = 5
-    scroll.ScrollBarImageColor3   = ThemeColors.Accent
-    scroll.CanvasSize             = UDim2.new(0, 0, 0, 0)
-    scroll.AutomaticCanvasSize    = Enum.AutomaticSize.Y
-    scroll.ClipsDescendants       = true
-    scroll.Parent                 = root
-
-    -- ---- Grid 2 columnas ----
-    local grid = Instance.new("UIGridLayout")
-    grid.CellSize      = UDim2.new(0.46, 0, 0, 85)
-    grid.CellPadding   = UDim2.new(0.02, 0, 0, 8)
-    grid.SortOrder     = Enum.SortOrder.LayoutOrder
-    grid.FillDirection = Enum.FillDirection.Horizontal
-    grid.Parent        = scroll
-
-    local pad = Instance.new("UIPadding")
-    pad.PaddingTop    = UDim.new(0, 10)
-    pad.PaddingBottom = UDim.new(0, 10)
-    pad.PaddingLeft   = UDim.new(0, 8)
-    pad.PaddingRight  = UDim.new(0, 8)
-    pad.Parent        = scroll
-
-    -- ---- Botones de emotes ----
-    for idx, emote in ipairs(_emotes) do
-        local btn = Instance.new("TextButton")
-        btn.Name                   = "EmoteBtn_" .. idx
-        btn.Text                   = ""
-        btn.AutoButtonColor        = false
-        btn.BackgroundColor3       = HUB_COLOR
-        btn.BackgroundTransparency = 0.2
-        btn.BorderSizePixel        = 0
-        btn.LayoutOrder            = idx
-        btn.Parent                 = scroll
-
-        local corner = Instance.new("UICorner", btn)
-        corner.CornerRadius = UDim.new(0, 12)
-
-        local stroke = Instance.new("UIStroke", btn)
-        stroke.Color        = HUB_COLOR
-        stroke.Thickness    = 2
-        stroke.Transparency = 0.4
-
-        local lbl = Instance.new("TextLabel", btn)
-        lbl.Size                   = UDim2.new(1, -8, 1, 0)
-        lbl.Position               = UDim2.new(0, 4, 0, 0)
-        lbl.BackgroundTransparency = 1
-        lbl.Text                   = emote.name
-        lbl.TextColor3             = TEXT_COLOR
-        lbl.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-        lbl.TextSize               = 13
-        lbl.TextWrapped            = true
-        lbl.TextXAlignment         = Enum.TextXAlignment.Center
-        lbl.TextYAlignment         = Enum.TextYAlignment.Center
-        lbl.TextStrokeTransparency = 0.5
-        lbl.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
-        lbl.ZIndex                 = 2
-
-        local _ti = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        btn.MouseEnter:Connect(function()
-            TweenService:Create(btn, _ti, {BackgroundTransparency = 0, BackgroundColor3 = HUB_DARK}):Play()
-            TweenService:Create(stroke, _ti, {Transparency = 0}):Play()
-        end)
-        btn.MouseLeave:Connect(function()
-            TweenService:Create(btn, _ti, {BackgroundTransparency = 0.2, BackgroundColor3 = HUB_COLOR}):Play()
-            TweenService:Create(stroke, _ti, {Transparency = 0.4}):Play()
-        end)
-        btn.MouseButton1Down:Connect(function()
-            TweenService:Create(btn, _ti, {BackgroundTransparency = 0.5}):Play()
-        end)
-        btn.MouseButton1Up:Connect(function()
-            TweenService:Create(btn, _ti, {BackgroundTransparency = 0}):Play()
-        end)
-        btn.MouseButton1Click:Connect(function()
-            PlayTabSound()
-            _playEmote(emote.id)
-        end)
-    end
-
-    -- ---- Separador / título sección bindables ----
-    local secFrame = Instance.new("Frame")
-    secFrame.Name                   = "EmoteBindSection"
-    secFrame.Size                   = UDim2.new(1, 0, 0, 28)
-    secFrame.BackgroundColor3       = ThemeColors.Primary
-    secFrame.BackgroundTransparency = 0.5
-    secFrame.BorderSizePixel        = 0
-    secFrame.Parent                 = root
-
-    local secCorner = Instance.new("UICorner", secFrame)
-    secCorner.CornerRadius = UDim.new(0, 8)
-
-    local secLbl = Instance.new("TextLabel", secFrame)
-    secLbl.Size                   = UDim2.new(1, 0, 1, 0)
-    secLbl.BackgroundTransparency = 1
-    secLbl.Text                   = "⬛ BINDABLES DE EMOTES"
-    secLbl.TextColor3             = TEXT_COLOR
-    secLbl.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-    secLbl.TextSize               = 12
-    secLbl.TextXAlignment         = Enum.TextXAlignment.Center
-
-    -- ---- ScrollingFrame para bindables ----
-    local bindScroll = Instance.new("ScrollingFrame")
-    bindScroll.Name                   = "BindScroll"
-    bindScroll.Size                   = UDim2.new(1, 0, 0, 0)  -- altura calculada tras crear items
-    bindScroll.Position               = UDim2.new(0, 0, 0, 0)
-    bindScroll.BackgroundTransparency = 1
-    bindScroll.BorderSizePixel        = 0
-    bindScroll.ScrollBarThickness     = 4
-    bindScroll.ScrollBarImageColor3   = ThemeColors.Accent
-    bindScroll.CanvasSize             = UDim2.new(0, 0, 0, 0)
-    bindScroll.AutomaticCanvasSize    = Enum.AutomaticSize.Y
-    bindScroll.ClipsDescendants       = true
-    bindScroll.Parent                 = root
-
-    local bindList = Instance.new("UIListLayout", bindScroll)
-    bindList.SortOrder     = Enum.SortOrder.LayoutOrder
-    bindList.Padding       = UDim.new(0, 6)
-    bindList.FillDirection = Enum.FillDirection.Vertical
-
-    local bindPad = Instance.new("UIPadding", bindScroll)
-    bindPad.PaddingTop    = UDim.new(0, 6)
-    bindPad.PaddingBottom = UDim.new(0, 6)
-    bindPad.PaddingLeft   = UDim.new(0, 8)
-    bindPad.PaddingRight  = UDim.new(0, 8)
-
-    -- Tabla de estados de bindables activos
-    local _bindActive = {}
-
-    for idx, emote in ipairs(_emotes) do
-        local bindKey = "Emote_Bind_" .. idx
-
-        local row = Instance.new("Frame")
-        row.Name                   = "BindRow_" .. idx
-        row.Size                   = UDim2.new(1, 0, 0, 38)
-        row.BackgroundColor3       = ThemeColors.Secondary
-        row.BackgroundTransparency = 0.4
-        row.BorderSizePixel        = 0
-        row.LayoutOrder            = idx
-        row.Parent                 = bindScroll
-
-        local rowCorner = Instance.new("UICorner", row)
-        rowCorner.CornerRadius = UDim.new(0, 8)
-
-        -- Etiqueta del emote
-        local rowLbl = Instance.new("TextLabel", row)
-        rowLbl.Size                   = UDim2.new(1, -80, 1, 0)
-        rowLbl.Position               = UDim2.new(0, 10, 0, 0)
-        rowLbl.BackgroundTransparency = 1
-        rowLbl.Text                   = emote.name
-        rowLbl.TextColor3             = TEXT_COLOR
-        rowLbl.FontFace               = Font.fromEnum(Enum.Font.GothamMedium)
-        rowLbl.TextSize               = 12
-        rowLbl.TextXAlignment         = Enum.TextXAlignment.Left
-        rowLbl.TextYAlignment         = Enum.TextYAlignment.Center
-
-        -- Botón ON/OFF cuadrado
-        local togBtn = Instance.new("TextButton", row)
-        togBtn.Name                   = "TogBtn"
-        togBtn.Size                   = UDim2.new(0, 60, 0, 26)
-        togBtn.AnchorPoint            = Vector2.new(1, 0.5)
-        togBtn.Position               = UDim2.new(1, -8, 0.5, 0)
-        togBtn.BackgroundColor3       = ThemeColors.Primary
-        togBtn.BackgroundTransparency = 0.3
-        togBtn.BorderSizePixel        = 0
-        togBtn.Text                   = "OFF"
-        togBtn.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-        togBtn.TextSize               = 11
-        togBtn.TextColor3             = TEXT_COLOR
-        togBtn.AutoButtonColor        = false
-
-        local togCorner = Instance.new("UICorner", togBtn)
-        togCorner.CornerRadius = UDim.new(0, 6)
-
-        local togStroke = Instance.new("UIStroke", togBtn)
-        togStroke.Color        = ThemeColors.Primary
-        togStroke.Thickness    = 1.5
-        togStroke.Transparency = 0.3
-
-        local _ti2 = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-        togBtn.MouseButton1Click:Connect(function()
-            PlayTabSound()
-            _bindActive[bindKey] = not _bindActive[bindKey]
-            local on = _bindActive[bindKey]
-
-            if on then
-                -- Crear bindable cuadrado
-                local bg = MakeCapyBindableFrame(row, emote.name, function()
-                    _playEmote(emote.id)
-                end)
-                -- Forzar forma cuadrada
-                if bg and bg.SetShape then bg:SetShape("square") end
-
-                togBtn.Text = "ON"
-                TweenService:Create(togBtn, _ti2, {BackgroundColor3 = Color3.fromRGB(0, 180, 80), BackgroundTransparency = 0.1}):Play()
-                TweenService:Create(togStroke, _ti2, {Color = Color3.fromRGB(0, 220, 100), Transparency = 0}):Play()
-            else
-                -- Destruir bindable
-                DestroyCapyBind(emote.name)
-                togBtn.Text = "OFF"
-                TweenService:Create(togBtn, _ti2, {BackgroundColor3 = ThemeColors.Primary, BackgroundTransparency = 0.3}):Play()
-                TweenService:Create(togStroke, _ti2, {Color = ThemeColors.Primary, Transparency = 0.3}):Play()
-            end
-        end)
-    end
-
-    -- ---- Layout dinámico: scroll emotes arriba, bindables abajo ----
-    -- Calculamos posiciones después de que UIGridLayout determine alturas
-    task.defer(function()
-        if not root or not root.Parent then return end
-
-        local PADDING    = 8
-        local SEC_H      = 32
-        local totalH     = root.AbsoluteSize.Y
-
-        -- La mitad superior para emotes, mitad inferior para bindables
-        local emotesH  = math.floor(totalH * 0.50) - PADDING
-        local bindsH   = math.floor(totalH * 0.50) - SEC_H - PADDING * 2
-
-        scroll.Size     = UDim2.new(1, 0, 0, emotesH)
-        scroll.Position = UDim2.new(0, 0, 0, 0)
-
-        secFrame.Size     = UDim2.new(1, 0, 0, SEC_H)
-        secFrame.Position = UDim2.new(0, 0, 0, emotesH + PADDING)
-
-        bindScroll.Size     = UDim2.new(1, 0, 0, bindsH)
-        bindScroll.Position = UDim2.new(0, 0, 0, emotesH + PADDING + SEC_H + PADDING)
-    end)
-
-    CreateCustomNotification("EMOTES", "Emotes listos (" .. #_emotes .. ")", 1.5)
-end
--- ================================================================
--- == FIN PESTAÑA EMOTES
--- ================================================================
 
 end -- cierra abrirHub
 
