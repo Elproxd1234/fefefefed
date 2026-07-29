@@ -6428,25 +6428,18 @@ local function _flingDoReturn(Character, RootPart, Humanoid)
                 Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
             end
         end)
-        -- FIX VOLAR: anclar brevemente tras el TP para cancelar inercia del fling
-        -- (evita que el jugador salga disparado despues de volver)
-        pcall(function()
-            if RootPart.Parent then
-                RootPart.Anchored = true
-                RootPart.AssemblyLinearVelocity  = Vector3.zero
-                RootPart.AssemblyAngularVelocity = Vector3.zero
-            end
-        end)
-        task.wait(0.08)
+        -- FIX: 2 frames de espera + double-zereo para cancelar inercia residual del servidor
+        task.wait(0.05)
         pcall(function()
             if RootPart.Parent then
                 for _, x in ipairs(Character:GetDescendants()) do
                     if x:IsA("BasePart") then
+                        x.Velocity                = Vector3.zero
+                        x.RotVelocity             = Vector3.zero
                         x.AssemblyLinearVelocity  = Vector3.zero
                         x.AssemblyAngularVelocity = Vector3.zero
                     end
                 end
-                RootPart.Anchored = false
             end
         end)
         task.wait(0.05)
@@ -6588,34 +6581,10 @@ function _doStealFling(targetHRP, skipReturn)
     -- Asegurar desconexion del Heartbeat
     if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
 
-    -- FIX VOLAR: zerear velocidad en TODOS los descendientes del char local
-    -- ANTES de restaurar PlatformStand para evitar que el motor fisico
-    -- propague la inercia de 50000 al jugador tras el fling
-    pcall(function()
-        for _, x in ipairs(Character:GetDescendants()) do
-            if x:IsA("BasePart") then
-                x.AssemblyLinearVelocity  = Vector3.zero
-                x.AssemblyAngularVelocity = Vector3.zero
-            end
-        end
-    end)
-    -- FIX VOLAR: anclar brevemente el RootPart para que el servidor
-    -- acepte la cancelacion de velocidad (evita que el cliente salga volando
-    -- por inercia acumulada de los 50000 studs/s del fling)
-    pcall(function()
-        RootPart.Anchored = true
-        RootPart.AssemblyLinearVelocity  = Vector3.zero
-        RootPart.AssemblyAngularVelocity = Vector3.zero
-    end)
-    task.wait(0.08)
-    pcall(function()
-        RootPart.AssemblyLinearVelocity  = Vector3.zero
-        RootPart.AssemblyAngularVelocity = Vector3.zero
-        RootPart.Anchored = false
-    end)
-
     -- Restaurar estado fisico propio
     pcall(function()
+        RootPart.AssemblyLinearVelocity  = Vector3.zero
+        RootPart.AssemblyAngularVelocity = Vector3.zero
         Humanoid.PlatformStand = false
     end)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
@@ -6861,25 +6830,9 @@ function StartFlingSystem()
             local w = 0
             repeat task.wait(0.05); w = w + 0.05 until launched or w > 4
             if conn then conn:Disconnect(); conn = nil end
-            -- FIX VOLAR: anclar brevemente para cancelar inercia acumulada del fling
-            -- evita que el jugador local salga disparado tras soltar al target
             pcall(function()
-                myHRP.Anchored = true
                 myHRP.AssemblyLinearVelocity  = Vector3.zero
                 myHRP.AssemblyAngularVelocity = Vector3.zero
-            end)
-            task.wait(0.08)
-            pcall(function()
-                -- Zerear velocidad en todo el personaje
-                if myChar then
-                    for _, x in ipairs(myChar:GetDescendants()) do
-                        if x:IsA("BasePart") then
-                            x.AssemblyLinearVelocity  = Vector3.zero
-                            x.AssemblyAngularVelocity = Vector3.zero
-                        end
-                    end
-                end
-                myHRP.Anchored = false
                 myHum.PlatformStand = false
             end)
             return launched
@@ -13211,12 +13164,7 @@ function CreateMainUI_Fly()
         local _flyDownHeld  = _G._flyDownHeld
         local _flyBoostHeld = _G._flyBoostHeld
 
-        -- FIX MOBILE: los botones de colores (SUBIR/BAJAR/BOOST) ya NO se crean
-        -- automaticamente al activar el fly para no molestar en pantalla.
-        -- Se crean solo si el usuario activa el toggle "Botones Fly Mobile" mas abajo.
-        -- El joystick nativo de Roblox ya mueve horizontal; Space/Ctrl funcionan via
-        -- _G._flyUpHeld / _G._flyDownHeld que se pueden settear desde otro toggle.
-        if _isMobile and _G._flyMobileBtnsEnabled then
+        if _isMobile then
             _flyMobileGui = Instance.new("ScreenGui")
             _flyMobileGui.Name = "FlyMobileControls_HUB"
             _flyMobileGui.ResetOnSpawn = false
@@ -13359,45 +13307,6 @@ function CreateMainUI_Fly()
             CreateCustomNotification("FLY", "OFF", 2)
         end
     end, false)
-
-    -- Toggle: Botones Fly Mobile (SUBIR/BAJAR/BOOST) — SOLO para mobile
-    -- Por defecto OFF para no llenar la pantalla con botones de colores
-    do
-        local _isMobileFlyUI = (function()
-            local ok, res = pcall(function() return UserInputService.TouchEnabled end)
-            return ok and res
-        end)()
-        if _isMobileFlyUI then
-            _G._flyMobileBtnsEnabled = _G._flyMobileBtnsEnabled or false
-            CreateToggle(leftColumn, "Botones Fly Mobile (Subir/Bajar/Boost)", function(on)
-                _G._flyMobileBtnsEnabled = on
-                if not on then
-                    -- Destruir la GUI de botones si existe
-                    pcall(function()
-                        for _, g in ipairs(game:GetService("CoreGui"):GetChildren()) do
-                            if g.Name == "FlyMobileControls_HUB" then g:Destroy() end
-                        end
-                    end)
-                    pcall(function()
-                        for _, g in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
-                            if g.Name == "FlyMobileControls_HUB" then g:Destroy() end
-                        end
-                    end)
-                    _G._flyUpHeld = false; _G._flyDownHeld = false; _G._flyBoostHeld = false
-                    CreateCustomNotification("FLY MOBILE", "Botones ocultos", 1.5)
-                else
-                    -- Reiniciar fly para que cree los botones
-                    if flyNoclipEnabled then
-                        flyNoclipEnabled = false
-                        task.wait(0.1)
-                        flyNoclipEnabled = true
-                        startFlyNoclip()
-                    end
-                    CreateCustomNotification("FLY MOBILE", "Botones SUBIR/BAJAR/BOOST activos", 2)
-                end
-            end, false)
-        end
-    end
 
     -- Keybind para toggle de Fly
     do
@@ -26678,24 +26587,21 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local savedState = _G._toggleStates[nombre]
     local estado = (savedState ~= nil) and savedState or (initialValue or false)
 
+    local C_IND_ON  = Color3.fromRGB(0, 200, 80)   -- verde cuando activo
+    local C_IND_OFF = Color3.fromRGB(255, 0, 0)     -- rojo cuando inactivo
+    local TWEEN_T   = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
     -- Detectar móvil para ajustar tamaños
     local _isMobileTog = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
-    -- Dimensiones del nuevo toggle estilo slider (igual al codigo de referencia)
-    local _toggleBgW   = _isMobileTog and 90  or 130   -- ancho total del switch
-    local _toggleBgH   = _isMobileTog and 26  or 35    -- alto total
-    local _knobW       = _isMobileTog and 34  or 50    -- ancho de la perilla
-    local _knobH       = _isMobileTog and 18  or 27    -- alto de la perilla
-    local _knobOffR    = _isMobileTog and -(_knobW + 4) or -54   -- posicion ON (pegada a la derecha)
-    local _knobOffL    = _isMobileTog and 3 or 4                 -- posicion OFF (pegada a la izquierda)
+    local _toggleBgW   = _isMobileTog and 52 or 65
+    local _toggleBgH   = _isMobileTog and 26 or 32
+    local _knobSize    = _isMobileTog and 18 or 24
+    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -28
+    local _knobOffL    = 4
     local _labelTxtSz  = _isMobileTog and 13 or 18
-    local _labelWScale = _isMobileTog and 0.45 or 0.52
+    local _labelWScale = _isMobileTog and 0.55 or 0.6
     local _rowH        = _isMobileTog and 44 or 55
-    local _toggleRightOff = _isMobileTog and -6 or -10
-
-    local C_IND_ON  = Color3.fromRGB(0, 220, 0)       -- verde cuando activo
-    local C_IND_OFF = Color3.fromRGB(45, 45, 45)       -- gris oscuro cuando inactivo
-    local C_KNOB    = Color3.fromRGB(80, 80, 80)       -- color fijo de la perilla
-    local TWEEN_T   = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local _toggleRightOff = _isMobileTog and -8 or -15
 
     -- Marco principal ancho (600px simulado con 1, 0) -- transparente con borde blanco
     local container = Instance.new("Frame", actualParent)
@@ -26740,31 +26646,32 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         end
     end
 
-    -- Fondo del toggle: pill de color (verde ON / gris OFF) — estilo nuevo
+    -- Fondo del toggle (recuadro grisaceo a la derecha)
     local toggleBg = Instance.new("Frame", container)
     toggleBg.Name                   = "ToggleBackground"
     toggleBg.Size                   = UDim2.new(0, _toggleBgW, 0, _toggleBgH)
     toggleBg.AnchorPoint            = Vector2.new(1, 0.5)
     toggleBg.Position               = UDim2.new(1, _toggleRightOff, 0.5, 0)
-    toggleBg.BackgroundColor3       = estado and C_IND_ON or C_IND_OFF
-    toggleBg.BackgroundTransparency = 0
+    toggleBg.BackgroundColor3       = ThemeColors.Secondary
+    toggleBg.BackgroundTransparency = 0.4
     toggleBg.BorderSizePixel        = 0
     toggleBg.ZIndex                 = 21
 
-    -- Esquinas completamente redondas (pill)
     local toggleBgCorner = Instance.new("UICorner", toggleBg)
-    toggleBgCorner.CornerRadius = UDim.new(1, 0)
+    toggleBgCorner.CornerRadius = UDim.new(0, 8)
 
-    -- Perilla deslizante (rectangle redondeado, gris fijo)
+    local toggleBgStroke = Instance.new("UIStroke", toggleBg)
+    toggleBgStroke.Color = ThemeColors.Primary
+    toggleBgStroke.Thickness = 2
+    toggleBgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- Indicador cuadrado redondeado (rojo=off, verde=on)
     local indicator = Instance.new("Frame", toggleBg)
     indicator.Name             = "Knob"
-    indicator.Size             = UDim2.new(0, _knobW, 0, _knobH)
+    indicator.Size             = UDim2.new(0, _knobSize, 0, _knobSize)
     indicator.AnchorPoint      = Vector2.new(0, 0.5)
-    indicator.Position         = estado
-        and UDim2.new(1, _knobOffR, 0.5, 0)
-        or  UDim2.new(0, _knobOffL, 0.5, 0)
-    indicator.BackgroundColor3 = C_KNOB
-    indicator.BackgroundTransparency = 0
+    indicator.Position         = estado and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
+    indicator.BackgroundColor3 = estado and C_IND_ON or C_IND_OFF
     indicator.BorderSizePixel  = 0
     indicator.ZIndex           = 23
 
@@ -26782,20 +26689,13 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Funcion de actualizacion visual
     local function ApplyState(on, animate)
         if animate then
-            -- Animar el fondo del switch (verde/gris) y deslizar la perilla
-            TweenService:Create(toggleBg, TWEEN_T, {
-                BackgroundColor3 = on and C_IND_ON or C_IND_OFF,
-            }):Play()
             TweenService:Create(indicator, TWEEN_T, {
-                Position = on
-                    and UDim2.new(1, _knobOffR, 0.5, 0)
-                    or  UDim2.new(0, _knobOffL, 0.5, 0),
+                BackgroundColor3 = on and C_IND_ON or C_IND_OFF,
+                Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0),
             }):Play()
         else
-            toggleBg.BackgroundColor3 = on and C_IND_ON or C_IND_OFF
-            indicator.Position = on
-                and UDim2.new(1, _knobOffR, 0.5, 0)
-                or  UDim2.new(0, _knobOffL, 0.5, 0)
+            indicator.BackgroundColor3 = on and C_IND_ON or C_IND_OFF
+            indicator.Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
         end
     end
     ApplyState(estado, false)
@@ -34647,990 +34547,6 @@ function CreatePremiumTab()
 
 end  -- cierra CreatePremiumTab
 
--- ======================================================================
--- FARM TAB
--- ======================================================================
-function CreateFarmTab()
-    if not contentContainer or not contentContainer.Parent then
-        task.wait(0.15)
-        if not contentContainer or not contentContainer.Parent then return end
-    end
-    ClearContent()
-    _makeTwoColumns()
-
-    -- =====================================================================
-    -- COIN FARM
-    -- =====================================================================
-    CreateSection(leftColumn, "", "COIN FARM", ThemeColors.Aurora2)
-
-    -- =====================================================================
-    -- AUTO FARM v2 - Logica multi-toque, noclip, BodyVelocity, sin movimiento
-    -- =====================================================================
-    do
-        -- =====================================================================
-        -- AUTO FARM — logica reemplazada (multi-metodo, noclip, vuelo, touch)
-        -- =====================================================================
-        local _afEnabled      = false
-        local _afThread       = nil
-        local _afNoclipConn   = nil
-        local _afStateConn    = nil
-        local _afAntiSpinConn = nil
-        local _afBlacklist    = {}
-        local _afSpeed        = 100   -- studs/s
-        local _afAlturaOffset = 1.80  -- studs bajo la moneda
-        local _afGrabDelay    = 0     -- delay entre intentos de toque
-
-        if _G._sliderVals then
-            _G._sliderVals["Auto Farm Offset Bajo Moneda|1|100"] = nil
-            _G._sliderVals["Auto Farm Offset Bajo Moneda|5|100"] = nil
-            _G._sliderVals["Auto Farm Delay Agarre (x0.01s)|1|50"] = nil
-            _G._sliderVals["Auto Farm Delay Agarre (x0.01s)|0|50"] = nil
-        end
-
-        -- Buscar CoinContainer en el workspace de forma robusta
-        local function _afFindContainer()
-            local direct = workspace:FindFirstChild("CoinContainer")
-            if direct then return direct end
-            local wp = workspace:FindFirstChild("Workplace")
-            if wp and wp:FindFirstChild("CoinContainer") then return wp.CoinContainer end
-            local mn = workspace:FindFirstChild("Mansion2")
-            if mn and mn:FindFirstChild("CoinContainer") then return mn.CoinContainer end
-            for _, desc in pairs(workspace:GetDescendants()) do
-                if desc.Name == "CoinContainer" then return desc end
-            end
-            return nil
-        end
-
-        -- Obtener la coin mas cercana (misma logica que el script de referencia)
-        local function _afGetNearest(root)
-            local nearest, minDist = nil, math.huge
-            local container = _afFindContainer()
-            if not container then return nil end
-
-            for _, coinFolder in pairs(container:GetChildren()) do
-                if not _afBlacklist[coinFolder] then
-                    local coinVisual = coinFolder:FindFirstChild("CoinVisual")
-                    if coinVisual then
-                        local mainCoin = coinVisual:FindFirstChild("MainCoin")
-                        if mainCoin and mainCoin:IsA("BasePart") and mainCoin.Transparency < 1 then
-                            local d = (mainCoin.Position - root.Position).Magnitude
-                            if d < minDist then
-                                minDist = d
-                                nearest = { Container = coinFolder, Part = mainCoin }
-                            end
-                        end
-                    else
-                        -- Fallback: buscar MainCoin directamente en cualquier descendiente
-                        for _, obj in pairs(coinFolder:GetDescendants()) do
-                            if obj.Name == "MainCoin" and obj:IsA("BasePart") and obj.Transparency < 1 then
-                                local d = (obj.Position - root.Position).Magnitude
-                                if d < minDist then
-                                    minDist = d
-                                    nearest = { Container = coinFolder, Part = obj }
-                                end
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-            return nearest
-        end
-
-        -- Cleanup completo
-        local function _afCleanup()
-            if _afNoclipConn   then _afNoclipConn:Disconnect();   _afNoclipConn   = nil end
-            if _afStateConn    then _afStateConn:Disconnect();     _afStateConn    = nil end
-            if _afAntiSpinConn then _afAntiSpinConn:Disconnect();  _afAntiSpinConn = nil end
-            pcall(function()
-                local char = LocalPlayer.Character
-                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                if hrp then
-                    local bv = hrp:FindFirstChild("FarmAntiGravity")
-                    if bv then bv:Destroy() end
-                    hrp.Anchored = false
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                    hrp.CFrame = CFrame.new(hrp.Position)
-                end
-                if hum then
-                    hum.PlatformStand = false
-                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-                end
-                if char then
-                    for _, part in ipairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            pcall(function() part.CanCollide = true end)
-                        end
-                    end
-                end
-            end)
-            table.clear(_afBlacklist)
-        end
-
-        -- ---------------------------------------------------------------
-        -- Toggle principal
-        -- ---------------------------------------------------------------
-        CreateAuroraToggle(leftColumn, "Auto Farm", function(en)
-            _afEnabled = en
-            if _afThread then task.cancel(_afThread); _afThread = nil end
-            _afCleanup()
-
-            if not en then
-                CreateCustomNotification("AUTO FARM", "OFF", 1)
-                return
-            end
-
-            -- Noclip constante en Stepped (throttle: cada 6 frames para reducir lag)
-            local _afNoclipTick = 0
-            _afNoclipConn = RunService.Stepped:Connect(function()
-                if not _afEnabled then return end
-                _afNoclipTick = _afNoclipTick + 1
-                if _afNoclipTick < 6 then return end
-                _afNoclipTick = 0
-                local char = LocalPlayer.Character
-                if not char then return end
-                for _, part in pairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        pcall(function() part.CanCollide = false end)
-                    end
-                end
-            end)
-
-            -- PlatformStand + Physics state en Heartbeat (throttle: cada 10 frames)
-            local _afStateTick = 0
-            _afStateConn = RunService.Heartbeat:Connect(function()
-                if not _afEnabled then return end
-                _afStateTick = _afStateTick + 1
-                if _afStateTick < 10 then return end
-                _afStateTick = 0
-                local char = LocalPlayer.Character
-                if not char then return end
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 then
-                    hum.PlatformStand = true
-                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Physics) end)
-                end
-            end)
-
-            -- Anti-spin en RenderStepped
-            _afAntiSpinConn = RunService.RenderStepped:Connect(function()
-                if not _afEnabled then return end
-                local char = LocalPlayer.Character
-                if not char then return end
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.RotVelocity = Vector3.zero end
-            end)
-
-            -- Loop principal
-            _afThread = task.spawn(function()
-                while _afEnabled do
-                    local char = LocalPlayer.Character
-                    if not (char and char:FindFirstChild("HumanoidRootPart")) then
-                        task.wait(0.5)
-                        continue
-                    end
-
-                    local hrp = char.HumanoidRootPart
-                    hrp.Anchored = false
-
-                    -- Anti-gravedad via BodyVelocity
-                    local bv = hrp:FindFirstChild("FarmAntiGravity")
-                    if not bv then
-                        bv = Instance.new("BodyVelocity")
-                        bv.Name     = "FarmAntiGravity"
-                        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                        bv.Velocity = Vector3.zero
-                        bv.Parent   = hrp
-                    end
-
-                    local coinData = _afGetNearest(hrp)
-
-                    if coinData and coinData.Container and coinData.Container.Parent
-                       and coinData.Part and coinData.Part.Parent then
-
-                        local coinPart  = coinData.Part
-                        local flatAngle = CFrame.Angles(math.rad(90), 0, 0)
-
-                        -- Fase 1: volar hacia la moneda (recalcula coin mas cercana cada 10 frames)
-                        local _recalcTick = 0
-                        while _afEnabled and coinData.Container.Parent
-                              and coinPart.Parent and coinPart.Transparency < 1 do
-
-                            _recalcTick = _recalcTick + 1
-                            if _recalcTick >= 10 then
-                                _recalcTick = 0
-                                local newData = _afGetNearest(hrp)
-                                if newData and newData.Part then
-                                    coinData = newData
-                                    coinPart = newData.Part
-                                end
-                            end
-
-                            local targetPos = Vector3.new(
-                                coinPart.Position.X,
-                                coinPart.Position.Y - _afAlturaOffset,
-                                coinPart.Position.Z
-                            )
-                            local dir  = targetPos - hrp.Position
-                            local dist = dir.Magnitude
-
-                            if dist < 1 then
-                                bv.Velocity = Vector3.zero
-                                break
-                            end
-
-                            local dt   = RunService.Heartbeat:Wait()
-                            local step = dir.Unit * math.min(_afSpeed * dt, dist)
-                            hrp.CFrame = CFrame.new(hrp.Position + step) * flatAngle
-                        end
-
-                        -- Fase 2: multi-metodo de recoleccion (igual al script de referencia)
-                        if _afEnabled and coinData.Container.Parent
-                           and coinPart.Parent and coinPart.Transparency < 1 then
-
-                            local startTime = tick()
-                            local grabWindow = _afGrabDelay > 0 and (_afGrabDelay * 12) or 0.6
-
-                            while _afEnabled and coinData.Container.Parent
-                                  and coinPart.Parent and coinPart.Transparency < 1
-                                  and (tick() - startTime) < grabWindow do
-
-                                -- Metodo 1: firetouchinterest estandar y reverso
-                                if firetouchinterest then
-                                    pcall(function()
-                                        firetouchinterest(hrp, coinPart, 0)
-                                        firetouchinterest(hrp, coinPart, 1)
-                                        firetouchinterest(coinPart, hrp,  0)
-                                        firetouchinterest(coinPart, hrp,  1)
-                                    end)
-                                end
-
-                                -- Metodo 2: TouchTransmitter / TouchInterest en todos los descendientes
-                                pcall(function()
-                                    for _, obj in pairs(coinData.Container:GetDescendants()) do
-                                        if obj:IsA("TouchTransmitter") or obj.ClassName == "TouchInterest" then
-                                            if firetouchinterest then
-                                                firetouchinterest(hrp, obj.Parent, 0)
-                                                firetouchinterest(hrp, obj.Parent, 1)
-                                            end
-                                        end
-                                    end
-                                end)
-
-                                task.wait(0.05)
-                            end
-
-                            _afBlacklist[coinData.Container] = true
-                        end
-
-                    else
-                        if bv then bv.Velocity = Vector3.zero end
-                        table.clear(_afBlacklist)
-                        task.wait(0.05)
-                    end
-                end
-
-                _afCleanup()
-                CreateCustomNotification("AUTO FARM", "OFF", 1)
-            end)
-
-            CreateCustomNotification("AUTO FARM", "ON - volando hacia monedas", 2)
-        end, false)
-
-        -- Slider: altura bajo la moneda
-        CreateSlider(leftColumn, "Auto Farm Offset Bajo Moneda", 0.5, 10, 1.5, function(v)
-            _afAlturaOffset = v
-        end)
-
-        -- Slider: velocidad de vuelo
-        CreateSlider(leftColumn, "Auto Farm Velocidad (studs/s)", 10, 300, 100, function(v)
-            _afSpeed = v
-        end)
-
-        -- Slider: delay entre intentos de agarre
-        CreateSlider(leftColumn, "Auto Farm Delay Agarre (x0.01s)", 0, 50, 0, function(v)
-            _afGrabDelay = v / 100
-        end)
-    end
-
-    -- =====================================================================
-    -- AUTO RESET INOCENT SHERIFF MURDER
-    -- Al llegar a 40 monedas, resetea el personaje (mata al humanoid para
-    -- forzar respawn), reiniciando la bolsa. Solo reset, sin fling al murder.
-    -- Detecta las 40 monedas via CoinCollected.OnClientEvent o fallback Heartbeat.
-    do
-        local _arismEnabled  = false
-        local _arismConn     = nil
-        local _arismCooldown = false
-
-        local function _arismDoReset()
-            if _arismCooldown then return end
-            _arismCooldown = true
-            task.spawn(function()
-                CreateCustomNotification("AUTO RESET", "40 monedas — reseteando personaje!", 2)
-
-                -- Matar al personaje para forzar respawn (reinicia la bolsa en MM2)
-                local char = LocalPlayer.Character
-                local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 then
-                    hum.Health = 0
-                end
-                -- Fallback: LoadCharacter si el kill no hizo nada en 2s
-                task.wait(2)
-                if LocalPlayer.Character == char then
-                    pcall(function() LocalPlayer:LoadCharacter() end)
-                end
-
-                -- Esperar a que el personaje respawnee
-                local newChar = LocalPlayer.Character
-                if newChar == char or not newChar then
-                    newChar = LocalPlayer.CharacterAdded:Wait()
-                end
-
-                -- Esperar a que HRP y Humanoid esten completamente listos
-                local _waitStart = tick()
-                repeat task.wait(0.1) until
-                    (LocalPlayer.Character and
-                     LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and
-                     LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and
-                     LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Health > 0)
-                    or tick() - _waitStart > 6
-
-                task.wait(0.5)
-                CreateCustomNotification("AUTO RESET", "Personaje reseteado! Farmeando de nuevo...", 2)
-
-                task.wait(2)
-                _arismCooldown = false
-            end)
-        end
-
-        CreateAuroraToggle(leftColumn, "Auto Reset Inocent Sheriff Murder", function(en)
-            _arismEnabled  = en
-            _arismCooldown = false
-            if _arismConn then pcall(function() _arismConn:Disconnect() end); _arismConn = nil end
-
-            if not en then
-                CreateCustomNotification("AUTO RESET", "OFF", 1)
-                return
-            end
-
-            task.spawn(function()
-                -- Buscar el remote CoinCollected (mismo que usan los otros toggles de 40 monedas)
-                local CoinCollected = nil
-                pcall(function()
-                    local RS      = game:GetService("ReplicatedStorage")
-                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
-                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
-                    CoinCollected = Gameplay and (Gameplay:FindFirstChild("CoinCollected") or Gameplay:WaitForChild("CoinCollected", 8))
-                end)
-
-                if CoinCollected then
-                    _arismConn = CoinCollected.OnClientEvent:Connect(function(bagName, current, max)
-                        if not _arismEnabled then return end
-                        local cur = tonumber(current) or 0
-                        if cur >= 40 then
-                            _arismDoReset()
-                        end
-                    end)
-                    CreateCustomNotification("AUTO RESET", "ON — detectando 40 monedas", 2)
-                else
-                    -- Fallback: monitorear _inventoryCoins via Heartbeat
-                    local _hbTick = 0
-                    _arismConn = RunService.Heartbeat:Connect(function()
-                        if not _arismEnabled then return end
-                        _hbTick = _hbTick + 1; if _hbTick < 30 then return end; _hbTick = 0
-                        local cur = _inventoryCoins or 0
-                        if cur >= 40 then
-                            _inventoryCoins = 0
-                            _arismDoReset()
-                        end
-                    end)
-                    CreateCustomNotification("AUTO RESET", "ON (fallback) — monitoreo de monedas", 2)
-                end
-            end)
-        end, false)
-    end
-
-    -- =====================================================================
-    -- FARM 40 KILL ALL MURDER
-    -- Al llegar a 40 monedas, activa Kill All usando la logica de Combat
-    -- =====================================================================
-    do
-        local _f40kaEnabled  = false
-        local _f40kaFired    = false
-        local _f40kaConn     = nil
-        local _f40kaCooldown = false
-
-        -- Logica Kill All (misma que Combat tab: equipa knife, mata a todos)
-        local function _f40doKillAll()
-            if _f40kaCooldown then return end
-            _f40kaCooldown = true
-
-            task.spawn(function()
-                -- Solo actuar si somos Murderer
-                local myRole = _roleCache and _roleCache.localRole
-                if myRole ~= "Murderer" then
-                    CreateCustomNotification("FARM 40 KILL ALL", "Solo funciona como Murderer", 2)
-                    _f40kaCooldown = false
-                    return
-                end
-
-                local knife = EquipKnife and EquipKnife()
-                if not knife then
-                    CreateCustomNotification("FARM 40 KILL ALL", "No hay Knife equipada", 2)
-                    _f40kaCooldown = false
-                    return
-                end
-
-                -- Recopilar targets vivos
-                local targets = {}
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p == LocalPlayer then continue end
-                    local ch  = p.Character
-                    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-                    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-                    if not hrp or not hum or hum.Health <= 0 then continue end
-                    table.insert(targets, { player = p, hrp = hrp })
-                end
-
-                if #targets == 0 then
-                    CreateCustomNotification("FARM 40 KILL ALL", "Sin targets disponibles", 2)
-                    _f40kaCooldown = false
-                    return
-                end
-
-                CreateCustomNotification("FARM 40 KILL ALL", "Kill All activado! Atacando " .. #targets .. " jugadores...", 3)
-
-                local _kaRunning = true
-                for _, entry in ipairs(targets) do
-                    if not _kaRunning then break end
-                    -- Refrescar knife si se perdio
-                    if not knife or not knife.Parent then
-                        knife = EquipKnife and EquipKnife()
-                        if not knife then break end
-                    end
-                    local hrp = entry.hrp
-                    if hrp and hrp.Parent then
-                        pcall(function() FireKnifeOnTarget(knife, hrp) end)
-                    end
-                    task.wait(0.08)
-                end
-
-                CreateCustomNotification("FARM 40 KILL ALL", "Kill All terminado", 2)
-
-                -- Cooldown de 10s para evitar re-activacion inmediata
-                task.wait(10)
-                _f40kaFired    = false
-                _f40kaCooldown = false
-            end)
-        end
-
-        CreateAuroraToggle(leftColumn, "Farm 40 Kill All Murder", function(en)
-            _f40kaEnabled  = en
-            _f40kaFired    = false
-            _f40kaCooldown = false
-            if _f40kaConn then pcall(function() _f40kaConn:Disconnect() end); _f40kaConn = nil end
-
-            if not en then
-                CreateCustomNotification("FARM 40 KILL ALL", "OFF", 1)
-                return
-            end
-
-            task.spawn(function()
-                -- Intentar conectar via CoinCollected remote (igual que End Round)
-                local CoinCollected = nil
-                pcall(function()
-                    local RS      = game:GetService("ReplicatedStorage")
-                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
-                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
-                    CoinCollected = Gameplay and (Gameplay:FindFirstChild("CoinCollected") or Gameplay:WaitForChild("CoinCollected", 8))
-                end)
-
-                if CoinCollected then
-                    _f40kaConn = CoinCollected.OnClientEvent:Connect(function(bagName, current, max)
-                        if not _f40kaEnabled then return end
-                        local cur = tonumber(current) or 0
-                        if cur >= 40 and not _f40kaFired and not _f40kaCooldown then
-                            _f40kaFired = true
-                            _f40doKillAll()
-                        end
-                    end)
-                    CreateCustomNotification("FARM 40 KILL ALL", "ON — esperando 40 monedas...", 2)
-                else
-                    -- Fallback: monitorear _inventoryCoins via Heartbeat
-                    local _hbTick = 0
-                    _f40kaConn = RunService.Heartbeat:Connect(function()
-                        if not _f40kaEnabled then return end
-                        _hbTick = _hbTick + 1; if _hbTick < 30 then return end; _hbTick = 0
-                        local cur = _inventoryCoins or 0
-                        if cur >= 40 and not _f40kaFired and not _f40kaCooldown then
-                            _f40kaFired = true
-                            _f40doKillAll()
-                        end
-                    end)
-                    CreateCustomNotification("FARM 40 KILL ALL", "ON (fallback) — monitoreo de monedas", 2)
-                end
-            end)
-        end, false)
-    end
-
-    -- =====================================================================
-    -- FARM 40 SHOOT MURDER
-    -- Al llegar a 40 monedas, hace TP detras del murder y dispara
-    -- (usa la misma logica de StartShootMurder de Combat)
-    -- =====================================================================
-    do
-        local _f40smEnabled  = false
-        local _f40smFired    = false
-        local _f40smConn     = nil
-        local _f40smCooldown = false
-
-        local function _f40doShootMurder()
-            if _f40smCooldown then return end
-            _f40smCooldown = true
-            task.spawn(function()
-                CreateCustomNotification("SHOOT MURDER 40", "40 monedas — disparando al Murder!", 2)
-
-                local char = LocalPlayer.Character
-                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                if not hrp or not hum or hum.Health <= 0 then
-                    _f40smCooldown = false; _f40smFired = false; return
-                end
-
-                -- Guardar posicion para volver luego
-                local savedCF = hrp.CFrame
-
-                -- Restaurar personaje si estaba en modo farm
-                if hum.PlatformStand then
-                    hum.PlatformStand = false
-                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-                end
-                hrp.AssemblyLinearVelocity  = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-                task.wait(0.15)
-
-                -- Buscar gun equipada o en backpack
-                local gun = _findGunIn and _findGunIn(char)
-                if not gun then
-                    gun = _findGun and _findGun(char)
-                    if gun then
-                        pcall(function() hum:EquipTool(gun) end)
-                        task.wait(0.2)
-                        gun = _findGunIn and _findGunIn(char)
-                    end
-                end
-
-                -- Si tampoco hay gun, buscar GunDrop en workspace
-                if not gun then
-                    local playerChars = {}
-                    for _, p in ipairs(_cachedPlayers) do
-                        if p.Character then playerChars[p.Character] = true end
-                    end
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if (obj.Name == "GunDrop" or obj.Name == "Gun")
-                        and obj:IsA("Tool")
-                        and not playerChars[obj.Parent] then
-                            local gPart = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
-                            if gPart then
-                                pcall(function()
-                                    gPart.CFrame = CFrame.new(hrp.Position)
-                                    firetouchinterest(hrp, gPart, 0)
-                                    firetouchinterest(hrp, gPart, 1)
-                                end)
-                                task.wait(0.1)
-                                gun = _findGunIn and _findGunIn(char)
-                            end
-                            if gun then break end
-                        end
-                    end
-                end
-
-                if not gun then
-                    CreateCustomNotification("SHOOT MURDER 40", "Sin gun disponible!", 2)
-                    pcall(function() hrp.CFrame = savedCF end)
-                    task.wait(8)
-                    _f40smFired    = false
-                    _f40smCooldown = false
-                    return
-                end
-
-                -- TP detras del murder y disparar (igual que StartShootMurder)
-                local murder = findMurderer and findMurderer()
-                if murder and murder.Character then
-                    local mHRP = murder.Character:FindFirstChild("HumanoidRootPart")
-                    local mHum = murder.Character:FindFirstChildOfClass("Humanoid")
-
-                    if mHRP and mHum and mHum.Health > 0
-                    and not (_G._betweenRounds)
-                    and mHRP.Position.Y <= 70 then
-
-                        -- TP detras del murder
-                        local mCF = mHRP.CFrame
-                        pcall(function()
-                            hrp.CFrame = CFrame.new(mCF.Position - mCF.LookVector * 4, mHRP.Position)
-                        end)
-                        task.wait(0.15)
-
-                        -- Disparar
-                        local shootRem = gun:FindFirstChild("Shoot")
-                        if not shootRem then
-                            for _, v in ipairs(gun:GetDescendants()) do
-                                if v:IsA("RemoteEvent") then shootRem = v; break end
-                            end
-                        end
-                        if not shootRem then
-                            shootRem = getShootRemote and getShootRemote(gun)
-                        end
-
-                        if shootRem and shootRem:IsA("RemoteEvent") then
-                            local graNode = hrp:FindFirstChild("GunRaycastAttachment")
-                            local graCF   = graNode and graNode.WorldCFrame or hrp.CFrame
-                            local tCF     = CFrame.new(mHRP.Position, mHRP.Position + Vector3.new(0,1,0))
-                            pcall(function() shootRem:FireServer(graCF, tCF) end)
-                            task.wait(0.05)
-                            pcall(function() shootRem:FireServer(graCF, tCF) end)
-                        else
-                            if _fireGunMM2 then
-                                _fireGunMM2(gun)
-                                task.wait(0.05)
-                                _fireGunMM2(gun)
-                            end
-                        end
-
-                        CreateCustomNotification("SHOOT MURDER 40", "Disparado -> " .. murder.Name, 2)
-                    else
-                        CreateCustomNotification("SHOOT MURDER 40", "Murder no encontrado o en lobby", 2)
-                    end
-                else
-                    CreateCustomNotification("SHOOT MURDER 40", "No hay Murder activo", 2)
-                end
-
-                -- Volver a la posicion del farm
-                task.wait(0.3)
-                pcall(function()
-                    hrp.CFrame = savedCF
-                    hrp.AssemblyLinearVelocity  = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                end)
-
-                -- Cooldown de 8s para no re-disparar inmediatamente
-                task.wait(8)
-                _f40smFired    = false
-                _f40smCooldown = false
-            end)
-        end
-
-        CreateAuroraToggle(leftColumn, "Farm 40 Shoot Murder", function(en)
-            _f40smEnabled  = en
-            _f40smFired    = false
-            _f40smCooldown = false
-            if _f40smConn then pcall(function() _f40smConn:Disconnect() end); _f40smConn = nil end
-
-            if not en then
-                CreateCustomNotification("SHOOT MURDER 40", "OFF", 1)
-                return
-            end
-
-            task.spawn(function()
-                -- Usar CoinCollected remote (igual que End Round y Farm 40 Kill All)
-                local CoinCollected = nil
-                pcall(function()
-                    local RS      = game:GetService("ReplicatedStorage")
-                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
-                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
-                    CoinCollected = Gameplay and (Gameplay:FindFirstChild("CoinCollected") or Gameplay:WaitForChild("CoinCollected", 8))
-                end)
-
-                if CoinCollected then
-                    _f40smConn = CoinCollected.OnClientEvent:Connect(function(bagName, current, max)
-                        if not _f40smEnabled then return end
-                        local cur = tonumber(current) or 0
-                        if cur >= 40 and not _f40smFired and not _f40smCooldown then
-                            _f40smFired = true
-                            _f40doShootMurder()
-                        end
-                    end)
-                    CreateCustomNotification("SHOOT MURDER 40", "ON — esperando 40 monedas...", 2)
-                else
-                    -- Fallback: monitorear _inventoryCoins via Heartbeat
-                    local _hbTick = 0
-                    _f40smConn = RunService.Heartbeat:Connect(function()
-                        if not _f40smEnabled then return end
-                        _hbTick = _hbTick + 1; if _hbTick < 30 then return end; _hbTick = 0
-                        local cur = _inventoryCoins or 0
-                        if cur >= 40 and not _f40smFired and not _f40smCooldown then
-                            _f40smFired = true
-                            _f40doShootMurder()
-                        end
-                    end)
-                    CreateCustomNotification("SHOOT MURDER 40", "ON (fallback) — monitoreo de monedas", 2)
-                end
-            end)
-        end, false)
-    end
-
-    -- =====================================================================
-    -- UNDER MAP FARM (monedas bajo el mapa)
-    -- =====================================================================
-    CreateSection(leftColumn, "", "UNDER MAP FARM", ThemeColors.Aurora3)
-
-    -- =====================================================================
-    -- AUTO PRESTIGE / XP FARM
-    -- =====================================================================
-    CreateSection(leftColumn, "", "AUTO PRESTIGE / XP", ThemeColors.Primary)
-
-    do
-        local _prestigeRunning = false
-        local _prestigeThread  = nil
-
-        -- Auto Prestige Loop
-        CreateAuroraToggle(leftColumn, "Auto Prestige Loop", function(en)
-            _prestigeRunning = en
-            if _prestigeThread then task.cancel(_prestigeThread); _prestigeThread = nil end
-            if not en then
-                CreateCustomNotification("AUTO PRESTIGE", "OFF", 1)
-                return
-            end
-            _prestigeThread = task.spawn(function()
-                CreateCustomNotification("AUTO PRESTIGE", "ON — buscando boton de prestige...", 2)
-                while _prestigeRunning do
-                    pcall(function()
-                        -- Buscar el ProximityPrompt o boton de prestige en el lobby
-                        for _, obj in ipairs(workspace:GetDescendants()) do
-                            local n = obj.Name:lower()
-                            if n:find("prestige") then
-                                if obj:IsA("ProximityPrompt") then
-                                    fireproximityprompt(obj)
-                                elseif obj:IsA("BasePart") or obj:IsA("TextButton") then
-                                    local pp = obj:FindFirstChildOfClass("ProximityPrompt")
-                                    if pp then fireproximityprompt(pp) end
-                                end
-                            end
-                        end
-                        -- Tambien intentar via click en ClickDetector
-                        for _, obj in ipairs(workspace:GetDescendants()) do
-                            local n = obj.Name:lower()
-                            if n:find("prestige") then
-                                local cd = obj:FindFirstChildOfClass("ClickDetector")
-                                if cd then fireclickdetector(cd) end
-                            end
-                        end
-                    end)
-                    task.wait(1)
-                end
-            end)
-            CreateCustomNotification("AUTO PRESTIGE", "ON", 2)
-        end, false)
-    end
-
-    -- =====================================================================
-    -- COLUMNA DERECHA: STATS Y HERRAMIENTAS
-    -- =====================================================================
-
-    -- INFO DE FARM
-    CreateSection(rightColumn, "", "FARM INFO", ThemeColors.Aurora1)
-
-    do
-        local _infoFrame = Instance.new("Frame", rightColumn)
-        _infoFrame.Size = UDim2.new(1, -8, 0, 0)
-        _infoFrame.AutomaticSize = Enum.AutomaticSize.Y
-        _infoFrame.BackgroundColor3 = ThemeColors.Background
-        _infoFrame.BackgroundTransparency = 0.85
-        _infoFrame.BorderSizePixel = 0
-        Instance.new("UICorner", _infoFrame).CornerRadius = UDim.new(0, 8)
-        Instance.new("UIStroke", _infoFrame).Color = ThemeColors.Aurora1
-        local _infoPad = Instance.new("UIPadding", _infoFrame)
-        _infoPad.PaddingLeft = UDim.new(0, 10)
-        _infoPad.PaddingRight = UDim.new(0, 10)
-        _infoPad.PaddingTop = UDim.new(0, 8)
-        _infoPad.PaddingBottom = UDim.new(0, 8)
-        local _infoLayout = Instance.new("UIListLayout", _infoFrame)
-        _infoLayout.Padding = UDim.new(0, 4)
-        _infoLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-        local function _makeInfoRow(lbl, valInit)
-            local row = Instance.new("Frame", _infoFrame)
-            row.Size = UDim2.new(1, 0, 0, 18)
-            row.BackgroundTransparency = 1
-            row.BorderSizePixel = 0
-            local l = Instance.new("TextLabel", row)
-            l.Size = UDim2.new(0.55, 0, 1, 0)
-            l.BackgroundTransparency = 1
-            l.Text = lbl
-            l.FontFace = Font.fromEnum(Enum.Font.Montserrat)
-            l.TextSize = 11
-            l.TextColor3 = ThemeColors.TextSecondary
-            l.TextXAlignment = Enum.TextXAlignment.Left
-            local v = Instance.new("TextLabel", row)
-            v.Size = UDim2.new(0.45, 0, 1, 0)
-            v.Position = UDim2.new(0.55, 0, 0, 0)
-            v.BackgroundTransparency = 1
-            v.Text = valInit
-            v.FontFace = Font.fromEnum(Enum.Font.GothamBold)
-            v.TextSize = 11
-            v.TextColor3 = ThemeColors.Aurora2
-            v.TextXAlignment = Enum.TextXAlignment.Right
-            return v
-        end
-
-        local coinCountLbl  = _makeInfoRow("Monedas en mapa:", "...")
-        local playerCoinsLbl = _makeInfoRow("Tus monedas:", "...")
-        local roundLbl      = _makeInfoRow("Estado ronda:", "...")
-
-        -- Actualizar info cada 2s
-        local _hbInfoT = 0
-        local _infoConn = RunService.Heartbeat:Connect(function()
-            _hbInfoT = _hbInfoT + 1; if _hbInfoT < 120 then return end; _hbInfoT = 0
-            -- Contar monedas en mapa
-            pcall(function()
-                local count = 0
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    local n = obj.Name:lower()
-                    if obj:IsA("BasePart") and (n == "coin" or n == "goldcoin" or n:find("coin")) then
-                        count = count + 1
-                    end
-                end
-                coinCountLbl.Text = tostring(count)
-            end)
-            -- Monedas del jugador (leaderstats)
-            pcall(function()
-                local ls = LocalPlayer:FindFirstChild("leaderstats")
-                if ls then
-                    local coins = ls:FindFirstChild("Coins") or ls:FindFirstChild("Gold") or ls:FindFirstChild("Money")
-                    if coins then playerCoinsLbl.Text = tostring(coins.Value) end
-                end
-            end)
-            -- Estado del round
-            pcall(function()
-                if _G._visualRoundOver then
-                    roundLbl.Text = "Fin de ronda"
-                else
-                    local rc = _roleCache
-                    if rc and rc.murderer then
-                        roundLbl.Text = "En juego"
-                    else
-                        roundLbl.Text = "Lobby/Espera"
-                    end
-                end
-            end)
-        end)
-    end
-
-    -- ANTI AFK
-    CreateSection(rightColumn, "", "ANTI AFK", ThemeColors.Aurora4)
-
-    do
-        local _antiAfkEnabled = false
-        local _antiAfkConn    = nil
-
-        CreateAuroraToggle(rightColumn, "Anti AFK", function(en)
-            _antiAfkEnabled = en
-            if _antiAfkConn then _antiAfkConn:Disconnect(); _antiAfkConn = nil end
-            if not en then
-                CreateCustomNotification("ANTI AFK", "OFF", 1)
-                return
-            end
-            local _afkTick = 0
-            _antiAfkConn = RunService.Heartbeat:Connect(function()
-                if not _antiAfkEnabled then return end
-                _afkTick = _afkTick + 1; if _afkTick < 1200 then return end; _afkTick = 0
-                -- Simular movimiento minimo para resetear el timer AFK
-                pcall(function()
-                    local vjs = game:GetService("VirtualInputManager")
-                    if vjs then
-                        vjs:SendKeyEvent(true,  Enum.KeyCode.W, false, game)
-                        task.wait(0.1)
-                        vjs:SendKeyEvent(false, Enum.KeyCode.W, false, game)
-                    end
-                end)
-                -- Fallback: mover la camara un pixel
-                pcall(function()
-                    local cam = workspace.CurrentCamera
-                    if cam then cam.CFrame = cam.CFrame * CFrame.Angles(0, 0.001, 0) end
-                end)
-            end)
-            CreateCustomNotification("ANTI AFK", "ON", 2)
-        end, false)
-    end
-
-    -- AUTO REJOIN AL FIN DE RONDA
-    CreateSection(rightColumn, "", "AUTO REJOIN", ThemeColors.Aurora3)
-
-    do
-        local _arEnabled  = false
-        local _arConn     = nil
-        local _arDelay    = 3
-
-        CreateAuroraToggle(rightColumn, "Auto Rejoin", function(en)
-            _arEnabled = en
-            if _arConn then pcall(function() _arConn:Disconnect() end); _arConn = nil end
-            if not en then
-                CreateCustomNotification("AUTO REJOIN", "OFF", 1)
-                return
-            end
-            task.spawn(function()
-                -- Escuchar fin de ronda via remote
-                local RoundOver = nil
-                pcall(function()
-                    local RS      = game:GetService("ReplicatedStorage")
-                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
-                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
-                    RoundOver = Gameplay and (Gameplay:FindFirstChild("RoundOver") or Gameplay:WaitForChild("RoundOver", 5))
-                end)
-
-                if RoundOver then
-                    _arConn = RoundOver.OnClientEvent:Connect(function()
-                        if not _arEnabled then return end
-                        CreateCustomNotification("AUTO REJOIN", "Fin de ronda — rejoineando en " .. _arDelay .. "s...", _arDelay)
-                        task.wait(_arDelay)
-                        if not _arEnabled then return end
-                        pcall(function()
-                            local TeleportService = game:GetService("TeleportService")
-                            TeleportService:Teleport(game.PlaceId, LocalPlayer)
-                        end)
-                    end)
-                    CreateCustomNotification("AUTO REJOIN", "ON — esperando fin de ronda", 2)
-                else
-                    -- Fallback: detectar via _G._visualRoundOver
-                    local _wasInRound = false
-                    _arConn = RunService.Heartbeat:Connect(function()
-                        if not _arEnabled then return end
-                        local inRound = not _G._visualRoundOver
-                        if _wasInRound and _G._visualRoundOver then
-                            _wasInRound = false
-                            task.spawn(function()
-                                CreateCustomNotification("AUTO REJOIN", "Fin de ronda — rejoineando en " .. _arDelay .. "s...", _arDelay)
-                                task.wait(_arDelay)
-                                if not _arEnabled then return end
-                                pcall(function()
-                                    local TeleportService = game:GetService("TeleportService")
-                                    TeleportService:Teleport(game.PlaceId, LocalPlayer)
-                                end)
-                            end)
-                        end
-                        if inRound then _wasInRound = true end
-                    end)
-                    CreateCustomNotification("AUTO REJOIN", "ON (fallback)", 2)
-                end
-            end)
-        end, false)
-
-        CreateSlider(rightColumn, "Delay Rejoin (seg)", 1, 15, _arDelay, function(v)
-            _arDelay = v
-        end)
-    end
-
-    -- REJOIN MANUAL
-    _makeTPButton("Rejoin Manual", function()
-        pcall(function()
-            local TeleportService = game:GetService("TeleportService")
-            TeleportService:Teleport(game.PlaceId, LocalPlayer)
-        end)
-        CreateCustomNotification("FARM", "Rejoineando...", 2)
-    end, rightColumn)
-end
 
 function CreateExclusiveTab()
     ClearContent()
@@ -50103,10 +49019,10 @@ particles = {}
     sideLayout.Padding = UDim.new(0, 6)
     sideLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
-    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "FARM"}
+    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE"}
     local tabFunctions = {CreateMainTab, CreateWorldTab, CreateVisualsTab, CreatePremiumTab, CreateExclusiveTab, CreateCombatTab,
         function() CreateUseTab() end,  -- late binding: CreateUseTab se define despues de esta tabla
-        CreateFarmTab}
+}
     local tabIcons = {
         "rbxassetid://104322605423609",  -- MAIN
         "rbxassetid://105507739661539",  -- WORLD
@@ -50115,7 +49031,6 @@ particles = {}
         "rbxassetid://103503754018914",  -- SETTINGS
         "rbxassetid://134041781822125",  -- COMBAT
         "rbxassetid://106189149164668",  -- USE
-        "rbxassetid://104322605423609",  -- FARM (usa mismo icono que MAIN como fallback)
     }
 
     local sideButtons = {}
