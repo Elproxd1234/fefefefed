@@ -42288,9 +42288,32 @@ function CreateCombatTab()
                 end
                 state.enabled = true
                 _dualStartArm(state, _dualGunKeywords)
+
+                -- FIX: si el jugador no tiene la gun todavia (es Murderer u Observer),
+                -- escuchar el Backpack para re-armar cuando la gun llegue en esta vida.
+                if _G._dualGunBpConn then
+                    pcall(function() _G._dualGunBpConn:Disconnect() end)
+                    _G._dualGunBpConn = nil
+                end
+                _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
+                    if not (state and state.enabled) then return end
+                    if not tool:IsA("Tool") then return end
+                    if _dualGunKeywords[tool.Name] then
+                        task.wait(0.1)
+                        if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
+                        if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
+                        if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
+                        _dualStartArm(state, _dualGunKeywords)
+                    end
+                end)
+
                 CreateCustomNotification("DUAL GUN", "OK Activado  Click Derecho para atacar", 3)
             else
                 _dualStopArm(state)
+                if _G._dualGunBpConn then
+                    pcall(function() _G._dualGunBpConn:Disconnect() end)
+                    _G._dualGunBpConn = nil
+                end
                 CreateCustomNotification("DUAL GUN", "X Desactivado", 2)
             end
         end, false)
