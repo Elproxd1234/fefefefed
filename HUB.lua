@@ -1087,8 +1087,8 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
         subLabel.TextTruncate = Enum.TextTruncate.AtEnd
     end
 
-    local TRACK_W, TRACK_H = 70, 28
-    local THUMB_D = 22
+    local TRACK_W, TRACK_H = 52, 26
+    local THUMB_D = 20
     local THUMB_PAD = 3
 
     local track = Instance.new("Frame", mainFrame)
@@ -1099,12 +1099,11 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
     track.BorderSizePixel = 0
     track.ZIndex = 11
     track.ClipsDescendants = false
-    -- Sin bordes redondeados: CornerRadius = 0
-    Instance.new("UICorner", track).CornerRadius = UDim.new(0, 4)
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 
     local trackStroke = Instance.new("UIStroke", track)
     trackStroke.Color = isToggled and C_TRACK_S_ON or C_TRACK_S_OFF
-    trackStroke.Thickness = 1.5
+    trackStroke.Thickness = 2.0
     trackStroke.Transparency = 0.0
 
     local POS_ON  = UDim2.new(1, -(THUMB_D + THUMB_PAD), 0.5, -THUMB_D/2)
@@ -1117,8 +1116,7 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
     thumb.BackgroundTransparency = 0.15
     thumb.BorderSizePixel = 0
     thumb.ZIndex = 14
-    -- Thumb rectangular con esquinas mínimas
-    Instance.new("UICorner", thumb).CornerRadius = UDim.new(0, 3)
+    Instance.new("UICorner", thumb).CornerRadius = UDim.new(1, 0)
 
     local numLabel = Instance.new("TextLabel", track)
     numLabel.Size = UDim2.new(0.5, 0, 1, 0)
@@ -6430,18 +6428,25 @@ local function _flingDoReturn(Character, RootPart, Humanoid)
                 Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
             end
         end)
-        -- FIX: 2 frames de espera + double-zereo para cancelar inercia residual del servidor
-        task.wait(0.05)
+        -- FIX VOLAR: anclar brevemente tras el TP para cancelar inercia del fling
+        -- (evita que el jugador salga disparado despues de volver)
+        pcall(function()
+            if RootPart.Parent then
+                RootPart.Anchored = true
+                RootPart.AssemblyLinearVelocity  = Vector3.zero
+                RootPart.AssemblyAngularVelocity = Vector3.zero
+            end
+        end)
+        task.wait(0.08)
         pcall(function()
             if RootPart.Parent then
                 for _, x in ipairs(Character:GetDescendants()) do
                     if x:IsA("BasePart") then
-                        x.Velocity                = Vector3.zero
-                        x.RotVelocity             = Vector3.zero
                         x.AssemblyLinearVelocity  = Vector3.zero
                         x.AssemblyAngularVelocity = Vector3.zero
                     end
                 end
+                RootPart.Anchored = false
             end
         end)
         task.wait(0.05)
@@ -6583,10 +6588,34 @@ function _doStealFling(targetHRP, skipReturn)
     -- Asegurar desconexion del Heartbeat
     if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
 
-    -- Restaurar estado fisico propio
+    -- FIX VOLAR: zerear velocidad en TODOS los descendientes del char local
+    -- ANTES de restaurar PlatformStand para evitar que el motor fisico
+    -- propague la inercia de 50000 al jugador tras el fling
+    pcall(function()
+        for _, x in ipairs(Character:GetDescendants()) do
+            if x:IsA("BasePart") then
+                x.AssemblyLinearVelocity  = Vector3.zero
+                x.AssemblyAngularVelocity = Vector3.zero
+            end
+        end
+    end)
+    -- FIX VOLAR: anclar brevemente el RootPart para que el servidor
+    -- acepte la cancelacion de velocidad (evita que el cliente salga volando
+    -- por inercia acumulada de los 50000 studs/s del fling)
+    pcall(function()
+        RootPart.Anchored = true
+        RootPart.AssemblyLinearVelocity  = Vector3.zero
+        RootPart.AssemblyAngularVelocity = Vector3.zero
+    end)
+    task.wait(0.08)
     pcall(function()
         RootPart.AssemblyLinearVelocity  = Vector3.zero
         RootPart.AssemblyAngularVelocity = Vector3.zero
+        RootPart.Anchored = false
+    end)
+
+    -- Restaurar estado fisico propio
+    pcall(function()
         Humanoid.PlatformStand = false
     end)
     Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
@@ -6832,9 +6861,25 @@ function StartFlingSystem()
             local w = 0
             repeat task.wait(0.05); w = w + 0.05 until launched or w > 4
             if conn then conn:Disconnect(); conn = nil end
+            -- FIX VOLAR: anclar brevemente para cancelar inercia acumulada del fling
+            -- evita que el jugador local salga disparado tras soltar al target
             pcall(function()
+                myHRP.Anchored = true
                 myHRP.AssemblyLinearVelocity  = Vector3.zero
                 myHRP.AssemblyAngularVelocity = Vector3.zero
+            end)
+            task.wait(0.08)
+            pcall(function()
+                -- Zerear velocidad en todo el personaje
+                if myChar then
+                    for _, x in ipairs(myChar:GetDescendants()) do
+                        if x:IsA("BasePart") then
+                            x.AssemblyLinearVelocity  = Vector3.zero
+                            x.AssemblyAngularVelocity = Vector3.zero
+                        end
+                    end
+                end
+                myHRP.Anchored = false
                 myHum.PlatformStand = false
             end)
             return launched
@@ -9215,65 +9260,52 @@ local function _espBoxShouldShow(role)
     return false
 end
 
--- OPT BOX ESP: usa _cachedPlayers en vez de workspace:GetDescendants() cada frame
--- _cachedPlayers ya existe y se mantiene actualizado por el hub, evita escaneo total
 local function _startEspBoxLoop()
     if _G._espBoxConn then return end
-    local _boxTick = 0
-    _G._espBoxConn = _safeConnect(RunService.Heartbeat, function()
-        if not _G._espBoxEnabled then return end
-        _boxTick = _boxTick + 1; if _boxTick < 30 then return end; _boxTick = 0  -- ~0.5s @ 60fps
-        if _G._visualRoundOver then return end
-        local myChar = LocalPlayer.Character
-        -- OPT: iterar solo sobre _cachedPlayers (lista de jugadores, no todo workspace)
-        local players = _cachedPlayers or Players:GetPlayers()
-        for _, p in ipairs(players) do
-            if p ~= LocalPlayer then
-                local box = p.Character
-                if box then
-                    local role     = _espBoxGetRole(box)
-                    local show     = _espBoxShouldShow(role)
+    _G._espBoxConn = task.spawn(function()
+        while _G._espBoxEnabled do
+            wait(0.5)
+            local myChar = game.Players.LocalPlayer.Character
+            for _, box in ipairs(workspace:GetDescendants()) do
+                if box:FindFirstChild("Humanoid") and box ~= myChar then
+                    local role  = _espBoxGetRole(box)
+                    local show  = _espBoxShouldShow(role)
                     local existing = box:FindFirstChild("EspBox")
                     if show then
                         local col = _espBoxColors[role] or _espBoxColors.innocent
                         if not existing then
-                            pcall(function()
-                                local esp = Instance.new("BoxHandleAdornment", box)
-                                esp.Adornee      = box
-                                esp.ZIndex       = 0
-                                esp.Size         = Vector3.new(5, 6, 2)
-                                esp.Transparency = 0.5
-                                esp.Color3       = col
-                                esp.AlwaysOnTop  = true
-                                esp.Name         = "EspBox"
-                            end)
+                            local esp = Instance.new("BoxHandleAdornment", box)
+                            esp.Adornee     = box
+                            esp.ZIndex      = 0
+                            esp.Size        = Vector3.new(5, 6, 2)
+                            esp.Transparency = 0.5
+                            esp.Color3      = col
+                            esp.AlwaysOnTop = true
+                            esp.Name        = "EspBox"
                         else
-                            if existing.Color3 ~= col then existing.Color3 = col end
+                            -- Actualizar color si cambió el rol
+                            if existing.Color3 ~= col then
+                                existing.Color3 = col
+                            end
                         end
                     else
+                        -- Este personaje no debe mostrarse: limpiar si existe
                         if existing then pcall(function() existing:Destroy() end) end
                     end
                 end
             end
         end
+        _G._espBoxConn = nil
     end)
 end
 
 local function _stopEspBoxLoop()
     _G._espBoxEnabled = false
-    -- OPT: desconectar Heartbeat en vez de nil (era task.spawn, ahora es RBXScriptConnection)
-    if _G._espBoxConn and type(_G._espBoxConn) == "userdata" then
-        pcall(function() _G._espBoxConn:Disconnect() end)
-    end
     _G._espBoxConn = nil
-    -- OPT: limpiar por jugador, no por workspace:GetDescendants()
-    local players = _cachedPlayers or Players:GetPlayers()
-    for _, p in ipairs(players) do
+    for _, obj in ipairs(workspace:GetDescendants()) do
         pcall(function()
-            if p.Character then
-                local e = p.Character:FindFirstChild("EspBox")
-                if e then e:Destroy() end
-            end
+            local e = obj:FindFirstChild("EspBox")
+            if e then e:Destroy() end
         end)
     end
 end
@@ -10775,7 +10807,11 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     container.ZIndex                 = 10
     local contCorner = Instance.new("UICorner", container)
     contCorner.CornerRadius          = UDim.new(0, 12)
-    -- Sin borde (UIStroke eliminado)
+    local contStroke = Instance.new("UIStroke", container)
+    contStroke.Color           = C_STROKE
+    contStroke.Thickness       = 1
+    contStroke.Transparency    = 0.5
+    contStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Titulo izquierda
     local titleLabel = Instance.new("TextLabel", container)
@@ -13175,7 +13211,12 @@ function CreateMainUI_Fly()
         local _flyDownHeld  = _G._flyDownHeld
         local _flyBoostHeld = _G._flyBoostHeld
 
-        if _isMobile then
+        -- FIX MOBILE: los botones de colores (SUBIR/BAJAR/BOOST) ya NO se crean
+        -- automaticamente al activar el fly para no molestar en pantalla.
+        -- Se crean solo si el usuario activa el toggle "Botones Fly Mobile" mas abajo.
+        -- El joystick nativo de Roblox ya mueve horizontal; Space/Ctrl funcionan via
+        -- _G._flyUpHeld / _G._flyDownHeld que se pueden settear desde otro toggle.
+        if _isMobile and _G._flyMobileBtnsEnabled then
             _flyMobileGui = Instance.new("ScreenGui")
             _flyMobileGui.Name = "FlyMobileControls_HUB"
             _flyMobileGui.ResetOnSpawn = false
@@ -13318,6 +13359,45 @@ function CreateMainUI_Fly()
             CreateCustomNotification("FLY", "OFF", 2)
         end
     end, false)
+
+    -- Toggle: Botones Fly Mobile (SUBIR/BAJAR/BOOST) — SOLO para mobile
+    -- Por defecto OFF para no llenar la pantalla con botones de colores
+    do
+        local _isMobileFlyUI = (function()
+            local ok, res = pcall(function() return UserInputService.TouchEnabled end)
+            return ok and res
+        end)()
+        if _isMobileFlyUI then
+            _G._flyMobileBtnsEnabled = _G._flyMobileBtnsEnabled or false
+            CreateToggle(leftColumn, "Botones Fly Mobile (Subir/Bajar/Boost)", function(on)
+                _G._flyMobileBtnsEnabled = on
+                if not on then
+                    -- Destruir la GUI de botones si existe
+                    pcall(function()
+                        for _, g in ipairs(game:GetService("CoreGui"):GetChildren()) do
+                            if g.Name == "FlyMobileControls_HUB" then g:Destroy() end
+                        end
+                    end)
+                    pcall(function()
+                        for _, g in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+                            if g.Name == "FlyMobileControls_HUB" then g:Destroy() end
+                        end
+                    end)
+                    _G._flyUpHeld = false; _G._flyDownHeld = false; _G._flyBoostHeld = false
+                    CreateCustomNotification("FLY MOBILE", "Botones ocultos", 1.5)
+                else
+                    -- Reiniciar fly para que cree los botones
+                    if flyNoclipEnabled then
+                        flyNoclipEnabled = false
+                        task.wait(0.1)
+                        flyNoclipEnabled = true
+                        startFlyNoclip()
+                    end
+                    CreateCustomNotification("FLY MOBILE", "Botones SUBIR/BAJAR/BOOST activos", 2)
+                end
+            end, false)
+        end
+    end
 
     -- Keybind para toggle de Fly
     do
@@ -25384,12 +25464,13 @@ function CreateVisualsTab()
     end)
 
     -- Respaldo por si el arma cambia de parent (ej: de mochila al suelo)
-    -- OPT: throttle elevado a 36 frames (~0.6s) — FindFirstChild(true) escanea TODO workspace
-    local _cdgTick = 0
-    _G._chamDropGunRS = RunService.Heartbeat:Connect(function()
+    local _cgdT = 0
+    local _cdgTick=0
+    _G._chamDropGunRS = RunService.Heartbeat:Connect(function(dt)
+        _cdgTick=_cdgTick+1; if _cdgTick<3 then return end; _cdgTick=0  -- OPT: 20Hz para cham drop gun
         if not _G._chamDropGun then return end
-        _cdgTick = _cdgTick + 1; if _cdgTick < 36 then return end; _cdgTick = 0
-        if _G._visualRoundOver then return end
+        _cgdT = _cgdT + dt; if _cgdT < 0.2 then return end; _cgdT = 0
+        if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
         local gun = workspace:FindFirstChild("GunDrop",    true)
                  or workspace:FindFirstChild("DropGun",    true)
                  or workspace:FindFirstChild("SheriffGun", true)
@@ -25506,12 +25587,12 @@ end, _G._chamDropGun or false)
             -- Scan inicial recursivo
             for _, obj in ipairs(workspace:GetDescendants()) do pcall(_applyESPGun, obj) end
 
-            -- OPT: throttle por frame counter (36~0.6s) en vez de dt acumulado
-            local _egTick = 0
-            _G._espGunConn = _safeConnect(RunService.Heartbeat, function()
+            -- RenderStepped con FindFirstChild(..., true) -- detecta gun en cualquier mapa
+            local _egT = 0
+            _G._espGunConn = _safeConnect(RunService.Heartbeat, function(dt)
                 if not _G._espGunEnabled then return end
-                _egTick = _egTick + 1; if _egTick < 36 then return end; _egTick = 0
-                if _G._visualRoundOver then return end
+                _egT = _egT + dt; if _egT < 0.2 then return end; _egT = 0
+                if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
                 local gun = workspace:FindFirstChild("GunDrop",    true)
                          or workspace:FindFirstChild("DropGun",    true)
                          or workspace:FindFirstChild("SheriffGun", true)
@@ -25651,13 +25732,14 @@ end, _G._chamDropGun or false)
                 pcall(_applyHlGun, obj)
             end
 
-            -- OPT: throttle elevado a 36 frames (~0.6s) — ya tenemos DescendantAdded como
-            -- deteccion principal; el Heartbeat solo es fallback por cambio de parent.
+            -- Heartbeat: buscador recursivo constante con workspace:FindFirstChild(..., true)
+            -- Exactamente igual al codigo de referencia -- detecta gun en cualquier carpeta
             local _hlGunTick = 0
             _G._hlGunConn = _safeConnect(RunService.Heartbeat, function()
                 if not _G._hlGunEnabled then return end
                 if _G._visualRoundOver then return end
-                _hlGunTick = _hlGunTick + 1; if _hlGunTick < 36 then return end; _hlGunTick = 0
+                -- OPT: throttle a 5Hz -- FindFirstChild(true) escanea TODO workspace cada frame sin esto
+                _hlGunTick = _hlGunTick + 1; if _hlGunTick < 12 then return end; _hlGunTick = 0
                 local gun = workspace:FindFirstChild("GunDrop",    true)
                          or workspace:FindFirstChild("DropGun",    true)
                          or workspace:FindFirstChild("SheriffGun", true)
@@ -25833,17 +25915,12 @@ end, _G._chamDropGun or false)
             _trapTracked[part] = { bb = bb, conn = conn }
         end
 
-        -- OPT: scan inicial asíncrono via task.spawn — evita freeze del hilo principal
-        -- al activar el toggle cuando hay muchos descendientes en workspace
         local function initialScan()
-            _sp(function()
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    if not _trapEnabled then break end  -- salir si se desactivó mientras escaneaba
-                    if obj:IsA("BasePart") and obj.Name == "TrapVisual" then
-                        pcall(addBillboard, obj)
-                    end
+            for _, obj in ipairs(workspace:GetDescendants()) do  -- OPT: pairs->ipairs
+                if obj:IsA("BasePart") and obj.Name == "TrapVisual" then
+                    pcall(addBillboard, obj)
                 end
-            end)
+            end
         end
 
         local inner = CreateVisualCard(leftColumn, "", "VIEW TRAP", Color3.fromRGB(255, 100, 60))
@@ -25853,13 +25930,12 @@ end, _G._chamDropGun or false)
             _trapEnabled = v
             if _trapWSConn then _trapWSConn:Disconnect(); _trapWSConn = nil end
             if v then
-                -- Conectar primero para no perder trampas que aparezcan durante el scan
+                initialScan()
                 _trapWSConn = workspace.DescendantAdded:Connect(function(obj)
                     if _trapEnabled and obj:IsA("BasePart") and obj.Name == "TrapVisual" then
                         _sp(function() pcall(addBillboard, obj) end)
                     end
                 end)
-                initialScan()
  CreateCustomNotification("VIEW TRAP", "ON -- trampas visibles e invisibles!", 3)
             else
                 clearAll()
@@ -33814,8 +33890,7 @@ function CreatePremiumTab()
         local char = LocalPlayer.Character
         if char then
             local hum = char:FindFirstChildOfClass("Humanoid")
-            -- FIX: restaurar al originalSpeed guardado, no al hardcodeado 16
-            if hum then hum.WalkSpeed = Settings.premium.speedGlitch.originalSpeed or 16 end
+            if hum then hum.WalkSpeed = 16 end
         end
     end
 
@@ -33874,8 +33949,6 @@ function CreatePremiumTab()
 
         local _hbTsgConn = 0  -- OPT: local
         local _isTouchDevice = UserInputService.TouchEnabled
-        local _sgBoosted = false  -- estado actual del boost
-
         _sgConn = RunService.Heartbeat:Connect(function()
             _hbTsgConn=_hbTsgConn+1; if _hbTsgConn<2 then return end; _hbTsgConn=0
             if not Settings.premium.speedGlitch.enabled then return end
@@ -33885,40 +33958,53 @@ function CreatePremiumTab()
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if not hum or not hrp then return end
 
-            local inAir     = hum.FloorMaterial == Enum.Material.Air
+            local inAir = hum.FloorMaterial == Enum.Material.Air
             local baseSpeed = Settings.premium.speedGlitch.originalSpeed
             local mult      = Settings.premium.speedGlitch.multiplier
 
-            -- Detectar si el jugador esta moviéndose (joystick en mobile, teclado en PC)
+            if hum.WalkSpeed ~= baseSpeed then
+                hum.WalkSpeed = baseSpeed
+            end
+
+            -- MoveDirection funciona en mobile (joystick) Y PC (teclado)
             local moveDir = hum.MoveDirection
             local moving  = moveDir.Magnitude > 0.1
 
+            -- Fallback de teclado para PC si MoveDirection falla
             if not moving and not _isTouchDevice then
                 local holdW = UserInputService:IsKeyDown(Enum.KeyCode.W)
                 local holdA = UserInputService:IsKeyDown(Enum.KeyCode.A)
                 local holdS = UserInputService:IsKeyDown(Enum.KeyCode.S)
                 local holdD = UserInputService:IsKeyDown(Enum.KeyCode.D)
-                if holdW or holdA or holdS or holdD then moving = true end
+                if holdW or holdA or holdS or holdD then
+                    moving = true
+                    local cam = _Camera
+                    local dir = Vector3.zero
+                    if holdW then dir = dir + Vector3.new(cam.CFrame.LookVector.X,  0, cam.CFrame.LookVector.Z) end
+                    if holdS then dir = dir - Vector3.new(cam.CFrame.LookVector.X,  0, cam.CFrame.LookVector.Z) end
+                    if holdA then dir = dir - Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z) end
+                    if holdD then dir = dir + Vector3.new(cam.CFrame.RightVector.X, 0, cam.CFrame.RightVector.Z) end
+                    if dir.Magnitude > 0 then moveDir = dir.Unit end
+                end
             end
 
             if inAir and moving then
-                -- FIX: elevar WalkSpeed directamente al estar en el aire.
-                -- El servidor de MM2 no revierte WalkSpeed durante el vuelo, por lo que
-                -- aumentar la velocidad aqui da el boost real sin que Roblox lo cancele.
-                -- AssemblyLinearVelocity era anulado por el motor de fisica cada frame.
-                local boosted = baseSpeed * mult
-                if hum.WalkSpeed ~= boosted then
-                    hum.WalkSpeed = boosted
+                local dir = Vector3.new(moveDir.X, 0, moveDir.Z)
+                if dir.Magnitude > 0.01 then
+                    dir = dir.Unit
+                    local boosted = baseSpeed * mult
+                    hrp.AssemblyLinearVelocity = Vector3.new(
+                        dir.X * boosted,
+                        hrp.AssemblyLinearVelocity.Y,
+                        dir.Z * boosted
+                    )
                 end
-                _sgBoosted    = true
                 _sgWasJumping = true
-            else
-                -- Restaurar velocidad base al aterrizar o detenerse
-                if _sgBoosted then
-                    hum.WalkSpeed = baseSpeed
-                    _sgBoosted    = false
-                end
-                if not inAir then _sgWasJumping = false end
+            elseif not inAir and _sgWasJumping then
+                _sgWasJumping = false
+                hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
+            elseif not inAir then
+                _sgWasJumping = false
             end
         end)
     end, Settings.premium.speedGlitch.enabled)
@@ -34309,73 +34395,47 @@ function CreatePremiumTab()
             end
         end
 
-        -- Oyente automatico (FIX MOBILE)
+        -- Oyente automatico
+        -- FIX: en MM2 la Gun vive en workspace.NombreJugador.Gun (no como Tool hijo directo del char raiz)
+        -- Se usa _findGun() que ya maneja la busqueda correcta, y se escucha ChildAdded en el char de workspace
         if not _skinState._charConn then
-            local _scWSConn = nil  -- workspace.DescendantAdded conn (una sola a la vez)
-            local _scHBConn = nil  -- Heartbeat retry para mobile
-
+            -- FIX MOBILE: en celu la gun llega via DescendantAdded del workspace,
+            -- no necesariamente como ChildAdded del char. Usamos DescendantAdded
+            -- para capturar cualquier Tool que aparezca (gun en char o en workspace).
             local function _scTryApplyGun()
                 if not _skinState.enabled then return end
-                task.wait(0.2)
+                task.wait(0.15)
                 local gun = _findGun and _findGun()
                 if gun then _scApply(gun, _scGetSkin(), true) end
             end
 
-            -- FIX MOBILE: Heartbeat retry durante 5s porque _findGun() puede devolver nil
-            -- varios frames despues de que el Tool aparece en el arbol de instancias.
-            local function _scStartHBRetry()
-                if _scHBConn then pcall(function() _scHBConn:Disconnect() end); _scHBConn = nil end
-                if not _skinState.enabled then return end
-                local _elapsed = 0
-                local _lastTry = 0
-                _scHBConn = RunService.Heartbeat:Connect(function(dt)
-                    if not _skinState.enabled then
-                        pcall(function() _scHBConn:Disconnect() end); _scHBConn = nil; return
-                    end
-                    _elapsed = _elapsed + dt
-                    if _elapsed > 5 then
-                        pcall(function() _scHBConn:Disconnect() end); _scHBConn = nil; return
-                    end
-                    _lastTry = _lastTry + dt
-                    if _lastTry < 0.3 then return end
-                    _lastTry = 0
-                    local gun = _findGun and _findGun()
-                    if gun then
-                        _scApply(gun, _scGetSkin(), true)
-                        pcall(function() _scHBConn:Disconnect() end); _scHBConn = nil
-                    end
-                end)
-            end
-
             local function _scSetupListener(char)
-                -- FIX: desconectar workspace listener anterior (evita acumular conns en cada respawn)
-                if _scWSConn then
-                    pcall(function() _scWSConn:Disconnect() end); _scWSConn = nil
-                end
                 -- Listener en el char (PC y algunos mobile)
                 char.ChildAdded:Connect(function(child)
-                    if child:IsA("Tool") then _scStartHBRetry() end
+                    if child:IsA("Tool") then
+                        task.spawn(_scTryApplyGun)
+                    end
                 end)
-                -- Listener en workspace (mobile: la gun llega como descendant, no como ChildAdded del char)
-                _scWSConn = workspace.DescendantAdded:Connect(function(obj)
+                -- Listener en DescendantAdded del workspace (mobile / MM2 gun model)
+                -- Solo re-aplicar si es una Tool que puede ser la gun
+                workspace.DescendantAdded:Connect(function(obj)
                     if not _skinState.enabled then return end
                     if obj:IsA("Tool") then
                         local n = obj.Name:lower()
                         if n:find("gun") or n == "gun" or n:find("sheriff") or n:find("revolver") then
-                            _scStartHBRetry()
+                            task.spawn(_scTryApplyGun)
                         end
                     end
                 end)
-                -- Re-checks escalonados (mobile tarda mas en cargar el char completo)
-                task.delay(0.3, _scTryApplyGun)
-                task.delay(0.8, _scTryApplyGun)
-                task.delay(1.5, _scTryApplyGun)
-                task.delay(3.0, _scTryApplyGun)
+                -- Re-check extra con delay por si la gun tarda en cargarse en mobile
+                task.delay(0.5, _scTryApplyGun)
+                task.delay(1.2, _scTryApplyGun)
             end
 
             local _scChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             _scSetupListener(_scChar)
             _skinState._charConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
+                -- Re-aplicar al respawnear (importante en mobile donde el char se recarga lento)
                 _skinState.origData = {}  -- limpiar origData del char anterior
                 _scSetupListener(newChar)
             end)
@@ -43268,19 +43328,6 @@ function CreateCombatTab()
                         return false
                     end
 
-                    -- FIX: registrar backpack hook ANTES del wait para no perder
-                    -- la gun que llega durante el periodo de espera en nueva partida.
-                    if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end) end
-                    _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
-                        if not (gs and gs.enabled) then return end
-                        if not tool:IsA("Tool") or not _dualGunKeywords[tool.Name] then return end
-                        task.wait(0.1)
-                        if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
-                        if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
-                        if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
-                        _dualStartArm(gs, _dualGunKeywords)
-                    end)
-
                     -- Esperar hasta 8s a que aparezca la gun
                     local waited = 0
                     while not _gunReady() and waited < 8 do
@@ -43294,6 +43341,20 @@ function CreateCombatTab()
                     if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
                     if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
                     _dualStartArm(gs, _dualGunKeywords)
+
+                    -- Tambien hookear el backpack: si la gun aparece mas tarde (pick-up), re-armar
+                    if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end) end
+                    _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
+                        if not (gs and gs.enabled) then return end
+                        if not tool:IsA("Tool") then return end
+                        if _dualGunKeywords[tool.Name] then
+                            task.wait(0.1)
+                            if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
+                            if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
+                            if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
+                            _dualStartArm(gs, _dualGunKeywords)
+                        end
+                    end)
                 end)
             end
         end)
@@ -49004,9 +49065,9 @@ mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
--- -- TAMAÑO: siempre 850x430 (apariencia PC idéntica en todos los dispositivos)
+-- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
 -- El UIScale que se aplica abajo se encarga de que entre en pantalla.
-mainFrame.Size = UDim2.new(0, 850, 0, 430)
+mainFrame.Size = UDim2.new(0, 730, 0, 430)
 
 -- ==============================================================
 -- FONDO AZUL SLIDO  sin aurora animada, sin pulse dot
@@ -49030,11 +49091,11 @@ uiScale.Scale = 1
 
 -- ================================================================
 -- == AUTO SCALE SEGÚN DISPOSITIVO
--- El hub siempre es 850x430 (apariencia PC idéntica).
+-- El hub siempre es 730x430 (apariencia PC idéntica).
 -- En móvil se escala para que entre completo en pantalla.
 -- ================================================================
 do
-    local HUB_W = 850
+    local HUB_W = 730
     local HUB_H = 430
 
     -- HELPER GLOBAL: devuelve la escala correcta según viewport actual.
