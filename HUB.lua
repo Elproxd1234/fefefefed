@@ -33359,6 +33359,270 @@ function CreateWorldUI_AutoVote()
 end
 
 -- ==============================================================
+-- 👁 MURDERER TRACKER HUD — panel flotante arrastrable en tiempo real
+-- ==============================================================
+function CreateWorldUI_MurdererTracker()
+    local sec = CreateSection(leftColumn, "", "👁 MURDERER TRACKER HUD", ThemeColors.Primary)
+    _currentMainSectionFrame = sec
+
+    local subLbl = Instance.new("TextLabel", sec)
+    subLbl.Size = UDim2.new(1, -12, 0, 14)
+    subLbl.BackgroundTransparency = 1
+    subLbl.Text = "Panel flotante: nombre · distancia · dirección"
+    subLbl.Font = Enum.Font.Montserrat
+    subLbl.TextSize = 10
+    subLbl.TextColor3 = Color3.fromRGB(0, 190, 255)
+    subLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    _G._murTracker = _G._murTracker or {
+        enabled  = false,
+        hbConn   = nil,
+        gui      = nil,
+        frame    = nil,
+        posX     = 20,
+        posY     = 200,
+    }
+    local MT = _G._murTracker
+
+    -- ── destruir HUD anterior si existe ──────────────────────
+    local function _destroyHUD()
+        if MT.hbConn then pcall(function() MT.hbConn:Disconnect() end); MT.hbConn = nil end
+        if MT.gui and MT.gui.Parent then pcall(function() MT.gui:Destroy() end) end
+        MT.gui = nil; MT.frame = nil
+    end
+
+    -- ── construir el HUD flotante ────────────────────────────
+    local function _buildHUD()
+        _destroyHUD()
+
+        -- ScreenGui en CoreGui
+        local sg = Instance.new("ScreenGui")
+        sg.Name = "MurTrackerHUD"; sg.ResetOnSpawn = false
+        sg.DisplayOrder = 9998; sg.IgnoreGuiInset = true
+        pcall(function() sg.Parent = game:GetService("CoreGui") end)
+        if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
+        MT.gui = sg
+
+        -- Frame principal
+        local frame = Instance.new("Frame", sg)
+        frame.Name            = "TrackerFrame"
+        frame.Size            = UDim2.new(0, 190, 0, 72)
+        frame.Position        = UDim2.new(0, MT.posX, 0, MT.posY)
+        frame.BackgroundColor3 = Color3.fromRGB(10, 25, 45)
+        frame.BackgroundTransparency = 0.08
+        frame.BorderSizePixel = 0
+        frame.Active          = true
+        frame.ZIndex          = 50
+        Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+        MT.frame = frame
+
+        -- Borde shimmer
+        local stroke = Instance.new("UIStroke", frame)
+        stroke.Color           = ThemeColors.Primary
+        stroke.Thickness       = 1.8
+        stroke.Transparency    = 0.05
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        local sGrad = Instance.new("UIGradient", stroke)
+        sGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(0, 191, 255)),
+            ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(60, 220, 255)),
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(0, 191, 255)),
+        })
+        RegisterShimmer(sGrad, 50, 0)
+
+        -- Padding interno
+        local pad = Instance.new("UIPadding", frame)
+        pad.PaddingLeft   = UDim.new(0, 10)
+        pad.PaddingRight  = UDim.new(0, 10)
+        pad.PaddingTop    = UDim.new(0, 6)
+        pad.PaddingBottom = UDim.new(0, 6)
+
+        -- Layout vertical
+        local layout = Instance.new("UIListLayout", frame)
+        layout.FillDirection       = Enum.FillDirection.Vertical
+        layout.VerticalAlignment   = Enum.VerticalAlignment.Top
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        layout.Padding             = UDim.new(0, 3)
+        layout.SortOrder           = Enum.SortOrder.LayoutOrder
+
+        -- Fila header: icono + titulo
+        local rowHeader = Instance.new("Frame", frame)
+        rowHeader.Size = UDim2.new(1, 0, 0, 16)
+        rowHeader.BackgroundTransparency = 1
+        rowHeader.LayoutOrder = 1
+        rowHeader.ZIndex = 51
+        local rowHL = Instance.new("UIListLayout", rowHeader)
+        rowHL.FillDirection = Enum.FillDirection.Horizontal
+        rowHL.VerticalAlignment = Enum.VerticalAlignment.Center
+        rowHL.Padding = UDim.new(0, 4)
+
+        local eyeIcon = Instance.new("TextLabel", rowHeader)
+        eyeIcon.Size = UDim2.new(0, 14, 1, 0)
+        eyeIcon.BackgroundTransparency = 1
+        eyeIcon.Text = "👁"
+        eyeIcon.TextSize = 11
+        eyeIcon.Font = Enum.Font.GothamBold
+        eyeIcon.TextXAlignment = Enum.TextXAlignment.Left
+        eyeIcon.ZIndex = 52
+
+        local titleLbl = Instance.new("TextLabel", rowHeader)
+        titleLbl.Size = UDim2.new(1, -18, 1, 0)
+        titleLbl.BackgroundTransparency = 1
+        titleLbl.Text = "MURDERER TRACKER"
+        titleLbl.Font = Enum.Font.GothamBold
+        titleLbl.TextSize = 10
+        titleLbl.TextColor3 = ThemeColors.TextSecondary
+        titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+        titleLbl.LetterSpacingOffset = 1
+        titleLbl.ZIndex = 52
+
+        -- Linea divisora
+        local divider = Instance.new("Frame", frame)
+        divider.Size = UDim2.new(1, 0, 0, 1)
+        divider.BackgroundColor3 = ThemeColors.Primary
+        divider.BackgroundTransparency = 0.6
+        divider.BorderSizePixel = 0
+        divider.LayoutOrder = 2
+        divider.ZIndex = 51
+
+        -- Fila nombre murderer
+        local nameLbl = Instance.new("TextLabel", frame)
+        nameLbl.Name = "NameLbl"
+        nameLbl.Size = UDim2.new(1, 0, 0, 18)
+        nameLbl.BackgroundTransparency = 1
+        nameLbl.Text = "Sin murderer"
+        nameLbl.Font = Enum.Font.GothamBold
+        nameLbl.TextSize = 13
+        nameLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+        nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        nameLbl.LayoutOrder = 3
+        nameLbl.ZIndex = 52
+
+        -- Fila distancia + flecha
+        local distLbl = Instance.new("TextLabel", frame)
+        distLbl.Name = "DistLbl"
+        distLbl.Size = UDim2.new(1, 0, 0, 18)
+        distLbl.BackgroundTransparency = 1
+        distLbl.Text = "─ studs"
+        distLbl.Font = Enum.Font.GothamBold
+        distLbl.TextSize = 13
+        distLbl.TextColor3 = ThemeColors.TextSecondary
+        distLbl.TextXAlignment = Enum.TextXAlignment.Left
+        distLbl.LayoutOrder = 4
+        distLbl.ZIndex = 52
+
+        -- ── DRAG (mouse + touch) ──────────────────────────────
+        local _drag = false
+        local _dragStart, _frameStart
+
+        frame.InputBegan:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.Touch then
+                _drag = true
+                _dragStart  = inp.Position
+                _frameStart = frame.Position
+            end
+        end)
+        frame.InputEnded:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1
+            or inp.UserInputType == Enum.UserInputType.Touch then
+                _drag = false
+                -- guardar posición para reconstrucción
+                MT.posX = frame.Position.X.Offset
+                MT.posY = frame.Position.Y.Offset
+            end
+        end)
+        game:GetService("UserInputService").InputChanged:Connect(function(inp)
+            if not _drag then return end
+            if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+            and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+            if not frame or not frame.Parent then _drag = false; return end
+            local delta = inp.Position - _dragStart
+            local vp    = workspace.CurrentCamera.ViewportSize
+            local nx = math.clamp(_frameStart.X.Offset + delta.X, 0, vp.X - 195)
+            local ny = math.clamp(_frameStart.Y.Offset + delta.Y, 0, vp.Y - 76)
+            frame.Position = UDim2.new(0, nx, 0, ny)
+        end)
+
+        -- ── HEARTBEAT LOOP ────────────────────────────────────
+        local _prevDist  = nil
+        local _tickCount = 0
+
+        MT.hbConn = game:GetService("RunService").Heartbeat:Connect(function()
+            _tickCount = _tickCount + 1
+            if _tickCount < 12 then return end   -- ~5 Hz suficiente
+            _tickCount = 0
+
+            if not frame or not frame.Parent then return end
+
+            local myChar = LocalPlayer.Character
+            local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local mur    = findMurderer()
+
+            if not mur or not mur.Character or not myHRP then
+                nameLbl.Text      = "Sin murderer"
+                nameLbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+                distLbl.Text      = "─ studs"
+                distLbl.TextColor3 = ThemeColors.TextSecondary
+                _prevDist = nil
+                return
+            end
+
+            local mHRP = mur.Character:FindFirstChild("HumanoidRootPart")
+            if not mHRP then
+                nameLbl.Text = mur.Name
+                nameLbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+                distLbl.Text = "? studs"
+                return
+            end
+
+            local dist = math.floor((myHRP.Position - mHRP.Position).Magnitude)
+
+            -- flecha de dirección
+            local arrow = ""
+            if _prevDist then
+                if dist < _prevDist - 1 then
+                    arrow = " ↑"   -- se acerca (distancia baja)
+                elseif dist > _prevDist + 1 then
+                    arrow = " ↓"   -- se aleja
+                else
+                    arrow = " ─"
+                end
+            end
+            _prevDist = dist
+
+            -- color de distancia: rojo cerca, naranja medio, verde lejos
+            local distColor
+            if dist <= 20 then
+                distColor = Color3.fromRGB(255, 60, 60)
+            elseif dist <= 50 then
+                distColor = Color3.fromRGB(255, 165, 0)
+            else
+                distColor = Color3.fromRGB(100, 220, 100)
+            end
+
+            nameLbl.Text       = "🔪 " .. mur.Name
+            nameLbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+            distLbl.Text       = tostring(dist) .. " studs" .. arrow
+            distLbl.TextColor3 = distColor
+        end)
+    end
+
+    -- ── Toggle principal ─────────────────────────────────────
+    CreateAuroraToggle(sec, "👁 Murderer Tracker HUD", function(on)
+        MT.enabled = on
+        if on then
+            _buildHUD()
+            CreateCustomNotification("TRACKER", "👁 Tracker activo", 2)
+        else
+            _destroyHUD()
+            CreateCustomNotification("TRACKER", "Tracker desactivado", 1.5)
+        end
+    end, false)
+end
+
+-- ==============================================================
 -- 🏃 SAFE ESCAPE — TP corto en direccion opuesta al murderer
 -- ==============================================================
 function CreateWorldUI_SafeEscape()
@@ -33619,6 +33883,8 @@ function CreateWorldTab()
             if _G._safeEscape.conn then pcall(function() _G._safeEscape.conn:Disconnect() end) _G._safeEscape.conn = nil end
             _G._safeEscape.enabled = false
         end
+        -- Murderer Tracker HUD: NO destruir el HUD al cambiar de tab (es un overlay persistente)
+        -- Solo desconectar si el usuario lo desactiva con el toggle
         -- ProximityPrompts -- resetear al estado default SOLO si los toggles estan apagados
         pcall(function()
             local _ps = _G._proxState
@@ -33689,6 +33955,7 @@ function CreateWorldTab()
     _safeCall(CreateWorldUI_TeleportSheriffBindable,   "TeleportSheriffBindable")
     _safeCall(CreateWorldUI_TeleportMurdererBindable,  "TeleportMurdererBindable")
     _safeCall(CreateWorldUI_SafeEscape,                "SafeEscape")
+    _safeCall(CreateWorldUI_MurdererTracker,           "MurdererTracker")
 
 
     -- AUTO-RESTORE WORLD TAB: restaurar toggles guardados en disco
