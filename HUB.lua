@@ -302,6 +302,9 @@ end
 _G._hubReady = false
 -- FIX ANIMACION: si ya se construyo el hub una vez, no volver a mostrar animacion
 _G._hubAlreadyBuilt = _G._hubAlreadyBuilt or false
+-- AUTORESTORE: al inicio siempre es una ejecucion limpia del hub (no un rebuild de pestaña)
+-- _isTabRebuild se pone en true SOLO durante _reloadActiveTab() para evitar re-ejecutar callbacks
+_G._isTabRebuild = false
 
 -- ================================================================
 -- == PREMIUM GLOBAL DESBLOQUEADO — TODAS LAS FUNCIONES GRATIS ==
@@ -415,31 +418,61 @@ Players.PlayerRemoving:Connect(function() task.defer(_rebuildPlayerCache) end)
 local _CONFIG_FILE = "rex_config.json"
 local _configSaveThrottle = 0  -- throttle: no guardar mas de 1 vez por segundo
 
+-- COMPAT FILE I/O: soporta Synapse X, Wave, Krnl, Fluxus, Delta, Arceus X, Comet
+-- Intenta todos los metodos conocidos en orden de preferencia
 local function _hubWriteFile(path, data)
+    -- Synapse X v3 / Wave / Krnl / Delta / Comet
     if writefile then
-        pcall(writefile, path, data)
-    elseif syn and syn.write_file then
-        pcall(syn.write_file, path, data)
-    elseif saveFile then
+        local ok = pcall(writefile, path, data)
+        if ok then return end
+    end
+    -- Synapse X v2
+    if syn and syn.write_file then
+        local ok = pcall(syn.write_file, path, data)
+        if ok then return end
+    end
+    -- Fluxus
+    if fluxus and fluxus.write_file then
+        local ok = pcall(fluxus.write_file, path, data)
+        if ok then return end
+    end
+    -- Arceus X / generic fallback
+    if saveFile then
         pcall(saveFile, path, data)
     end
 end
 
 local function _hubReadFile(path)
     local ok, data
+    -- Synapse X v3 / Wave / Krnl / Delta / Comet
     if readfile then
         ok, data = pcall(readfile, path)
         if ok and type(data) == "string" and #data > 0 then return data end
     end
+    -- Synapse X v2
     if syn and syn.read_file then
         ok, data = pcall(syn.read_file, path)
         if ok and type(data) == "string" and #data > 0 then return data end
     end
+    -- Fluxus
+    if fluxus and fluxus.read_file then
+        ok, data = pcall(fluxus.read_file, path)
+        if ok and type(data) == "string" and #data > 0 then return data end
+    end
+    -- Arceus X / generic fallback
     if loadFile then
         ok, data = pcall(loadFile, path)
         if ok and type(data) == "string" and #data > 0 then return data end
     end
     return nil
+end
+
+-- Verificar si el executor soporta escritura de archivos
+local function _hubCanSaveFiles()
+    return (writefile ~= nil)
+        or (syn ~= nil and syn.write_file ~= nil)
+        or (fluxus ~= nil and fluxus.write_file ~= nil)
+        or (saveFile ~= nil)
 end
 
 local function _serializeConfig()
@@ -633,9 +666,13 @@ local function _loadConfig()
     local data = _hubReadFile(_CONFIG_FILE)
     if not data then return end
     local saved = _deserializeConfig(data)
+    local _restoredCount = 0
+    local _restoredActiveCount = 0
     for k, v in pairs(saved) do
         if not _neverRestoreToggles[k] then
             _G._toggleStates[k] = v
+            _restoredCount = _restoredCount + 1
+            if v == true then _restoredActiveCount = _restoredActiveCount + 1 end
         end
     end
     -- Restaurar flag de auto-save desde el JSON
@@ -651,6 +688,8 @@ local function _loadConfig()
         _G._hubSettings = _G._hubSettings or {}
         _G._hubSettings.hubOpacity = saved["__hubOpacity"]
     end
+    -- Guardar cuantos toggles activos se restauraron (para notificacion al cargar)
+    _G._restoredActiveCount = _restoredActiveCount
 end
 
 -- Cargar configuracion guardada ANTES de crear la UI
@@ -26936,11 +26975,22 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local _isBoostNoAuto = _G._boostNoAutoThisSession and _G._boostNoAutoThisSession[nombre]
     -- NUNCA auto-activar toggles que están en _neverRestoreToggles (siempre arrancan OFF)
     local _isNeverRestore = _neverRestoreToggles and _neverRestoreToggles[nombre]
-    -- FIX PESTAÑA RESET: solo auto-activar si NO habia estado guardado previo.
-    -- Si savedState ~= nil, el usuario ya interactuó con el toggle; respetar su elección
-    -- y no re-ejecutar el callback al reconstruir el tab (cambio de pestaña, reload, etc.)
-    local _wasUserSet = (savedState ~= nil)
-    if estado and callback and not _isBoostNoAuto and not _G._noAutoActivateWorld and not _isNeverRestore and not _wasUserSet then
+    -- AUTORESTORE FIX v2:
+    -- _wasUserSet    → habia un estado guardado (en disco o en sesion)
+    -- _isTabRebuild  → es solo un cambio de pestaña (UI se recrea, funcionalidad ya corre)
+    -- Diferencia clave:
+    --   Tab rebuild:   _G._isTabRebuild == true  → NO llamar callback (ya esta corriendo)
+    --   Re-ejecucion:  _G._isTabRebuild == false/nil → SÍ llamar callback (hub nuevo, nada corre)
+    -- Caso A: toggle sin estado previo con initialValue=true → auto-activar (comportamiento original)
+    -- Caso B: toggle con savedState=true y NO es tab rebuild → restaurar desde disco al re-ejecutar
+    local _wasUserSet   = (savedState ~= nil)
+    local _isTabRebuild = (_G._isTabRebuild == true)
+    local _shouldAutoActivate = estado and callback
+        and not _isBoostNoAuto
+        and not _G._noAutoActivateWorld
+        and not _isNeverRestore
+        and (not _wasUserSet or (savedState == true and not _isTabRebuild))
+    if _shouldAutoActivate then
         local lower = nombre:lower()
         local isPhysical = lower:find("swim fly") or lower:find("fly %+") or lower:find("fly+")
             or (lower:find("fly") and not lower:find("firefly"))
@@ -50178,7 +50228,11 @@ particles = {}
             if not _tabCache[idx] or not _tabCache[idx].Parent then
                 _tabBuilt[idx] = nil
                 _tabCache[idx] = nil
+                -- Marcar como rebuild de pestaña para que CreateAuroraToggle NO
+                -- re-ejecute callbacks (la funcionalidad ya está corriendo en memoria)
+                _G._isTabRebuild = true
                 _buildTabCached(idx)
+                _G._isTabRebuild = false
             end
         end
         if _tabCache[idx] then
@@ -50959,6 +51013,19 @@ particles = {}
             _G._tabContentActive = true
             pcall(function() SetActiveTab(1) end)
         end)
+        -- AUTORESTORE: notificar si se restauraron toggles activos desde disco
+        if _G._restoredActiveCount and _G._restoredActiveCount > 0 then
+            task.delay(1.2, function()
+                pcall(function()
+                    CreateCustomNotification(
+                        "AUTO RESTORE",
+                        "✅ " .. _G._restoredActiveCount .. " toggle" .. (_G._restoredActiveCount == 1 and "" or "s") .. " restaurado" .. (_G._restoredActiveCount == 1 and "" or "s") .. " desde la sesión anterior",
+                        3
+                    )
+                end)
+                _G._restoredActiveCount = 0
+            end)
+        end
         end)  -- cierre del pcall de animacion
         -- FIX: si la animacion fallo por cualquier razon, mostrar el hub igual
         if not _animOk then
