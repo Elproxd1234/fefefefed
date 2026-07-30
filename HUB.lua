@@ -33375,7 +33375,7 @@ function CreateWorldTab()
 
     -- FreezeCharacter eliminado del World tab
     _safeCall(CreateWorldUI_AutoVote, "AutoVote")
-    _safeCall(CreateWorldUI_TeleportUniversal, "TeleportUniversal")
+    -- CreateWorldUI_TeleportUniversal: funcion no implementada (eliminada)
     _safeCall(CreateWorldUI_ProximityPromptSection, "ProximityPromptSection")
     _safeCall(CreateWorldUI_SpinSection, "SpinSection")
     _safeCall(CreateWorldUI_ShiftLock,   "ShiftLock")
@@ -33401,17 +33401,23 @@ function CreateWorldTab()
     -- AUTO-RESTORE WORLD TAB: restaurar toggles guardados en disco
     -- Se corre DESPUES de que todos los toggles del tab se registraron en _toggleCallbacks.
     -- Solo activa los que tienen savedState=true y no estan en la blacklist.
+    -- FIX BACKGROUND BUILD: capturar el tabFrame aqui para no depender de contentContainer
+    -- (que ya fue restaurado al frame real cuando _buildTabCached termina).
+    local _worldTabFrame = _G._tabCache and _G._tabCache[2]
     task.defer(function()
         task.defer(function()
             _G._noAutoActivateWorld = false
             if not _G._toggleStates or not _G._toggleCallbacks then return end
+            -- Buscar en el tabFrame capturado O en contentContainer (fallback si se abrio normal)
+            local _searchRoot = (_worldTabFrame and _worldTabFrame.Parent and _worldTabFrame)
+                             or contentContainer
             for nombre, state in pairs(_G._toggleStates) do
                 if state == true
                 and not (_neverRestoreToggles and _neverRestoreToggles[nombre])
                 and _G._toggleCallbacks[nombre] then
                     -- Verificar que este toggle pertenece al World Tab
-                    -- buscando su frame en el contentContainer actual
-                    local toggleFrame = contentContainer and contentContainer:FindFirstChild("AuroraToggleRow_" .. nombre, true)
+                    -- buscando su frame en el frame del tab (funciona tanto en build normal como background)
+                    local toggleFrame = _searchRoot and _searchRoot:FindFirstChild("AuroraToggleRow_" .. nombre, true)
                     if toggleFrame then
                         -- Silenciar notificaciones durante el restore
                         local _origNotif = CreateCustomNotification
@@ -35310,6 +35316,7 @@ function CreateExclusiveTab()
         allowHubDrag       = true,
         hubOpacity         = 15,   -- 0-95 (porcentaje de opacidad del fondo)
         hubScale           = 100,  -- 70-130 (escala del hub en %)
+        hubLayoutMode      = 1,    -- 1=SidebarIzq 2=BarraTop 3=SidebarDer 4=BarraBot 5=MiniIzq
         notifDuration      = 3,    -- segundos default de notificaciones
         notifMuted         = false, -- silenciar todas las notificaciones
         fpsLimit           = 0,    -- 0 = sin limite
@@ -35462,6 +35469,7 @@ function CreateExclusiveTab()
         _hsr.noMinMaxAnimations = false
         _hsr.allowHubDrag       = true
         _hsr.hubOpacity         = 15
+        _hsr.hubLayoutMode      = 1
         _hsr.notifMuted         = false
         _hsr.notifDuration      = 3
         _hsr.fpsLimit           = 0
@@ -35557,6 +35565,437 @@ function CreateExclusiveTab()
     -- ============================================================
     -- COLUMNA DERECHA
     -- ============================================================
+
+    -- ================================================================
+    -- HUB LAYOUT (5 modos de distribucion de pestañas)
+    -- ================================================================
+    do
+        local layoutSec = CreateBorderedSectionGlobal(rightColumn, " HUB LAYOUT")
+
+        local layoutDesc = Instance.new("TextLabel", layoutSec)
+        layoutDesc.Size = UDim2.new(1, -12, 0, 22)
+        layoutDesc.BackgroundTransparency = 1
+        layoutDesc.Text = "Elegí cómo se organizan las pestañas del hub"
+        layoutDesc.TextColor3 = Color3.fromRGB(140, 175, 210)
+        layoutDesc.FontFace = Font.fromEnum(Enum.Font.Gotham)
+        layoutDesc.TextSize = 11
+        layoutDesc.TextWrapped = true
+        layoutDesc.TextXAlignment = Enum.TextXAlignment.Left
+        layoutDesc.ZIndex = 13
+
+        _G._hubSettings = _G._hubSettings or {}
+        local _curLayoutMode = _G._hubSettings.hubLayoutMode or 1
+
+        -- ============================================================
+        -- Funcion que aplica el layout seleccionado al hub
+        -- ============================================================
+        local function _applyHubLayout(mode)
+            pcall(function()
+                local dock = mainFrame:FindFirstChild("TabDock")
+                if not dock then return end
+                local dockList = dock:FindFirstChild("DockList")
+                if not dockList then return end
+                local dockLayout = dockList:FindFirstChildOfClass("UIListLayout")
+                local dockPad    = dockList:FindFirstChildOfClass("UIPadding")
+
+                _G._hubSettings.hubLayoutMode = mode
+                _curLayoutMode = mode
+
+                local ti = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+                if mode == 1 then
+                    -- LAYOUT 1: Sidebar izquierda (200px, vertical) — clasico
+                    TweenService:Create(dock, ti, {
+                        Position = UDim2.new(0, 0, 0, 36),
+                        Size     = UDim2.new(0, 200, 1, -36)
+                    }):Play()
+                    TweenService:Create(contentContainer, ti, {
+                        Position = UDim2.new(0, 200, 0, 36),
+                        Size     = UDim2.new(1, -200, 1, -36)
+                    }):Play()
+                    if dockLayout then
+                        dockLayout.FillDirection       = Enum.FillDirection.Vertical
+                        dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                        dockLayout.VerticalAlignment   = Enum.VerticalAlignment.Top
+                        dockLayout.Padding             = UDim.new(0, 2)
+                    end
+                    if dockList then
+                        dockList.ScrollingDirection   = Enum.ScrollingDirection.Y
+                        dockList.AutomaticCanvasSize  = Enum.AutomaticSize.Y
+                        dockList.CanvasSize           = UDim2.new(0, 0, 0, 0)
+                    end
+                    if dockPad then
+                        dockPad.PaddingTop    = UDim.new(0, 6)
+                        dockPad.PaddingBottom = UDim.new(0, 0)
+                        dockPad.PaddingLeft   = UDim.new(0, 4)
+                        dockPad.PaddingRight  = UDim.new(0, 4)
+                    end
+                    for _, btn in ipairs(dockList:GetChildren()) do
+                        if btn:IsA("TextButton") then
+                            btn.Size = UDim2.new(1, -8, 0, 52)
+                            local lbl = btn:FindFirstChild("TabLabel")
+                            if lbl then
+                                lbl.TextSize     = 15
+                                lbl.TextTruncate = Enum.TextTruncate.AtEnd
+                                local fullName = btn.Name:gsub("SideBtn$", "")
+                                lbl.Text = fullName
+                            end
+                        end
+                    end
+
+                elseif mode == 2 then
+                    -- LAYOUT 2: Barra superior horizontal (44px de alto)
+                    TweenService:Create(dock, ti, {
+                        Position = UDim2.new(0, 0, 0, 36),
+                        Size     = UDim2.new(1, 0, 0, 44)
+                    }):Play()
+                    TweenService:Create(contentContainer, ti, {
+                        Position = UDim2.new(0, 0, 0, 82),
+                        Size     = UDim2.new(1, 0, 1, -82)
+                    }):Play()
+                    if dockLayout then
+                        dockLayout.FillDirection       = Enum.FillDirection.Horizontal
+                        dockLayout.VerticalAlignment   = Enum.VerticalAlignment.Center
+                        dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+                        dockLayout.Padding             = UDim.new(0, 3)
+                    end
+                    if dockList then
+                        dockList.ScrollingDirection  = Enum.ScrollingDirection.X
+                        dockList.AutomaticCanvasSize = Enum.AutomaticSize.X
+                        dockList.CanvasSize          = UDim2.new(0, 0, 0, 0)
+                    end
+                    if dockPad then
+                        dockPad.PaddingTop    = UDim.new(0, 2)
+                        dockPad.PaddingBottom = UDim.new(0, 2)
+                        dockPad.PaddingLeft   = UDim.new(0, 4)
+                        dockPad.PaddingRight  = UDim.new(0, 4)
+                    end
+                    for _, btn in ipairs(dockList:GetChildren()) do
+                        if btn:IsA("TextButton") then
+                            btn.Size = UDim2.new(0, 88, 1, -6)
+                            local lbl = btn:FindFirstChild("TabLabel")
+                            if lbl then
+                                lbl.TextSize     = 11
+                                lbl.TextTruncate = Enum.TextTruncate.AtEnd
+                                local fullName = btn.Name:gsub("SideBtn$", "")
+                                lbl.Text = fullName
+                            end
+                        end
+                    end
+
+                elseif mode == 3 then
+                    -- LAYOUT 3: Sidebar derecha (200px, vertical)
+                    TweenService:Create(dock, ti, {
+                        Position = UDim2.new(1, -200, 0, 36),
+                        Size     = UDim2.new(0, 200, 1, -36)
+                    }):Play()
+                    TweenService:Create(contentContainer, ti, {
+                        Position = UDim2.new(0, 0, 0, 36),
+                        Size     = UDim2.new(1, -200, 1, -36)
+                    }):Play()
+                    if dockLayout then
+                        dockLayout.FillDirection       = Enum.FillDirection.Vertical
+                        dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                        dockLayout.VerticalAlignment   = Enum.VerticalAlignment.Top
+                        dockLayout.Padding             = UDim.new(0, 2)
+                    end
+                    if dockList then
+                        dockList.ScrollingDirection   = Enum.ScrollingDirection.Y
+                        dockList.AutomaticCanvasSize  = Enum.AutomaticSize.Y
+                        dockList.CanvasSize           = UDim2.new(0, 0, 0, 0)
+                    end
+                    if dockPad then
+                        dockPad.PaddingTop    = UDim.new(0, 6)
+                        dockPad.PaddingBottom = UDim.new(0, 0)
+                        dockPad.PaddingLeft   = UDim.new(0, 4)
+                        dockPad.PaddingRight  = UDim.new(0, 4)
+                    end
+                    for _, btn in ipairs(dockList:GetChildren()) do
+                        if btn:IsA("TextButton") then
+                            btn.Size = UDim2.new(1, -8, 0, 52)
+                            local lbl = btn:FindFirstChild("TabLabel")
+                            if lbl then
+                                lbl.TextSize     = 15
+                                lbl.TextTruncate = Enum.TextTruncate.AtEnd
+                                local fullName = btn.Name:gsub("SideBtn$", "")
+                                lbl.Text = fullName
+                            end
+                        end
+                    end
+
+                elseif mode == 4 then
+                    -- LAYOUT 4: Barra inferior horizontal (48px de alto)
+                    TweenService:Create(dock, ti, {
+                        Position = UDim2.new(0, 0, 1, -48),
+                        Size     = UDim2.new(1, 0, 0, 48)
+                    }):Play()
+                    TweenService:Create(contentContainer, ti, {
+                        Position = UDim2.new(0, 0, 0, 36),
+                        Size     = UDim2.new(1, 0, 1, -84)
+                    }):Play()
+                    if dockLayout then
+                        dockLayout.FillDirection       = Enum.FillDirection.Horizontal
+                        dockLayout.VerticalAlignment   = Enum.VerticalAlignment.Center
+                        dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+                        dockLayout.Padding             = UDim.new(0, 3)
+                    end
+                    if dockList then
+                        dockList.ScrollingDirection  = Enum.ScrollingDirection.X
+                        dockList.AutomaticCanvasSize = Enum.AutomaticSize.X
+                        dockList.CanvasSize          = UDim2.new(0, 0, 0, 0)
+                    end
+                    if dockPad then
+                        dockPad.PaddingTop    = UDim.new(0, 2)
+                        dockPad.PaddingBottom = UDim.new(0, 2)
+                        dockPad.PaddingLeft   = UDim.new(0, 4)
+                        dockPad.PaddingRight  = UDim.new(0, 4)
+                    end
+                    for _, btn in ipairs(dockList:GetChildren()) do
+                        if btn:IsA("TextButton") then
+                            btn.Size = UDim2.new(0, 88, 1, -8)
+                            local lbl = btn:FindFirstChild("TabLabel")
+                            if lbl then
+                                lbl.TextSize     = 11
+                                lbl.TextTruncate = Enum.TextTruncate.AtEnd
+                                local fullName = btn.Name:gsub("SideBtn$", "")
+                                lbl.Text = fullName
+                            end
+                        end
+                    end
+
+                elseif mode == 5 then
+                    -- LAYOUT 5: Mini sidebar izquierda (60px, iconos compactos)
+                    TweenService:Create(dock, ti, {
+                        Position = UDim2.new(0, 0, 0, 36),
+                        Size     = UDim2.new(0, 60, 1, -36)
+                    }):Play()
+                    TweenService:Create(contentContainer, ti, {
+                        Position = UDim2.new(0, 60, 0, 36),
+                        Size     = UDim2.new(1, -60, 1, -36)
+                    }):Play()
+                    if dockLayout then
+                        dockLayout.FillDirection       = Enum.FillDirection.Vertical
+                        dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                        dockLayout.VerticalAlignment   = Enum.VerticalAlignment.Top
+                        dockLayout.Padding             = UDim.new(0, 2)
+                    end
+                    if dockList then
+                        dockList.ScrollingDirection   = Enum.ScrollingDirection.Y
+                        dockList.AutomaticCanvasSize  = Enum.AutomaticSize.Y
+                        dockList.CanvasSize           = UDim2.new(0, 0, 0, 0)
+                    end
+                    if dockPad then
+                        dockPad.PaddingTop    = UDim.new(0, 4)
+                        dockPad.PaddingBottom = UDim.new(0, 0)
+                        dockPad.PaddingLeft   = UDim.new(0, 2)
+                        dockPad.PaddingRight  = UDim.new(0, 2)
+                    end
+                    for _, btn in ipairs(dockList:GetChildren()) do
+                        if btn:IsA("TextButton") then
+                            btn.Size = UDim2.new(1, -4, 0, 38)
+                            local lbl = btn:FindFirstChild("TabLabel")
+                            if lbl then
+                                lbl.TextSize     = 9
+                                lbl.TextTruncate = Enum.TextTruncate.AtEnd
+                                local fullName = btn.Name:gsub("SideBtn$", "")
+                                lbl.Text = fullName:sub(1, 4)
+                            end
+                        end
+                    end
+                end
+            end)
+            local _layoutNames = {"Sidebar Izq", "Barra Top", "Sidebar Der", "Barra Bot", "Mini Izq"}
+            CreateCustomNotification("LAYOUT", "Layout: " .. (_layoutNames[mode] or "?") .. " aplicado", 2)
+        end
+
+        -- ============================================================
+        -- Funcion helper: dibuja un diagrama miniatura del layout
+        -- ============================================================
+        local function _makeDiagram(parent, mode, accentColor)
+            local diag = Instance.new("Frame", parent)
+            diag.Size     = UDim2.new(1, -10, 0, 42)
+            diag.Position = UDim2.new(0, 5, 0, 14)
+            diag.BackgroundColor3 = Color3.fromRGB(12, 12, 22)
+            diag.BackgroundTransparency = 0.2
+            diag.BorderSizePixel = 0
+            diag.ZIndex = 16
+            Instance.new("UICorner", diag).CornerRadius = UDim.new(0, 5)
+
+            local function _blk(xS, yS, wS, hS, col, alpha)
+                local b = Instance.new("Frame", diag)
+                b.Position             = UDim2.new(xS, 0, yS, 0)
+                b.Size                 = UDim2.new(wS, 0, hS, 0)
+                b.BackgroundColor3     = col
+                b.BackgroundTransparency = alpha or 0
+                b.BorderSizePixel      = 0
+                b.ZIndex               = 17
+                Instance.new("UICorner", b).CornerRadius = UDim.new(0, 2)
+            end
+
+            local acc  = accentColor
+            local grey = Color3.fromRGB(70, 80, 100)
+
+            if mode == 1 then
+                _blk(0,    0,    0.26, 1,    acc,  0.05)
+                _blk(0.29, 0.06, 0.69, 0.88, grey, 0.45)
+            elseif mode == 2 then
+                _blk(0,    0,    1,    0.26, acc,  0.05)
+                _blk(0.03, 0.30, 0.94, 0.66, grey, 0.45)
+            elseif mode == 3 then
+                _blk(0.02, 0.06, 0.69, 0.88, grey, 0.45)
+                _blk(0.74, 0,    0.26, 1,    acc,  0.05)
+            elseif mode == 4 then
+                _blk(0.03, 0.04, 0.94, 0.66, grey, 0.45)
+                _blk(0,    0.74, 1,    0.26, acc,  0.05)
+            elseif mode == 5 then
+                _blk(0,    0,    0.13, 1,    acc,  0.05)
+                _blk(0.16, 0.06, 0.82, 0.88, grey, 0.45)
+            end
+        end
+
+        -- ============================================================
+        -- Definicion de los 5 layouts
+        -- ============================================================
+        local _layouts = {
+            { label="SIDEBAR IZQ", desc="Tabs verticales izquierda",  color=Color3.fromRGB(18, 55, 155),  accent=Color3.fromRGB(80, 145, 255), mode=1 },
+            { label="BARRA TOP",   desc="Tabs horizontales arriba",   color=Color3.fromRGB(18,  95,  65),  accent=Color3.fromRGB(55, 210, 135), mode=2 },
+            { label="SIDEBAR DER", desc="Tabs verticales derecha",    color=Color3.fromRGB(95,  25, 135),  accent=Color3.fromRGB(175,  75, 255), mode=3 },
+            { label="BARRA BOT",   desc="Tabs horizontales abajo",    color=Color3.fromRGB(135,  60, 15),  accent=Color3.fromRGB(255, 155,  55), mode=4 },
+            { label="MINI IZQ",    desc="Sidebar mini (iconos only)", color=Color3.fromRGB(15,  95, 105),  accent=Color3.fromRGB(55, 215, 225), mode=5 },
+        }
+        local _layoutBtnRefs = {}
+
+        local function _refreshLayoutBtns()
+            for _, ref in ipairs(_layoutBtnRefs) do
+                local isActive = (ref.mode == _curLayoutMode)
+                pcall(function()
+                    TweenService:Create(ref.btn, TweenInfo.new(0.18), {
+                        BackgroundTransparency = isActive and 0.08 or 0.68
+                    }):Play()
+                    TweenService:Create(ref.stroke, TweenInfo.new(0.18), {
+                        Transparency = isActive and 0 or 0.6
+                    }):Play()
+                    ref.badge.Visible = isActive
+                end)
+            end
+        end
+
+        -- Fila 1 (layouts 1-2-3) y Fila 2 (layouts 4-5)
+        local function _makeRow(parent, height)
+            local row = Instance.new("Frame", parent)
+            row.Size = UDim2.new(1, -8, 0, height)
+            row.BackgroundTransparency = 1
+            row.BorderSizePixel = 0
+            row.ZIndex = 13
+            local rl = Instance.new("UIListLayout", row)
+            rl.FillDirection       = Enum.FillDirection.Horizontal
+            rl.Padding             = UDim.new(0, 5)
+            rl.VerticalAlignment   = Enum.VerticalAlignment.Center
+            rl.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            return row
+        end
+
+        local row1 = _makeRow(layoutSec, 106)
+        local row2 = _makeRow(layoutSec, 106)
+
+        for i, layout in ipairs(_layouts) do
+            local parentRow = (i <= 3) and row1 or row2
+
+            local card = Instance.new("TextButton", parentRow)
+            card.Name = "LayoutCard_" .. tostring(layout.mode)
+            card.Size = UDim2.new(0, 76, 1, -6)
+            card.BackgroundColor3 = layout.color
+            card.BackgroundTransparency = (layout.mode == _curLayoutMode) and 0.08 or 0.68
+            card.BorderSizePixel = 0
+            card.Text = ""
+            card.AutoButtonColor = false
+            card.ZIndex = 13
+            Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
+
+            local cardStroke = Instance.new("UIStroke", card)
+            cardStroke.Color = layout.accent
+            cardStroke.Thickness = 1.8
+            cardStroke.Transparency = (layout.mode == _curLayoutMode) and 0 or 0.6
+            cardStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+            -- Badge ACTIVO
+            local badge = Instance.new("Frame", card)
+            badge.Name = "ActiveBadge"
+            badge.Size = UDim2.new(1, 0, 0, 15)
+            badge.Position = UDim2.new(0, 0, 0, 0)
+            badge.BackgroundColor3 = layout.accent
+            badge.BackgroundTransparency = 0.12
+            badge.BorderSizePixel = 0
+            badge.ZIndex = 15
+            badge.Visible = (layout.mode == _curLayoutMode)
+            Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 6)
+            local badgeLbl = Instance.new("TextLabel", badge)
+            badgeLbl.Size = UDim2.new(1, 0, 1, 0)
+            badgeLbl.BackgroundTransparency = 1
+            badgeLbl.Text = "✓ ACTIVO"
+            badgeLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+            badgeLbl.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+            badgeLbl.TextSize = 7
+            badgeLbl.ZIndex = 16
+
+            -- Diagrama visual miniatura
+            _makeDiagram(card, layout.mode, layout.accent)
+
+            -- Nombre del layout
+            local nameLbl = Instance.new("TextLabel", card)
+            nameLbl.Size = UDim2.new(1, -4, 0, 15)
+            nameLbl.Position = UDim2.new(0, 2, 1, -32)
+            nameLbl.BackgroundTransparency = 1
+            nameLbl.Text = layout.label
+            nameLbl.TextColor3 = Color3.fromRGB(235, 240, 255)
+            nameLbl.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+            nameLbl.TextSize = 8
+            nameLbl.TextWrapped = false
+            nameLbl.ZIndex = 14
+
+            -- Descripcion del layout
+            local descLbl = Instance.new("TextLabel", card)
+            descLbl.Size = UDim2.new(1, -4, 0, 16)
+            descLbl.Position = UDim2.new(0, 2, 1, -17)
+            descLbl.BackgroundTransparency = 1
+            descLbl.Text = layout.desc
+            descLbl.TextColor3 = Color3.fromRGB(125, 145, 175)
+            descLbl.FontFace = Font.fromEnum(Enum.Font.Gotham)
+            descLbl.TextSize = 7
+            descLbl.TextWrapped = true
+            descLbl.ZIndex = 14
+
+            table.insert(_layoutBtnRefs, {
+                btn    = card,
+                stroke = cardStroke,
+                badge  = badge,
+                mode   = layout.mode
+            })
+
+            local _cardMode = layout.mode
+            card.MouseEnter:Connect(function()
+                if _cardMode ~= _curLayoutMode then
+                    TweenService:Create(card, TweenInfo.new(0.1), {BackgroundTransparency = 0.28}):Play()
+                end
+            end)
+            card.MouseLeave:Connect(function()
+                if _cardMode ~= _curLayoutMode then
+                    TweenService:Create(card, TweenInfo.new(0.12), {BackgroundTransparency = 0.68}):Play()
+                end
+            end)
+            card.Activated:Connect(function()
+                PlayTabSound()
+                _applyHubLayout(_cardMode)
+                _curLayoutMode = _cardMode
+                _refreshLayoutBtns()
+            end)
+        end
+
+        -- Aplicar layout guardado si no es el default
+        if _curLayoutMode ~= 1 then
+            task.defer(function() _applyHubLayout(_curLayoutMode) end)
+        end
+    end
 
     -- -- OPACIDAD Y VISUAL DEL HUB --------------------------------
     local visualSec = CreateBorderedSectionGlobal(rightColumn, " HUB VISUAL")
@@ -36133,6 +36572,10 @@ function CreateExclusiveTab()
         betaLabel.TextColor3 = Color3.fromRGB(220, 160, 255)
         betaLabel.TextXAlignment = Enum.TextXAlignment.Center
     end
+
+    -- ================================================================
+    -- FIN BACKGROUNDS SELECTOR
+    -- ================================================================
 
 end
 
@@ -45201,7 +45644,7 @@ function CreateCombatTab()
             if not _predSel then return end
             -- Colorear todos los TextLabels segun si son premium o no
             local function _colorizeAll()
-                for _, d in ipairs(_predSel:GetDescendants()) do
+                for _, d in ipairs(_predSel.frame:GetDescendants()) do
                     if d:IsA("TextLabel") then
                         if d.Text:find("^⭐ ") then
                             d.TextColor3 = Color3.fromRGB(255, 215, 0)
@@ -45215,7 +45658,7 @@ function CreateCombatTab()
             end
             _colorizeAll()
             -- Cada vez que el selector abra/actualice, re-colorear
-            _predSel.DescendantAdded:Connect(function()
+            _predSel.frame.DescendantAdded:Connect(function()
                 task.defer(_colorizeAll)
             end)
 
@@ -45223,7 +45666,7 @@ function CreateCombatTab()
             -- Esto evita que el click llegue al boton real del selector
             if not _G._discordPremiumVerified then
                 local function _lockPremiumOptions()
-                    for _, btn in ipairs(_predSel:GetDescendants()) do
+                    for _, btn in ipairs(_predSel.frame:GetDescendants()) do
                         if (btn:IsA("TextButton") or btn:IsA("Frame")) and btn.Name ~= "PremiumSelectorLock" then
                             local lbl = btn:FindFirstChildWhichIsA("TextLabel")
                             if lbl and lbl.Text:find("^⭐ ") and not btn:FindFirstChild("PremiumSelectorLock") then
@@ -45243,15 +45686,15 @@ function CreateCombatTab()
                     end
                 end
                 _lockPremiumOptions()
-                _predSel.DescendantAdded:Connect(function()
+                _predSel.frame.DescendantAdded:Connect(function()
                     task.defer(_lockPremiumOptions)
                 end)
                 -- Watcher: cuando se verifique premium, destruir todos los locks
                 task.spawn(function()
-                    while _predSel and _predSel.Parent do
+                    while _predSel and _predSel.frame.Parent do
                         task.wait(0.5)
                         if _G._discordPremiumVerified then
-                            for _, lock in ipairs(_predSel:GetDescendants()) do
+                            for _, lock in ipairs(_predSel.frame:GetDescendants()) do
                                 if lock.Name == "PremiumSelectorLock" then
                                     pcall(function() lock:Destroy() end)
                                 end
@@ -50720,6 +51163,14 @@ particles = {}
             task.delay(0.5, function()
                 pcall(function() _buildTabCached(5) end)
             end)
+            -- AUTO-BUILD TODOS LOS TABS: para que toggles guardados de cualquier pestaña
+            -- se registren y ejecuten su función sin necesidad de entrar a cada pestaña.
+            -- idx: 1=Main 2=World 3=Visuals 4=Premium 5=Settings 6=Combat 7=Use 8=Emotes
+            task.delay(1.0, function() pcall(function() _buildTabCached(2) end) end)
+            task.delay(1.3, function() pcall(function() _buildTabCached(3) end) end)
+            task.delay(1.6, function() pcall(function() _buildTabCached(6) end) end)
+            task.delay(1.9, function() pcall(function() _buildTabCached(7) end) end)
+            task.delay(2.2, function() pcall(function() _buildTabCached(8) end) end)
             return
         end
 
@@ -50985,6 +51436,14 @@ particles = {}
         task.delay(0.5, function()
             pcall(function() _buildTabCached(5) end)
         end)
+        -- AUTO-BUILD TODOS LOS TABS: para que toggles guardados de cualquier pestaña
+        -- se registren y ejecuten su función sin necesidad de entrar a cada pestaña.
+        -- idx: 1=Main 2=World 3=Visuals 4=Premium 5=Settings 6=Combat 7=Use 8=Emotes
+        task.delay(1.0, function() pcall(function() _buildTabCached(2) end) end)
+        task.delay(1.3, function() pcall(function() _buildTabCached(3) end) end)
+        task.delay(1.6, function() pcall(function() _buildTabCached(6) end) end)
+        task.delay(1.9, function() pcall(function() _buildTabCached(7) end) end)
+        task.delay(2.2, function() pcall(function() _buildTabCached(8) end) end)
         -- AUTORESTORE: notificar si se restauraron toggles activos desde disco (config por jugador)
         if _G._restoredActiveCount and _G._restoredActiveCount > 0 then
             task.delay(1.2, function()
@@ -51024,6 +51483,14 @@ particles = {}
             task.delay(0.5, function()
                 pcall(function() _buildTabCached(5) end)
             end)
+            -- AUTO-BUILD TODOS LOS TABS: para que toggles guardados de cualquier pestaña
+            -- se registren y ejecuten su función sin necesidad de entrar a cada pestaña.
+            -- idx: 1=Main 2=World 3=Visuals 4=Premium 5=Settings 6=Combat 7=Use 8=Emotes
+            task.delay(1.0, function() pcall(function() _buildTabCached(2) end) end)
+            task.delay(1.3, function() pcall(function() _buildTabCached(3) end) end)
+            task.delay(1.6, function() pcall(function() _buildTabCached(6) end) end)
+            task.delay(1.9, function() pcall(function() _buildTabCached(7) end) end)
+            task.delay(2.2, function() pcall(function() _buildTabCached(8) end) end)
         end
     end)
 
@@ -51286,6 +51753,7 @@ function WallHop_Start()
             WallHopState.canWallJump = true
         end)
     end)
+
 end
 
 LocalPlayer.CharacterAdded:Connect(function()
@@ -51294,6 +51762,7 @@ LocalPlayer.CharacterAdded:Connect(function()
         WallHop_Start()
     end
 end)
+
 
 
 
@@ -51621,23 +52090,13 @@ function CreateEmotesTab()
 end
 
 function CreateUseTab()
-    ClearContent()
-    -- OPT: limpiar conexiones del tab anterior
-    pcall(function()
-        if rolesConn       then rolesConn:Disconnect();       rolesConn       = nil end
-        if _gotoMurdConn   then _gotoMurdConn:Disconnect();   _gotoMurdConn   = nil end
-        if _gotoSherConn   then _gotoSherConn:Disconnect();   _gotoSherConn   = nil end
-        if _gotoInnConn    then _gotoInnConn:Disconnect();    _gotoInnConn    = nil end
-        if _gotoSelConn    then _gotoSelConn:Disconnect();    _gotoSelConn    = nil end
-        if _radarConn      then _radarConn:Disconnect();      _radarConn      = nil end
-        local ads = AutoDodgeSystem
-        if ads and ads.connection then ads.connection:Disconnect(); ads.connection = nil end
-        if _bang then
-            for _, c in pairs(_bang.conns or {}) do pcall(function() c:Disconnect() end) end
-            _bang.conns = {}
-        end
-        if _dk and _dk._conn then _dk._conn:Disconnect(); _dk._conn = nil end
-    end)
+    -- Guard: igual a CreateEmotesTab — evita correr antes de que contentContainer esté listo
+    if not contentContainer or not contentContainer.Parent then
+        task.wait(0.15)
+        if not contentContainer or not contentContainer.Parent then return end
+    end
+    -- Resetear frame de sección residual ANTES de construir columnas
+    _currentMainSectionFrame = nil
     _makeTwoColumns()
     local col = leftColumn
 
@@ -51806,10 +52265,6 @@ function CreateUseTab()
  CreateSlider(bangSec, "Offset Altura (Y)", -5, 10, 0, function(v)
         _bang._offsetY = v
     end)
-
-    -- FIX: resetear _currentMainSectionFrame para que CreateAuroraToggle y
-    -- CreateSlider usen bangSec como parent y no un frame residual de otra pestana
-    _currentMainSectionFrame = nil
 
     LocalPlayer.CharacterAdded:Connect(function()
         _bang.animTrack = nil
@@ -52215,290 +52670,306 @@ function CreateUseTab()
     -- ================================================================
     -- ANIMATION SELECTOR
     -- ================================================================
-    -- ================================================================
+    do
+        local animSec = CreateBorderedSectionGlobal(rightColumn, " ANIMATION SELECTOR")
 
-end
+        _animCurrentTrack = nil
+        _animTogglesGlobal = {}
+
+        local function _animStopAll()
+            if _animCurrentTrack then
+                pcall(function()
+                    if _animCurrentTrack.IsPlaying then _animCurrentTrack:Stop() end
+                end)
+                _animCurrentTrack = nil
+            end
+            for _, t in pairs(_animTogglesGlobal) do
+                if t.setOn then pcall(function() t.setOn(false) end) end
+            end
+        end
+
+        local ANIMS = {
+            { name = "Lay Down",      id = "rbxassetid://5918726674" },
+            { name = "Sit",           id = "rbxassetid://2506281703" },
+            { name = "Sleep",         id = "rbxassetid://3576968502" },
+            { name = "Laugh",         id = "rbxassetid://3337294591" },
+            { name = "Cheer",         id = "rbxassetid://507770677"  },
+            { name = "Wave",          id = "rbxassetid://507770239"  },
+            { name = "Dance",         id = "rbxassetid://507771019"  },
+            { name = "Zombie Walk",   id = "rbxassetid://616163682"  },
+            { name = "Robot",         id = "rbxassetid://616157476"  },
+            { name = "Ninja Run",     id = "rbxassetid://616121105"  },
+            { name = "Superhero Fly", id = "rbxassetid://616072311"  },
+            { name = "Swim",          id = "rbxassetid://507784897"  },
+        }
+
+        local animSpeedMult = 1.0
+        CreateSlider(animSec, "Velocidad Animacion", 1, 30, 10, function(v)
+            animSpeedMult = v / 10
+            if _animCurrentTrack and _animCurrentTrack.IsPlaying then
+                pcall(function() _animCurrentTrack:AdjustSpeed(animSpeedMult) end)
+            end
+        end)
+
+        CreateButton(animSec, "Detener Animacion", function()
+            _animStopAll()
+            CreateCustomNotification("ANIM", "Animacion detenida", 2)
+        end)
+
+        for _, anim in ipairs(ANIMS) do
+            local capturedId   = anim.id
+            local capturedName = anim.name
+            local toggleRef = {}
+            local function setOnFn(v) if toggleRef.setOn then pcall(toggleRef.setOn, v) end end
+            _animTogglesGlobal[capturedName] = { setOn = setOnFn }
+
+            CreateAuroraToggle(animSec, capturedName, function(on)
+                if on then
+                    _animStopAll()
+                    task.spawn(function()
+                        local char  = LocalPlayer.Character
+                        local hum   = char and char:FindFirstChildOfClass("Humanoid")
+                        local animr = hum and hum:FindFirstChildOfClass("Animator")
+                        if not animr then
+                            CreateCustomNotification("ANIM", "Animator no encontrado", 2)
+                            return
+                        end
+                        local a = Instance.new("Animation")
+                        a.AnimationId = capturedId
+                        local ok, track = pcall(function() return animr:LoadAnimation(a) end)
+                        if ok and track then
+                            track.Priority = Enum.AnimationPriority.Action4
+                            track:AdjustSpeed(animSpeedMult)
+                            track:Play()
+                            _animCurrentTrack = track
+                            track.Stopped:Connect(function()
+                                if _animCurrentTrack == track then _animCurrentTrack = nil end
+                            end)
+                            CreateCustomNotification("ANIM", capturedName .. " ON", 2)
+                        else
+                            CreateCustomNotification("ANIM", "Error al cargar: " .. capturedName, 2)
+                        end
+                    end)
+                else
+                    _animStopAll()
+                    CreateCustomNotification("ANIM", capturedName .. " OFF", 2)
+                end
+            end, false)
+        end
+    end
+
+    -- ================================================================
+    -- BACKGROUNDS SELECTOR (Use Tab)
+    -- ================================================================
+    do
+        _G._hubBackgrounds = _G._hubBackgrounds or { current = 0 }
+
+        local _BG_LIST = {
+            {
+                name    = "Sunset",
+                imageId = "rbxassetid://114998696598741",
+                overlay = "rbxassetid://129978941552367",
+            },
+            {
+                name    = "Samurai",
+                imageId = "rbxassetid://112744655854803",
+                overlay = nil,
+            },
+            {
+                name    = "Zerqon",
+                imageId = "rbxassetid://71615109373748",
+                overlay = nil,
+            },
+        }
+
+        local function _removeBgImages()
+            pcall(function()
+                if mainFrame then
+                    for _, c in ipairs(mainFrame:GetChildren()) do
+                        if c.Name == "HubBackground" or c.Name == "HubBackgroundOverlay" then
+                            c:Destroy()
+                        end
+                    end
+                end
+            end)
+        end
+
+        local function _applyBackground(idx)
+            _G._hubBackgrounds.current = idx
+            _removeBgImages()
+            local bg = _BG_LIST[idx]
+            if not bg then return end
+            pcall(function()
+                local img = Instance.new("ImageLabel", mainFrame)
+                img.Name = "HubBackground"
+                img.Size = UDim2.new(1, 0, 1, 0)
+                img.Position = UDim2.new(0, 0, 0, 0)
+                img.BackgroundTransparency = 1
+                img.Image = bg.imageId
+                img.ScaleType = Enum.ScaleType.Crop
+                img.ImageTransparency = 0.25
+                img.ZIndex = 1
+                if bg.overlay then
+                    local ov = Instance.new("ImageLabel", mainFrame)
+                    ov.Name = "HubBackgroundOverlay"
+                    ov.Size = UDim2.new(1, 0, 1, 0)
+                    ov.Position = UDim2.new(0, 0, 0, 0)
+                    ov.BackgroundTransparency = 1
+                    ov.Image = bg.overlay
+                    ov.ScaleType = Enum.ScaleType.Crop
+                    ov.ImageTransparency = 0.35
+                    ov.ZIndex = 2
+                end
+            end)
+            CreateCustomNotification("BACKGROUNDS", "Background: " .. bg.name, 2)
+        end
+
+        local bgSec = CreateBorderedSectionGlobal(rightColumn, " \xf0\x9f\x96\xbc  BACKGROUNDS")
+
+        local cardWrap = Instance.new("Frame", bgSec)
+        cardWrap.Size = UDim2.new(1, -8, 0, 88)
+        cardWrap.BackgroundColor3 = Color3.fromRGB(10, 18, 35)
+        cardWrap.BackgroundTransparency = 0.5
+        cardWrap.BorderSizePixel = 0
+        cardWrap.LayoutOrder = 1
+        Instance.new("UICorner", cardWrap).CornerRadius = UDim.new(0, 8)
+        local cwStroke = Instance.new("UIStroke", cardWrap)
+        cwStroke.Color = Color3.fromRGB(0, 140, 220)
+        cwStroke.Thickness = 1.2
+        cwStroke.Transparency = 0.4
+
+        local cardList = Instance.new("UIListLayout", cardWrap)
+        cardList.FillDirection = Enum.FillDirection.Horizontal
+        cardList.Padding = UDim.new(0, 6)
+        cardList.VerticalAlignment = Enum.VerticalAlignment.Center
+        cardList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        local cwPad = Instance.new("UIPadding", cardWrap)
+        cwPad.PaddingLeft = UDim.new(0, 6)
+        cwPad.PaddingRight = UDim.new(0, 6)
+
+        local _bgRefs = {}
+
+        local function _refreshCards()
+            for _, ref in ipairs(_bgRefs) do
+                local on = (ref.idx == _G._hubBackgrounds.current)
+                ref.badge.Visible = on
+                ref.card.BackgroundTransparency = on and 0.1 or 0.65
+                ref.stroke.Transparency = on and 0 or 0.6
+            end
+        end
+
+        for i, bg in ipairs(_BG_LIST) do
+            local card = Instance.new("TextButton", cardWrap)
+            card.Size = UDim2.new(0, 70, 0, 76)
+            card.BackgroundColor3 = Color3.fromRGB(15, 35, 70)
+            card.BackgroundTransparency = 0.65
+            card.BorderSizePixel = 0
+            card.Text = ""
+            card.AutoButtonColor = false
+            card.ZIndex = 13
+            Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+
+            local cStroke = Instance.new("UIStroke", card)
+            cStroke.Color = Color3.fromRGB(0, 180, 255)
+            cStroke.Thickness = 1.8
+            cStroke.Transparency = 0.6
+            cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+            local prev = Instance.new("ImageLabel", card)
+            prev.Size = UDim2.new(1, -4, 0, 48)
+            prev.Position = UDim2.new(0, 2, 0, 2)
+            prev.BackgroundColor3 = Color3.fromRGB(5, 5, 15)
+            prev.Image = bg.imageId
+            prev.ScaleType = Enum.ScaleType.Crop
+            prev.ZIndex = 14
+            Instance.new("UICorner", prev).CornerRadius = UDim.new(0, 6)
+
+            local badge = Instance.new("Frame", card)
+            badge.Size = UDim2.new(1, 0, 0, 14)
+            badge.Position = UDim2.new(0, 0, 0, 0)
+            badge.BackgroundColor3 = Color3.fromRGB(0, 160, 255)
+            badge.BackgroundTransparency = 0.1
+            badge.BorderSizePixel = 0
+            badge.ZIndex = 15
+            badge.Visible = (i == _G._hubBackgrounds.current)
+            Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 6)
+            local bl = Instance.new("TextLabel", badge)
+            bl.Size = UDim2.new(1, 0, 1, 0)
+            bl.BackgroundTransparency = 1
+            bl.Text = "\xe2\x9c\x93 ON"
+            bl.TextColor3 = Color3.fromRGB(255, 255, 255)
+            bl.Font = Enum.Font.GothamBold
+            bl.TextSize = 7
+            bl.ZIndex = 16
+
+            local nl = Instance.new("TextLabel", card)
+            nl.Size = UDim2.new(1, -4, 0, 20)
+            nl.Position = UDim2.new(0, 2, 0, 54)
+            nl.BackgroundTransparency = 1
+            nl.Text = bg.name
+            nl.TextColor3 = Color3.fromRGB(220, 235, 255)
+            nl.Font = Enum.Font.GothamBold
+            nl.TextSize = 9
+            nl.TextWrapped = true
+            nl.ZIndex = 14
+
+            table.insert(_bgRefs, { card=card, stroke=cStroke, badge=badge, idx=i })
+
+            local _ci = i
+            card.Activated:Connect(function()
+                _applyBackground(_ci)
+                _refreshCards()
+            end)
+        end
+
+        local rmBtn = Instance.new("TextButton", bgSec)
+        rmBtn.Size = UDim2.new(1, -8, 0, 26)
+        rmBtn.BackgroundColor3 = Color3.fromRGB(50, 15, 15)
+        rmBtn.BackgroundTransparency = 0.3
+        rmBtn.BorderSizePixel = 0
+        rmBtn.Text = "\xe2\x9c\x95  Remove Background"
+        rmBtn.TextColor3 = Color3.fromRGB(255, 120, 120)
+        rmBtn.Font = Enum.Font.GothamSemibold
+        rmBtn.TextSize = 11
+        rmBtn.AutoButtonColor = false
+        rmBtn.ZIndex = 13
+        rmBtn.LayoutOrder = 2
+        Instance.new("UICorner", rmBtn).CornerRadius = UDim.new(0, 7)
+        local rmS = Instance.new("UIStroke", rmBtn)
+        rmS.Color = Color3.fromRGB(180, 50, 50)
+        rmS.Thickness = 1
+        rmS.Transparency = 0.4
+        rmBtn.Activated:Connect(function()
+            _G._hubBackgrounds.current = 0
+            _removeBgImages()
+            _refreshCards()
+            CreateCustomNotification("BACKGROUNDS", "Background removed", 1.5)
+        end)
+    end
+
+end -- cierra CreateUseTab
+
 _animCurrentTrack = nil
 _animTogglesGlobal = {}
 function _animStopGlobal()
     if _animCurrentTrack then
         pcall(function()
-            if _animCurrentTrack.IsPlaying then
-                _animCurrentTrack:Stop()
-            end
+            if _animCurrentTrack.IsPlaying then _animCurrentTrack:Stop() end
         end)
         _animCurrentTrack = nil
     end
-    for k, t in pairs(_animTogglesGlobal) do
-        if t.setOn then
-            pcall(function() t.setOn(false) end)
-        end
+    for _, t in pairs(_animTogglesGlobal) do
+        if t.setOn then pcall(function() t.setOn(false) end) end
     end
 end
 
-
-
--- ==================================================================
--- ITEMS FAKE TAB -- Skins visuales para Knife y Gun
--- ==================================================================
 _ItemsFakeState = _G._ItemsFakeState or {
-    activeKnifeSkin = nil,    -- nombre del skin de knife activo
-    activeGunSkin   = nil,    -- nombre del skin de gun activo
-    fakeKnife       = nil,    -- referencia al fake knife en backpack
-    fakeGun         = nil,    -- referencia al fake gun en backpack
+    activeKnifeSkin = nil,
+    activeGunSkin   = nil,
+    fakeKnife       = nil,
+    fakeGun         = nil,
 }
 _G._ItemsFakeState = _ItemsFakeState
-
--- -- Datos de skins ------------------------------------------------
-_KNIFE_SKINS = {
-    {
-        name    = "Turkey",
-        meshId  = "rbxassetid://15320557481",
-        texId   = "rbxassetid://86999625612475",
-        scale   = Vector3.new(0.0560000017285347, 0.0560000017285347, 0.0560000017285347),
-        grip    = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0),
-    },
-    {
-        name    = "Harvester",
-        meshId  = "rbxassetid://7775027413",
-        texId   = "http://www.roblox.com/asset/?id=7775245551",
-        scale   = Vector3.new(0.05, 0.05, 0.05),
-        grip    = CFrame.new(0, -1, 0) * CFrame.Angles(math.rad(-90), 0, 0),
-    },
-}
-
-_GUN_SKINS = {
-    {
-        name    = "Snow Cannon",
-        meshId  = "rbxassetid://99836890880541",
-        texId   = "rbxassetid://122392330922281",
-        scale   = Vector3.new(0.04, 0.04, 0.04),
-        grip    = CFrame.new(0, -0.5, -0.5) * CFrame.Angles(math.rad(-90), 0, 0),
-        isScope = false,
-    },
-    {
-        name    = "Gingerscope",
-        meshId  = "http://www.roblox.com/asset/?id=15374602183",
-        texId   = "http://www.roblox.com/asset/?id=15409041564",
-        scale   = Vector3.new(0.08, 0.08, 0.08),
-        grip    = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0),
-        isScope = true,
-    },
-}
-
--- -- Helper: aplicar skin a knife ---------------------------------
--- FIX v2: el Handle del knife de MM2 es un MeshPart (MeshId read-only).
--- Solucion: crear un Part+SpecialMesh nuevo como Handle y reemplazar el MeshPart.
-function _applyKnifeSkin(skin)
-    -- Limpiar fake anterior
-    if _ItemsFakeState.fakeKnife then
-        pcall(function() _ItemsFakeState.fakeKnife:Destroy() end)
-        _ItemsFakeState.fakeKnife = nil
-    end
-
-    local char     = LocalPlayer.Character
-    local backpack = LocalPlayer.Backpack
-    local base = (char and char:FindFirstChild("Knife"))
-              or (backpack and backpack:FindFirstChild("Knife"))
-    if not base then
-        CreateCustomNotification("ITEMS FAKE", "Knife no encontrado", 3)
-        return
-    end
-
-    local fake = base:Clone()
-    fake.Name = "Knife"
-
-    -- Limpiar partes Dual/Left que no necesitamos
-    for _, child in pairs(fake:GetChildren()) do
-        if child.Name == "Dual"
-        or (child.Name:find("Left") and child:IsA("BasePart")) then
-            child:Destroy()
-        end
-    end
-
-    local handle = fake:FindFirstChild("Handle")
-    if handle then
-        -- Limpiar attachments Left
-        for _, att in pairs(handle:GetChildren()) do
-            if att.Name:find("Left") then att:Destroy() end
-        end
-
-        -- CASO 1: Handle ya tiene SpecialMesh -> editar directamente
-        local mesh = handle:FindFirstChildOfClass("SpecialMesh")
-        if mesh then
-            mesh.MeshId    = skin.meshId
-            mesh.TextureId = skin.texId
-            mesh.Scale     = skin.scale
-            mesh.Offset    = Vector3.zero
-
-        -- CASO 2: Handle es MeshPart (MeshId read-only) -> reemplazar por Part+SpecialMesh
-        elseif handle:IsA("MeshPart") then
-            -- Crear Part nueva con las mismas propiedades fisicas
-            local newHandle = Instance.new("Part")
-            newHandle.Name            = "Handle"
-            newHandle.Size            = handle.Size
-            newHandle.CFrame          = handle.CFrame
-            newHandle.Transparency    = handle.Transparency
-            newHandle.CanCollide      = false
-            newHandle.Massless        = true
-            newHandle.Anchored        = false
-            newHandle.CastShadow      = false
-            -- Copiar color base del original como fallback
-            newHandle.Color           = handle.Color
-            newHandle.Material        = Enum.Material.SmoothPlastic
-
-            -- Crear SpecialMesh con los datos del skin
-            local sm = Instance.new("SpecialMesh", newHandle)
-            sm.MeshType  = Enum.MeshType.FileMesh
-            sm.MeshId    = skin.meshId
-            sm.TextureId = skin.texId
-            sm.Scale     = skin.scale
-            sm.Offset    = Vector3.zero
-
-            -- Copiar Attachments del handle original al nuevo
-            for _, att in pairs(handle:GetChildren()) do
-                if att:IsA("Attachment") or att:IsA("Motor6D") then
-                    local ac = att:Clone()
-                    ac.Parent = newHandle
-                end
-            end
-
-            -- Reemplazar handle en el fake
-            handle:Destroy()
-            newHandle.Parent = fake
-        end
-    end
-
-    -- Aplicar grip del skin
-    fake.Grip = skin.grip
-
-    -- Detectar si estaba equipado
-    local wasEquipped = base.Parent == char
-    local humK = char and char:FindFirstChildOfClass("Humanoid")
-    if wasEquipped and humK then
-        pcall(function() humK:UnequipTools() end)
-    end
-    pcall(function() base:Destroy() end)
-
-    fake.Parent = backpack
-    if wasEquipped and humK then
-        _dl(0.05, function()
-            pcall(function() humK:EquipTool(fake) end)
-        end)
-    end
-
-    _ItemsFakeState.fakeKnife       = fake
-    _ItemsFakeState.activeKnifeSkin = skin.name
-    CreateCustomNotification("ITEMS FAKE", "Knife skin: " .. skin.name, 2)
-end
-
--- -- Helper: aplicar skin a gun ------------------------------------
-function _applyGunSkin(skin)
-    if _ItemsFakeState.fakeGun then
-        pcall(function() _ItemsFakeState.fakeGun:Destroy() end)
-        _ItemsFakeState.fakeGun = nil
-    end
-    local char     = LocalPlayer.Character
-    local backpack = LocalPlayer.Backpack
-    local base = (char and _findGunIn(char))
-              or _findGunIn(backpack)
-    if not base then
- CreateCustomNotification("ITEMS FAKE", " Gun no encontrada en mano o mochila", 3)
-        return
-    end
-    local fake = base:Clone()
-    -- FIX: mismo nombre que el original -> reemplaza sin duplicar
-    fake.Name = "Gun"
-    -- Limpiar Dual
-    for _, child in pairs(fake:GetChildren()) do
-        if child.Name == "Dual" or (child:IsA("BasePart") and child.Name ~= "Handle") then
-            child:Destroy()
-        end
-    end
-    local handle = fake:FindFirstChild("Handle")
-    if handle then
-        for _, att in pairs(handle:GetChildren()) do
-            if att.Name:find("Left") then att:Destroy() end
-        end
-        local mesh = handle:FindFirstChildOfClass("SpecialMesh")
-        if mesh then
-            mesh.MeshId    = skin.meshId
-            if skin.texId and skin.texId ~= "" then
-                mesh.TextureId = skin.texId
-            end
-            mesh.Scale = skin.scale
-        end
-    end
-    fake.Grip = skin.grip
-    -- FIX: destruir el original antes de poner el fake (evita el tool duplicado)
-    local wasGunEquipped = base.Parent == char
-    local humG = char and char:FindFirstChildOfClass("Humanoid")
-    if wasGunEquipped and humG then pcall(function() humG:UnequipTools() end) end
-    pcall(function() base:Destroy() end)
-    fake.Parent = backpack
-    if wasGunEquipped and humG then
-        _dl(0.05, function() pcall(function() humG:EquipTool(fake) end) end)
-    end
-    _ItemsFakeState.fakeGun    = fake
-    _ItemsFakeState.activeGunSkin = skin.name
-
-    -- == GINGERSCOPE SOUND HOOK ==
-    -- Si la skin activa es Gingerscope, reemplaza el sonido de disparo/reload
-    -- del Handle por rbxassetid://4753414199 cada vez que se reproduzca.
-    if _ItemsFakeState._gingerSoundConns then
-        for _, c in ipairs(_ItemsFakeState._gingerSoundConns) do
-            pcall(function() c:Disconnect() end)
-        end
-        _ItemsFakeState._gingerSoundConns = nil
-    end
-    if skin.name == "Gingerscope" then
-        local GINGER_SND_ID = "rbxassetid://10209803"
-        local conns = {}
-        local function _hookHandle(handle)
-            if not handle then return end
-            -- Hookear sonidos ya existentes en el handle
-            for _, s in ipairs(handle:GetDescendants()) do
-                if s:IsA("Sound") then
-                    local c = s.Played:Connect(function()
-                        pcall(function() s.SoundId = GINGER_SND_ID end)
-                    end)
-                    table.insert(conns, c)
-                end
-            end
-            -- Hookear sonidos que se agreguen despues (ej. instanciados por GunClient)
-            local ca = handle.DescendantAdded:Connect(function(obj)
-                if obj:IsA("Sound") then
-                    task.defer(function()
-                        if obj and obj.Parent then
-                            local c2 = obj.Played:Connect(function()
-                                pcall(function() obj.SoundId = GINGER_SND_ID end)
-                            end)
-                            table.insert(conns, c2)
-                        end
-                    end)
-                end
-            end)
-            table.insert(conns, ca)
-        end
-        local fakeHandle = fake:FindFirstChild("Handle", true)
-        _hookHandle(fakeHandle)
-        -- Tambien monitorear si el fake se re-equipa y el handle cambia
-        local cchar = fake.AncestryChanged:Connect(function()
-            task.defer(function()
-                local h = fake:FindFirstChild("Handle", true)
-                if h then _hookHandle(h) end
-            end)
-        end)
-        table.insert(conns, cchar)
-        _ItemsFakeState._gingerSoundConns = conns
-    end
-    -- == FIN GINGERSCOPE SOUND HOOK ==
-
-    local scopeNote = skin.isScope and " (Scope -- disparo original)" or " (Disparo normal)"
- CreateCustomNotification("ITEMS FAKE", " Gun skin: " .. skin.name .. scopeNote, 2)
-end
-
-
 
 end -- cierra abrirHub
 
