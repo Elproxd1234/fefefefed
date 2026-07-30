@@ -27549,15 +27549,25 @@ function CreateWorldUI_Emotes()
         local _hbEmote = 0
         EmoteState.moveConn = RunService.Heartbeat:Connect(function()
             _hbEmote = _hbEmote + 1; if _hbEmote < 3 then return end; _hbEmote = 0
-            local hrp2 = char:FindFirstChild("HumanoidRootPart")
-            if hrp2 then
-                local vel = hrp2.AssemblyLinearVelocity
-                if vel and (vel.X*vel.X + vel.Z*vel.Z) > 2.25 then
-                    StopEmote()
-                end
+            local c3 = LocalPlayer.Character
+            if not c3 then StopEmote(); return end
+            local hrp2 = c3:FindFirstChild("HumanoidRootPart")
+            local hum3 = c3:FindFirstChildOfClass("Humanoid")
+            if not hrp2 or not hum3 then StopEmote(); return end
+            -- Parar si camina (velocidad horizontal > umbral)
+            local vel = hrp2.AssemblyLinearVelocity
+            if vel and (vel.X*vel.X + vel.Z*vel.Z) > 1.5 then
+                StopEmote(); return
+            end
+            -- Parar si el humanoid esta moviendo (MoveDirection activo)
+            if hum3.MoveDirection.Magnitude > 0.05 then
+                StopEmote(); return
+            end
+            -- Parar si esta en el aire (salto o caida)
+            if hum3.FloorMaterial == Enum.Material.Air then
+                StopEmote(); return
             end
         end)
-
 
  CreateCustomNotification("EMOTE", " " .. emoteName, 2)
     end
@@ -33977,6 +33987,17 @@ function StealGunLoop()
 
                         local newSheriff = _roleCache.sheriff
 
+                        -- Prioridad 2: hero (quien recogió la gun del sheriff muerto)
+                        -- FIX: cuando el sheriff muere y alguien la levanta se vuelve Hero,
+                        -- no un nuevo Sheriff -> buscar en _roleCache.hero antes del scan visual
+                        if (not newSheriff or newSheriff.UserId == deadUserId) and _roleCache.hero then
+                            local hHum = _roleCache.hero.Character and _roleCache.hero.Character:FindFirstChildOfClass("Humanoid")
+                            if hHum and hHum.Health > 0 and _roleCache.hero.UserId ~= deadUserId then
+                                newSheriff = _roleCache.hero
+                                _roleCache.sheriff = _roleCache.hero  -- tratar el hero como nuevo sheriff
+                            end
+                        end
+
                         -- Fallback visual: buscar manualmente quien tiene la gun en mano
                         if (not newSheriff or newSheriff.UserId == deadUserId) and _findGunIn then
                             for _, p in ipairs(Players:GetPlayers()) do
@@ -36166,6 +36187,9 @@ function CreateExclusiveTab()
             _G._hubSettings.fontMode = modeIdx
             local fd = _FONTS[modeIdx]
             if not fd then return end
+            -- Guardar la fuente activa globalmente para tabs recién cargados
+            _G._hubActiveFontFace = fd.fontFace
+            _G._hubActiveFontSize = fd.textSize
             -- Aplicar a todos los TabLabel de la sidebar
             pcall(function()
                 if not tabDockList then return end
@@ -36175,6 +36199,33 @@ function CreateExclusiveTab()
                         if lbl then
                             lbl.FontFace = fd.fontFace
                             lbl.TextSize = fd.textSize
+                        end
+                    end
+                end
+            end)
+            -- Aplicar a TODOS los TextLabel, TextButton y TextBox del hub completo
+            -- incluyendo tabs cacheados que aún no están visibles
+            local function _applyFontToFrame(frame)
+                if not frame then return end
+                for _, obj in ipairs(frame:GetDescendants()) do
+                    if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+                        pcall(function()
+                            obj.FontFace = fd.fontFace
+                            -- FIX: NO reducir TextSize en modo Arcade para que Settings
+                            -- y otros elementos no se achiquen. Solo cambia la fuente visual.
+                        end)
+                    end
+                end
+            end
+            pcall(function()
+                -- Aplicar al mainFrame completo (incluye tabs ya visibles)
+                _applyFontToFrame(mainFrame)
+                -- Aplicar también a cada tab cacheado por separado (aunque ya estén en mainFrame,
+                -- esto garantiza que tabs cargados luego también reciban la fuente)
+                if _G._tabCache then
+                    for _, tabFrame in pairs(_G._tabCache) do
+                        if tabFrame and tabFrame.Parent then
+                            _applyFontToFrame(tabFrame)
                         end
                     end
                 end
@@ -50416,6 +50467,46 @@ particles = {}
                and mPos.Y >= hPos.Y and mPos.Y <= hPos.Y + hSiz.Y
         end
 
+        -- BORDER_DRAG_SIZE: franja en px en cada borde del hub que activa el drag
+        local BORDER_DRAG_SIZE = 14
+
+        local function _mouseOverBorder(p2d)
+            local fPos = mainFrame.AbsolutePosition
+            local fSiz = mainFrame.AbsoluteSize
+            local inX  = p2d.X >= fPos.X and p2d.X <= fPos.X + fSiz.X
+            local inY  = p2d.Y >= fPos.Y and p2d.Y <= fPos.Y + fSiz.Y
+            if not (inX and inY) then return false end
+            local onLeft   = p2d.X <= fPos.X + BORDER_DRAG_SIZE
+            local onRight  = p2d.X >= fPos.X + fSiz.X - BORDER_DRAG_SIZE
+            local onTop    = p2d.Y <= fPos.Y + BORDER_DRAG_SIZE
+            local onBottom = p2d.Y >= fPos.Y + fSiz.Y - BORDER_DRAG_SIZE
+            return onLeft or onRight or onTop or onBottom
+        end
+
+        local function _activateDragEffect()
+            local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
+            if _hubCorner then
+                TweenService:Create(_hubCorner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 28)}):Play()
+            end
+            TweenService:Create(glowBorder, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Thickness    = 6,
+                Transparency = 0.0,
+                Color        = Color3.fromRGB(0, 191, 255),
+            }):Play()
+        end
+
+        local function _deactivateDragEffect()
+            local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
+            if _hubCorner then
+                TweenService:Create(_hubCorner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 14)}):Play()
+            end
+            TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Thickness    = 1.6,
+                Transparency = 0.6,
+                Color        = Color3.fromRGB(220, 220, 220),
+            }):Play()
+        end
+
         -- Usar _safeConnect para que el drag NO se destruya al cambiar de tab
         _safeConnect(UserInputService.InputBegan, function(input)
             if input.UserInputType ~= Enum.UserInputType.MouseButton1
@@ -50423,25 +50514,21 @@ particles = {}
             -- FIX: respetar la opcion "Allow Hub Drag" de Settings
             if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
 
-            -- Solo arrastrar si el input cae dentro del header (mouse o touch)
             local _inputPos2D = Vector2.new(input.Position.X, input.Position.Y)
-            if not _mouseOverHeader(_inputPos2D) then return end
+            local _onHeader = _mouseOverHeader(_inputPos2D)
+            local _onBorder = _mouseOverBorder(_inputPos2D)
+
+            -- Solo arrastrar si el input cae dentro del header O en los bordes del frame
+            if not _onHeader and not _onBorder then return end
+
             -- Verificar que el punto este dentro del mainFrame
             local fPos = mainFrame.AbsolutePosition
             local fSiz = mainFrame.AbsoluteSize
             if _inputPos2D.X < fPos.X or _inputPos2D.X > fPos.X + fSiz.X then return end
             if _inputPos2D.Y < fPos.Y or _inputPos2D.Y > fPos.Y + fSiz.Y then return end
 
-            -- Efecto: esquinas se ensanchan al sostener click
-            local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
-            if _hubCorner then
-                TweenService:Create(_hubCorner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 28)}):Play()
-            end
-            TweenService:Create(glowBorder, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Thickness    = 3.5,
-                Transparency = 0.1,
-                Color        = Color3.fromRGB(220, 220, 220),
-            }):Play()
+            -- Efecto: bordes se agrandan visualmente al sostener click en borde o header
+            _activateDragEffect()
 
             -- Usar AbsoluteSize real (no valores hardcodeados) para calcular offset
             local vp  = workspace.CurrentCamera.ViewportSize
@@ -50489,15 +50576,7 @@ particles = {}
             or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = false
                 -- Esquinas vuelven a normal al soltar
-                local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
-                if _hubCorner then
-                    TweenService:Create(_hubCorner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 14)}):Play()
-                end
-                TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                    Thickness    = 1.6,
-                    Transparency = 0.6,
-                    Color        = Color3.fromRGB(220, 220, 220),
-                }):Play()
+                _deactivateDragEffect()
             end
         end)
     end -- cierra do drag
@@ -50506,11 +50585,10 @@ particles = {}
         header.Active = true
         -- Expandir borde al hacer hover (senal de que se puede mover)
         TweenService:Create(glowBorder, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Thickness    = 3.5,
-            Transparency = 0.15,
-            Color        = Color3.fromRGB(220, 220, 220),
+            Thickness    = 5,
+            Transparency = 0.05,
+            Color        = Color3.fromRGB(0, 191, 255),
         }):Play()
-        -- Glow exterior en mainFrame ELIMINADO (causaba salto al hacer click)
     end)
 
     header.MouseLeave:Connect(function()
@@ -50519,11 +50597,7 @@ particles = {}
         end
         -- Volver al borde normal al salir (solo si no esta arrastrando)
         if not dragging then
-            TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Thickness    = 1.6,
-                Transparency = 0.6,
-                Color        = Color3.fromRGB(220, 220, 220),
-            }):Play()
+            _deactivateDragEffect()
         end
     end)
 
@@ -50531,13 +50605,7 @@ particles = {}
     local _origInputEnded = UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
             task.defer(function()
-                -- Solo si el mouse ya salio del header
-                TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                    Thickness    = 1.6,
-                    Transparency = 0.6,
-                    Color        = Color3.fromRGB(220, 220, 220),
-                }):Play()
-                -- resize mainFrame al soltar drag ELIMINADO
+                _deactivateDragEffect()
             end)
         end
     end)
@@ -50785,6 +50853,20 @@ particles = {}
         -- Liberar mutex y disparar el callback
         _G._tabBuilding[idx] = nil
         _buildMutex          = false
+        -- FIX FONT: aplicar la fuente activa al tab recién construido
+        -- (si el usuario ya había seleccionado Arcade antes de abrir este tab)
+        task.defer(function()
+            if _G._hubActiveFontFace and tabFrame and tabFrame.Parent then
+                for _, obj in ipairs(tabFrame:GetDescendants()) do
+                    if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+                        pcall(function()
+                            obj.FontFace = _G._hubActiveFontFace
+                            -- FIX: NO reducir TextSize en modo Arcade
+                        end)
+                    end
+                end
+            end
+        end)
         if _onDone then pcall(_onDone) end
         -- Procesar siguiente elemento de la cola
         if #_buildQueue > 0 then
