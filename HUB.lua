@@ -11141,7 +11141,12 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
         sliderThumb.Position = UDim2.new(ratio, 0, 0.5, 0)
         sliderFill.Size      = UDim2.new(ratio, 0, 1, 0)
         valueLabel.Text      = string.format("%.2f", v)
-        if callback then callback(v) end
+        if callback then
+            local _origNotif = CreateCustomNotification
+            CreateCustomNotification = function() end
+            pcall(callback, v)
+            CreateCustomNotification = _origNotif
+        end
     end
 
     applyValue(_initVal)
@@ -13044,10 +13049,15 @@ function CreateInfoPanel()
         MainSystem.state.infoGui = InfoPanelSystem.gui
     end
 
+    -- Ajustar tamaño segun dispositivo
+    local _isMobilePanel = (pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled)
+    local _panelW    = _isMobilePanel and 220 or 380
+    local _panelOff  = _isMobilePanel and (_panelW + 10) or 400
+
     local mainPanel = Instance.new("Frame", InfoPanelSystem.gui)
     mainPanel.Name = "MainPanel"
-    mainPanel.Size = UDim2.new(0, 380, 0, 50)
-    mainPanel.Position = UDim2.new(1, -400, 0, 20)
+    mainPanel.Size = UDim2.new(0, _panelW, 0, 50)
+    mainPanel.Position = UDim2.new(1, -_panelOff, 0, 20)
     mainPanel.BackgroundColor3 = ThemeColors.Background
     mainPanel.BackgroundTransparency = 0.85
     mainPanel.BorderSizePixel = 0
@@ -13133,7 +13143,7 @@ function CreateInfoPanel()
     titleLbl.BackgroundTransparency = 1
  titleLbl.Text = convertirFuenteCursor(" INFORMATION PANEL")
     titleLbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-    titleLbl.TextSize = 14
+    titleLbl.TextSize = _isMobilePanel and 10 or 14
     titleLbl.TextColor3 = ThemeColors.TextPrimary
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -13153,13 +13163,18 @@ function CreateInfoPanel()
     scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
     scrollLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
+    local _lblH    = _isMobilePanel and 14 or 18
+    local _lblTxt  = _isMobilePanel and  9 or 11
+    local _sepH    = _isMobilePanel and 15 or 20
+    local _sepTxt  = _isMobilePanel and 10 or 12
+
     function makeLabel(text, color)
         local lbl = Instance.new("TextLabel", scroll)
-        lbl.Size = UDim2.new(1, -4, 0, 18)
+        lbl.Size = UDim2.new(1, -4, 0, _lblH)
         lbl.BackgroundTransparency = 1
  lbl.Text = convertirFuenteCursor(text)
         lbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        lbl.TextSize = 11
+        lbl.TextSize = _lblTxt
         lbl.TextColor3 = color or ThemeColors.TextPrimary
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.TextWrapped = true
@@ -13168,11 +13183,11 @@ function CreateInfoPanel()
 
     function makeSep(text, color)
         local lbl = Instance.new("TextLabel", scroll)
-        lbl.Size = UDim2.new(1, -4, 0, 20)
+        lbl.Size = UDim2.new(1, -4, 0, _sepH)
         lbl.BackgroundTransparency = 1
  lbl.Text = convertirFuenteCursor(text)
         lbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        lbl.TextSize = 12
+        lbl.TextSize = _sepTxt
         lbl.TextColor3 = color or ThemeColors.TextPrimary
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         return lbl
@@ -13313,9 +13328,12 @@ function CreateInfoPanel()
                 return
             end
 
-            local totalH = math.clamp(lineCount * 20 + 55, 60, 540)
+            local _lineH  = _isMobilePanel and 15 or 20
+            local _headerH = _isMobilePanel and 40 or 55
+            local _maxH    = _isMobilePanel and 320 or 540
+            local totalH = math.clamp(lineCount * _lineH + _headerH, 60, _maxH)
             TweenService:Create(mainPanel, TweenInfo.new(0.25), {
-                Size = UDim2.new(0, 380, 0, totalH)
+                Size = UDim2.new(0, _panelW, 0, totalH)
             }):Play()
 
             task.wait(0.5)
@@ -13335,7 +13353,7 @@ function CreateMainUI_InfoPanel()
  CreateSection(leftColumn, "", "INFORMATION PANEL", ThemeColors.Aurora1)
 
     local function CreateInfoToggleBtn(parent, label, key, color)
-        CreateAuroraToggle(parent, label, function(on)
+        local _infoCb = function(on)
             Settings.infoPanel[key] = on
             if on then
                 if not InfoPanelSystem.gui or not InfoPanelSystem.gui.Parent then
@@ -13348,7 +13366,9 @@ function CreateMainUI_InfoPanel()
                 if not anyOn then DestroyInfoPanel() end
                 CreateCustomNotification(LocalPlayer.Name .. " Says:", label:gsub("[^\32-\127]", "") .. " -- panel hidden", 2)
             end
-        end, Settings.infoPanel[key] or false)
+        end
+        _infoCb._isInfoPanelCallback = true
+        CreateAuroraToggle(parent, label, _infoCb, Settings.infoPanel[key] or false)
     end
 
     CreateInfoToggleBtn(leftColumn, " Murderer Information","murdererInfo",    ThemeColors.Accent)
@@ -27094,7 +27114,18 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         pcall(_saveConfig)
 
         -- PASO 4: Ejecutar la accion real del toggle (callback del feature)
-        if callback then callback(estado) end
+        -- Suprimir notificaciones durante el callback, salvo que el callback
+        -- sea de tipo Info Panel (marcado con _isInfoPanelCallback = true)
+        if callback then
+            if callback._isInfoPanelCallback then
+                callback(estado)
+            else
+                local _origNotif = CreateCustomNotification
+                CreateCustomNotification = function() end
+                pcall(callback, estado)
+                CreateCustomNotification = _origNotif
+            end
+        end
 
         -- FIX: forzar tick inmediato del instanceLoop para que los visuals
         -- se apliquen o limpien en el proximo Heartbeat sin esperar el intervalo
@@ -51798,6 +51829,13 @@ particles = {}
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
                 if _savedBg > 0 and _G._restoreBackground then
+                    -- FIX COLORES: restaurar tema real del usuario ANTES de aplicar el fondo,
+                    -- para que _applyBackground lo capture como currentThemeName y lo guarde
+                    -- como tema previo correcto. Sin esto, guarda el tema del fondo como previo.
+                    if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
+                        pcall(ApplyTheme, _G._hubBgPrevTheme)
+                        _G._hubBgPrevTheme = nil  -- limpiar para que _applyBackground lo recapture
+                    end
                     pcall(_G._restoreBackground, _savedBg)
                 end
             end)
@@ -51837,6 +51875,11 @@ particles = {}
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
                 if _savedBg > 0 and _G._restoreBackground then
+                    -- FIX COLORES: restaurar tema real antes de aplicar el fondo
+                    if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
+                        pcall(ApplyTheme, _G._hubBgPrevTheme)
+                        _G._hubBgPrevTheme = nil
+                    end
                     pcall(_G._restoreBackground, _savedBg)
                 end
             end)
@@ -52117,6 +52160,11 @@ particles = {}
             task.delay(0.5, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
                 if _savedBg and _savedBg > 0 and _G._restoreBackground then
+                    -- FIX COLORES: restaurar tema real antes de aplicar el fondo
+                    if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
+                        pcall(ApplyTheme, _G._hubBgPrevTheme)
+                        _G._hubBgPrevTheme = nil
+                    end
                     pcall(_G._restoreBackground, _savedBg)
                 end
             end)
@@ -52177,6 +52225,11 @@ particles = {}
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
                 if _savedBg > 0 and _G._restoreBackground then
+                    -- FIX COLORES: restaurar tema real antes de aplicar el fondo
+                    if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
+                        pcall(ApplyTheme, _G._hubBgPrevTheme)
+                        _G._hubBgPrevTheme = nil
+                    end
                     pcall(_G._restoreBackground, _savedBg)
                 end
             end)
