@@ -302,6 +302,9 @@ end
 _G._hubReady = false
 -- FIX ANIMACION: si ya se construyo el hub una vez, no volver a mostrar animacion
 _G._hubAlreadyBuilt = _G._hubAlreadyBuilt or false
+-- AUTORESTORE: al inicio siempre es una ejecucion limpia del hub (no un rebuild de pestaña)
+-- _isTabRebuild se pone en true SOLO durante _reloadActiveTab() para evitar re-ejecutar callbacks
+_G._isTabRebuild = false
 
 -- ================================================================
 -- == PREMIUM GLOBAL DESBLOQUEADO — TODAS LAS FUNCIONES GRATIS ==
@@ -412,29 +415,53 @@ Players.PlayerRemoving:Connect(function() task.defer(_rebuildPlayerCache) end)
 -- AUTO-SAVE CONFIG -- persiste opciones entre ejecuciones del hub
 -- Usa writefile/readfile (Synapse/Wave/Krnl) con fallback seguro
 -- ==================================================================
-local _CONFIG_FILE = "rex_config.json"
+-- CONFIG POR JUGADOR: cada UserId tiene su propio archivo de configuracion
+-- Asi el hub recuerda los toggles de CADA jugador por separado
+local _CONFIG_FILE = "rex_config_" .. tostring(Players.LocalPlayer and Players.LocalPlayer.UserId or "unknown") .. ".json"
 local _configSaveThrottle = 0  -- throttle: no guardar mas de 1 vez por segundo
 
+-- COMPAT FILE I/O: soporta Synapse X, Wave, Krnl, Fluxus, Delta, Arceus X, Comet
+-- Intenta todos los metodos conocidos en orden de preferencia
 local function _hubWriteFile(path, data)
+    -- Synapse X v3 / Wave / Krnl / Delta / Comet
     if writefile then
-        pcall(writefile, path, data)
-    elseif syn and syn.write_file then
-        pcall(syn.write_file, path, data)
-    elseif saveFile then
+        local ok = pcall(writefile, path, data)
+        if ok then return end
+    end
+    -- Synapse X v2
+    if syn and syn.write_file then
+        local ok = pcall(syn.write_file, path, data)
+        if ok then return end
+    end
+    -- Fluxus
+    if fluxus and fluxus.write_file then
+        local ok = pcall(fluxus.write_file, path, data)
+        if ok then return end
+    end
+    -- Arceus X / generic fallback
+    if saveFile then
         pcall(saveFile, path, data)
     end
 end
 
 local function _hubReadFile(path)
     local ok, data
+    -- Synapse X v3 / Wave / Krnl / Delta / Comet
     if readfile then
         ok, data = pcall(readfile, path)
         if ok and type(data) == "string" and #data > 0 then return data end
     end
+    -- Synapse X v2
     if syn and syn.read_file then
         ok, data = pcall(syn.read_file, path)
         if ok and type(data) == "string" and #data > 0 then return data end
     end
+    -- Fluxus
+    if fluxus and fluxus.read_file then
+        ok, data = pcall(fluxus.read_file, path)
+        if ok and type(data) == "string" and #data > 0 then return data end
+    end
+    -- Arceus X / generic fallback
     if loadFile then
         ok, data = pcall(loadFile, path)
         if ok and type(data) == "string" and #data > 0 then return data end
@@ -442,72 +469,73 @@ local function _hubReadFile(path)
     return nil
 end
 
-local function _serializeConfig()
-    local parts = {"{"}
-    local first = true
-    for k, v in pairs(_G._toggleStates or {}) do
-        -- No guardar en disco toggles peligrosos/World que deben arrancar siempre en false
-        if not (_neverRestoreToggles and _neverRestoreToggles[k]) then
-            if not first then parts[#parts+1] = "," end
-            -- Escapar comillas en el key
-            local ks = tostring(k):gsub('"', '\"')
-            parts[#parts+1] = string.format('"%s":%s', ks, v and "true" or "false")
-            first = false
-        end
-    end
-    -- Guardar hubScale y hubOpacity de _hubSettings
-    if _G._hubSettings then
-        local hs = _G._hubSettings
-        if hs.hubScale and hs.hubScale ~= 100 then
-            if not first then parts[#parts+1] = "," end
-            parts[#parts+1] = string.format('"__hubScale":%d', math.floor(hs.hubScale))
-            first = false
-        end
-        if hs.hubOpacity and hs.hubOpacity ~= 15 then
-            if not first then parts[#parts+1] = "," end
-            parts[#parts+1] = string.format('"__hubOpacity":%d', math.floor(hs.hubOpacity))
-            first = false
-        end
-    end
-    parts[#parts+1] = "}"
-    return table.concat(parts)
+-- Verificar si el executor soporta escritura de archivos
+local function _hubCanSaveFiles()
+    return (writefile ~= nil)
+        or (syn ~= nil and syn.write_file ~= nil)
+        or (fluxus ~= nil and fluxus.write_file ~= nil)
+        or (saveFile ~= nil)
 end
 
-local function _deserializeConfig(json)
-    local result = {}
-    if not json or json == "" then return result end
-    -- Parser simple de JSON plano (solo booleans)
-    for k, v in json:gmatch('"([^"]+)":%s*(true|false)') do
-        result[k] = (v == "true")
-    end
-    -- Restaurar hubScale y hubOpacity guardados
-    for k, v in json:gmatch('"(__hub%a+)":(%d+)') do
-        result[k] = tonumber(v)
-    end
-    return result
-end
-
--- Flag de auto-save: true = guardar al cambiar toggles
-if _G._autoSaveEnabled == nil then _G._autoSaveEnabled = true end
+-- =====================================================================
+-- SISTEMA DE GUARDADO — método HttpService JSONEncode/Decode
+-- Simple y directo: JSONEncode/Decode nativo, sin parser manual.
+-- =====================================================================
+local HttpService = game:GetService("HttpService")
 
 local function _saveConfig()
     if not _G._autoSaveEnabled then return end
-    -- Throttle: no escribir mas de 1 vez por segundo, pero siempre guardar el ultimo cambio
-    if not _G._saveConfigPending then
-        _G._saveConfigPending = true
-        task.delay(1, function()
-            _G._saveConfigPending = false
-            if _G._autoSaveEnabled then
-                _hubWriteFile(_CONFIG_FILE, _serializeConfig())
-            end
-        end)
+    if not writefile then return end
+    local toSave = {}
+    for k, v in pairs(_G._toggleStates or {}) do
+        if not (_neverRestoreToggles and _neverRestoreToggles[k]) then
+            toSave[k] = v
+        end
+    end
+    if _G._hubSettings then
+        local hs = _G._hubSettings
+        if hs.hubScale   then toSave["__hubScale"]   = hs.hubScale   end
+        if hs.hubOpacity then toSave["__hubOpacity"] = hs.hubOpacity end
+    end
+    local ok, json = pcall(function() return HttpService:JSONEncode(toSave) end)
+    if ok and json then
+        pcall(writefile, _CONFIG_FILE, json)
     end
 end
 
 local function _flushConfig()
-    if not _G._autoSaveEnabled then return end
-    _hubWriteFile(_CONFIG_FILE, _serializeConfig())
+    _saveConfig()
 end
+
+local function _loadConfig()
+    if not (isfile and isfile(_CONFIG_FILE)) then return end
+    local ok, raw = pcall(readfile, _CONFIG_FILE)
+    if not ok or type(raw) ~= "string" or raw == "" then return end
+    local ok2, saved = pcall(function() return HttpService:JSONDecode(raw) end)
+    if not ok2 or type(saved) ~= "table" then return end
+    local _restoredActiveCount = 0
+    for k, v in pairs(saved) do
+        if k == "__hubScale" or k == "__hubOpacity" then
+            _G._hubSettings = _G._hubSettings or {}
+            if k == "__hubScale"   then _G._hubSettings.hubScale   = v end
+            if k == "__hubOpacity" then _G._hubSettings.hubOpacity = v end
+        elseif not (_neverRestoreToggles and _neverRestoreToggles[k]) then
+            _G._toggleStates[k] = v
+            if v == true then _restoredActiveCount = _restoredActiveCount + 1 end
+        end
+    end
+    -- Restaurar flag de auto-save y sincronizar estado del toggle en UI
+    if saved["Auto Save Config"] ~= nil then
+        _G._autoSaveEnabled = saved["Auto Save Config"]
+        _G._toggleStates["Auto Save Config"] = saved["Auto Save Config"]
+    end
+    _G._restoredActiveCount = _restoredActiveCount
+    _G._restoredForPlayer = Players.LocalPlayer and Players.LocalPlayer.Name or nil
+end
+
+-- Flag de auto-save (el toggle en Settings lo puede apagar)
+if _G._autoSaveEnabled == nil then _G._autoSaveEnabled = true end
+
 
 -- Toggles que NUNCA se guardan ni se restauran del disco
 local _neverRestoreToggles = {
@@ -629,34 +657,9 @@ local _neverRestoreToggles = {
     ["Show Bindable Button (Speed Glitch)"] = true,
 }
 
-local function _loadConfig()
-    local data = _hubReadFile(_CONFIG_FILE)
-    if not data then return end
-    local saved = _deserializeConfig(data)
-    for k, v in pairs(saved) do
-        if not _neverRestoreToggles[k] then
-            _G._toggleStates[k] = v
-        end
-    end
-    -- Restaurar flag de auto-save desde el JSON
-    if saved["Auto Save Config"] ~= nil then
-        _G._autoSaveEnabled = saved["Auto Save Config"]
-    end
-    -- Restaurar hubScale y hubOpacity en _hubSettings (pueden existir ya o no)
-    if saved["__hubScale"] then
-        _G._hubSettings = _G._hubSettings or {}
-        _G._hubSettings.hubScale = saved["__hubScale"]
-    end
-    if saved["__hubOpacity"] then
-        _G._hubSettings = _G._hubSettings or {}
-        _G._hubSettings.hubOpacity = saved["__hubOpacity"]
-    end
-end
-
 -- Cargar configuracion guardada ANTES de crear la UI
--- SIEMPRE crear tabla nueva (si re-ejecutamos el hub, el proxy viejo se descarta)
+-- SIEMPRE crear tabla nueva (si re-ejecutamos el hub, descartamos estado previo peligroso)
 local _freshStates = {}
--- Copiar estados previos que NO son peligrosos (para preservar toggles normales)
 if _G._toggleStates then
     for k, v in pairs(_G._toggleStates) do
         if not _neverRestoreToggles[k] then
@@ -667,53 +670,12 @@ end
 _G._toggleStates = _freshStates
 _loadConfig()
 
--- FIX: resetear estados de Dual al inicio para evitar que persistan entre ejecuciones del hub
-_G._dualGunEnabled   = false
-_G._dualKnifeEnabled = false
-_G._dualActiveGun    = nil
-_G._dualActiveKnife  = nil
 
--- Auto-guardar cada vez que cambia un toggle
--- Hookeamos _G._toggleStates con un proxy metatable
-local _rawToggleStates = _G._toggleStates
-
-local _toggleProxy = setmetatable({}, {
-    __index = function(_, k) return _rawToggleStates[k] end,
-    __newindex = function(_, k, v)
-        _rawToggleStates[k] = v
-        -- No guardar toggles peligrosos/World en disco
-        if not _neverRestoreToggles[k] then
-            -- FIX AUTO SAVE: "Auto Save Config" siempre se escribe en disco
-            -- sin importar el valor de _autoSaveEnabled, para que al re-ejecutar
-            -- el hub sepa que el toggle estaba ON y se reactive solo.
-            if k == "Auto Save Config" then
-                local prev = _G._autoSaveEnabled
-                _G._autoSaveEnabled = true
-                _hubWriteFile(_CONFIG_FILE, _serializeConfig())
-                _G._autoSaveEnabled = prev
-            else
-                _saveConfig()
-            end
-        end
-    end,
-    __pairs = function(_)
-        return pairs(_rawToggleStates)
-    end,
-    __len = function(_)
-        local n = 0
-        for _ in pairs(_rawToggleStates) do n = n + 1 end
-        return n
-    end,
-})
-_G._toggleStates = _toggleProxy
-
--- == FIX DEFINITIVO: forzar a false TODOS los toggles de _neverRestoreToggles
--- Esto cubre cualquier ruta por la que puedan haber llegado como true:
--- sesion anterior en _G._toggleStates, disco, proxy viejo, etc.
--- Se escribe en _rawToggleStates directamente para no triggerear _saveConfig.
+-- Forzar a false TODOS los toggles de _neverRestoreToggles
+-- (_saveConfig los excluye igual, así que escribir aquí no los persiste en disco)
 do
     for _nrtKey, _ in pairs(_neverRestoreToggles) do
-        _rawToggleStates[_nrtKey] = false
+        _G._toggleStates[_nrtKey] = false
     end
 end
 
@@ -769,9 +731,9 @@ do
         " Bindable Secure Auto (boton pantalla)", "Bindable Boton Booster",
         "Show Bindable Button (Speed Glitch)",
     }
-    -- Escribir directo en _rawToggleStates para NO triggerear _saveConfig
+    -- Forzar a false (todos están en _neverRestoreToggles, _saveConfig los excluye)
     for _, name in ipairs(_killTogglesToReset) do
-        _rawToggleStates[name] = false
+        _G._toggleStates[name] = false
     end
 end
 
@@ -826,7 +788,7 @@ local _LangStrings = {
     [" English"] = {
         boost = "BOOST", combat = "COMBAT", farm = "FARM", main = "MAIN",
         premium = "PREMIUM", settings = "SETTINGS", use = "USE",
-        visuals = "VISUALS", world = "WORLD",
+        visuals = "VISUALS", world = "WORLD", emotes = "EMOTES",
         fling = "FLING", hitbox_expander = "HITBOX EXPANDER",
         walkspeed = "WalkSpeed", jumppower = "JumpPower",
         movement = "MOVEMENT", protections = "PROTECTIONS",
@@ -857,7 +819,7 @@ local _LangStrings = {
     [" Espanol"] = {
         boost = "BOOST", combat = "COMBATE", farm = "GRANJA", main = "PRINCIPAL",
         premium = "PREMIUM", settings = "CONFIGURACION", use = "USO",
-        visuals = "VISUALES", world = "MUNDO",
+        visuals = "VISUALES", world = "MUNDO", emotes = "EMOTES",
         fling = "LANZAR", hitbox_expander = "EXPANDIR HITBOX",
         walkspeed = "Velocidad", jumppower = "Poder de Salto",
         movement = "MOVIMIENTO", protections = "PROTECCIONES",
@@ -1170,12 +1132,12 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
     local savedPT = _G._toggleStates[_ptKey]
     local isToggled = (savedPT ~= nil) and savedPT or (defaultState or false)
 
-    local C_STROKE_OFF  = ThemeColors.Secondary    -- violeta oscuro
-    local C_STROKE_ON   = ThemeColors.TextPrimary  -- violeta claro
-    local C_TRACK_OFF   = ThemeColors.Background     -- violeta profundo
-    local C_TRACK_ON    = ThemeColors.Primary    -- violeta principal
-    local C_TRACK_S_OFF = ThemeColors.Secondary    -- violeta oscuro
-    local C_TRACK_S_ON  = ThemeColors.TextPrimary  -- violeta claro
+    local C_STROKE_OFF  = Color3.fromRGB(0, 80, 160)
+    local C_STROKE_ON   = Color3.fromRGB(0, 191, 255)
+    local C_TRACK_OFF   = Color3.fromRGB(45, 45, 45)
+    local C_TRACK_ON    = Color3.fromRGB(0, 220, 0)
+    local C_TRACK_S_OFF = Color3.fromRGB(0, 80, 160)
+    local C_TRACK_S_ON  = Color3.fromRGB(0, 191, 255)
 
     -- ptStroke eliminado (sin rectangulo)
     local ptStroke = {Color = C_STROKE_OFF}  -- stub para que el resto del codigo no rompa
@@ -1206,9 +1168,9 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
         subLabel.TextTruncate = Enum.TextTruncate.AtEnd
     end
 
-    local TRACK_W, TRACK_H = 52, 26
-    local THUMB_D = 20
-    local THUMB_PAD = 3
+    local TRACK_W, TRACK_H = 130, 35
+    local THUMB_W, THUMB_H = 50, 27
+    local THUMB_PAD = 4
 
     local track = Instance.new("Frame", mainFrame)
     track.Size = UDim2.new(0, TRACK_W, 0, TRACK_H)
@@ -1222,20 +1184,20 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
 
     local trackStroke = Instance.new("UIStroke", track)
     trackStroke.Color = isToggled and C_TRACK_S_ON or C_TRACK_S_OFF
-    trackStroke.Thickness = 2.0
-    trackStroke.Transparency = 0.0
+    trackStroke.Thickness = 0
+    trackStroke.Transparency = 1
 
-    local POS_ON  = UDim2.new(1, -(THUMB_D + THUMB_PAD), 0.5, -THUMB_D/2)
-    local POS_OFF = UDim2.new(0, THUMB_PAD, 0.5, -THUMB_D/2)
+    local POS_ON  = UDim2.new(1, -(THUMB_W + THUMB_PAD), 0.5, -THUMB_H/2)
+    local POS_OFF = UDim2.new(0, THUMB_PAD, 0.5, -THUMB_H/2)
 
     local thumb = Instance.new("Frame", track)
-    thumb.Size = UDim2.new(0, THUMB_D, 0, THUMB_D)
+    thumb.Size = UDim2.new(0, THUMB_W, 0, THUMB_H)
     thumb.Position = isToggled and POS_ON or POS_OFF
-    thumb.BackgroundColor3 = ThemeColors.TextPrimary
-    thumb.BackgroundTransparency = 0.15
+    thumb.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    thumb.BackgroundTransparency = 0
     thumb.BorderSizePixel = 0
     thumb.ZIndex = 14
-    Instance.new("UICorner", thumb).CornerRadius = UDim.new(1, 0)
+    Instance.new("UICorner", thumb).CornerRadius = UDim.new(0, 6)
 
     local numLabel = Instance.new("TextLabel", track)
     numLabel.Size = UDim2.new(0.5, 0, 1, 0)
@@ -1264,18 +1226,15 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
             TweenService:Create(numLabel,    ti,  {Position        = isToggled and UDim2.new(0, THUMB_PAD, 0, 0) or UDim2.new(0.5, 0, 0, 0)}):Play()
             -- Animacion estrella: pulso de brillo al activar
             if isToggled then
-                local thumbColor = ThemeColors.TextPrimary
+                local thumbColor = Color3.fromRGB(120, 80, 200)
                 TweenService:Create(thumb, TweenInfo.new(0.10, Enum.EasingStyle.Quad), {BackgroundColor3 = thumbColor, BackgroundTransparency = 0}):Play()
                 task.delay(0.12, function()
-                    TweenService:Create(thumb, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(255,255,255), BackgroundTransparency = 0.10}):Play()
+                    TweenService:Create(thumb, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(0, 191, 255), BackgroundTransparency = 0}):Play()
                     -- pulso del stroke: brilla y vuelve
-                    TweenService:Create(trackStroke, TweenInfo.new(0.15), {Transparency = 0}):Play()
-                    task.delay(0.20, function()
-                        TweenService:Create(trackStroke, TweenInfo.new(0.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.2}):Play()
-                    end)
+                    -- trackStroke hidden (border removed)
                 end)
             else
-                TweenService:Create(thumb, TweenInfo.new(0.20), {BackgroundColor3 = ThemeColors.Secondary, BackgroundTransparency = 0.20}):Play()
+                TweenService:Create(thumb, TweenInfo.new(0.20), {BackgroundColor3 = Color3.fromRGB(80, 80, 80), BackgroundTransparency = 0}):Play()
             end
         else
             thumb.Position = isToggled and POS_ON or POS_OFF
@@ -1288,7 +1247,8 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
         titleLabel.Font = isToggled and Enum.Font.GothamBold or Enum.Font.GothamSemibold
     end
 
-    clickBtn.MouseButton1Click:Connect(function()
+    -- FIX MOBILE: Activated funciona en PC y touch; MouseButton1Click no detecta tap en celu
+    clickBtn.Activated:Connect(function()
         isToggled = not isToggled
         _G._toggleStates[_ptKey] = isToggled
         updateToggle(true)
@@ -3521,6 +3481,8 @@ _GUN_NAMES = {
     gun=true, gundrop=true, dropgun=true,
     SheriffGun=true, HeroGun=true, GunModel=true,
 }
+-- FIX: alias para setupGunPickup (DescendantAdded usa _gunDropNames)
+_gunDropNames = _GUN_NAMES
 
 -- -- HELPER: buscar gun por _GUN_NAMES o keyword en cualquier contenedor ------
 -- Reemplaza todos los FindFirstChild("Gun") que solo detectaban el nombre exacto
@@ -4161,7 +4123,7 @@ local Themes = {
     },
     ["Neon Purple"] = {
         Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon principal
-        Secondary       = Color3.fromRGB(100, 20, 160),   -- Morado oscuro
+        Secondary       = Color3.fromRGB(0, 160, 220),   -- Morado oscuro
         Accent          = Color3.fromRGB(135, 206, 250),  -- Lila claro
         Background      = Color3.fromRGB(30, 30, 30),       -- Negro violaceo
         BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado muy oscuro
@@ -4187,7 +4149,7 @@ local Themes = {
     },
     ["Purple Blue Glow"] = {
         Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon
-        Secondary       = Color3.fromRGB(100, 20, 160),   -- Morado oscuro
+        Secondary       = Color3.fromRGB(0, 160, 220),   -- Morado oscuro
         Accent          = Color3.fromRGB(135, 206, 250),  -- Lila neon
         Background      = Color3.fromRGB(30, 30, 30),         -- Negro azulado
         BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado oscuro
@@ -4226,7 +4188,7 @@ local Themes = {
     },
     ["Purple Blue Glow"] = {
         Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon
-        Secondary       = Color3.fromRGB(100, 20, 160),   -- Morado oscuro
+        Secondary       = Color3.fromRGB(0, 160, 220),   -- Morado oscuro
         Accent          = Color3.fromRGB(135, 206, 250),  -- Lila neon
         Background      = Color3.fromRGB(30, 30, 30),         -- Negro azulado
         BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado oscuro
@@ -4267,7 +4229,7 @@ local Themes = {
     },
     ["Tropical Neon"] = {
     Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon principal
-    Secondary       = Color3.fromRGB(100, 20, 160),   -- Morado oscuro (sliders fondo)
+    Secondary       = Color3.fromRGB(0, 160, 220),   -- Morado oscuro (sliders fondo)
     Accent          = Color3.fromRGB(135, 206, 250),  -- Lila (acentos)
     Background      = Color3.fromRGB(30, 30, 30),       -- Negro violaceo (fondo hub)
     BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado oscuro (paneles internos)
@@ -4279,17 +4241,17 @@ local Themes = {
     Aurora4         = Color3.fromRGB(80, 10, 130),    -- Morado profundo
 },
     ["Neon Green"] = {
-    Primary         = Color3.fromRGB(200, 200, 200),   -- celeste
-    Secondary       = Color3.fromRGB(70, 30, 130),    -- aurora azul-morado oscuro
+    Primary         = Color3.fromRGB(0, 191, 255),    -- celeste electrico
+    Secondary       = Color3.fromRGB(0, 80, 160),     -- azul oscuro
     Accent          = Color3.fromRGB(60, 190, 240),   -- celeste claro
-    Background      = Color3.fromRGB(30, 30, 30),       -- negro oscuro
-    BackgroundLight = Color3.fromRGB(12, 18, 35),     -- negro muy oscuro
-    TextPrimary     = Color3.fromRGB(220, 245, 255),  -- blanco celeste suave
-    TextSecondary   = Color3.fromRGB(200, 200, 200),   -- celeste
-    Aurora1         = Color3.fromRGB(200, 200, 200),   -- celeste brillante
-    Aurora2         = Color3.fromRGB(70, 30, 130),    -- azul-morado medio
-    Aurora3         = Color3.fromRGB(60, 190, 240),   -- celeste claro titulo
-    Aurora4         = Color3.fromRGB(40, 15, 90),     -- indigo profundo
+    Background      = Color3.fromRGB(20, 80, 120),      -- negro azulado profundo
+    BackgroundLight = Color3.fromRGB(30, 110, 155),     -- azul muy oscuro
+    TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
+    TextSecondary   = Color3.fromRGB(160, 220, 255),  -- celeste suave
+    Aurora1         = Color3.fromRGB(0, 191, 255),    -- celeste electrico
+    Aurora2         = Color3.fromRGB(0, 80, 160),     -- azul oscuro
+    Aurora3         = Color3.fromRGB(60, 190, 240),   -- celeste claro
+    Aurora4         = Color3.fromRGB(20, 80, 120),      -- negro azulado
 },
 }
 
@@ -4297,17 +4259,17 @@ local Themes = {
 currentThemeName = "Neon Green"
 
 local ThemeColors = {
-    Primary         = Color3.fromRGB(80, 80, 80),    -- violeta principal
-    Secondary       = Color3.fromRGB(50, 50, 50),     -- violeta oscuro
-    Accent          = Color3.fromRGB(80, 80, 80),    -- verde/turquesa (acento)
-    Background      = Color3.fromRGB(80, 80, 80),    -- verde/turquesa oscuro (fondo)
-    BackgroundLight = Color3.fromRGB(20, 140, 115),   -- verde/turquesa medio
+    Primary         = Color3.fromRGB(0, 191, 255),    -- celeste electrico
+    Secondary       = Color3.fromRGB(0, 80, 160),     -- azul oscuro
+    Accent          = Color3.fromRGB(60, 190, 240),   -- celeste claro
+    Background      = Color3.fromRGB(20, 80, 120),      -- negro azulado profundo
+    BackgroundLight = Color3.fromRGB(30, 110, 155),     -- azul muy oscuro
     TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
-    TextSecondary   = Color3.fromRGB(180, 180, 190),  -- gris suave
-    Aurora1         = Color3.fromRGB(80, 80, 80),    -- violeta principal
-    Aurora2         = Color3.fromRGB(50, 50, 50),     -- violeta oscuro
-    Aurora3         = Color3.fromRGB(80, 80, 80),    -- verde/turquesa
-    Aurora4         = Color3.fromRGB(80, 80, 80),    -- verde/turquesa oscuro
+    TextSecondary   = Color3.fromRGB(160, 220, 255),  -- celeste suave
+    Aurora1         = Color3.fromRGB(0, 191, 255),    -- celeste electrico
+    Aurora2         = Color3.fromRGB(0, 80, 160),     -- azul oscuro
+    Aurora3         = Color3.fromRGB(60, 190, 240),   -- celeste claro
+    Aurora4         = Color3.fromRGB(20, 80, 120),      -- negro azulado
 }
 
 ThemeObjects = {}
@@ -5874,7 +5836,8 @@ function _KnifeSA_setupKnife(knife)
     knife:SetAttribute("_SA_SetupId", _knifeSetupId)
     local mySetupId = _knifeSetupId
     local knifeNoCollideConn = RunService.Heartbeat:Connect(function()
-        -- Si hay un setup más nuevo, este loop es zombie → desconectar
+        -- Si hay un setup más nuevo o SA fue desactivado, este loop es zombie → parar
+        if not KnifeSAState.enabled then return end
         if knife:GetAttribute("_SA_SetupId") ~= mySetupId then return end
         _hbTknifeNC = _hbTknifeNC + 1; if _hbTknifeNC < 12 then return end; _hbTknifeNC = 0  -- OPT: throttle 200ms
         if not knife or not knife.Parent then return end
@@ -5891,6 +5854,7 @@ function _KnifeSA_setupKnife(knife)
         if gp or not equipped then return end
         if input.UserInputType == Enum.UserInputType.MouseButton2
             or input.UserInputType == Enum.UserInputType.Touch then
+            if not KnifeSAState.enabled then return end  -- FIX: salir si SA fue desactivado
             rmbThrowTime = os.clock()
             
             -- EJECUTAR THROW CON RMB
@@ -6181,15 +6145,23 @@ function _KnifeSA_deactivate()
                 end)
             end
         end
-        -- 3) Detener TODAS las animaciones del SA (no solo por ID)
+        -- 3) Detener TODAS las animaciones del SA (ThrowCharge, SlashKnife, etc.)
         local char2 = LocalPlayer.Character
         local hum2  = char2 and char2:FindFirstChildOfClass("Humanoid")
         local animr = hum2 and hum2:FindFirstChildOfClass("Animator")
         if animr then
+            local knifeAnimNames = {
+                throwcharge=true, throwknife=true, throw=true, animation2=true,
+                slashknife=true, slash=true, stab=true, hit=true, animation1=true,
+                knife=true, charge=true, hold=true
+            }
             for _, track in ipairs(animr:GetPlayingAnimationTracks()) do
+                local tname = (track.Name or ""):lower()
                 local animId = track.Animation and track.Animation.AnimationId or ""
-                if animId:find("1108307876") or animId:find("knife") or animId:find("Knife") then
-                    pcall(function() track:Stop(0.1) end)
+                if knifeAnimNames[tname]
+                    or tname:find("throw") or tname:find("slash") or tname:find("knife") or tname:find("stab")
+                    or animId:find("1108307876") or animId:find("knife") then
+                    pcall(function() track:Stop(0.15) end)
                 end
             end
         end
@@ -6207,14 +6179,34 @@ function _KnifeSA_deactivate()
             local bpKnife = bp:FindFirstChild("Knife")
             _restoreKnife(bpKnife)
         end
-        -- Esperar 1 frame y forzar re-equip del knife para que KnifeClient se reinicie limpio
-        task.defer(function()
+        -- Esperar y re-habilitar KnifeClient limpiamente (delay para que el SA termine de soltar el control)
+        task.delay(0.25, function()
+            if KnifeSAState.enabled then return end  -- si se reactivó, no hacer nada
             local c2 = LocalPlayer.Character
             if not c2 then return end
+            -- Re-habilitar en character
             local k2 = c2:FindFirstChild("Knife")
             if k2 then
                 local kc2 = k2:FindFirstChild("KnifeClient")
-                if kc2 then kc2.Disabled = false end
+                if kc2 then
+                    kc2.Disabled = false
+                    -- Forzar re-equip limpio: desequipar y re-equipar para que KnifeClient arranque fresco
+                    local hum3 = c2:FindFirstChildOfClass("Humanoid")
+                    if hum3 then
+                        pcall(function() hum3:UnequipTools() end)
+                        task.wait(0.08)
+                        if not KnifeSAState.enabled then  -- doble check
+                            pcall(function() hum3:EquipTool(k2) end)
+                        end
+                    end
+                end
+            end
+            -- Re-habilitar en backpack también
+            local bp2 = LocalPlayer.Backpack
+            local bpk2 = bp2 and bp2:FindFirstChild("Knife")
+            if bpk2 then
+                local kc3 = bpk2:FindFirstChild("KnifeClient")
+                if kc3 then kc3.Disabled = false end
             end
         end)
     end
@@ -6646,72 +6638,79 @@ function _doStealFling(targetHRP, skipReturn)
     end
 
     -- ═══════════════════════════════════════════════════════
-    -- STICKY FORCE FLING — nos pegamos al target 10 segundos
-    -- empujando con velocidad extrema, luego TP de retorno
+    -- ATOMIC GHOST FLING v5
+    -- TP al target + velocidad + return a safePos TODO dentro
+    -- de un SOLO pcall sin yields entre medio.
+    -- El servidor solo ve la posicion final (safePos), nunca
+    -- la posicion intermedia dentro del sheriff.
+    -- safePos se actualiza cada frame para estar siempre fresh.
     -- ═══════════════════════════════════════════════════════
     local _RS = game:GetService("RunService")
     local _targetLaunched = false
     local _stickyConn
 
-    -- Activar ragdoll propio para no resistir el movimiento
-    pcall(function() Humanoid.PlatformStand = true end)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+    -- safePos se renueva cada frame ANTES del TP, usando la
+    -- posicion actual del jugador (que no cambio, porque aun
+    -- no hicimos el TP de colision).
+    local _safePos = RootPart.CFrame
+    local _stickyTimeout = tick() + 8
 
-    local _stickyTimeout = tick() + 10  -- 10 segundos pegado al target
     _stickyConn = _RS.Heartbeat:Connect(function()
         if not TRootPart or not TRootPart.Parent then
             _targetLaunched = true
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
-
-        -- Timeout de 10s alcanzado: cortar y volver
+        if TRootPart.AssemblyLinearVelocity.Magnitude > 120 then
+            _targetLaunched = true
+            if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
+            return
+        end
         if tick() > _stickyTimeout then
             _targetLaunched = true
-            pcall(function()
-                RootPart.AssemblyLinearVelocity  = Vector3.zero
-                RootPart.AssemblyAngularVelocity = Vector3.zero
-                Humanoid.PlatformStand = false
-            end)
             if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
             return
         end
 
-        -- Pegarse al cuerpo del target en cada frame
-        pcall(function()
-            RootPart.CFrame = TRootPart.CFrame
-            Character:SetPrimaryPartCFrame(TRootPart.CFrame)
-        end)
+        -- Capturar safePos AHORA (jugador todavia no se movio este frame)
+        local _curPos = RootPart.CFrame
+        local _curY   = _curPos.Position.Y
+        if _curY > 2 and _curY < 800 then
+            _safePos = _curPos
+        end
 
-        -- Inyectar fuerza extrema al motor de colisiones durante todo el tiempo
+        -- TODO en un solo pcall sin yields: TP -> velocidad -> return
+        -- Al ser instrucciones consecutivas en Lua, el engine las agrupa
+        -- en el mismo paso de fisica y el servidor recibe solo _safePos.
         pcall(function()
-            RootPart.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
-            RootPart.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
+            -- 1) TP al target para registrar colision
+            RootPart.CFrame = TRootPart.CFrame
+            -- 2) Velocidad extrema al target
+            TRootPart.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
+            TRootPart.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
+            -- 3) Volver INMEDIATAMENTE a safePos — misma instruccion, mismo frame
+            RootPart.CFrame                   = _safePos
+            RootPart.AssemblyLinearVelocity   = Vector3.zero
+            RootPart.AssemblyAngularVelocity  = Vector3.zero
         end)
     end)
 
-    -- Esperar los 10 segundos completos (o hasta que el target desaparezca)
     local _waitLimit = 0
     repeat
         task.wait(0.05)
         _waitLimit = _waitLimit + 0.05
-    until _targetLaunched or _waitLimit > 11
+    until _targetLaunched or _waitLimit > 9
 
-    -- Asegurar desconexion del Heartbeat
     if _stickyConn then _stickyConn:Disconnect(); _stickyConn = nil end
 
-    -- Restaurar estado fisico propio
     pcall(function()
+        RootPart.CFrame                  = _safePos
         RootPart.AssemblyLinearVelocity  = Vector3.zero
         RootPart.AssemblyAngularVelocity = Vector3.zero
-        Humanoid.PlatformStand = false
     end)
-    Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
     pcall(function() workspace.CurrentCamera.CameraSubject = Humanoid end)
 
-    -- Liberar el guard ANTES del return para que el boton pueda volver a activarse
     _flingActive = false
-    -- TP de retorno a la ultima posicion segura
     if not skipReturn then _flingDoReturn(Character, RootPart, Humanoid) end
 end
 
@@ -6920,18 +6919,33 @@ function StartFlingSystem()
             local conn
             pcall(function() myHum.PlatformStand = true end)
             local timeout = tick() + 3
+
+            -- Helper: zerear velocidad propia INMEDIATAMENTE (3 passes para anular inercia)
+            local function _zeroSelf()
+                for _p = 1, 3 do
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.zero
+                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        myHRP.Velocity    = Vector3.zero
+                        myHRP.RotVelocity = Vector3.zero
+                    end)
+                end
+            end
+
             conn = _RS.Heartbeat:Connect(function()
                 if not tHRP.Parent then
                     launched = true
+                    _zeroSelf()  -- FIX: zerear inmediatamente al perder al target
                     if conn then conn:Disconnect(); conn = nil end
                     return
                 end
                 local tVel = tHRP.AssemblyLinearVelocity.Magnitude
                 if tVel > 120 or tick() > timeout then
                     launched = true
+                    -- FIX: zerear ANTES de desconectar para no recibir un frame
+                    -- mas de velocidad despues del disconnect
+                    _zeroSelf()
                     pcall(function()
-                        myHRP.AssemblyLinearVelocity  = Vector3.zero
-                        myHRP.AssemblyAngularVelocity = Vector3.zero
                         myHum.PlatformStand = false
                     end)
                     if conn then conn:Disconnect(); conn = nil end
@@ -6949,10 +6963,18 @@ function StartFlingSystem()
             local w = 0
             repeat task.wait(0.05); w = w + 0.05 until launched or w > 4
             if conn then conn:Disconnect(); conn = nil end
+            -- FIX: triple zereo post-loop por si quedo inercia de un frame tardio
             pcall(function()
                 myHRP.AssemblyLinearVelocity  = Vector3.zero
                 myHRP.AssemblyAngularVelocity = Vector3.zero
+                myHRP.Velocity    = Vector3.zero
+                myHRP.RotVelocity = Vector3.zero
                 myHum.PlatformStand = false
+            end)
+            task.wait(0.05)
+            pcall(function()
+                myHRP.AssemblyLinearVelocity  = Vector3.zero
+                myHRP.AssemblyAngularVelocity = Vector3.zero
             end)
             return launched
         end
@@ -6963,9 +6985,21 @@ function StartFlingSystem()
             local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
             if not myHRP or not myHum or myHum.Health <= 0 then task.wait(0.1); continue end
 
-            -- Si yo mismo sali volando, volver rapido
-            if myHRP.AssemblyLinearVelocity.Magnitude > 200 then
-                task.spawn(function() task.wait(0.05); if _flingReturnToLastPos and not _flingReturning then _flingReturnToLastPos() end end)
+            -- FIX ANTI-SALIDA: si el jugador está muy alto o muy bajo, o con velocidad alta,
+            -- el fling lo está arrastrando. Zerear y TP de emergencia inmediato.
+            local myY = myHRP.Position.Y
+            if myHRP.AssemblyLinearVelocity.Magnitude > 80 or myY < -30 or myY > 900 then
+                -- Zerear en 3 passes antes de siquiera esperar
+                for _pz = 1, 3 do
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.zero
+                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        myHRP.Velocity    = Vector3.zero
+                        myHRP.RotVelocity = Vector3.zero
+                    end)
+                end
+                pcall(function() myHum.PlatformStand = false end)
+                if _flingReturnToLastPos and not _flingReturning then _flingReturnToLastPos() end
                 task.wait(0.2); continue
             end
 
@@ -7511,7 +7545,7 @@ _G._bindablePosSave   = _G._bindablePosSave   or {}
 -- Cada vez que se crea un bindable se registra; al destruirse se libera
 _G._bindableActiveSlots = _G._bindableActiveSlots or {}  -- label -> slotIndex asignado
 
-_BIND_CS    = 80   -- tamaño del circulo
+_BIND_CS    = 44   -- tamaño del circulo
 _BIND_GAP   = 12
 _BIND_COLS  = 10  -- muchas columnas para que queden en fila arriba
 _BIND_PAD_X = 12
@@ -7655,8 +7689,8 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
     fill.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
     fill.AnchorPoint            = Vector2.new(0.5, 0.5)
     fill.Position               = UDim2.fromScale(0.5, 0.5)
-    fill.BackgroundColor3       = Color3.fromRGB(30, 30, 30)
-    fill.BackgroundTransparency = 0.35
+    fill.BackgroundColor3       = ThemeColors.Aurora3
+    fill.BackgroundTransparency = 0.45
     fill.BorderSizePixel        = 0
     fill.Text                   = ""
     fill.AutoButtonColor        = false
@@ -7666,7 +7700,7 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
 
     -- Borde gris claro (igual al Shoot Murderer)
     local fillStroke = Instance.new("UIStroke", fill)
-    fillStroke.Color           = Color3.fromRGB(160, 160, 160)
+    fillStroke.Color           = ThemeColors.Aurora3
     fillStroke.Thickness       = 2
     fillStroke.Transparency    = 0.1
     fillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -7764,10 +7798,10 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
     end
 
     -- Colores del hub (igual que CreateButton)
-    local _C_IDLE_BG    = Color3.fromRGB(30, 30, 30)
-    local _C_HOVER_BG   = Color3.fromRGB(60, 60, 60)
-    local _C_CLICK_BG   = Color3.fromRGB(100, 100, 100)
-    local _C_TEXT_IDLE  = Color3.fromRGB(220, 220, 220)
+    local _C_IDLE_BG    = ThemeColors.Aurora3
+    local _C_HOVER_BG   = ThemeColors.Aurora1
+    local _C_CLICK_BG   = ThemeColors.Primary
+    local _C_TEXT_IDLE  = Color3.fromRGB(255, 255, 255)
     local _C_TEXT_WHITE = Color3.fromRGB(255, 255, 255)
 
     -- Hover
@@ -7787,12 +7821,12 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
     fill.MouseButton1Down:Connect(function()
         if _moved then return end
         TweenService:Create(fill, TweenInfo.new(0.07), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
-        TweenService:Create(fillStroke, TweenInfo.new(0.07), {Color=Color3.fromRGB(220,220,220)}):Play()
+        TweenService:Create(fillStroke, TweenInfo.new(0.07), {Color=ThemeColors.Primary}):Play()
     end)
     fill.MouseButton1Up:Connect(function()
         if _moved then return end
-        TweenService:Create(fill, TweenInfo.new(0.15), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.35}):Play()
-        TweenService:Create(fillStroke, TweenInfo.new(0.15), {Color=Color3.fromRGB(160,160,160)}):Play()
+        TweenService:Create(fill, TweenInfo.new(0.15), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
+        TweenService:Create(fillStroke, TweenInfo.new(0.15), {Color=ThemeColors.Aurora3}):Play()
         if callback then task.spawn(function() callback(_capyIsActive) end) end
     end)
 
@@ -7801,10 +7835,10 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
         _capyIsActive = on
         if on then
             TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
-            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0, Thickness=2.5, Color=Color3.fromRGB(200,200,200)}):Play()
+            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0, Thickness=2.5, Color=ThemeColors.Primary}):Play()
         else
-            TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.35}):Play()
-            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0.1, Thickness=2, Color=Color3.fromRGB(160,160,160)}):Play()
+            TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
+            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0.1, Thickness=2, Color=ThemeColors.Aurora3}):Play()
         end
     end
     fill.SetActiveState  = function(self, on) _setActive(on) end
@@ -8161,7 +8195,7 @@ function createBindableButton(name, color)
     end)
 
     -- -- FEEDBACK DE CLICK -----------------------------------------
-    fill.MouseButton1Click:Connect(function()
+    fill.Activated:Connect(function()
         TweenService:Create(_bgScale, TweenInfo.new(0.08), {Scale = 0.88}):Play()
         TweenService:Create(circle, TweenInfo.new(0.08), {BackgroundTransparency = 0}):Play()
         TweenService:Create(glow, TweenInfo.new(0.08), {ImageTransparency = 0.38}):Play()
@@ -8211,7 +8245,7 @@ function updateBindables()
     if Settings.combat.bindable.shoot then
         if not shootBtnGui then
             shootBtnGui = createBindableButton("SHOOT MURDERER", ThemeColors.Primary)
-            shootBtnGui.Frame.MouseButton1Click:Connect(function()
+            local function _doShootMurderer()
                 local gun = LocalPlayer.Character and _findGunIn(LocalPlayer.Character)
                 if gun then
                     local murderer = findMurderer()
@@ -8232,6 +8266,22 @@ function updateBindables()
                         end
                     end
                 end
+            end
+            -- PC: click izquierdo
+            shootBtnGui.Frame.MouseButton1Click:Connect(_doShootMurderer)
+            -- MOBILE: touch (TouchTap o Activated)
+            pcall(function()
+                shootBtnGui.Frame.TouchTap:Connect(function()
+                    _doShootMurderer()
+                end)
+            end)
+            -- Fallback mobile: InputBegan sobre el boton
+            pcall(function()
+                shootBtnGui.Frame.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.Touch then
+                        _doShootMurderer()
+                    end
+                end)
             end)
         end
     else
@@ -8439,7 +8489,7 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
         end)
     end
 
-    -- Hover badge
+    -- Hover badge (solo PC, en mobile no hay hover)
     triggerBtn.MouseEnter:Connect(function()
         TweenService:Create(triggerBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0}):Play()
     end)
@@ -8447,7 +8497,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
         TweenService:Create(triggerBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.15}):Play()
     end)
 
-    triggerBtn.MouseButton1Click:Connect(function()
+    -- FIX MOBILE: usar Activated en vez de MouseButton1Click para que funcione en touch
+    triggerBtn.Activated:Connect(function()
         if _locked then return end
         if isOpen then closeList() else openList() end
     end)
@@ -8515,7 +8566,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
                 end
             end)
 
-            row.MouseButton1Click:Connect(function()
+            -- FIX MOBILE: Activated funciona tanto en PC como en touch
+            row.Activated:Connect(function()
                 if _locked then return end
                 selectedValue     = name
                 selectedText.Text = name
@@ -8838,7 +8890,7 @@ function CreatePredSelector(parent, titulo, opciones, default, callback)
                     {Transparency = 0.3, Color = COL_STROKE_ROW}):Play()
             end
         end)
-        optBtn.MouseButton1Click:Connect(function()
+        optBtn.Activated:Connect(function()
             if selectedValue ~= name then
                 selectedValue = name
                 for _, info in ipairs(optBtns) do
@@ -8861,7 +8913,7 @@ function CreatePredSelector(parent, titulo, opciones, default, callback)
     end
 
     -- Abrir/cerrar
-    trigBtn.MouseButton1Click:Connect(function()
+    trigBtn.Activated:Connect(function()
         isOpen = not isOpen
         if isOpen then _openDrop() else _closeDrop() end
     end)
@@ -9752,7 +9804,7 @@ function CreateCustomNotification(titleRaw, message, duration)
             task.delay(0.26, function() pcall(function() notifSG:Destroy() end) end)
         end
 
-        dismissBtn.MouseButton1Click:Connect(_doFadeOut)
+        dismissBtn.Activated:Connect(_doFadeOut)  -- FIX MOBILE: Activated cubre mouse y touch
         dismissBtn.TouchTap:Connect(_doFadeOut)
 
         -- Margen inferior para movil: distancia desde el borde inferior de la pantalla
@@ -10184,7 +10236,7 @@ function CreateGlowTeleportButton(parent, icon, name, glowColor, callback)
         TweenService:Create(stroke, TweenInfo.new(0.12), {Transparency = 0.25, Thickness = 1.5}):Play()
         TweenService:Create(nameLabel, TweenInfo.new(0.12), {TextColor3 = ThemeColors.TextPrimary}):Play()
     end)
-    btn.MouseButton1Click:Connect(function()
+    btn.Activated:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Primary, BackgroundTransparency = 0.05}):Play()
         task.wait(0.12)
         TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = ThemeColors.Background, BackgroundTransparency = 0.05}):Play()
@@ -10362,7 +10414,7 @@ function _makeTwoColumns()
     clearBtn2.FontFace = Font.fromEnum(Enum.Font.Arimo)
     clearBtn2.ZIndex = 21
     clearBtn2.Visible = false
-    clearBtn2.MouseButton1Click:Connect(function() searchInput2.Text = "" end)
+    clearBtn2.Activated:Connect(function() searchInput2.Text = "" end)
 
     -- Label de placeholder manual (se oculta al hacer focus)
     local placeholderLabel = Instance.new("TextLabel", searchBar)
@@ -10859,12 +10911,12 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     --  Track gris delgado con fill blanco y thumb circular blanco
     -- ==============================================================
 
-    local C_BG       = Color3.fromRGB(30, 30, 35)
-    local C_STROKE   = Color3.fromRGB(60, 60, 70)
+    local C_BG       = Color3.fromRGB(20, 80, 120)
+    local C_STROKE   = Color3.fromRGB(0, 191, 255)
     local C_TEXT     = Color3.fromRGB(255, 255, 255)
-    local C_NUM      = Color3.fromRGB(255, 255, 255)
-    local C_TRACK_BG = Color3.fromRGB(80, 80, 90)
-    local C_TRACK_FG = Color3.fromRGB(255, 255, 255)
+    local C_NUM      = Color3.fromRGB(160, 220, 255)
+    local C_TRACK_BG = Color3.fromRGB(0, 80, 160)
+    local C_TRACK_FG = Color3.fromRGB(0, 191, 255)
     local C_THUMB    = Color3.fromRGB(255, 255, 255)
 
     local CONTAINER_H = 68
@@ -10881,8 +10933,8 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     contCorner.CornerRadius          = UDim.new(0, 12)
     local contStroke = Instance.new("UIStroke", container)
     contStroke.Color           = C_STROKE
-    contStroke.Thickness       = 1
-    contStroke.Transparency    = 0.5
+    contStroke.Thickness       = 0
+    contStroke.Transparency    = 1
     contStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Titulo izquierda
@@ -11111,7 +11163,7 @@ function CreateGlowButton(parent, nombre, callback)
         TweenService:Create(textLabel, TweenInfo.new(0.12), {TextColor3 = ThemeColors.TextPrimary}):Play()
     end)
 
-    btn.MouseButton1Click:Connect(function()
+    btn.Activated:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.07), {BackgroundColor3 = ThemeColors.Accent, BackgroundTransparency = 0.05}):Play()
         task.wait(0.13)
         TweenService:Create(btn, TweenInfo.new(0.18), {BackgroundColor3 = ThemeColors.Background, BackgroundTransparency = 0.05}):Play()
@@ -11303,10 +11355,12 @@ function CreateButton(parent, nombre, color, callback)
         TweenService:Create(textLabel, TweenInfo.new(0.12), {TextColor3 = ThemeColors.TextPrimary}):Play()
     end)
 
-    btn.MouseButton1Click:Connect(function()
+    -- FIX MOBILE: Activated detecta tap en celu y click en PC correctamente
+    btn.Activated:Connect(function()
         TweenService:Create(btn, TweenInfo.new(0.07), {BackgroundColor3 = ThemeColors.Accent, BackgroundTransparency = 0.05}):Play()
-        task.wait(0.12)
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = ThemeColors.Background, BackgroundTransparency = 0.05}):Play()
+        task.delay(0.12, function()
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = ThemeColors.Background, BackgroundTransparency = 0.05}):Play()
+        end)
         if callback then callback() end
     end)
 
@@ -12728,7 +12782,7 @@ function _createBombBtn()
         )
     end)
 
-    btn.MouseButton1Click:Connect(function()
+    btn.Activated:Connect(function()
         _syncBombJump(not _bombJumpEnabled)
         setVisual(_bombJumpEnabled)
  CreateCustomNotification("BOMB JUMP", _bombJumpEnabled and "ON -- lanza la FakeBomb!" or "OFF", 2)
@@ -13460,7 +13514,7 @@ function CreateMainUI_Fly()
         Instance.new("UICorner", _flyKeyBtn).CornerRadius = UDim.new(0, 6)
 
         local _flyListening = false
-        _flyKeyBtn.MouseButton1Click:Connect(function()
+        _flyKeyBtn.Activated:Connect(function()
             if _flyListening then return end
             _flyListening = true
             _flyKeyBtn.Text = "[ ... ]"
@@ -13772,7 +13826,7 @@ function CreateFakeBombBindlePanel()
                 {BackgroundTransparency = 0.25, Size = UDim2.new(0, BTN_SIZE, 0, BTN_SIZE), Position = UDim2.new(0, posX, 0, posY)}):Play()
             TweenService:Create(btnStroke, TweenInfo.new(0.2), {Thickness = 2.5, Transparency = 0.2}):Play()
         end)
-        btn.MouseButton1Click:Connect(function()
+        btn.Activated:Connect(function()
 
             TweenService:Create(btn, TweenInfo.new(0.08),
                 {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(255,255,255)}):Play()
@@ -13998,7 +14052,7 @@ function CreateMainUI_SwimFlyGithub()
         _ajKeyBtn.BorderSizePixel = 0; _ajKeyBtn.ZIndex = 3
         Instance.new("UICorner", _ajKeyBtn).CornerRadius = UDim.new(0, 6)
 
-        _ajKeyBtn.MouseButton1Click:Connect(function()
+        _ajKeyBtn.Activated:Connect(function()
             if _ajListening then return end
             _ajListening = true; _ajKeyBtn.Text = "[ ... ]"
             local conn; conn = UserInputService.InputBegan:Connect(function(inp, gp)
@@ -14273,7 +14327,7 @@ function CreateMainUI_SwimFlyGithub()
         _jbKeyBtn.BorderSizePixel = 0; _jbKeyBtn.ZIndex = 3
         Instance.new("UICorner", _jbKeyBtn).CornerRadius = UDim.new(0, 6)
 
-        _jbKeyBtn.MouseButton1Click:Connect(function()
+        _jbKeyBtn.Activated:Connect(function()
             if JB.listening then return end
             JB.listening = true; _jbKeyBtn.Text = "[ ... ]"; _jbKeyBtn.BackgroundTransparency = 0.1
             local conn; conn = UserInputService.InputBegan:Connect(function(inp, gp)
@@ -15467,10 +15521,10 @@ function _fuPlayRoulette(box, wonItem)
                 css=Instance.new("UIStroke",closeBtn); css.Color=ThemeColors.Primary; css.Thickness=2
                 closeBtn.BackgroundTransparency=1
                 TweenService:Create(closeBtn,TweenInfo.new(0.3,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{BackgroundTransparency=0}):Play()
-                closeBtn.MouseButton1Click:Connect(_fuDestroyRoulette)
+                closeBtn.Activated:Connect(_fuDestroyRoulette)
                 bgBtn=Instance.new("TextButton",bg)
                 bgBtn.Size=UDim2.new(1,0,1,0); bgBtn.BackgroundTransparency=1; bgBtn.Text=""; bgBtn.ZIndex=0
-                bgBtn.MouseButton1Click:Connect(_fuDestroyRoulette)
+                bgBtn.Activated:Connect(_fuDestroyRoulette)
             end
         end)
     end)
@@ -15590,12 +15644,12 @@ function CreateMainUI_Toys()
     _fuBoxSelectorCallback = function() pcall(refreshBox) end
     refreshBox()
 
-    prevBtn.MouseButton1Click:Connect(function()
+    prevBtn.Activated:Connect(function()
 
         _fuState.boxIdx = _fuState.boxIdx > 1 and _fuState.boxIdx-1 or #FU_BOXES
         refreshBox()
     end)
-    nextBtn.MouseButton1Click:Connect(function()
+    nextBtn.Activated:Connect(function()
 
         _fuState.boxIdx = _fuState.boxIdx < #FU_BOXES and _fuState.boxIdx+1 or 1
         refreshBox()
@@ -15612,7 +15666,7 @@ function CreateMainUI_Toys()
         end
     end)
 
-    openBtn.MouseButton1Click:Connect(function()
+    openBtn.Activated:Connect(function()
         if _fuState.isOpening then return end
         _fuState.isOpening  = true
         _fuState.openBtnRef = openBtn
@@ -15817,7 +15871,7 @@ function CreateMainUI_ThemeSelector()
             optTxt.TextColor3 = sel and Color3.fromRGB(255,255,255) or ThemeColors.TextPrimary
         end)
 
-        optBtn.MouseButton1Click:Connect(function()
+        optBtn.Activated:Connect(function()
 
             ApplyTheme(themeName)
  valueLabel.Text = themeName
@@ -17450,7 +17504,7 @@ function CreateMainUI_FakeUnbox()
 
     fubCooldown = false
 
-    fuBtn.MouseButton1Click:Connect(function()
+    fuBtn.Activated:Connect(function()
         if fubCooldown then return end
         fubCooldown = true
         weapon = getRandom()
@@ -17854,7 +17908,7 @@ function CreateMainUI_SecureAuto()
             st.Color = Color3.fromRGB(255,255,255); st.Thickness = 1
             st.Transparency = m == selMode and 0.5 or 0.85; mb.ZIndex = 13
             modeBtns[m] = {btn=mb, stroke=st}
-            mb.MouseButton1Click:Connect(function()
+            mb.Activated:Connect(function()
                 selMode = m; _secAuto.mode = m
                 for k, d in pairs(modeBtns) do
                     local isS = (k == m)
@@ -18155,7 +18209,7 @@ function CreateMainUI_SecureAuto()
                 if isDrag then frame.Position = UDim2.new(fs.X.Scale, fs.X.Offset + d.X, fs.Y.Scale, fs.Y.Offset + d.Y) end
             end
         end)
-        btn.MouseButton1Click:Connect(function()
+        btn.Activated:Connect(function()
             if isDrag then return end
             _secAuto.enabled = not _secAuto.enabled
             if _secAuto.enabled then _secStart() else _secStop() end
@@ -19784,7 +19838,7 @@ function CreateMainTab()
         _bg.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,ThemeColors.Primary),ColorSequenceKeypoint.new(0.5,ThemeColors.Aurora2),ColorSequenceKeypoint.new(1,ThemeColors.Primary)})
         _btn.MouseEnter:Connect(function() TweenService:Create(_btn,TweenInfo.new(0.1),{BackgroundTransparency=0.05}):Play() end)
         _btn.MouseLeave:Connect(function() TweenService:Create(_btn,TweenInfo.new(0.1),{BackgroundTransparency=0.15}):Play() end)
-        _btn.MouseButton1Click:Connect(function()
+        _btn.Activated:Connect(function()
             local id=tostring(_ss.currentId):gsub("%D","")
             if id=="" then CreateCustomNotification("SONG","Ingresa un ID valido",2); return end
             _playSound(id); CreateCustomNotification("SONG","> "..id,2)
@@ -25191,7 +25245,7 @@ function CreateVisualsTab()
         clearBtn.ZIndex = 13
         Instance.new("UICorner", clearBtn).CornerRadius = UDim.new(0, 6)
 
-        clearBtn.MouseButton1Click:Connect(function()
+        clearBtn.Activated:Connect(function()
             flags.pinPlayer = nil
             pinLbl.Text = "  Ninguno (todos)"
             pinLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -25269,7 +25323,7 @@ function CreateVisualsTab()
                 bStroke.Color = PIN_COLOR; bStroke.Thickness = 1
                 bStroke.Transparency = isPinned and 0.0 or 0.7
 
-                btn.MouseButton1Click:Connect(function()
+                btn.Activated:Connect(function()
                     flags.pinPlayer = p
                     pinLbl.Text = "  * " .. p.Name
                     pinLbl.TextColor3 = PIN_COLOR
@@ -25291,7 +25345,7 @@ function CreateVisualsTab()
             end
         end
 
-        toggleListBtn.MouseButton1Click:Connect(function()
+        toggleListBtn.Activated:Connect(function()
             listOpen = not listOpen
             if listOpen then
                 _rebuildList()
@@ -26013,7 +26067,7 @@ end, _G._chamDropGun or false)
         scanStroke.Color = Color3.fromRGB(195, 195, 200)
         scanStroke.Thickness = 2.5
         scanStroke.Transparency = 0.3
-        scanBtn.MouseButton1Click:Connect(function()
+        scanBtn.Activated:Connect(function()
 
             local count = 0
             for _, obj in ipairs(workspace:GetDescendants()) do  -- OPT: pairs->ipairs
@@ -26706,6 +26760,13 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local savedState = _G._toggleStates[nombre]
     local estado = (savedState ~= nil) and savedState or (initialValue or false)
 
+    -- REGISTRO DE CALLBACKS: guardar el callback por nombre para poder
+    -- restaurar toggles del World Tab (y otros) desde el auto-restore
+    if callback then
+        _G._toggleCallbacks = _G._toggleCallbacks or {}
+        _G._toggleCallbacks[nombre] = callback
+    end
+
     local C_IND_ON  = Color3.fromRGB(0, 200, 80)   -- verde cuando activo
     local C_IND_OFF = Color3.fromRGB(255, 0, 0)     -- rojo cuando inactivo
     local TWEEN_T   = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -26737,7 +26798,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     -- Borde blanco para el marco
     local mainStroke = Instance.new("UIStroke", container)
     mainStroke.Color = ThemeColors.Primary
-    mainStroke.Thickness = 2
+    mainStroke.Thickness = 0
+    mainStroke.Transparency = 1
     mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Etiqueta de texto (mitad izquierda)
@@ -26781,7 +26843,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     local toggleBgStroke = Instance.new("UIStroke", toggleBg)
     toggleBgStroke.Color = ThemeColors.Primary
-    toggleBgStroke.Thickness = 2
+    toggleBgStroke.Thickness = 0
+    toggleBgStroke.Transparency = 1
     toggleBgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Indicador cuadrado redondeado (rojo=off, verde=on)
@@ -26824,11 +26887,20 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     clickRow.MouseLeave:Connect(function() end)
     -- Logica de toggle
     local function doToggle()
+        -- PASO 1: Invertir el booleano en la tabla de estado
         estado = not estado
         _G._toggleStates[nombre] = estado
+
+        -- PASO 2: Actualizar la UI (colores/animacion del knob)
         ApplyState(estado, true)
         PlayToggleSound(estado)
+
+        -- PASO 3: Auto-guardar inmediatamente en el JSON
+        pcall(_saveConfig)
+
+        -- PASO 4: Ejecutar la accion real del toggle (callback del feature)
         if callback then callback(estado) end
+
         -- FIX: forzar tick inmediato del instanceLoop para que los visuals
         -- se apliquen o limpien en el proximo Heartbeat sin esperar el intervalo
         _G._forceInstanceTick = true
@@ -26842,11 +26914,22 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local _isBoostNoAuto = _G._boostNoAutoThisSession and _G._boostNoAutoThisSession[nombre]
     -- NUNCA auto-activar toggles que están en _neverRestoreToggles (siempre arrancan OFF)
     local _isNeverRestore = _neverRestoreToggles and _neverRestoreToggles[nombre]
-    -- FIX PESTAÑA RESET: solo auto-activar si NO habia estado guardado previo.
-    -- Si savedState ~= nil, el usuario ya interactuó con el toggle; respetar su elección
-    -- y no re-ejecutar el callback al reconstruir el tab (cambio de pestaña, reload, etc.)
-    local _wasUserSet = (savedState ~= nil)
-    if estado and callback and not _isBoostNoAuto and not _G._noAutoActivateWorld and not _isNeverRestore and not _wasUserSet then
+    -- AUTORESTORE FIX v2:
+    -- _wasUserSet    → habia un estado guardado (en disco o en sesion)
+    -- _isTabRebuild  → es solo un cambio de pestaña (UI se recrea, funcionalidad ya corre)
+    -- Diferencia clave:
+    --   Tab rebuild:   _G._isTabRebuild == true  → NO llamar callback (ya esta corriendo)
+    --   Re-ejecucion:  _G._isTabRebuild == false/nil → SÍ llamar callback (hub nuevo, nada corre)
+    -- Caso A: toggle sin estado previo con initialValue=true → auto-activar (comportamiento original)
+    -- Caso B: toggle con savedState=true y NO es tab rebuild → restaurar desde disco al re-ejecutar
+    local _wasUserSet   = (savedState ~= nil)
+    local _isTabRebuild = (_G._isTabRebuild == true)
+    local _shouldAutoActivate = estado and callback
+        and not _isBoostNoAuto
+        and not _G._noAutoActivateWorld
+        and not _isNeverRestore
+        and (not _wasUserSet or (savedState == true and not _isTabRebuild))
+    if _shouldAutoActivate then
         local lower = nombre:lower()
         local isPhysical = lower:find("swim fly") or lower:find("fly %+") or lower:find("fly+")
             or (lower:find("fly") and not lower:find("firefly"))
@@ -26914,7 +26997,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         end
     end
 
-    clickRow.MouseButton1Click:Connect(doToggle)
+    -- FIX MOBILE: Activated responde a touch en celu; MouseButton1Click no siempre lo hace
+    clickRow.Activated:Connect(doToggle)
 
     return container
 end
@@ -27479,7 +27563,7 @@ function CreateWorldUI_Emotes()
         playBtn.FontFace = Font.fromEnum(Enum.Font.Montserrat)
         playBtn.TextColor3       = Color3.fromRGB(255, 255, 255)
         Instance.new("UICorner", playBtn).CornerRadius = UDim.new(0, 6)
-        playBtn.MouseButton1Click:Connect(function() PlayEmote(capturedId, capturedName) end)
+        playBtn.Activated:Connect(function() PlayEmote(capturedId, capturedName) end)
         playBtn.MouseEnter:Connect(function()
             TweenService:Create(playBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0.1}):Play()
         end)
@@ -28248,7 +28332,8 @@ function CreateWorldUI_QuickFlingButtons()
             -- Cancelar manualmente
             _qfState.flingMurderActive = false
             FlingSystem.flingMurder = false
-            _flingActive = false
+            _flingActive    = false
+            _flingReturning = false
             StopFlingSystem()
             CreateCustomNotification("FLING MURDER", "Desactivado", 2)
         else
@@ -28259,7 +28344,6 @@ function CreateWorldUI_QuickFlingButtons()
                 return
             end
             _qfStopAll()
-            -- Resetear guards para arranque limpio (ya lo hace _qfStopAll, pero doble seguridad)
             _flingActive    = false
             _flingReturning = false
             _qfState.flingMurderActive = true
@@ -28268,19 +28352,126 @@ function CreateWorldUI_QuickFlingButtons()
             FlingSystem.flingSheriff   = false
             FlingSystem.flingInnocent  = false
             FlingSystem.specificTarget = nil
-            CreateCustomNotification("FLING MURDER", "Activo 10s - lanzando a " .. murder.Name, 3)
+            CreateCustomNotification("FLING MURDER", "Flingeando a " .. murder.Name .. " por 5s...", 3)
             task.spawn(function()
+                -- Obtener HRP del murder al momento de ejecutar
                 local tChar = murder.Character
                 local tHRP  = tChar and tChar:FindFirstChild("HumanoidRootPart")
-                if tHRP then _doStealFling(tHRP) end
+                if not tHRP then
+                    _qfState.flingMurderActive = false
+                    FlingSystem.flingMurder    = false
+                    _flingActive               = false
+                    CreateCustomNotification("FLING MURDER", "Murder sin character", 2)
+                    return
+                end
+
+                -- == STICKY FLING por 5 segundos usando la misma logica que flingAll ==
+                local myChar = LocalPlayer.Character
+                local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
+                if not myHRP or not myHum then
+                    _qfState.flingMurderActive = false
+                    FlingSystem.flingMurder    = false
+                    return
+                end
+
+                -- Capturar posicion segura antes de empezar
+                local _fmSafePos = nil
+                local _ry = myHRP.Position.Y
+                if _ry > 2 and _ry < 800 then
+                    _fmSafePos = myHRP.CFrame
+                    _G.OldPos  = _fmSafePos
+                    _flingLastSafePos = _fmSafePos
+                end
+
+                -- == STICKY FLING por 5 segundos -- misma logica exacta que _stickyFlingOne ==
+                -- Nos metemos en el cuerpo del murder y aplicamos velocidad en NUESTRO HRP
+                local _RS = game:GetService("RunService")
+                local _launched = false
+                local _fmConn
+                local _timeStart = tick()
+
+                local function _fmZeroSelf()
+                    for _p = 1, 3 do
+                        pcall(function()
+                            myHRP.AssemblyLinearVelocity  = Vector3.zero
+                            myHRP.AssemblyAngularVelocity = Vector3.zero
+                            myHRP.Velocity    = Vector3.zero
+                            myHRP.RotVelocity = Vector3.zero
+                        end)
+                    end
+                end
+
+                pcall(function() myHum.PlatformStand = true end)
+
+                _fmConn = _RS.Heartbeat:Connect(function()
+                    if not tHRP or not tHRP.Parent then
+                        _launched = true
+                        _fmZeroSelf()
+                        if _fmConn then _fmConn:Disconnect(); _fmConn = nil end
+                        return
+                    end
+                    local tVel = tHRP.AssemblyLinearVelocity.Magnitude
+                    if tVel > 120 or tick() - _timeStart >= 5 then
+                        _launched = true
+                        _fmZeroSelf()
+                        pcall(function() myHum.PlatformStand = false end)
+                        if _fmConn then _fmConn:Disconnect(); _fmConn = nil end
+                        return
+                    end
+                    if not _qfState.flingMurderActive then
+                        _launched = true
+                        _fmZeroSelf()
+                        if _fmConn then _fmConn:Disconnect(); _fmConn = nil end
+                        return
+                    end
+                    -- Meterme en el cuerpo del murder y aplicar velocidad en MI HRP
+                    pcall(function()
+                        myHRP.CFrame = tHRP.CFrame
+                        myChar:SetPrimaryPartCFrame(tHRP.CFrame)
+                    end)
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
+                        myHRP.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
+                    end)
+                end)
+
+                -- Esperar hasta que terminen los 5 segundos o el murder salga volando
+                local _waited = 0
+                repeat
+                    task.wait(0.05)
+                    _waited = _waited + 0.05
+                until _launched or _waited > 6
+
+                if _fmConn then _fmConn:Disconnect(); _fmConn = nil end
+                -- Triple zereo post-loop igual que _stickyFlingOne
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                    myHRP.Velocity    = Vector3.zero
+                    myHRP.RotVelocity = Vector3.zero
+                    myHum.PlatformStand = false
+                end)
+                task.wait(0.05)
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                end)
+                -- Limpiar estado
                 _qfState.flingMurderActive = false
                 FlingSystem.flingMurder    = false
                 _flingActive               = false
+                _flingReturning            = false
+
+                -- TP al mapa usando la deteccion de World tab
+                CreateCustomNotification("FLING MURDER", "Fling terminado - volviendo al mapa...", 2)
+                task.wait(0.2)
+                TeleportToMap()
             end)
         end
     end)
 
-    -- BOTON: STEAL GUN (deteccion dinamica del portador actual)
+    -- BOTON: STEAL GUN (fling al sheriff/portador de gun por 5s, luego TP al mapa)
     CreateButton(leftColumn, ">> STEAL GUN", ThemeColors.Aurora4, function()
         if _qfState.stealGunActive then
             -- Cancelar activo
@@ -28312,23 +28503,39 @@ function CreateWorldUI_QuickFlingButtons()
         _roleCache.lastUpdate = 0
         _refreshRoleCache()
 
-        -- Detectar portador de la gun: sheriff -> hero -> scan visual
+        -- Detectar portador de la gun: sheriff (cache) -> hero -> scan visual
+        -- NOTA: se mantiene la deteccion del nuevo sheriff para no flingear siempre al viejo
         local currentGunHolder = nil
+        -- Prioridad 1: sheriff del cache (evita flingear al sheriff muerto)
         if _roleCache.sheriff and _roleCache.sheriff.Character then
-            currentGunHolder = _roleCache.sheriff
-        elseif _roleCache.hero and _roleCache.hero.Character then
-            currentGunHolder = _roleCache.hero
-        elseif _findGunIn then
+            local sHum = _roleCache.sheriff.Character:FindFirstChildOfClass("Humanoid")
+            if sHum and sHum.Health > 0 then
+                currentGunHolder = _roleCache.sheriff
+            end
+        end
+        -- Prioridad 2: hero (quien recogió la gun del sheriff muerto)
+        if not currentGunHolder and _roleCache.hero and _roleCache.hero.Character then
+            local hHum = _roleCache.hero.Character:FindFirstChildOfClass("Humanoid")
+            if hHum and hHum.Health > 0 then
+                currentGunHolder = _roleCache.hero
+            end
+        end
+        -- Prioridad 3: scan visual por quien tiene la gun equipada/backpack
+        if not currentGunHolder and _findGunIn then
             for _, p in ipairs(Players:GetPlayers()) do
                 if p ~= LocalPlayer and p.Character then
-                    local hasGun = _findGunIn(p.Character)
-                    if not hasGun then
-                        local bp = p:FindFirstChildOfClass("Backpack")
-                        hasGun = bp and _findGunIn(bp)
-                    end
-                    if hasGun then
-                        currentGunHolder = p
-                        break
+                    local pHum = p.Character:FindFirstChildOfClass("Humanoid")
+                    -- Solo jugadores VIVOS para no flingear al sheriff muerto
+                    if pHum and pHum.Health > 0 then
+                        local hasGun = _findGunIn(p.Character)
+                        if not hasGun then
+                            local bp = p:FindFirstChildOfClass("Backpack")
+                            hasGun = bp and _findGunIn(bp)
+                        end
+                        if hasGun then
+                            currentGunHolder = p
+                            break
+                        end
                     end
                 end
             end
@@ -28344,9 +28551,8 @@ function CreateWorldUI_QuickFlingButtons()
         _qfState.stealGunActive             = true
         StealGunSystem.enabled              = true
         StealGunSystem.sheriffOriginalFound = currentGunHolder
-        CreateCustomNotification("STEAL GUN", "Flingeando a " .. currentGunHolder.Name .. "...", 3)
+        CreateCustomNotification("STEAL GUN", "Flingeando a " .. currentGunHolder.Name .. " por 5s...", 3)
 
-        local _localToken = StealGunSystem._roundToken
         task.spawn(function()
             local tChar = currentGunHolder.Character
             local tHRP  = tChar and tChar:FindFirstChild("HumanoidRootPart")
@@ -28357,6 +28563,25 @@ function CreateWorldUI_QuickFlingButtons()
                 return
             end
 
+            local myChar = LocalPlayer.Character
+            local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
+            if not myHRP or not myHum or myHum.Health <= 0 then
+                _qfState.stealGunActive = false
+                StealGunSystem.enabled  = false
+                return
+            end
+
+            -- Capturar posicion segura antes del fling
+            local _sgSafePos = nil
+            local _ry = myHRP.Position.Y
+            if _ry > 2 and _ry < 800 then
+                _sgSafePos = myHRP.CFrame
+                _G.OldPos  = _sgSafePos
+                _flingLastSafePos = _sgSafePos
+            end
+
+            -- Escuchar drop de gun ANTES del fling
             local _gunDropped = nil
             local _dropConn = workspace.DescendantAdded:Connect(function(obj)
                 if not _qfState.stealGunActive then return end
@@ -28366,69 +28591,123 @@ function CreateWorldUI_QuickFlingButtons()
                 _gunDropped = _gunDropped or obj
             end)
 
-            pcall(_doStealFling, tHRP)
+            -- == STICKY FLING por 5 segundos -- misma logica exacta que _stickyFlingOne ==
+            -- Nos metemos en el cuerpo del portador y aplicamos velocidad en NUESTRO HRP
+            local _RS = game:GetService("RunService")
+            local _launched = false
+            local _sgFlingConn
+            local _timeStart = tick()
 
-            pcall(function() _dropConn:Disconnect() end)
-
-            if not _qfState.stealGunActive then return end
-
-            local function _grabDrop(obj)
-                if not obj or not obj.Parent then return false end
-                local p = obj.Parent
-                if p and p:IsA("Model") and p:FindFirstChildOfClass("Humanoid") then return false end
-                local myC = LocalPlayer.Character
-                local myH = myC and myC:FindFirstChild("HumanoidRootPart")
-                local myM = myC and myC:FindFirstChildOfClass("Humanoid")
-                if not myH or not myM or myM.Health <= 0 then return false end
-                local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
-                if not handle then return false end
-                pcall(function() myH.CFrame = handle.CFrame end)
-                pcall(function() myC:SetPrimaryPartCFrame(handle.CFrame) end)
-                task.wait(0.05)
-                pcall(function() firetouchinterest(myH, handle, 0); task.wait(0.03); firetouchinterest(myH, handle, 1) end)
-                task.wait(0.08)
-                return _sgLocalHasGun()
-            end
-
-            local grabbed = _sgLocalHasGun()
-
-            if not grabbed and _gunDropped then
-                grabbed = _grabDrop(_gunDropped)
-            end
-
-            if not grabbed then
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    if obj:IsA("Tool") and _SG_DROP_NAMES[obj.Name] then
-                        local p = obj.Parent
-                        if not (p and p:IsA("Model") and p:FindFirstChildOfClass("Humanoid")) then
-                            grabbed = _grabDrop(obj)
-                            if grabbed then break end
-                        end
-                    end
+            local function _sgZeroSelf()
+                for _p = 1, 3 do
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.zero
+                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        myHRP.Velocity    = Vector3.zero
+                        myHRP.RotVelocity = Vector3.zero
+                    end)
                 end
             end
 
-            if not grabbed then
-                CreateCustomNotification("STEAL GUN", "Esperando drop...", 2)
-                local _w = 0
-                repeat
-                    task.wait(0.15); _w = _w + 0.15
-                    if _gunDropped and _gunDropped.Parent then
-                        grabbed = _grabDrop(_gunDropped)
-                    end
-                    if not grabbed then grabbed = _sgLocalHasGun() end
-                until grabbed or _w >= 5 or not _qfState.stealGunActive
-            end
+            pcall(function() myHum.PlatformStand = true end)
 
-            if grabbed then
-                CreateCustomNotification("STEAL GUN", "Gun robada de " .. currentGunHolder.Name .. "!", 2.5)
-            else
-                CreateCustomNotification("STEAL GUN", "No se pudo robar la gun", 2)
-            end
+            _sgFlingConn = _RS.Heartbeat:Connect(function()
+                if not tHRP or not tHRP.Parent then
+                    _launched = true
+                    _sgZeroSelf()
+                    if _sgFlingConn then _sgFlingConn:Disconnect(); _sgFlingConn = nil end
+                    return
+                end
+                local tVel = tHRP.AssemblyLinearVelocity.Magnitude
+                if tVel > 120 or tick() - _timeStart >= 5 then
+                    _launched = true
+                    _sgZeroSelf()
+                    pcall(function() myHum.PlatformStand = false end)
+                    if _sgFlingConn then _sgFlingConn:Disconnect(); _sgFlingConn = nil end
+                    return
+                end
+                if not _qfState.stealGunActive then
+                    _launched = true
+                    _sgZeroSelf()
+                    if _sgFlingConn then _sgFlingConn:Disconnect(); _sgFlingConn = nil end
+                    return
+                end
+                -- Meterme en el cuerpo del portador y aplicar velocidad en MI HRP
+                pcall(function()
+                    myHRP.CFrame = tHRP.CFrame
+                    myChar:SetPrimaryPartCFrame(tHRP.CFrame)
+                end)
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
+                    myHRP.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
+                end)
+            end)
 
+            -- Esperar hasta que terminen los 5 segundos o el portador salga volando
+            local _waited = 0
+            repeat
+                task.wait(0.05)
+                _waited = _waited + 0.05
+            until _launched or _waited > 6
+
+            if _sgFlingConn then _sgFlingConn:Disconnect(); _sgFlingConn = nil end
+            pcall(function() _dropConn:Disconnect() end)
+            -- Triple zereo post-loop igual que _stickyFlingOne
+            pcall(function()
+                myHRP.AssemblyLinearVelocity  = Vector3.zero
+                myHRP.AssemblyAngularVelocity = Vector3.zero
+                myHRP.Velocity    = Vector3.zero
+                myHRP.RotVelocity = Vector3.zero
+                myHum.PlatformStand = false
+            end)
+            task.wait(0.05)
+            pcall(function()
+                myHRP.AssemblyLinearVelocity  = Vector3.zero
+                myHRP.AssemblyAngularVelocity = Vector3.zero
+            end)
+            -- Limpiar estado ANTES del TP para que nada bloquee
             StealGunSystem.enabled  = false
             _qfState.stealGunActive = false
             _flingActive            = false
+            _flingReturning         = false
+
+            -- TP al mapa inmediatamente (en spawn separado para que nunca quede bloqueado)
+            task.spawn(function()
+                task.wait(0.15)
+                TeleportToMap()
+                CreateCustomNotification("STEAL GUN", "Fling terminado - volviendo al mapa...", 2)
+            end)
+
+            -- Intentar agarrar la gun en paralelo (no bloquea el TP)
+            task.spawn(function()
+                local grabbed = _sgLocalHasGun()
+                if not grabbed and _gunDropped then
+                    local myC = LocalPlayer.Character
+                    local myH = myC and myC:FindFirstChild("HumanoidRootPart")
+                    local obj = _gunDropped
+                    if obj and obj.Parent and myH then
+                        local p = obj.Parent
+                        if not (p and p:IsA("Model") and p:FindFirstChildOfClass("Humanoid")) then
+                            local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+                            if handle then
+                                pcall(function() handle.CFrame = CFrame.new(myH.Position) end)
+                                pcall(function() obj:PivotTo(CFrame.new(myH.Position)) end)
+                                task.wait(0.05)
+                                pcall(function()
+                                    firetouchinterest(myH, handle, 0)
+                                    task.wait(0.03)
+                                    firetouchinterest(myH, handle, 1)
+                                end)
+                                task.wait(0.05)
+                                grabbed = _sgLocalHasGun()
+                            end
+                        end
+                    end
+                end
+                if grabbed then
+                    CreateCustomNotification("STEAL GUN", "Gun robada de " .. currentGunHolder.Name .. "!", 2.5)
+                end
+            end)
         end)
     end)
 end
@@ -28839,8 +29118,11 @@ function CreateWorldUI_AutoGrabGun()
         WorldSystem.grab.gui = gg
         grabGui              = gg
 
-        local frame = MakeCapyBindableFrame(gg, "GRAB GUN", function()
-            -- FIX: usar _G._TryGrabGun como fallback si TryGrabGun no esta en scope
+        -- FIX: usar rightColumn como guiParent para que AncestryChanged destruya el bind
+        -- cuando el tab se cierra (antes usaba gg=ScreenGui que nunca pierde padre)
+        local frame = MakeCapyBindableFrame(rightColumn or gg, "GRAB GUN", function()
+            -- FIX: sync _G._TryGrabGun antes de llamar, por si el closure cambio
+            if type(TryGrabGun) == "function" then _G._TryGrabGun = TryGrabGun end
             local fn = (type(TryGrabGun) == "function" and TryGrabGun)
                     or _G._TryGrabGun
             if fn then pcall(fn) end
@@ -28895,7 +29177,10 @@ function CreateWorldUI_AutoGrabGun()
         local _prevSection = _currentMainSectionFrame
         _currentMainSectionFrame = nil
         CreateButton(rightColumn, "Grab Gun", ThemeColors.Aurora3, function()
-            TryGrabGun()
+            -- FIX: usar _G._TryGrabGun como fallback por si TryGrabGun no esta en scope
+            -- (puede pasar si el tab se cerro y reabrio y la funcion no fue redefinida aun)
+            local fn = (type(TryGrabGun) == "function" and TryGrabGun) or _G._TryGrabGun
+            if fn then pcall(fn) end
         end)
         _currentMainSectionFrame = _prevSection
     end
@@ -29096,34 +29381,45 @@ function CreateWorldUI_AutoGrabGun()
             task.spawn(_agTryGrab)
 
             -- Event-driven: DescendantAdded en workspace
+            -- FIX: detectar TODOS los nombres de gun que usa MM2 (no solo "GunDrop" exacto)
             if GrabState._agConn then GrabState._agConn:Disconnect() end
             GrabState._agConn = workspace.DescendantAdded:Connect(function(obj)
                 if not GrabState.autoEnabled then return end
                 if _findGun(LocalPlayer.Character) then return end
-                -- Solo GunDrop (nombre exacto)
-                if obj.Name ~= "GunDrop" then return end
-                do
-                    local inPlayer = false
-                    for _, p in pairs(_cachedPlayers) do
-                        local c = p.Character; local b = p.Backpack
-                        if (c and obj:IsDescendantOf(c)) or (b and obj:IsDescendantOf(b)) then
-                            inPlayer = true; break
-                        end
+                -- FIX: aceptar cualquier nombre de gun en _GUN_NAMES o keyword "gun"/"sheriff"/"revolver"
+                if not obj:IsA("Tool") then return end
+                local nm = obj.Name:lower()
+                local isGun = _GUN_NAMES[obj.Name]
+                    or nm:find("gun") or nm:find("sheriff") or nm:find("revolver")
+                if not isGun then return end
+                local inPlayer = false
+                for _, p in pairs(_cachedPlayers) do
+                    local c = p.Character; local b = p.Backpack
+                    if (c and obj:IsDescendantOf(c)) or (b and obj:IsDescendantOf(b)) then
+                        inPlayer = true; break
                     end
-                    if not inPlayer then
-                        -- FIX: usar _fluidGrabGun -- mueve la GUN al player, no al reves
-                        -- Sin blink del HRP -> sin lag visible para el jugador
-                        task.spawn(function() pcall(_fluidGrabGun, obj) end)
-                    end
+                end
+                if not inPlayer then
+                    -- FIX: usar _fluidGrabGun -- mueve la GUN al player, no al reves
+                    -- Sin blink del HRP -> sin lag visible para el jugador
+                    task.spawn(function() pcall(_fluidGrabGun, obj) end)
                 end
             end)
 
             -- Heartbeat fallback cada 0.5s
+            -- FIX: no pausar por _visualRoundOver al inicio -- la gun puede spawnear justo
+            -- cuando _visualRoundOver todavia es true (lag de red). Solo pausar si ya
+            -- llevamos mas de 3s desde el fin de ronda sin RoundStart.
             if GrabState._hbConn then GrabState._hbConn:Disconnect() end
             local _hbT = 0
             GrabState._hbConn = RunService.Heartbeat:Connect(function(dt)
                 if not GrabState.autoEnabled then return end
-                if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
+                -- FIX: permitir grab aunque _visualRoundOver sea true si hay drop visible
+                -- Solo saltear si estamos en intermission larga (>3s sin RoundStart)
+                if _G._visualRoundOver then
+                    local timeSinceStart = _G._roundStartTime and (tick() - _G._roundStartTime) or 999
+                    if timeSinceStart > 3 then return end
+                end
                 _hbT = _hbT + dt
                 if _hbT < 0.5 then return end
                 _hbT = 0
@@ -29134,7 +29430,8 @@ function CreateWorldUI_AutoGrabGun()
                 end
             end)
 
-            -- RoundStart: intentar 20 veces en los primeros 2 segundos de ronda
+            -- RoundStart: burst de intentos en los primeros 4 segundos de ronda
+            -- FIX: extender burst a 4s (40 intentos) porque la gun puede tardar en spawnear
             if GrabState._agRoundConn then pcall(function() GrabState._agRoundConn:Disconnect() end) end
             task.spawn(function()
                 local ok, rem = pcall(function()
@@ -29150,13 +29447,40 @@ function CreateWorldUI_AutoGrabGun()
                     end
                     GrabState._agBusy     = false
                     GrabState._cachedDrop = nil
-                    -- Burst de 20 intentos en 2s al inicio de ronda
-                    for _ = 1, 20 do
-                        if not GrabState.autoEnabled then break end
-                        task.spawn(_agTryGrab)
-                        task.wait(0.1)
-                        if _findGun(LocalPlayer.Character) then break end
-                    end
+                    -- FIX: burst de 40 intentos en 4s (gun puede tardar en spawnear en el mapa)
+                    -- Ademas buscar en workspace:GetDescendants() por si la gun ya esta pero
+                    -- el cache no la tiene todavia
+                    task.spawn(function()
+                        for _ = 1, 40 do
+                            if not GrabState.autoEnabled then break end
+                            if _findGun(LocalPlayer.Character) then break end
+                            -- Intentar grab con agTryGrab (usa cache)
+                            task.spawn(_agTryGrab)
+                            -- FIX: ademas buscar directo en workspace sin cache
+                            local char = LocalPlayer.Character
+                            if char then
+                                for _, obj in ipairs(workspace:GetDescendants()) do
+                                    if obj:IsA("Tool") then
+                                        local nm = obj.Name:lower()
+                                        if _GUN_NAMES[obj.Name] or nm:find("gun") or nm:find("sheriff") then
+                                            local inPlayer = false
+                                            for _, p in pairs(_cachedPlayers) do
+                                                local c2 = p.Character; local b2 = p.Backpack
+                                                if (c2 and obj:IsDescendantOf(c2)) or (b2 and obj:IsDescendantOf(b2)) then
+                                                    inPlayer = true; break
+                                                end
+                                            end
+                                            if not inPlayer then
+                                                pcall(_fluidGrabGun, obj)
+                                                if _findGun(char) then break end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                            task.wait(0.1)
+                        end
+                    end)
                 end)
             end)
         else
@@ -29451,56 +29775,50 @@ function CreateWorldUI_InfinityJumpMovement()
  CreateSection(rightColumn, "", "INFINITY JUMP", ThemeColors.Aurora2)
 
         -- FIX: mover ijState a _G para que sobreviva entre cambios de tab
-        _G._ijState = _G._ijState or { enabled = false, power = 50, conn = nil, maxJumps = 0, jumpCount = 0 }
+        _G._ijState = _G._ijState or { enabled = false, power = 50, conn = nil, stateConn = nil, charConn = nil, maxJumps = 0, jumpCount = 0 }
         local ijState = _G._ijState
+
+        local function _ijConnectChar(char, hum)
+            if ijState.conn      then ijState.conn:Disconnect();      ijState.conn = nil end
+            if ijState.stateConn then ijState.stateConn:Disconnect(); ijState.stateConn = nil end
+            if not char or not hum then return end
+            ijState.jumpCount = 0
+            ijState.conn = hum:GetPropertyChangedSignal("Jump"):Connect(function()
+                if not ijState.enabled or not hum.Jump then return end
+                if ijState.maxJumps ~= 0 and ijState.jumpCount >= ijState.maxJumps then return end
+                ijState.jumpCount = ijState.jumpCount + 1
+                local r = char:FindFirstChild("HumanoidRootPart")
+                if r then
+                    r.AssemblyLinearVelocity = Vector3.new(
+                        r.AssemblyLinearVelocity.X, ijState.power, r.AssemblyLinearVelocity.Z)
+                end
+            end)
+            -- FIX: StateChanged es mas confiable que hum.Jump==false para resetear en aterrizaje
+            ijState.stateConn = hum.StateChanged:Connect(function(_, newState)
+                if not ijState.enabled then return end
+                if newState == Enum.HumanoidStateType.Landed
+                or newState == Enum.HumanoidStateType.Running
+                or newState == Enum.HumanoidStateType.RunningNoPhysics then
+                    ijState.jumpCount = 0
+                end
+            end)
+        end
 
  CreateAuroraToggle(rightColumn, "Infinity Jump", function(enabled)
             ijState.enabled = enabled
-            if ijState.conn then ijState.conn:Disconnect(); ijState.conn = nil end
+            if not enabled then
+                if ijState.conn      then ijState.conn:Disconnect();      ijState.conn = nil end
+                if ijState.stateConn then ijState.stateConn:Disconnect(); ijState.stateConn = nil end
+            end
             if enabled then
                 local char = LocalPlayer.Character
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    ijState.jumpCount = 0
-                    ijState.conn = hum:GetPropertyChangedSignal("Jump"):Connect(function()
-                        if not ijState.enabled then return end
-                        if hum.Jump then
-                            if ijState.maxJumps == 0 or ijState.jumpCount < ijState.maxJumps then
-                                ijState.jumpCount = ijState.jumpCount + 1
-                                local hrp = char:FindFirstChild("HumanoidRootPart")
-                                if hrp then
-                                    hrp.AssemblyLinearVelocity = Vector3.new(
-                                        hrp.AssemblyLinearVelocity.X,
-                                        ijState.power,
-                                        hrp.AssemblyLinearVelocity.Z
-                                    )
-                                end
-                            end
-                        else
-                            ijState.jumpCount = 0
-                        end
-                    end)
-                end
-                LocalPlayer.CharacterAdded:Connect(function(c)
+                local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                _ijConnectChar(char, hum)
+                if ijState.charConn then ijState.charConn:Disconnect() end
+                ijState.charConn = LocalPlayer.CharacterAdded:Connect(function(c)
                     if not ijState.enabled then return end
-                    if ijState.conn then ijState.conn:Disconnect() end
                     local h = c:WaitForChild("Humanoid")
-                    ijState.jumpCount = 0
-                    ijState.conn = h:GetPropertyChangedSignal("Jump"):Connect(function()
-                        if not ijState.enabled then return end
-                        if h.Jump then
-                            local r = c:FindFirstChild("HumanoidRootPart")
-                            if r then
-                                r.AssemblyLinearVelocity = Vector3.new(
-                                    r.AssemblyLinearVelocity.X,
-                                    ijState.power,
-                                    r.AssemblyLinearVelocity.Z
-                                )
-                            end
-                        else
-                            ijState.jumpCount = 0
-                        end
-                    end)
+                    _ijConnectChar(c, h)
                 end)
  CreateCustomNotification("INFINITY JUMP", "ON -- salta infinito!", 3)
             else
@@ -29613,7 +29931,7 @@ function CreateWorldUI_InfinityJumpMovement()
         TweenService:Create(resetBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.25}):Play()
     end)
 
-    resetBtn.MouseButton1Click:Connect(function()
+    resetBtn.Activated:Connect(function()
         -- Forzar desactivacion del noclip si estaba activo
         if _camNC_active then
             _camNC_active = false
@@ -29809,7 +30127,7 @@ function CreateWorldUI_Spectate()
             b.BorderSizePixel = 0
             b.AutoButtonColor = false
             Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
-            b.MouseButton1Click:Connect(function()
+            b.Activated:Connect(function()
 
                 cb()
             end)
@@ -29936,7 +30254,7 @@ local function _makeTPButton(label, callback, forcedParent)
     end)
 
     -- Click: flash rapido
-    btn.MouseButton1Click:Connect(function()
+    btn.Activated:Connect(function()
         TweenService:Create(btn,    TWEEN_FAST, {BackgroundColor3 = ThemeColors.Accent, BackgroundTransparency = C_BG_CLK}):Play()
         TweenService:Create(stroke, TWEEN_FAST, {Color = C_STROKE_CLK, Thickness = 2.5}):Play()
         task.wait(0.12)
@@ -30317,13 +30635,13 @@ function CreateWorldUI_SendToChat()
             TweenService:Create(sendBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
             TweenService:Create(_sendBtnStroke, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.3, Thickness = 1.5}):Play()
         end)
-        sendBtn.MouseButton1Click:Connect(function()
+        sendBtn.Activated:Connect(function()
             TweenService:Create(sendBtn, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Accent}):Play()
             task.wait(0.12)
             TweenService:Create(sendBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
         end)
         local captSlot2 = slotI
-        sendBtn.MouseButton1Click:Connect(function()
+        sendBtn.Activated:Connect(function()
             local txt = _customSlots[captSlot2]
             if txt and txt ~= "" then
                 _sayInChat(txt)
@@ -30361,7 +30679,7 @@ function CreateWorldUI_SendToChat()
         TweenService:Create(prevBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
         TweenService:Create(_prevBtnStroke, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.3, Thickness = 1.5}):Play()
     end)
-    prevBtn.MouseButton1Click:Connect(function()
+    prevBtn.Activated:Connect(function()
         TweenService:Create(prevBtn, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Accent}):Play()
         task.wait(0.12)
         TweenService:Create(prevBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
@@ -30390,17 +30708,17 @@ function CreateWorldUI_SendToChat()
         TweenService:Create(nextBtnS, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
         TweenService:Create(_nextBtnSStroke, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.3, Thickness = 1.5}):Play()
     end)
-    nextBtnS.MouseButton1Click:Connect(function()
+    nextBtnS.Activated:Connect(function()
         TweenService:Create(nextBtnS, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Accent}):Play()
         task.wait(0.12)
         TweenService:Create(nextBtnS, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
     end)
 
-    prevBtn.MouseButton1Click:Connect(function()
+    prevBtn.Activated:Connect(function()
         _slotIdx = (_slotIdx - 2) % #slotNames + 1
  slotLabel.Text = slotNames[_slotIdx]
     end)
-    nextBtnS.MouseButton1Click:Connect(function()
+    nextBtnS.Activated:Connect(function()
         _slotIdx = _slotIdx % #slotNames + 1
  slotLabel.Text = slotNames[_slotIdx]
     end)
@@ -30798,7 +31116,7 @@ function CreateWorldUI_GameUtilities()
         TweenService:Create(prevSlotBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
         TweenService:Create(_prevSlotStroke, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.3, Thickness = 1.5}):Play()
     end)
-    prevSlotBtn.MouseButton1Click:Connect(function()
+    prevSlotBtn.Activated:Connect(function()
         TweenService:Create(prevSlotBtn, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Accent}):Play()
         task.wait(0.12)
         TweenService:Create(prevSlotBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
@@ -30827,7 +31145,7 @@ function CreateWorldUI_GameUtilities()
         TweenService:Create(nextSlotBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
         TweenService:Create(_nextSlotStroke, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 0.3, Thickness = 1.5}):Play()
     end)
-    nextSlotBtn.MouseButton1Click:Connect(function()
+    nextSlotBtn.Activated:Connect(function()
         TweenService:Create(nextSlotBtn, TweenInfo.new(0.08), {BackgroundColor3 = ThemeColors.Accent}):Play()
         task.wait(0.12)
         TweenService:Create(nextSlotBtn, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = ThemeColors.Background}):Play()
@@ -30847,12 +31165,12 @@ function CreateWorldUI_GameUtilities()
         end
     end
 
-    prevSlotBtn.MouseButton1Click:Connect(function()
+    prevSlotBtn.Activated:Connect(function()
 
         _currentSlot = (_currentSlot - 2) % _slotCount + 1
         _refreshSlotUI()
     end)
-    nextSlotBtn.MouseButton1Click:Connect(function()
+    nextSlotBtn.Activated:Connect(function()
 
         _currentSlot = _currentSlot % _slotCount + 1
         _refreshSlotUI()
@@ -30922,6 +31240,70 @@ function CreateWorldUI_GameUtilities()
             end
         end
 
+        local function _restoreAllPets()
+            for _, char in ipairs(workspace:GetChildren()) do
+                local pet = char:FindFirstChild("Pet")
+                if pet then
+                    local body = pet:FindFirstChild("Body")
+                    if body then
+                        pcall(function() body.LocalTransparencyModifier = 0 end)
+                        pcall(function() body.Transparency = 0 end)
+                        for _, desc in ipairs(body:GetDescendants()) do
+                            if desc:IsA("BasePart") then
+                                pcall(function() desc.LocalTransparencyModifier = 0 end)
+                                pcall(function() desc.Transparency = 0 end)
+                            end
+                            if desc:IsA("ParticleEmitter") or desc:IsA("Fire") or desc:IsA("Trail") or desc:IsA("Beam") then
+                                pcall(function() desc.Enabled = true end)
+                            end
+                            if desc:IsA("BillboardGui") then
+                                pcall(function() desc.Enabled = true end)
+                            end
+                        end
+                    end
+                end
+                for _, child in ipairs(char:GetChildren()) do
+                    if child.Name == "Pet" and child:IsA("StringValue") then
+                        local body2 = child:FindFirstChild("Body")
+                        if body2 then
+                            pcall(function() body2.LocalTransparencyModifier = 0 end)
+                            pcall(function() body2.Transparency = 0 end)
+                            for _, desc in ipairs(body2:GetDescendants()) do
+                                if desc:IsA("BasePart") then
+                                    pcall(function() desc.LocalTransparencyModifier = 0 end)
+                                    pcall(function() desc.Transparency = 0 end)
+                                end
+                                if desc:IsA("ParticleEmitter") or desc:IsA("Fire") or desc:IsA("Trail") or desc:IsA("Beam") then
+                                    pcall(function() desc.Enabled = true end)
+                                end
+                                if desc:IsA("BillboardGui") then
+                                    pcall(function() desc.Enabled = true end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj.Name == "Body" and obj.Parent and obj.Parent.Name == "Pet" then
+                    pcall(function() obj.LocalTransparencyModifier = 0 end)
+                    pcall(function() obj.Transparency = 0 end)
+                    for _, desc in ipairs(obj:GetDescendants()) do
+                        if desc:IsA("BasePart") then
+                            pcall(function() desc.LocalTransparencyModifier = 0 end)
+                            pcall(function() desc.Transparency = 0 end)
+                        end
+                        if desc:IsA("ParticleEmitter") or desc:IsA("Fire") or desc:IsA("Trail") or desc:IsA("Beam") then
+                            pcall(function() desc.Enabled = true end)
+                        end
+                        if desc:IsA("BillboardGui") then
+                            pcall(function() desc.Enabled = true end)
+                        end
+                    end
+                end
+            end
+        end
+
         CreateAuroraToggle(leftColumn, "Auto Remove Pets", function(en)
             _petRemEnabled = en
             if _petRemConn    then pcall(function() _petRemConn:Disconnect()    end); _petRemConn    = nil end
@@ -30946,6 +31328,7 @@ function CreateWorldUI_GameUtilities()
                 end)
  CreateCustomNotification("AUTO REMOVE", "Pets ocultos", 2)
             else
+                _restoreAllPets()
  CreateCustomNotification("AUTO REMOVE", "Pets visibles de nuevo", 2)
             end
         end, false)
@@ -31000,6 +31383,37 @@ function CreateWorldUI_GameUtilities()
             end)
         end
 
+        local function _restoreAllTraps()
+            for _, obj in ipairs(workspace:GetChildren()) do
+                if obj:FindFirstChild("TrapVisual") and obj:FindFirstChild("PlacedPlayer") then
+                    local tv = obj:FindFirstChild("TrapVisual")
+                    if tv then
+                        pcall(function() tv.Transparency = 0 end)
+                        pcall(function() tv.LocalTransparencyModifier = 0 end)
+                        pcall(function() tv.CanCollide = true end)
+                    end
+                    for _, desc in ipairs(obj:GetDescendants()) do
+                        if desc:IsA("BillboardGui") then
+                            pcall(function() desc.Enabled = true end)
+                        end
+                        if desc:IsA("BasePart") then
+                            pcall(function() desc.LocalTransparencyModifier = 0 end)
+                            pcall(function() desc.CanCollide = true end)
+                        end
+                    end
+                end
+            end
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj.Name == "TrapVisual" and obj:IsA("BasePart") then
+                    pcall(function()
+                        obj.LocalTransparencyModifier = 0
+                        obj.Transparency = 0
+                        obj.CanCollide = true
+                    end)
+                end
+            end
+        end
+
         CreateAuroraToggle(leftColumn, "Auto Remove Traps", function(en)
             _trapRemEnabled = en
             if _trapRemConn then pcall(function() _trapRemConn:Disconnect() end); _trapRemConn = nil end
@@ -31031,6 +31445,7 @@ function CreateWorldUI_GameUtilities()
                 end)
  CreateCustomNotification("AUTO REMOVE", "Trampas ocultas", 2)
             else
+                _restoreAllTraps()
  CreateCustomNotification("AUTO REMOVE", "Trampas visibles de nuevo", 2)
             end
         end, false)
@@ -31437,6 +31852,130 @@ end
 -- ==============================================================
 -- SPIN UNIVERSAL
 -- ==============================================================
+-- ==============================================================
+-- SHIFT LOCK BINDABLE
+-- Toggle: activa/desactiva Shift Lock. Bindable: boton en pantalla
+-- que al tocarse activa el Shift Lock (util en mobile).
+-- ==============================================================
+function CreateWorldUI_ShiftLock()
+    local sec = CreateSection(rightColumn, "", "SHIFT LOCK", ThemeColors.Aurora2)
+    _currentMainSectionFrame = sec
+
+    local subLbl = Instance.new("TextLabel", sec)
+    subLbl.Size = UDim2.new(1,-12,0,14)
+    subLbl.BackgroundTransparency = 1
+    subLbl.Text = "UNIVERSAL"
+    subLbl.Font = Enum.Font.Montserrat
+    subLbl.TextSize = 10
+    subLbl.TextColor3 = Color3.fromRGB(0, 210, 180)
+    subLbl.TextXAlignment = Enum.TextXAlignment.Left
+    subLbl.ZIndex = 13
+
+    -- Estado persistente entre visitas al tab
+    if _G._shiftLockState then
+        if _G._shiftLockState.keyConn  then pcall(function() _G._shiftLockState.keyConn:Disconnect()  end) end
+        if _G._shiftLockState.charConn then pcall(function() _G._shiftLockState.charConn:Disconnect() end) end
+    end
+    _G._shiftLockState = _G._shiftLockState or {}
+    local SL = _G._shiftLockState
+    SL.enabled     = false
+    SL.bindEnabled = false
+    SL.keyConn     = nil
+    SL.charConn    = nil
+
+    -- Helpers para activar/desactivar shift lock via PlayerModule o fallback
+    local function _activateShiftLock()
+        pcall(function()
+            -- Metodo 1: forzar MouseBehavior a LockCenter (funciona en la mayoria de executors)
+            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        end)
+        pcall(function()
+            -- Metodo 2: habilitar MouseLock via PlayerModule (mas oficial)
+            local pm = require(Players.LocalPlayer.PlayerScripts:WaitForChild("PlayerModule", 3))
+            if pm and pm.controls and pm.controls.mouselock then
+                pm.controls.mouselock:Enable()
+            end
+        end)
+        pcall(function()
+            -- Metodo 3: DevEnableMouseLock en el LocalPlayer
+            LocalPlayer.DevEnableMouseLock = true
+        end)
+        SL.enabled = true
+        CreateCustomNotification("SHIFT LOCK", "Shift Lock ON", 1.5)
+    end
+
+    local function _deactivateShiftLock()
+        pcall(function()
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        end)
+        pcall(function()
+            local pm = require(Players.LocalPlayer.PlayerScripts:WaitForChild("PlayerModule", 3))
+            if pm and pm.controls and pm.controls.mouselock then
+                pm.controls.mouselock:Disable()
+            end
+        end)
+        SL.enabled = false
+        CreateCustomNotification("SHIFT LOCK", "Shift Lock OFF", 1.5)
+    end
+
+    local function _toggleShiftLock()
+        if SL.enabled then
+            _deactivateShiftLock()
+        else
+            _activateShiftLock()
+        end
+    end
+
+    -- Toggle principal: activa shift lock directamente
+    CreateAuroraToggle(sec, "Activar Shift Lock", function(on)
+        if on then
+            _activateShiftLock()
+        else
+            _deactivateShiftLock()
+        end
+    end, false)
+
+    -- Toggle bindable: muestra un boton en pantalla que al tocarse activa/desactiva shift lock
+    CreateAuroraToggle(sec, "Activar Shift Lock Bindable", function(on)
+        SL.bindEnabled = on
+        -- Limpiar bindable anterior
+        pcall(function() destroyBindableButton("SHIFT LOCK") end)
+        if SL.keyConn then pcall(function() SL.keyConn:Disconnect() end) SL.keyConn = nil end
+
+        if on then
+            -- Crear boton bindable en pantalla
+            local _slBtn = createBindableButton("SHIFT LOCK", ThemeColors.Aurora2)
+
+            local function _onPress()
+                _toggleShiftLock()
+                -- Feedback visual: cambiar color del boton segun estado
+                pcall(function()
+                    local fill = _slBtn and _slBtn.Frame
+                    if fill then
+                        fill.BackgroundColor3 = SL.enabled
+                            and Color3.fromRGB(0, 200, 120)   -- verde = ON
+                            or  Color3.fromRGB(80, 40, 180)   -- violeta = OFF
+                    end
+                end)
+            end
+
+            -- PC: click
+            pcall(function() _slBtn.Frame.MouseButton1Click:Connect(_onPress) end)
+            -- Mobile: touch
+            pcall(function()
+                _slBtn.Frame.TouchTap:Connect(_onPress)
+            end)
+            pcall(function()
+                _slBtn.Frame.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.Touch then
+                        _onPress()
+                    end
+                end)
+            end)
+        end
+    end, false)
+end
+
 function CreateWorldUI_SpinSection()
     local sec = CreateSection(rightColumn, "", "SPIN", ThemeColors.Primary)
     _currentMainSectionFrame = sec
@@ -32665,6 +33204,8 @@ function CreateWorldTab()
     if _G._toggleStates then
         _G._toggleStates["Spin"] = false
         _G._toggleStates["Enable Spin Bindable Button"] = false
+        _G._toggleStates["Activar Shift Lock"] = false
+        _G._toggleStates["Activar Shift Lock Bindable"] = false
     end
     ClearContent()
     _makeTwoColumns()  -- FIX: llamar ANTES de las funciones CreateWorldUI_
@@ -32763,6 +33304,12 @@ function CreateWorldTab()
             pcall(function() _G._freezeCharState.heartConn:Disconnect() end)
             _G._freezeCharState.heartConn = nil
         end
+        -- ShiftLock conns
+        if _G._shiftLockState then
+            if _G._shiftLockState.keyConn  then pcall(function() _G._shiftLockState.keyConn:Disconnect()  end) _G._shiftLockState.keyConn  = nil end
+            if _G._shiftLockState.charConn then pcall(function() _G._shiftLockState.charConn:Disconnect() end) _G._shiftLockState.charConn = nil end
+            _G._shiftLockState.bindEnabled = false
+        end
         -- TP Bindable conns -- desconectar y resetear enabled
         if _G._tpAboveMap then
             if _G._tpAboveMap.conn then pcall(function() _G._tpAboveMap.conn:Disconnect() end) _G._tpAboveMap.conn = nil end
@@ -32831,6 +33378,7 @@ function CreateWorldTab()
     _safeCall(CreateWorldUI_TeleportUniversal, "TeleportUniversal")
     _safeCall(CreateWorldUI_ProximityPromptSection, "ProximityPromptSection")
     _safeCall(CreateWorldUI_SpinSection, "SpinSection")
+    _safeCall(CreateWorldUI_ShiftLock,   "ShiftLock")
     -- ClutchSection y TeleportAboveMap eliminados del World tab
     _safeCall(CreateWorldUI_VoidTeleport, "VoidTeleport")
     _safeCall(CreateWorldUI_ExposeRoles, "ExposeRoles")
@@ -32850,10 +33398,29 @@ function CreateWorldTab()
     _safeCall(CreateWorldUI_TeleportMurdererBindable,  "TeleportMurdererBindable")
 
 
-    -- FIX AUTO-ACTIVAR: limpiar flag despues de que todos los task.defer de los toggles corran
+    -- AUTO-RESTORE WORLD TAB: restaurar toggles guardados en disco
+    -- Se corre DESPUES de que todos los toggles del tab se registraron en _toggleCallbacks.
+    -- Solo activa los que tienen savedState=true y no estan en la blacklist.
     task.defer(function()
         task.defer(function()
             _G._noAutoActivateWorld = false
+            if not _G._toggleStates or not _G._toggleCallbacks then return end
+            for nombre, state in pairs(_G._toggleStates) do
+                if state == true
+                and not (_neverRestoreToggles and _neverRestoreToggles[nombre])
+                and _G._toggleCallbacks[nombre] then
+                    -- Verificar que este toggle pertenece al World Tab
+                    -- buscando su frame en el contentContainer actual
+                    local toggleFrame = contentContainer and contentContainer:FindFirstChild("AuroraToggleRow_" .. nombre, true)
+                    if toggleFrame then
+                        -- Silenciar notificaciones durante el restore
+                        local _origNotif = CreateCustomNotification
+                        CreateCustomNotification = function() end
+                        pcall(_G._toggleCallbacks[nombre], true)
+                        CreateCustomNotification = _origNotif
+                    end
+                end
+            end
         end)
     end)
 end
@@ -32993,9 +33560,11 @@ local function _sgFlingPlayer(TargetPlayer)
             if p and p:IsA("Model") and p:FindFirstChildOfClass("Humanoid") then return false end
             local handle = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
             if not handle then return false end
-            -- TP al handle y firetouchinterest
-            pcall(function() myHRP.CFrame = handle.CFrame end)
-            pcall(function() myChar:SetPrimaryPartCFrame(handle.CFrame) end)
+            -- FIX TP: mover el handle hacia el jugador (NO TP del jugador al handle)
+            -- Antes hacía myHRP.CFrame = handle.CFrame → se teleportaba DENTRO del sheriff
+            -- Ahora movemos la gun al jugador para agarrarla sin teleportarnos
+            pcall(function() handle.CFrame = CFrame.new(myHRP.Position) end)
+            pcall(function() obj:PivotTo(CFrame.new(myHRP.Position)) end)
             task.wait(0.05)
             pcall(function()
                 firetouchinterest(myHRP, handle, 0)
@@ -33062,52 +33631,10 @@ local function _sgFlingPlayer(TargetPlayer)
         end
     end
 
-    -- == FASE 3: volver a la posicion donde estaba ANTES del fling ==
-    -- Se usa _sgSafePosBefore capturada al inicio (antes de cualquier TP de agarre)
-    -- para evitar que el personaje quede pegado donde cayo la gun.
-    _flingActive = false
-    task.spawn(function()
-        task.wait(0.05)
-        local mc = LocalPlayer.Character
-        local mh = mc and mc:FindFirstChild("HumanoidRootPart")
-        local mm = mc and mc:FindFirstChildOfClass("Humanoid")
-        if not mh or not mm then return end
-        -- Prioridad: posicion capturada antes del fling
-        local _returnCF = _sgSafePosBefore
-        -- Fallback: _flingLastSafePos / OldPos si no hay captura previa
-        if not _returnCF then
-            local _lsp = _flingLastSafePos or _G.OldPos
-            if _lsp then
-                local _ly = _lsp.Position and _lsp.Position.Y or 0
-                if _ly > 2 and _ly < 800 then
-                    _returnCF = _lsp
-                end
-            end
-        end
-        if _returnCF then
-            -- TP directo a la posicion pre-fling con intentos multiples
-            if not _flingReturning then
-                _flingReturning = true
-                for _i = 1, 5 do
-                    pcall(function()
-                        mh.CFrame = _returnCF * CFrame.new(0, 0.5, 0)
-                        mh.AssemblyLinearVelocity  = Vector3.zero
-                        mh.AssemblyAngularVelocity = Vector3.zero
-                    end)
-                    task.wait(0.06)
-                    if not (mc and mc.Parent) then break end
-                end
-                mm.PlatformStand = false
-                pcall(function() mm:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-                _flingReturning = false
-            end
-        else
-            -- Ultimo fallback: usar _flingDoReturn normal
-            if not _flingReturning then
-                _flingDoReturn(mc, mh, mm)
-            end
-        end
-    end)
+    -- FASE 3: no hace falta TP de retorno extra.
+    -- _doStealFling (ATOMIC GHOST FLING v5) ya restaura RootPart.CFrame
+    -- a safePos al final de cada frame y al salir del loop.
+    -- El jugador queda en su lugar original sin TPs adicionales.
 
     if grabbed then
         CreateCustomNotification("STEAL GUN", "Gun robada de " .. TargetPlayer.Name .. "!", 2.5)
@@ -33576,7 +34103,7 @@ function CreatePremiumTab()
         end
 
         -- Click en botón = copiar link
-        copyBtn.MouseButton1Click:Connect(function()
+        copyBtn.Activated:Connect(function()
             pcall(function() setclipboard(loginUrl) end)
             copyBtn.Text = "✅  Link copiado!"
             copyBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 100)
@@ -33759,7 +34286,7 @@ function CreatePremiumTab()
  clickBtn.Text = ""
         clickBtn.ZIndex = 20
         clickBtn.AutoButtonColor = false
-        clickBtn.MouseButton1Click:Connect(function()
+        clickBtn.Activated:Connect(function()
  CreateCustomNotification(" LOCKED FEATURE", label .. " is currently in development.", 3)
         end)
         return lockFrame
@@ -34266,8 +34793,10 @@ function CreatePremiumTab()
                 meshId = "http://www.roblox.com/asset/?id=95356090",
                 texId  = "http://www.roblox.com/asset/?id=126534866",
                 scale  = Vector3.new(1.7999999523162842, 1.7999999523162842, 1.7999999523162842),
+                -- FIX GRIP: Z=+0.5 empujaba el arma hacia adentro del torso.
+                -- Cambiado a Z=-0.5 para que quede adelante de la mano apuntando al frente.
                 grip   = CFrame.new(
-                    0, -0.5, 0.5,
+                    0, -0.5, -0.5,
                     0.999924004,    -0.00871835742, -0.00871835742,
                     0.00871835742,   0.999961972,   -3.80063248e-05,
                     0.00871835742,  -3.80063248e-05,  0.999961972
@@ -34278,7 +34807,9 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://7775027413",
                 texId  = "http://www.roblox.com/asset/?id=7775245551",
                 scale  = Vector3.new(0.05999999865889549, 0.05000000074505806, 0.05000000074505806),
-                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                -- FIX GRIP: mismo mesh que Harvester knife (_KNIFE_SKINS) -- sincronizado con Y=-1
+                -- El -0.9 dejaba el arma levemente alta respecto al agarre real de la mano.
+                grip   = CFrame.new(0, -1, 0) * CFrame.Angles(math.rad(-90), 0, 0),
                 dualGun = true,
             },
             {
@@ -34315,7 +34846,9 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://15374602183",
                 texId  = "rbxassetid://15409041564",
                 scale  = Vector3.new(0.08, 0.08, 0.08),
-                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                -- FIX GRIP: identidad dejaba el scope mal agarrado.
+                -- Unificado con el grip probado en _GUN_SKINS (Items Fake).
+                grip   = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0),
                 dualGun = true,
             },
         }
@@ -34327,8 +34860,9 @@ function CreatePremiumTab()
                 name   = "Turkey",
                 meshId = "rbxassetid://15320557481",
                 texId  = "rbxassetid://86999625612475",
-                scale  = Vector3.new(0.056, 0.056, 0.056),
-                grip   = CFrame.new(0, -1, -0.100000001, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                scale  = Vector3.new(0.0560000017285347, 0.0560000017285347, 0.0560000017285347),
+                -- FIX GRIP: sincronizado con _KNIFE_SKINS (Items Fake) -- grip testeado y confirmado
+                grip   = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0),
                 dualKnife = true,
             },
             {
@@ -34420,15 +34954,8 @@ function CreatePremiumTab()
                     pcall(function() obj.TextureID = skin.texId end)
                 end
             end
-            -- Soldar al RightGrip (igual que hub)
-            local char = LocalPlayer.Character
-            local hand = char and (char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm"))
-            if hand then
-                local rg = hand:FindFirstChild("RightGrip")
-                if rg and (rg:IsA("Weld") or rg:IsA("Motor6D")) then
-                    pcall(function() rg.C1 = tool.Grip end)
-                end
-            end
+            -- FIX GRIP: NO tocar rg.C1 del Motor6D — Roblox lo maneja solo al equipar.
+            -- Pisar C1 manualmente corrompía el agarre al mezclar dos sistemas.
             -- -- FIN HOOK SONIDO (desactivado) ----------------------------
 
             -- HOOK DUAL GUN: sincronizar skin al DK_Clone si dual gun esta activo
@@ -34454,27 +34981,55 @@ function CreatePremiumTab()
         -- Oyente automatico
         -- FIX: en MM2 la Gun vive en workspace.NombreJugador.Gun (no como Tool hijo directo del char raiz)
         -- Se usa _findGun() que ya maneja la busqueda correcta, y se escucha ChildAdded en el char de workspace
-        if not _skinState._charConn then
+        -- FIX MOBILE REBUILD: limpiar conexiones viejas siempre que el tab se reconstruya,
+        -- para que el listener se vuelva a registrar correctamente (evita que el guard
+        -- "if not _charConn" bloquee el re-registro tras destruir y recrear el tab Premium).
+        do
+            if _skinState._charConn then
+                pcall(function() _skinState._charConn:Disconnect() end)
+                _skinState._charConn = nil
+            end
+            if _skinState._wsConn then
+                pcall(function() _skinState._wsConn:Disconnect() end)
+                _skinState._wsConn = nil
+            end
+            if _skinState._charPickupConn then
+                pcall(function() _skinState._charPickupConn:Disconnect() end)
+                _skinState._charPickupConn = nil
+            end
+
             -- FIX MOBILE: en celu la gun llega via DescendantAdded del workspace,
             -- no necesariamente como ChildAdded del char. Usamos DescendantAdded
             -- para capturar cualquier Tool que aparezca (gun en char o en workspace).
             local function _scTryApplyGun()
                 if not _skinState.enabled then return end
                 task.wait(0.15)
+                -- FIX MOBILE: buscar tambien en workspace[playerName] ademas de char/backpack
                 local gun = _findGun and _findGun()
+                if not gun then
+                    local wsChar = workspace:FindFirstChild(LocalPlayer.Name)
+                    if wsChar then gun = _findGunIn and _findGunIn(wsChar) end
+                end
                 if gun then _scApply(gun, _scGetSkin(), true) end
             end
 
             local function _scSetupListener(char)
-                -- Listener en el char (PC y algunos mobile)
-                char.ChildAdded:Connect(function(child)
+                -- Listener en el char (PC y mobile - tool equipada directamente)
+                if _skinState._charPickupConn then
+                    pcall(function() _skinState._charPickupConn:Disconnect() end)
+                end
+                _skinState._charPickupConn = char.ChildAdded:Connect(function(child)
                     if child:IsA("Tool") then
                         task.spawn(_scTryApplyGun)
                     end
                 end)
                 -- Listener en DescendantAdded del workspace (mobile / MM2 gun model)
-                -- Solo re-aplicar si es una Tool que puede ser la gun
-                workspace.DescendantAdded:Connect(function(obj)
+                -- Solo re-aplicar si es una Tool que puede ser la gun.
+                -- FIX: guardamos la conexion para poder limpiarla al reconstruir el tab.
+                if _skinState._wsConn then
+                    pcall(function() _skinState._wsConn:Disconnect() end)
+                end
+                _skinState._wsConn = workspace.DescendantAdded:Connect(function(obj)
                     if not _skinState.enabled then return end
                     if obj:IsA("Tool") then
                         local n = obj.Name:lower()
@@ -34569,20 +35124,64 @@ function CreatePremiumTab()
                     break
                 end
             end
+            -- FIX SKIN SWAP: si ya habia una skin aplicada, resetear origData del tool
+            -- actual para que la nueva skin se aplique desde los valores originales
+            -- y no queden capas acumuladas (bug visible en mobile: skin no cambiaba).
+            local _toolActual = _findGun and _findGun()
+            if _toolActual and _skinState.origData[_toolActual] then
+                -- Restaurar valores originales de ese tool antes de aplicar la nueva skin
+                local _data = _skinState.origData[_toolActual]
+                pcall(function() _toolActual.Grip = _data.Grip end)
+                for obj, eData in pairs(_data.Elements) do
+                    if obj and obj.Parent then
+                        pcall(function()
+                            if obj:IsA("SpecialMesh") then
+                                obj.MeshId    = eData.Mesh
+                                obj.TextureId = eData.Texture
+                                obj.Scale     = eData.Scale
+                            elseif obj:IsA("MeshPart") then
+                                obj.TextureID = eData.Texture
+                            end
+                        end)
+                    end
+                end
+                _skinState.origData[_toolActual] = nil  -- limpiar cache para re-capturar originales
+            end
             -- FIX MOBILE: activar siempre, incluso si no hay gun ahora mismo.
             -- El listener de DescendantAdded/ChildAdded va a aplicar la skin
             -- cuando la gun aparezca (sea en PC o mobile).
             _skinState.enabled = true
-            -- FIX: usar _findGun() que busca en char y backpack correctamente (MM2 usa modelo en workspace)
-            local tool = _findGun and _findGun()
+            -- FIX: buscar gun en char, backpack Y en workspace[playerName] (mobile MM2)
+            local function _findGunMobile()
+                local gun = _findGun and _findGun()
+                if gun then return gun end
+                -- En mobile MM2 la gun a veces vive en workspace bajo el nombre del jugador
+                local wsChar = workspace:FindFirstChild(LocalPlayer.Name)
+                if wsChar then
+                    gun = _findGunIn and _findGunIn(wsChar)
+                    if gun then return gun end
+                end
+                return nil
+            end
+            local tool = _findGunMobile()
             if tool then
                 _scApply(tool, _scGetSkin(), true)
             end
-            -- Intentar de nuevo con delay por si la gun tarda en cargarse (mobile)
-            task.delay(0.4, function()
+            -- Intentar de nuevo con delays por si la gun tarda en cargarse (mobile)
+            task.delay(0.3, function()
                 if not _skinState.enabled then return end
-                local gun2 = _findGun and _findGun()
+                local gun2 = _findGunMobile()
                 if gun2 then _scApply(gun2, _scGetSkin(), true) end
+            end)
+            task.delay(0.8, function()
+                if not _skinState.enabled then return end
+                local gun3 = _findGunMobile()
+                if gun3 then _scApply(gun3, _scGetSkin(), true) end
+            end)
+            task.delay(1.5, function()
+                if not _skinState.enabled then return end
+                local gun4 = _findGunMobile()
+                if gun4 then _scApply(gun4, _scGetSkin(), true) end
             end)
         end)
 
@@ -34595,13 +35194,13 @@ function CreatePremiumTab()
             Instance.new("UICorner", _csFrame).CornerRadius = UDim.new(0, 10)
             local _csBorder = Instance.new("UIStroke", _csFrame)
             _csBorder.Thickness = 1.5
-            _csBorder.Color = Color3.fromRGB(120, 60, 220)
+            _csBorder.Color = Color3.fromRGB(0, 191, 255)
             _csBorder.Transparency = 0.3
             local _csGrad = Instance.new("UIGradient", _csBorder)
             _csGrad.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0,   Color3.fromRGB(180, 60, 255)),
+                ColorSequenceKeypoint.new(0,   Color3.fromRGB(0, 191, 255)),
                 ColorSequenceKeypoint.new(0.5, Color3.fromRGB(80, 180, 255)),
-                ColorSequenceKeypoint.new(1,   Color3.fromRGB(180, 60, 255)),
+                ColorSequenceKeypoint.new(1,   Color3.fromRGB(0, 191, 255)),
             })
             RegisterShimmer(_csGrad, 50, 15)
 
@@ -34694,990 +35293,6 @@ function CreatePremiumTab()
 
 end  -- cierra CreatePremiumTab
 
--- ======================================================================
--- FARM TAB
--- ======================================================================
-function CreateFarmTab()
-    if not contentContainer or not contentContainer.Parent then
-        task.wait(0.15)
-        if not contentContainer or not contentContainer.Parent then return end
-    end
-    ClearContent()
-    _makeTwoColumns()
-
-    -- =====================================================================
-    -- COIN FARM
-    -- =====================================================================
-    CreateSection(leftColumn, "", "COIN FARM", ThemeColors.Aurora2)
-
-    -- =====================================================================
-    -- AUTO FARM v2 - Logica multi-toque, noclip, BodyVelocity, sin movimiento
-    -- =====================================================================
-    do
-        -- =====================================================================
-        -- AUTO FARM — logica reemplazada (multi-metodo, noclip, vuelo, touch)
-        -- =====================================================================
-        local _afEnabled      = false
-        local _afThread       = nil
-        local _afNoclipConn   = nil
-        local _afStateConn    = nil
-        local _afAntiSpinConn = nil
-        local _afBlacklist    = {}
-        local _afSpeed        = 100   -- studs/s
-        local _afAlturaOffset = 1.80  -- studs bajo la moneda
-        local _afGrabDelay    = 0     -- delay entre intentos de toque
-
-        if _G._sliderVals then
-            _G._sliderVals["Auto Farm Offset Bajo Moneda|1|100"] = nil
-            _G._sliderVals["Auto Farm Offset Bajo Moneda|5|100"] = nil
-            _G._sliderVals["Auto Farm Delay Agarre (x0.01s)|1|50"] = nil
-            _G._sliderVals["Auto Farm Delay Agarre (x0.01s)|0|50"] = nil
-        end
-
-        -- Buscar CoinContainer en el workspace de forma robusta
-        local function _afFindContainer()
-            local direct = workspace:FindFirstChild("CoinContainer")
-            if direct then return direct end
-            local wp = workspace:FindFirstChild("Workplace")
-            if wp and wp:FindFirstChild("CoinContainer") then return wp.CoinContainer end
-            local mn = workspace:FindFirstChild("Mansion2")
-            if mn and mn:FindFirstChild("CoinContainer") then return mn.CoinContainer end
-            for _, desc in pairs(workspace:GetDescendants()) do
-                if desc.Name == "CoinContainer" then return desc end
-            end
-            return nil
-        end
-
-        -- Obtener la coin mas cercana (misma logica que el script de referencia)
-        local function _afGetNearest(root)
-            local nearest, minDist = nil, math.huge
-            local container = _afFindContainer()
-            if not container then return nil end
-
-            for _, coinFolder in pairs(container:GetChildren()) do
-                if not _afBlacklist[coinFolder] then
-                    local coinVisual = coinFolder:FindFirstChild("CoinVisual")
-                    if coinVisual then
-                        local mainCoin = coinVisual:FindFirstChild("MainCoin")
-                        if mainCoin and mainCoin:IsA("BasePart") and mainCoin.Transparency < 1 then
-                            local d = (mainCoin.Position - root.Position).Magnitude
-                            if d < minDist then
-                                minDist = d
-                                nearest = { Container = coinFolder, Part = mainCoin }
-                            end
-                        end
-                    else
-                        -- Fallback: buscar MainCoin directamente en cualquier descendiente
-                        for _, obj in pairs(coinFolder:GetDescendants()) do
-                            if obj.Name == "MainCoin" and obj:IsA("BasePart") and obj.Transparency < 1 then
-                                local d = (obj.Position - root.Position).Magnitude
-                                if d < minDist then
-                                    minDist = d
-                                    nearest = { Container = coinFolder, Part = obj }
-                                end
-                                break
-                            end
-                        end
-                    end
-                end
-            end
-            return nearest
-        end
-
-        -- Cleanup completo
-        local function _afCleanup()
-            if _afNoclipConn   then _afNoclipConn:Disconnect();   _afNoclipConn   = nil end
-            if _afStateConn    then _afStateConn:Disconnect();     _afStateConn    = nil end
-            if _afAntiSpinConn then _afAntiSpinConn:Disconnect();  _afAntiSpinConn = nil end
-            pcall(function()
-                local char = LocalPlayer.Character
-                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                if hrp then
-                    local bv = hrp:FindFirstChild("FarmAntiGravity")
-                    if bv then bv:Destroy() end
-                    hrp.Anchored = false
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                    hrp.CFrame = CFrame.new(hrp.Position)
-                end
-                if hum then
-                    hum.PlatformStand = false
-                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-                end
-                if char then
-                    for _, part in ipairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            pcall(function() part.CanCollide = true end)
-                        end
-                    end
-                end
-            end)
-            table.clear(_afBlacklist)
-        end
-
-        -- ---------------------------------------------------------------
-        -- Toggle principal
-        -- ---------------------------------------------------------------
-        CreateAuroraToggle(leftColumn, "Auto Farm", function(en)
-            _afEnabled = en
-            if _afThread then task.cancel(_afThread); _afThread = nil end
-            _afCleanup()
-
-            if not en then
-                CreateCustomNotification("AUTO FARM", "OFF", 1)
-                return
-            end
-
-            -- Noclip constante en Stepped (throttle: cada 6 frames para reducir lag)
-            local _afNoclipTick = 0
-            _afNoclipConn = RunService.Stepped:Connect(function()
-                if not _afEnabled then return end
-                _afNoclipTick = _afNoclipTick + 1
-                if _afNoclipTick < 6 then return end
-                _afNoclipTick = 0
-                local char = LocalPlayer.Character
-                if not char then return end
-                for _, part in pairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        pcall(function() part.CanCollide = false end)
-                    end
-                end
-            end)
-
-            -- PlatformStand + Physics state en Heartbeat (throttle: cada 10 frames)
-            local _afStateTick = 0
-            _afStateConn = RunService.Heartbeat:Connect(function()
-                if not _afEnabled then return end
-                _afStateTick = _afStateTick + 1
-                if _afStateTick < 10 then return end
-                _afStateTick = 0
-                local char = LocalPlayer.Character
-                if not char then return end
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 then
-                    hum.PlatformStand = true
-                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Physics) end)
-                end
-            end)
-
-            -- Anti-spin en RenderStepped
-            _afAntiSpinConn = RunService.RenderStepped:Connect(function()
-                if not _afEnabled then return end
-                local char = LocalPlayer.Character
-                if not char then return end
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.RotVelocity = Vector3.zero end
-            end)
-
-            -- Loop principal
-            _afThread = task.spawn(function()
-                while _afEnabled do
-                    local char = LocalPlayer.Character
-                    if not (char and char:FindFirstChild("HumanoidRootPart")) then
-                        task.wait(0.5)
-                        continue
-                    end
-
-                    local hrp = char.HumanoidRootPart
-                    hrp.Anchored = false
-
-                    -- Anti-gravedad via BodyVelocity
-                    local bv = hrp:FindFirstChild("FarmAntiGravity")
-                    if not bv then
-                        bv = Instance.new("BodyVelocity")
-                        bv.Name     = "FarmAntiGravity"
-                        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                        bv.Velocity = Vector3.zero
-                        bv.Parent   = hrp
-                    end
-
-                    local coinData = _afGetNearest(hrp)
-
-                    if coinData and coinData.Container and coinData.Container.Parent
-                       and coinData.Part and coinData.Part.Parent then
-
-                        local coinPart  = coinData.Part
-                        local flatAngle = CFrame.Angles(math.rad(90), 0, 0)
-
-                        -- Fase 1: volar hacia la moneda (recalcula coin mas cercana cada 10 frames)
-                        local _recalcTick = 0
-                        while _afEnabled and coinData.Container.Parent
-                              and coinPart.Parent and coinPart.Transparency < 1 do
-
-                            _recalcTick = _recalcTick + 1
-                            if _recalcTick >= 10 then
-                                _recalcTick = 0
-                                local newData = _afGetNearest(hrp)
-                                if newData and newData.Part then
-                                    coinData = newData
-                                    coinPart = newData.Part
-                                end
-                            end
-
-                            local targetPos = Vector3.new(
-                                coinPart.Position.X,
-                                coinPart.Position.Y - _afAlturaOffset,
-                                coinPart.Position.Z
-                            )
-                            local dir  = targetPos - hrp.Position
-                            local dist = dir.Magnitude
-
-                            if dist < 1 then
-                                bv.Velocity = Vector3.zero
-                                break
-                            end
-
-                            local dt   = RunService.Heartbeat:Wait()
-                            local step = dir.Unit * math.min(_afSpeed * dt, dist)
-                            hrp.CFrame = CFrame.new(hrp.Position + step) * flatAngle
-                        end
-
-                        -- Fase 2: multi-metodo de recoleccion (igual al script de referencia)
-                        if _afEnabled and coinData.Container.Parent
-                           and coinPart.Parent and coinPart.Transparency < 1 then
-
-                            local startTime = tick()
-                            local grabWindow = _afGrabDelay > 0 and (_afGrabDelay * 12) or 0.6
-
-                            while _afEnabled and coinData.Container.Parent
-                                  and coinPart.Parent and coinPart.Transparency < 1
-                                  and (tick() - startTime) < grabWindow do
-
-                                -- Metodo 1: firetouchinterest estandar y reverso
-                                if firetouchinterest then
-                                    pcall(function()
-                                        firetouchinterest(hrp, coinPart, 0)
-                                        firetouchinterest(hrp, coinPart, 1)
-                                        firetouchinterest(coinPart, hrp,  0)
-                                        firetouchinterest(coinPart, hrp,  1)
-                                    end)
-                                end
-
-                                -- Metodo 2: TouchTransmitter / TouchInterest en todos los descendientes
-                                pcall(function()
-                                    for _, obj in pairs(coinData.Container:GetDescendants()) do
-                                        if obj:IsA("TouchTransmitter") or obj.ClassName == "TouchInterest" then
-                                            if firetouchinterest then
-                                                firetouchinterest(hrp, obj.Parent, 0)
-                                                firetouchinterest(hrp, obj.Parent, 1)
-                                            end
-                                        end
-                                    end
-                                end)
-
-                                task.wait(0.05)
-                            end
-
-                            _afBlacklist[coinData.Container] = true
-                        end
-
-                    else
-                        if bv then bv.Velocity = Vector3.zero end
-                        table.clear(_afBlacklist)
-                        task.wait(0.05)
-                    end
-                end
-
-                _afCleanup()
-                CreateCustomNotification("AUTO FARM", "OFF", 1)
-            end)
-
-            CreateCustomNotification("AUTO FARM", "ON - volando hacia monedas", 2)
-        end, false)
-
-        -- Slider: altura bajo la moneda
-        CreateSlider(leftColumn, "Auto Farm Offset Bajo Moneda", 0.5, 10, 1.5, function(v)
-            _afAlturaOffset = v
-        end)
-
-        -- Slider: velocidad de vuelo
-        CreateSlider(leftColumn, "Auto Farm Velocidad (studs/s)", 10, 300, 100, function(v)
-            _afSpeed = v
-        end)
-
-        -- Slider: delay entre intentos de agarre
-        CreateSlider(leftColumn, "Auto Farm Delay Agarre (x0.01s)", 0, 50, 0, function(v)
-            _afGrabDelay = v / 100
-        end)
-    end
-
-    -- =====================================================================
-    -- AUTO RESET INOCENT SHERIFF MURDER
-    -- Al llegar a 40 monedas, resetea el personaje (mata al humanoid para
-    -- forzar respawn), reiniciando la bolsa. Solo reset, sin fling al murder.
-    -- Detecta las 40 monedas via CoinCollected.OnClientEvent o fallback Heartbeat.
-    do
-        local _arismEnabled  = false
-        local _arismConn     = nil
-        local _arismCooldown = false
-
-        local function _arismDoReset()
-            if _arismCooldown then return end
-            _arismCooldown = true
-            task.spawn(function()
-                CreateCustomNotification("AUTO RESET", "40 monedas — reseteando personaje!", 2)
-
-                -- Matar al personaje para forzar respawn (reinicia la bolsa en MM2)
-                local char = LocalPlayer.Character
-                local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 then
-                    hum.Health = 0
-                end
-                -- Fallback: LoadCharacter si el kill no hizo nada en 2s
-                task.wait(2)
-                if LocalPlayer.Character == char then
-                    pcall(function() LocalPlayer:LoadCharacter() end)
-                end
-
-                -- Esperar a que el personaje respawnee
-                local newChar = LocalPlayer.Character
-                if newChar == char or not newChar then
-                    newChar = LocalPlayer.CharacterAdded:Wait()
-                end
-
-                -- Esperar a que HRP y Humanoid esten completamente listos
-                local _waitStart = tick()
-                repeat task.wait(0.1) until
-                    (LocalPlayer.Character and
-                     LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and
-                     LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and
-                     LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Health > 0)
-                    or tick() - _waitStart > 6
-
-                task.wait(0.5)
-                CreateCustomNotification("AUTO RESET", "Personaje reseteado! Farmeando de nuevo...", 2)
-
-                task.wait(2)
-                _arismCooldown = false
-            end)
-        end
-
-        CreateAuroraToggle(leftColumn, "Auto Reset Inocent Sheriff Murder", function(en)
-            _arismEnabled  = en
-            _arismCooldown = false
-            if _arismConn then pcall(function() _arismConn:Disconnect() end); _arismConn = nil end
-
-            if not en then
-                CreateCustomNotification("AUTO RESET", "OFF", 1)
-                return
-            end
-
-            task.spawn(function()
-                -- Buscar el remote CoinCollected (mismo que usan los otros toggles de 40 monedas)
-                local CoinCollected = nil
-                pcall(function()
-                    local RS      = game:GetService("ReplicatedStorage")
-                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
-                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
-                    CoinCollected = Gameplay and (Gameplay:FindFirstChild("CoinCollected") or Gameplay:WaitForChild("CoinCollected", 8))
-                end)
-
-                if CoinCollected then
-                    _arismConn = CoinCollected.OnClientEvent:Connect(function(bagName, current, max)
-                        if not _arismEnabled then return end
-                        local cur = tonumber(current) or 0
-                        if cur >= 40 then
-                            _arismDoReset()
-                        end
-                    end)
-                    CreateCustomNotification("AUTO RESET", "ON — detectando 40 monedas", 2)
-                else
-                    -- Fallback: monitorear _inventoryCoins via Heartbeat
-                    local _hbTick = 0
-                    _arismConn = RunService.Heartbeat:Connect(function()
-                        if not _arismEnabled then return end
-                        _hbTick = _hbTick + 1; if _hbTick < 30 then return end; _hbTick = 0
-                        local cur = _inventoryCoins or 0
-                        if cur >= 40 then
-                            _inventoryCoins = 0
-                            _arismDoReset()
-                        end
-                    end)
-                    CreateCustomNotification("AUTO RESET", "ON (fallback) — monitoreo de monedas", 2)
-                end
-            end)
-        end, false)
-    end
-
-    -- =====================================================================
-    -- FARM 40 KILL ALL MURDER
-    -- Al llegar a 40 monedas, activa Kill All usando la logica de Combat
-    -- =====================================================================
-    do
-        local _f40kaEnabled  = false
-        local _f40kaFired    = false
-        local _f40kaConn     = nil
-        local _f40kaCooldown = false
-
-        -- Logica Kill All (misma que Combat tab: equipa knife, mata a todos)
-        local function _f40doKillAll()
-            if _f40kaCooldown then return end
-            _f40kaCooldown = true
-
-            task.spawn(function()
-                -- Solo actuar si somos Murderer
-                local myRole = _roleCache and _roleCache.localRole
-                if myRole ~= "Murderer" then
-                    CreateCustomNotification("FARM 40 KILL ALL", "Solo funciona como Murderer", 2)
-                    _f40kaCooldown = false
-                    return
-                end
-
-                local knife = EquipKnife and EquipKnife()
-                if not knife then
-                    CreateCustomNotification("FARM 40 KILL ALL", "No hay Knife equipada", 2)
-                    _f40kaCooldown = false
-                    return
-                end
-
-                -- Recopilar targets vivos
-                local targets = {}
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p == LocalPlayer then continue end
-                    local ch  = p.Character
-                    local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
-                    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-                    if not hrp or not hum or hum.Health <= 0 then continue end
-                    table.insert(targets, { player = p, hrp = hrp })
-                end
-
-                if #targets == 0 then
-                    CreateCustomNotification("FARM 40 KILL ALL", "Sin targets disponibles", 2)
-                    _f40kaCooldown = false
-                    return
-                end
-
-                CreateCustomNotification("FARM 40 KILL ALL", "Kill All activado! Atacando " .. #targets .. " jugadores...", 3)
-
-                local _kaRunning = true
-                for _, entry in ipairs(targets) do
-                    if not _kaRunning then break end
-                    -- Refrescar knife si se perdio
-                    if not knife or not knife.Parent then
-                        knife = EquipKnife and EquipKnife()
-                        if not knife then break end
-                    end
-                    local hrp = entry.hrp
-                    if hrp and hrp.Parent then
-                        pcall(function() FireKnifeOnTarget(knife, hrp) end)
-                    end
-                    task.wait(0.08)
-                end
-
-                CreateCustomNotification("FARM 40 KILL ALL", "Kill All terminado", 2)
-
-                -- Cooldown de 10s para evitar re-activacion inmediata
-                task.wait(10)
-                _f40kaFired    = false
-                _f40kaCooldown = false
-            end)
-        end
-
-        CreateAuroraToggle(leftColumn, "Farm 40 Kill All Murder", function(en)
-            _f40kaEnabled  = en
-            _f40kaFired    = false
-            _f40kaCooldown = false
-            if _f40kaConn then pcall(function() _f40kaConn:Disconnect() end); _f40kaConn = nil end
-
-            if not en then
-                CreateCustomNotification("FARM 40 KILL ALL", "OFF", 1)
-                return
-            end
-
-            task.spawn(function()
-                -- Intentar conectar via CoinCollected remote (igual que End Round)
-                local CoinCollected = nil
-                pcall(function()
-                    local RS      = game:GetService("ReplicatedStorage")
-                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
-                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
-                    CoinCollected = Gameplay and (Gameplay:FindFirstChild("CoinCollected") or Gameplay:WaitForChild("CoinCollected", 8))
-                end)
-
-                if CoinCollected then
-                    _f40kaConn = CoinCollected.OnClientEvent:Connect(function(bagName, current, max)
-                        if not _f40kaEnabled then return end
-                        local cur = tonumber(current) or 0
-                        if cur >= 40 and not _f40kaFired and not _f40kaCooldown then
-                            _f40kaFired = true
-                            _f40doKillAll()
-                        end
-                    end)
-                    CreateCustomNotification("FARM 40 KILL ALL", "ON — esperando 40 monedas...", 2)
-                else
-                    -- Fallback: monitorear _inventoryCoins via Heartbeat
-                    local _hbTick = 0
-                    _f40kaConn = RunService.Heartbeat:Connect(function()
-                        if not _f40kaEnabled then return end
-                        _hbTick = _hbTick + 1; if _hbTick < 30 then return end; _hbTick = 0
-                        local cur = _inventoryCoins or 0
-                        if cur >= 40 and not _f40kaFired and not _f40kaCooldown then
-                            _f40kaFired = true
-                            _f40doKillAll()
-                        end
-                    end)
-                    CreateCustomNotification("FARM 40 KILL ALL", "ON (fallback) — monitoreo de monedas", 2)
-                end
-            end)
-        end, false)
-    end
-
-    -- =====================================================================
-    -- FARM 40 SHOOT MURDER
-    -- Al llegar a 40 monedas, hace TP detras del murder y dispara
-    -- (usa la misma logica de StartShootMurder de Combat)
-    -- =====================================================================
-    do
-        local _f40smEnabled  = false
-        local _f40smFired    = false
-        local _f40smConn     = nil
-        local _f40smCooldown = false
-
-        local function _f40doShootMurder()
-            if _f40smCooldown then return end
-            _f40smCooldown = true
-            task.spawn(function()
-                CreateCustomNotification("SHOOT MURDER 40", "40 monedas — disparando al Murder!", 2)
-
-                local char = LocalPlayer.Character
-                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                if not hrp or not hum or hum.Health <= 0 then
-                    _f40smCooldown = false; _f40smFired = false; return
-                end
-
-                -- Guardar posicion para volver luego
-                local savedCF = hrp.CFrame
-
-                -- Restaurar personaje si estaba en modo farm
-                if hum.PlatformStand then
-                    hum.PlatformStand = false
-                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-                end
-                hrp.AssemblyLinearVelocity  = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-                task.wait(0.15)
-
-                -- Buscar gun equipada o en backpack
-                local gun = _findGunIn and _findGunIn(char)
-                if not gun then
-                    gun = _findGun and _findGun(char)
-                    if gun then
-                        pcall(function() hum:EquipTool(gun) end)
-                        task.wait(0.2)
-                        gun = _findGunIn and _findGunIn(char)
-                    end
-                end
-
-                -- Si tampoco hay gun, buscar GunDrop en workspace
-                if not gun then
-                    local playerChars = {}
-                    for _, p in ipairs(_cachedPlayers) do
-                        if p.Character then playerChars[p.Character] = true end
-                    end
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if (obj.Name == "GunDrop" or obj.Name == "Gun")
-                        and obj:IsA("Tool")
-                        and not playerChars[obj.Parent] then
-                            local gPart = obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
-                            if gPart then
-                                pcall(function()
-                                    gPart.CFrame = CFrame.new(hrp.Position)
-                                    firetouchinterest(hrp, gPart, 0)
-                                    firetouchinterest(hrp, gPart, 1)
-                                end)
-                                task.wait(0.1)
-                                gun = _findGunIn and _findGunIn(char)
-                            end
-                            if gun then break end
-                        end
-                    end
-                end
-
-                if not gun then
-                    CreateCustomNotification("SHOOT MURDER 40", "Sin gun disponible!", 2)
-                    pcall(function() hrp.CFrame = savedCF end)
-                    task.wait(8)
-                    _f40smFired    = false
-                    _f40smCooldown = false
-                    return
-                end
-
-                -- TP detras del murder y disparar (igual que StartShootMurder)
-                local murder = findMurderer and findMurderer()
-                if murder and murder.Character then
-                    local mHRP = murder.Character:FindFirstChild("HumanoidRootPart")
-                    local mHum = murder.Character:FindFirstChildOfClass("Humanoid")
-
-                    if mHRP and mHum and mHum.Health > 0
-                    and not (_G._betweenRounds)
-                    and mHRP.Position.Y <= 70 then
-
-                        -- TP detras del murder
-                        local mCF = mHRP.CFrame
-                        pcall(function()
-                            hrp.CFrame = CFrame.new(mCF.Position - mCF.LookVector * 4, mHRP.Position)
-                        end)
-                        task.wait(0.15)
-
-                        -- Disparar
-                        local shootRem = gun:FindFirstChild("Shoot")
-                        if not shootRem then
-                            for _, v in ipairs(gun:GetDescendants()) do
-                                if v:IsA("RemoteEvent") then shootRem = v; break end
-                            end
-                        end
-                        if not shootRem then
-                            shootRem = getShootRemote and getShootRemote(gun)
-                        end
-
-                        if shootRem and shootRem:IsA("RemoteEvent") then
-                            local graNode = hrp:FindFirstChild("GunRaycastAttachment")
-                            local graCF   = graNode and graNode.WorldCFrame or hrp.CFrame
-                            local tCF     = CFrame.new(mHRP.Position, mHRP.Position + Vector3.new(0,1,0))
-                            pcall(function() shootRem:FireServer(graCF, tCF) end)
-                            task.wait(0.05)
-                            pcall(function() shootRem:FireServer(graCF, tCF) end)
-                        else
-                            if _fireGunMM2 then
-                                _fireGunMM2(gun)
-                                task.wait(0.05)
-                                _fireGunMM2(gun)
-                            end
-                        end
-
-                        CreateCustomNotification("SHOOT MURDER 40", "Disparado -> " .. murder.Name, 2)
-                    else
-                        CreateCustomNotification("SHOOT MURDER 40", "Murder no encontrado o en lobby", 2)
-                    end
-                else
-                    CreateCustomNotification("SHOOT MURDER 40", "No hay Murder activo", 2)
-                end
-
-                -- Volver a la posicion del farm
-                task.wait(0.3)
-                pcall(function()
-                    hrp.CFrame = savedCF
-                    hrp.AssemblyLinearVelocity  = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                end)
-
-                -- Cooldown de 8s para no re-disparar inmediatamente
-                task.wait(8)
-                _f40smFired    = false
-                _f40smCooldown = false
-            end)
-        end
-
-        CreateAuroraToggle(leftColumn, "Farm 40 Shoot Murder", function(en)
-            _f40smEnabled  = en
-            _f40smFired    = false
-            _f40smCooldown = false
-            if _f40smConn then pcall(function() _f40smConn:Disconnect() end); _f40smConn = nil end
-
-            if not en then
-                CreateCustomNotification("SHOOT MURDER 40", "OFF", 1)
-                return
-            end
-
-            task.spawn(function()
-                -- Usar CoinCollected remote (igual que End Round y Farm 40 Kill All)
-                local CoinCollected = nil
-                pcall(function()
-                    local RS      = game:GetService("ReplicatedStorage")
-                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
-                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
-                    CoinCollected = Gameplay and (Gameplay:FindFirstChild("CoinCollected") or Gameplay:WaitForChild("CoinCollected", 8))
-                end)
-
-                if CoinCollected then
-                    _f40smConn = CoinCollected.OnClientEvent:Connect(function(bagName, current, max)
-                        if not _f40smEnabled then return end
-                        local cur = tonumber(current) or 0
-                        if cur >= 40 and not _f40smFired and not _f40smCooldown then
-                            _f40smFired = true
-                            _f40doShootMurder()
-                        end
-                    end)
-                    CreateCustomNotification("SHOOT MURDER 40", "ON — esperando 40 monedas...", 2)
-                else
-                    -- Fallback: monitorear _inventoryCoins via Heartbeat
-                    local _hbTick = 0
-                    _f40smConn = RunService.Heartbeat:Connect(function()
-                        if not _f40smEnabled then return end
-                        _hbTick = _hbTick + 1; if _hbTick < 30 then return end; _hbTick = 0
-                        local cur = _inventoryCoins or 0
-                        if cur >= 40 and not _f40smFired and not _f40smCooldown then
-                            _f40smFired = true
-                            _f40doShootMurder()
-                        end
-                    end)
-                    CreateCustomNotification("SHOOT MURDER 40", "ON (fallback) — monitoreo de monedas", 2)
-                end
-            end)
-        end, false)
-    end
-
-    -- =====================================================================
-    -- UNDER MAP FARM (monedas bajo el mapa)
-    -- =====================================================================
-    CreateSection(leftColumn, "", "UNDER MAP FARM", ThemeColors.Aurora3)
-
-    -- =====================================================================
-    -- AUTO PRESTIGE / XP FARM
-    -- =====================================================================
-    CreateSection(leftColumn, "", "AUTO PRESTIGE / XP", ThemeColors.Primary)
-
-    do
-        local _prestigeRunning = false
-        local _prestigeThread  = nil
-
-        -- Auto Prestige Loop
-        CreateAuroraToggle(leftColumn, "Auto Prestige Loop", function(en)
-            _prestigeRunning = en
-            if _prestigeThread then task.cancel(_prestigeThread); _prestigeThread = nil end
-            if not en then
-                CreateCustomNotification("AUTO PRESTIGE", "OFF", 1)
-                return
-            end
-            _prestigeThread = task.spawn(function()
-                CreateCustomNotification("AUTO PRESTIGE", "ON — buscando boton de prestige...", 2)
-                while _prestigeRunning do
-                    pcall(function()
-                        -- Buscar el ProximityPrompt o boton de prestige en el lobby
-                        for _, obj in ipairs(workspace:GetDescendants()) do
-                            local n = obj.Name:lower()
-                            if n:find("prestige") then
-                                if obj:IsA("ProximityPrompt") then
-                                    fireproximityprompt(obj)
-                                elseif obj:IsA("BasePart") or obj:IsA("TextButton") then
-                                    local pp = obj:FindFirstChildOfClass("ProximityPrompt")
-                                    if pp then fireproximityprompt(pp) end
-                                end
-                            end
-                        end
-                        -- Tambien intentar via click en ClickDetector
-                        for _, obj in ipairs(workspace:GetDescendants()) do
-                            local n = obj.Name:lower()
-                            if n:find("prestige") then
-                                local cd = obj:FindFirstChildOfClass("ClickDetector")
-                                if cd then fireclickdetector(cd) end
-                            end
-                        end
-                    end)
-                    task.wait(1)
-                end
-            end)
-            CreateCustomNotification("AUTO PRESTIGE", "ON", 2)
-        end, false)
-    end
-
-    -- =====================================================================
-    -- COLUMNA DERECHA: STATS Y HERRAMIENTAS
-    -- =====================================================================
-
-    -- INFO DE FARM
-    CreateSection(rightColumn, "", "FARM INFO", ThemeColors.Aurora1)
-
-    do
-        local _infoFrame = Instance.new("Frame", rightColumn)
-        _infoFrame.Size = UDim2.new(1, -8, 0, 0)
-        _infoFrame.AutomaticSize = Enum.AutomaticSize.Y
-        _infoFrame.BackgroundColor3 = ThemeColors.Background
-        _infoFrame.BackgroundTransparency = 0.85
-        _infoFrame.BorderSizePixel = 0
-        Instance.new("UICorner", _infoFrame).CornerRadius = UDim.new(0, 8)
-        Instance.new("UIStroke", _infoFrame).Color = ThemeColors.Aurora1
-        local _infoPad = Instance.new("UIPadding", _infoFrame)
-        _infoPad.PaddingLeft = UDim.new(0, 10)
-        _infoPad.PaddingRight = UDim.new(0, 10)
-        _infoPad.PaddingTop = UDim.new(0, 8)
-        _infoPad.PaddingBottom = UDim.new(0, 8)
-        local _infoLayout = Instance.new("UIListLayout", _infoFrame)
-        _infoLayout.Padding = UDim.new(0, 4)
-        _infoLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-        local function _makeInfoRow(lbl, valInit)
-            local row = Instance.new("Frame", _infoFrame)
-            row.Size = UDim2.new(1, 0, 0, 18)
-            row.BackgroundTransparency = 1
-            row.BorderSizePixel = 0
-            local l = Instance.new("TextLabel", row)
-            l.Size = UDim2.new(0.55, 0, 1, 0)
-            l.BackgroundTransparency = 1
-            l.Text = lbl
-            l.FontFace = Font.fromEnum(Enum.Font.Montserrat)
-            l.TextSize = 11
-            l.TextColor3 = ThemeColors.TextSecondary
-            l.TextXAlignment = Enum.TextXAlignment.Left
-            local v = Instance.new("TextLabel", row)
-            v.Size = UDim2.new(0.45, 0, 1, 0)
-            v.Position = UDim2.new(0.55, 0, 0, 0)
-            v.BackgroundTransparency = 1
-            v.Text = valInit
-            v.FontFace = Font.fromEnum(Enum.Font.GothamBold)
-            v.TextSize = 11
-            v.TextColor3 = ThemeColors.Aurora2
-            v.TextXAlignment = Enum.TextXAlignment.Right
-            return v
-        end
-
-        local coinCountLbl  = _makeInfoRow("Monedas en mapa:", "...")
-        local playerCoinsLbl = _makeInfoRow("Tus monedas:", "...")
-        local roundLbl      = _makeInfoRow("Estado ronda:", "...")
-
-        -- Actualizar info cada 2s
-        local _hbInfoT = 0
-        local _infoConn = RunService.Heartbeat:Connect(function()
-            _hbInfoT = _hbInfoT + 1; if _hbInfoT < 120 then return end; _hbInfoT = 0
-            -- Contar monedas en mapa
-            pcall(function()
-                local count = 0
-                for _, obj in ipairs(workspace:GetDescendants()) do
-                    local n = obj.Name:lower()
-                    if obj:IsA("BasePart") and (n == "coin" or n == "goldcoin" or n:find("coin")) then
-                        count = count + 1
-                    end
-                end
-                coinCountLbl.Text = tostring(count)
-            end)
-            -- Monedas del jugador (leaderstats)
-            pcall(function()
-                local ls = LocalPlayer:FindFirstChild("leaderstats")
-                if ls then
-                    local coins = ls:FindFirstChild("Coins") or ls:FindFirstChild("Gold") or ls:FindFirstChild("Money")
-                    if coins then playerCoinsLbl.Text = tostring(coins.Value) end
-                end
-            end)
-            -- Estado del round
-            pcall(function()
-                if _G._visualRoundOver then
-                    roundLbl.Text = "Fin de ronda"
-                else
-                    local rc = _roleCache
-                    if rc and rc.murderer then
-                        roundLbl.Text = "En juego"
-                    else
-                        roundLbl.Text = "Lobby/Espera"
-                    end
-                end
-            end)
-        end)
-    end
-
-    -- ANTI AFK
-    CreateSection(rightColumn, "", "ANTI AFK", ThemeColors.Aurora4)
-
-    do
-        local _antiAfkEnabled = false
-        local _antiAfkConn    = nil
-
-        CreateAuroraToggle(rightColumn, "Anti AFK", function(en)
-            _antiAfkEnabled = en
-            if _antiAfkConn then _antiAfkConn:Disconnect(); _antiAfkConn = nil end
-            if not en then
-                CreateCustomNotification("ANTI AFK", "OFF", 1)
-                return
-            end
-            local _afkTick = 0
-            _antiAfkConn = RunService.Heartbeat:Connect(function()
-                if not _antiAfkEnabled then return end
-                _afkTick = _afkTick + 1; if _afkTick < 1200 then return end; _afkTick = 0
-                -- Simular movimiento minimo para resetear el timer AFK
-                pcall(function()
-                    local vjs = game:GetService("VirtualInputManager")
-                    if vjs then
-                        vjs:SendKeyEvent(true,  Enum.KeyCode.W, false, game)
-                        task.wait(0.1)
-                        vjs:SendKeyEvent(false, Enum.KeyCode.W, false, game)
-                    end
-                end)
-                -- Fallback: mover la camara un pixel
-                pcall(function()
-                    local cam = workspace.CurrentCamera
-                    if cam then cam.CFrame = cam.CFrame * CFrame.Angles(0, 0.001, 0) end
-                end)
-            end)
-            CreateCustomNotification("ANTI AFK", "ON", 2)
-        end, false)
-    end
-
-    -- AUTO REJOIN AL FIN DE RONDA
-    CreateSection(rightColumn, "", "AUTO REJOIN", ThemeColors.Aurora3)
-
-    do
-        local _arEnabled  = false
-        local _arConn     = nil
-        local _arDelay    = 3
-
-        CreateAuroraToggle(rightColumn, "Auto Rejoin", function(en)
-            _arEnabled = en
-            if _arConn then pcall(function() _arConn:Disconnect() end); _arConn = nil end
-            if not en then
-                CreateCustomNotification("AUTO REJOIN", "OFF", 1)
-                return
-            end
-            task.spawn(function()
-                -- Escuchar fin de ronda via remote
-                local RoundOver = nil
-                pcall(function()
-                    local RS      = game:GetService("ReplicatedStorage")
-                    local Remotes = RS:FindFirstChild("Remotes") or RS:WaitForChild("Remotes", 8)
-                    local Gameplay= Remotes and (Remotes:FindFirstChild("Gameplay") or Remotes:WaitForChild("Gameplay", 8))
-                    RoundOver = Gameplay and (Gameplay:FindFirstChild("RoundOver") or Gameplay:WaitForChild("RoundOver", 5))
-                end)
-
-                if RoundOver then
-                    _arConn = RoundOver.OnClientEvent:Connect(function()
-                        if not _arEnabled then return end
-                        CreateCustomNotification("AUTO REJOIN", "Fin de ronda — rejoineando en " .. _arDelay .. "s...", _arDelay)
-                        task.wait(_arDelay)
-                        if not _arEnabled then return end
-                        pcall(function()
-                            local TeleportService = game:GetService("TeleportService")
-                            TeleportService:Teleport(game.PlaceId, LocalPlayer)
-                        end)
-                    end)
-                    CreateCustomNotification("AUTO REJOIN", "ON — esperando fin de ronda", 2)
-                else
-                    -- Fallback: detectar via _G._visualRoundOver
-                    local _wasInRound = false
-                    _arConn = RunService.Heartbeat:Connect(function()
-                        if not _arEnabled then return end
-                        local inRound = not _G._visualRoundOver
-                        if _wasInRound and _G._visualRoundOver then
-                            _wasInRound = false
-                            task.spawn(function()
-                                CreateCustomNotification("AUTO REJOIN", "Fin de ronda — rejoineando en " .. _arDelay .. "s...", _arDelay)
-                                task.wait(_arDelay)
-                                if not _arEnabled then return end
-                                pcall(function()
-                                    local TeleportService = game:GetService("TeleportService")
-                                    TeleportService:Teleport(game.PlaceId, LocalPlayer)
-                                end)
-                            end)
-                        end
-                        if inRound then _wasInRound = true end
-                    end)
-                    CreateCustomNotification("AUTO REJOIN", "ON (fallback)", 2)
-                end
-            end)
-        end, false)
-
-        CreateSlider(rightColumn, "Delay Rejoin (seg)", 1, 15, _arDelay, function(v)
-            _arDelay = v
-        end)
-    end
-
-    -- REJOIN MANUAL
-    _makeTPButton("Rejoin Manual", function()
-        pcall(function()
-            local TeleportService = game:GetService("TeleportService")
-            TeleportService:Teleport(game.PlaceId, LocalPlayer)
-        end)
-        CreateCustomNotification("FARM", "Rejoineando...", 2)
-    end, rightColumn)
-end
 
 function CreateExclusiveTab()
     ClearContent()
@@ -35705,14 +35320,25 @@ function CreateExclusiveTab()
     local HS = _G._hubSettings
     local function _hs() return _G._hubSettings end
 
-    -- FIX ESCALA: re-aplicar UIScale guardada al abrir el tab Settings
-    -- (el UIScale del mainFrame puede haberse perdido si el hub se recreo)
+    -- FIX ESCALA: guardar y bloquear el UIScale actual para que abrir Settings
+    -- NO cambie el ancho/tamaño del hub. El valor correcto ya fue calculado
+    -- por _getTargetScale() al iniciar; aqui solo lo protegemos.
+    local _frozenScale = nil
     pcall(function()
-        local savedScale = (_G._hubSettings.hubScale or 100) / 100
-        local sc = mainFrame:FindFirstChildOfClass("UIScale")
-        if not sc then sc = Instance.new("UIScale", mainFrame) end
-        if math.abs(sc.Scale - savedScale) > 0.001 then
-            sc.Scale = savedScale
+        local _sc = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
+        if _sc then
+            _frozenScale = _sc.Scale
+        end
+    end)
+    -- Restaurar la escala congelada al final del frame (evita que algun hijo la altere)
+    task.defer(function()
+        if _frozenScale then
+            pcall(function()
+                local _sc = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
+                if _sc and math.abs(_sc.Scale - _frozenScale) > 0.001 then
+                    _sc.Scale = _frozenScale
+                end
+            end)
         end
     end)
 
@@ -35826,7 +35452,7 @@ function CreateExclusiveTab()
     rsStroke.Color = ThemeColors.Primary; rsStroke.Thickness = 1; rsStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     resetBtn.MouseEnter:Connect(function() TweenService:Create(resetBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0}):Play() end)
     resetBtn.MouseLeave:Connect(function() TweenService:Create(resetBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.05}):Play() end)
-    resetBtn.MouseButton1Click:Connect(function()
+    resetBtn.Activated:Connect(function()
         _G._toggleStates        = {}
         local _hsr              = _G._hubSettings
         _hsr.disableClickSound  = false
@@ -35843,6 +35469,14 @@ function CreateExclusiveTab()
         _hsr.crosshairHidden    = false
         _hsr.hudHidden          = false
         _hsr.lowRenderQuality   = false
+        -- Resetear optimizaciones
+        _hsr.noParticles        = false
+        _hsr.noDecals           = false
+        _hsr.noDecoration       = false
+        _hsr.noSounds           = false
+        _hsr.noPostFX           = false
+        _hsr.renderDistance     = 0
+        _hsr.noBillboards       = false
         _G._hubDisableKeybinds    = false
         _G._hubUndraggableButtons = false
         _G._hubDisableAnimations  = false
@@ -35851,10 +35485,10 @@ function CreateExclusiveTab()
         -- Detener FPS cap si estaba activo
         _G._fpsCap = nil
         if _G._fpsCapConn then _G._fpsCapConn:Disconnect(); _G._fpsCapConn = nil end
-        -- Restaurar escala del hub
+        -- Restaurar escala del hub (usar escala de dispositivo, no 1 fijo)
         pcall(function()
             local sc = mainFrame:FindFirstChildOfClass("UIScale")
-            if sc then sc.Scale = 1 end
+            if sc then sc.Scale = _getTargetScale and _getTargetScale() or 1 end
         end)
         -- Restaurar opacidad del hub
         pcall(function() mainFrame.BackgroundTransparency = 1 end)
@@ -35907,14 +35541,16 @@ function CreateExclusiveTab()
 
     -- -- AUTO SAVE CONFIG -----------------------------------------
     -- initialValue viene de _G._autoSaveEnabled que _loadConfig() ya restauro del disco
+    -- La config se guarda POR JUGADOR (archivo unico por UserId)
     CreateAuroraToggle(settSec, "Auto Save Config", function(on)
         _G._autoSaveEnabled = on
         if on then
             -- Guardar inmediatamente con el estado actual de todos los toggles
-            _hubWriteFile(_CONFIG_FILE, _serializeConfig())
-            CreateCustomNotification("SETTINGS", "Auto Save ON", 2)
+            _saveConfig()
+            local _pName = Players.LocalPlayer and Players.LocalPlayer.Name or "?"
+            CreateCustomNotification("SETTINGS", "Auto Save ON — config guardada para " .. _pName, 3)
         else
-            CreateCustomNotification("SETTINGS", "Auto Save OFF", 2)
+            CreateCustomNotification("SETTINGS", "Auto Save OFF — los toggles no se recordaran", 2)
         end
     end, _G._autoSaveEnabled)
 
@@ -35950,7 +35586,7 @@ function CreateExclusiveTab()
     centerBtn.AutoButtonColor = false; centerBtn.ZIndex = 13
     Instance.new("UICorner", centerBtn).CornerRadius = UDim.new(0, 8)
     Instance.new("UIStroke", centerBtn).Color = ThemeColors.Primary
-    centerBtn.MouseButton1Click:Connect(function()
+    centerBtn.Activated:Connect(function()
         pcall(function()
             mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
             mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -35964,7 +35600,9 @@ function CreateExclusiveTab()
         pcall(function()
             local sc = mainFrame:FindFirstChildOfClass("UIScale")
             if not sc then sc = Instance.new("UIScale", mainFrame) end
-            sc.Scale = v / 100
+            -- Combinar escala de dispositivo + preferencia usuario para no romper el auto-fit
+            local baseScale = (_getTargetScale and _getTargetScale()) or 1
+            sc.Scale = baseScale * (v / 100)
         end)
     end)
 
@@ -36000,7 +35638,7 @@ function CreateExclusiveTab()
     clearNotifBtn.FontFace = Font.fromEnum(Enum.Font.Montserrat); clearNotifBtn.TextSize = 11
     clearNotifBtn.AutoButtonColor = false; clearNotifBtn.ZIndex = 13
     Instance.new("UICorner", clearNotifBtn).CornerRadius = UDim.new(0, 8)
-    clearNotifBtn.MouseButton1Click:Connect(function()
+    clearNotifBtn.Activated:Connect(function()
         pcall(function()
             local cg = game:GetService("CoreGui")
             for _, g in ipairs(cg:GetChildren()) do
@@ -36220,6 +35858,258 @@ function CreateExclusiveTab()
         credPad.PaddingBottom = UDim.new(0, 8)
         credPad.PaddingLeft = UDim.new(0, 6)
         credPad.PaddingRight = UDim.new(0, 6)
+    end
+
+    -- ================================================================
+    -- OPTIMIZACIONES DEL JUEGO
+    -- Reducen carga del cliente sin afectar el gameplay
+    -- ================================================================
+    do
+        local optSec = CreateBorderedSectionGlobal(rightColumn, " OPTIMIZACIONES")
+
+        -- Persistir estados en _hubSettings
+        _G._hubSettings.noParticles      = _G._hubSettings.noParticles      or false
+        _G._hubSettings.noDecals         = _G._hubSettings.noDecals         or false
+        _G._hubSettings.noDecoration     = _G._hubSettings.noDecoration     or false
+        _G._hubSettings.noSounds         = _G._hubSettings.noSounds         or false
+        _G._hubSettings.noPostFX         = _G._hubSettings.noPostFX         or false
+        _G._hubSettings.renderDistance   = _G._hubSettings.renderDistance   or 0
+        _G._hubSettings.noBillboards     = _G._hubSettings.noBillboards     or false
+
+        -- ── ELIMINAR PARTÍCULAS (ParticleEmitter / Smoke / Fire / Sparkles) ──
+        -- Mejora fps significativamente en mapas con efectos visuales pesados
+        local _partConns = {}
+        local function _killParticlesInst(obj)
+            if obj:IsA("ParticleEmitter") or obj:IsA("Smoke")
+            or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                pcall(function() obj.Enabled = false end)
+                pcall(function() obj.Rate = 0 end)
+            end
+        end
+        local function _enableParticles(obj)
+            if obj:IsA("ParticleEmitter") or obj:IsA("Smoke")
+            or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                pcall(function() obj.Enabled = true end)
+                -- Rate no restaurable sin backup — se deja al juego reactivarlos
+            end
+        end
+        CreateAuroraToggle(optSec, "No Particles (FPS ++)", function(on)
+            _hs().noParticles = on
+            for _, c in ipairs(_partConns) do pcall(function() c:Disconnect() end) end
+            _partConns = {}
+            if on then
+                -- Apagar todas las existentes
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    _killParticlesInst(obj)
+                end
+                -- Apagar las que lleguen en el futuro
+                _partConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noParticles then _killParticlesInst(obj) end
+                end)
+            else
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    _enableParticles(obj)
+                end
+            end
+            CreateCustomNotification("OPT", on and "Particulas OFF" or "Particulas ON", 1.5)
+        end, _G._hubSettings.noParticles)
+
+        -- ── ELIMINAR DECALS / TEXTURAS DECORATIVAS ──
+        -- Reduce uso de memoria de texturas (util en mobile)
+        local _decalConns = {}
+        CreateAuroraToggle(optSec, "No Decals (memoria --)", function(on)
+            _hs().noDecals = on
+            for _, c in ipairs(_decalConns) do pcall(function() c:Disconnect() end) end
+            _decalConns = {}
+            if on then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Decal") or obj:IsA("Texture") then
+                        pcall(function() obj.Transparency = 1 end)
+                    end
+                end
+                _decalConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noDecals and (obj:IsA("Decal") or obj:IsA("Texture")) then
+                        pcall(function() obj.Transparency = 1 end)
+                    end
+                end)
+            else
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Decal") or obj:IsA("Texture") then
+                        pcall(function() obj.Transparency = 0 end)
+                    end
+                end
+            end
+            CreateCustomNotification("OPT", on and "Decals OFF" or "Decals ON", 1.5)
+        end, _G._hubSettings.noDecals)
+
+        -- ── ELIMINAR DECORACIONES DEL MAPA (Scripts decorativos, Beams, Trails) ──
+        local _decoConns = {}
+        local function _killDeco(obj)
+            if obj:IsA("Beam") or obj:IsA("Trail") or obj:IsA("SelectionBox") then
+                pcall(function() obj.Enabled = false end)
+            end
+        end
+        CreateAuroraToggle(optSec, "No Beams/Trails (FPS +)", function(on)
+            _hs().noDecoration = on
+            for _, c in ipairs(_decoConns) do pcall(function() c:Disconnect() end) end
+            _decoConns = {}
+            if on then
+                for _, obj in ipairs(workspace:GetDescendants()) do _killDeco(obj) end
+                _decoConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noDecoration then _killDeco(obj) end
+                end)
+            else
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Beam") or obj:IsA("Trail") or obj:IsA("SelectionBox") then
+                        pcall(function() obj.Enabled = true end)
+                    end
+                end
+            end
+            CreateCustomNotification("OPT", on and "Beams/Trails OFF" or "Beams/Trails ON", 1.5)
+        end, _G._hubSettings.noDecoration)
+
+        -- ── SILENCIAR TODOS LOS SONIDOS DEL JUEGO ──
+        -- Util para streamers o para reducir carga de audio
+        local _soundConns = {}
+        CreateAuroraToggle(optSec, "Silenciar Sonidos del Juego", function(on)
+            _hs().noSounds = on
+            for _, c in ipairs(_soundConns) do pcall(function() c:Disconnect() end) end
+            _soundConns = {}
+            local function _muteSound(obj)
+                if obj:IsA("Sound") then
+                    if on then
+                        pcall(function() obj.Volume = 0 end)
+                    end
+                end
+            end
+            if on then
+                -- Silenciar todas las existentes en workspace y SoundService
+                for _, obj in ipairs(workspace:GetDescendants()) do _muteSound(obj) end
+                _soundConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noSounds then _muteSound(obj) end
+                end)
+                -- Bajar volumen master del SoundService
+                pcall(function()
+                    game:GetService("SoundService").MasterVolume = 0
+                end)
+            else
+                pcall(function()
+                    game:GetService("SoundService").MasterVolume = 0.5
+                end)
+                -- Restaurar sonidos individuales (best-effort: el juego los restaura solo)
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("Sound") then
+                        pcall(function()
+                            -- Intentar restaurar al volumen por defecto del juego
+                            if obj.Volume == 0 then obj.Volume = 0.5 end
+                        end)
+                    end
+                end
+            end
+            CreateCustomNotification("OPT", on and "Sonidos del juego OFF" or "Sonidos del juego ON", 1.5)
+        end, _G._hubSettings.noSounds)
+
+        -- ── DESHABILITAR POST-PROCESSING (Blur, ColorCorrection, SunRays) ──
+        -- Los efectos de postprocesado de Lighting consumen GPU innecesariamente
+        local _savedPostFX = {}
+        CreateAuroraToggle(optSec, "No Post-FX (GPU +)", function(on)
+            _hs().noPostFX = on
+            local L = game:GetService("Lighting")
+            if on then
+                for _, obj in ipairs(L:GetChildren()) do
+                    if obj:IsA("BlurEffect") or obj:IsA("ColorCorrectionEffect")
+                    or obj:IsA("SunRaysEffect") or obj:IsA("DepthOfFieldEffect")
+                    or obj:IsA("BloomEffect") then
+                        _savedPostFX[obj] = obj.Enabled
+                        pcall(function() obj.Enabled = false end)
+                    end
+                end
+            else
+                for obj, wasEnabled in pairs(_savedPostFX) do
+                    if obj and obj.Parent then
+                        pcall(function() obj.Enabled = wasEnabled end)
+                    end
+                end
+                _savedPostFX = {}
+            end
+            CreateCustomNotification("OPT", on and "Post-FX OFF" or "Post-FX restaurado", 1.5)
+        end, _G._hubSettings.noPostFX)
+
+        -- ── OCULTAR BILLBOARDS / SURFACE GUIS ──
+        -- MM2 tiene muchos billboards de nombre/score que consumen draw calls
+        local _bbConns = {}
+        CreateAuroraToggle(optSec, "No BillboardGuis (draw calls --)", function(on)
+            _hs().noBillboards = on
+            for _, c in ipairs(_bbConns) do pcall(function() c:Disconnect() end) end
+            _bbConns = {}
+            local function _hideBB(obj)
+                if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+                    pcall(function() obj.Enabled = not on end)
+                end
+            end
+            for _, obj in ipairs(workspace:GetDescendants()) do _hideBB(obj) end
+            if on then
+                _bbConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noBillboards then _hideBB(obj) end
+                end)
+            end
+            CreateCustomNotification("OPT", on and "BillboardGuis OFF" or "BillboardGuis ON", 1.5)
+        end, _G._hubSettings.noBillboards)
+
+        -- ── RENDER DISTANCE (MaxDistance de la cámara) ──
+        -- 0 = sin limite (default de Roblox)
+        CreateSlider(optSec, "Render Distance (0=max)", 0, 512, _G._hubSettings.renderDistance or 0, function(v)
+            _hs().renderDistance = v
+            pcall(function()
+                local cam = workspace.CurrentCamera
+                -- MaxActivationDistance no existe en todas las versiones;
+                -- usamos FarPlaneDistance que si es estandar
+                if v > 0 then
+                    workspace.StreamingMinRadius  = math.min(v, 256)
+                    workspace.StreamingTargetRadius = v
+                else
+                    workspace.StreamingMinRadius    = 64
+                    workspace.StreamingTargetRadius = 1024
+                end
+            end)
+            CreateCustomNotification("OPT", v > 0 and ("Render dist: " .. v) or "Render dist: MAX", 1.5)
+        end)
+
+        -- ── PURGAR PARTÍCULAS MANUALMENTE ──
+        -- Un click elimina todos los emitters existentes en ese momento
+        local purgeBtn = Instance.new("TextButton", optSec)
+        purgeBtn.Size = UDim2.new(1, -8, 0, 30)
+        purgeBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 80)
+        purgeBtn.BackgroundTransparency = 0.2
+        purgeBtn.BorderSizePixel = 0
+        purgeBtn.Text = "  Purgar Partículas Ahora"
+        purgeBtn.TextColor3 = Color3.fromRGB(200, 160, 255)
+        purgeBtn.FontFace = Font.fromEnum(Enum.Font.GothamSemibold)
+        purgeBtn.TextSize = 11
+        purgeBtn.AutoButtonColor = false
+        purgeBtn.ZIndex = 13
+        Instance.new("UICorner", purgeBtn).CornerRadius = UDim.new(0, 8)
+        local purgeStroke = Instance.new("UIStroke", purgeBtn)
+        purgeStroke.Color = Color3.fromRGB(0, 191, 255)
+        purgeStroke.Thickness = 1
+        purgeStroke.Transparency = 0.3
+        purgeBtn.MouseEnter:Connect(function()
+            TweenService:Create(purgeBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0}):Play()
+        end)
+        purgeBtn.MouseLeave:Connect(function()
+            TweenService:Create(purgeBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.2}):Play()
+        end)
+        purgeBtn.Activated:Connect(function()
+            local n = 0
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("ParticleEmitter") or obj:IsA("Smoke")
+                or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                    pcall(function() obj.Enabled = false; obj.Rate = 0 end)
+                    n = n + 1
+                end
+            end
+            CreateCustomNotification("OPT", "Purgados " .. n .. " emitters", 2)
+        end)
     end
 
     -- BETA LABEL
@@ -38565,7 +38455,7 @@ function CreateCombatTab()
             _selectorGui = nil
         end
 
-        _selBtn.MouseButton1Click:Connect(function()
+        _selBtn.Activated:Connect(function()
             -- Cerrar si ya está abierto
             if _selectorGui and _selectorGui.Parent then _closeSelector(); return end
 
@@ -38631,7 +38521,7 @@ function CreateCombatTab()
             clearBtn.ZIndex = 3
             clearBtn.LayoutOrder = 1
             Instance.new("UICorner", clearBtn).CornerRadius = UDim.new(0, 6)
-            clearBtn.MouseButton1Click:Connect(function()
+            clearBtn.Activated:Connect(function()
                 CombatTabState.customTargetPlayer = nil
                 CombatTabState.saCustomTargetName = ""  -- FIX: limpiar nombre también
                 _ctLabel.Text = "Target: ninguno"
@@ -38656,7 +38546,7 @@ function CreateCombatTab()
                     plrBtn.ZIndex = 3
                     plrBtn.LayoutOrder = i + 1
                     Instance.new("UICorner", plrBtn).CornerRadius = UDim.new(0, 6)
-                    plrBtn.MouseButton1Click:Connect(function()
+                    plrBtn.Activated:Connect(function()
                         CombatTabState.customTargetPlayer = plr
                         CombatTabState.saCustomTargetName = plr.Name  -- FIX: sincronizar nombre para _saGetTargetCF
                         _ctLabel.Text = "Target: " .. plr.Name
@@ -39764,7 +39654,7 @@ function CreateCombatTab()
             closeBtn.BorderSizePixel  = 0
             closeBtn.ZIndex           = 13
             Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-            closeBtn.MouseButton1Click:Connect(_destroyCopyGunGui)
+            closeBtn.Activated:Connect(_destroyCopyGunGui)
 
             -- Variables para anlisis
             local _fpsHistory   = {}
@@ -40244,6 +40134,42 @@ function CreateCombatTab()
                         handleCF = CFrame.new(orig, fwd)
                         targetCF = CFrame.new(fwd)
                     end
+                    -- Reproducir animación de lanzamiento en el cliente (mobile)
+                    pcall(function()
+                        local myChar2 = LocalPlayer.Character
+                        if myChar2 then
+                            local knife2 = myChar2:FindFirstChild("Knife")
+                            if knife2 then
+                                local hum2 = myChar2:FindFirstChildOfClass("Humanoid")
+                                local animator2 = hum2 and hum2:FindFirstChildOfClass("Animator")
+                                if animator2 then
+                                    -- Intentar usar _playThrowAnim si está disponible (misma sesión de knife)
+                                    if _playThrowAnim then
+                                        _playThrowAnim()
+                                    else
+                                        -- Fallback: buscar animación ThrowCharge/ThrowKnife/Throw en el knife
+                                        local throwAnimNames = {"ThrowCharge", "ThrowKnife", "Throw", "Animation2"}
+                                        for _, animName in ipairs(throwAnimNames) do
+                                            local animObj = knife2:FindFirstChild(animName, true)
+                                            if not animObj then
+                                                animObj = knife2:FindFirstChild("Animate") and
+                                                    knife2:FindFirstChild("Animate"):FindFirstChild(animName)
+                                            end
+                                            if animObj and animObj:IsA("Animation") then
+                                                local ok, track = pcall(function()
+                                                    return animator2:LoadAnimation(animObj)
+                                                end)
+                                                if ok and track then
+                                                    track:Play(0.1, 1, 1)
+                                                    break
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end)
                     pcall(function() knifeThrown:FireServer(handleCF, targetCF) end)
                 end
 
@@ -40488,7 +40414,7 @@ function CreateCombatTab()
             if kpDdFrame and kpDdFrame.Parent then kpDdFrame:Destroy(); kpDdFrame = nil end
             kpDdOpen = false
         end
-        kpBtn.MouseButton1Click:Connect(function()
+        kpBtn.Activated:Connect(function()
 
             if kpDdOpen then kpCloseDD(); return end
             kpDdOpen = true
@@ -40525,7 +40451,7 @@ function CreateCombatTab()
                 pbtn.TextColor3 = ThemeColors.TextPrimary
                 pbtn.ZIndex = 91
                 Instance.new("UICorner", pbtn).CornerRadius = UDim.new(0, 5)
-                pbtn.MouseButton1Click:Connect(function()
+                pbtn.Activated:Connect(function()
                     KnifeSAState.specificTarget = Players:FindFirstChild(pname)
                     KnifeSAState.target = "Select Player"
  kpLbl.Text = pname
@@ -40721,7 +40647,7 @@ function CreateCombatTab()
         _kaBtn.MouseLeave:Connect(function()
             TweenService:Create(_kaBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.35}):Play()
         end)
-        _kaBtn.MouseButton1Click:Connect(_doKillAll)
+        _kaBtn.Activated:Connect(_doKillAll)
 
         -- Botón: Kill All Except Your Friends
         -- Siempre saltea amigos (isFriend = true) y ejecuta _doKillAll al clickear
@@ -40753,7 +40679,7 @@ function CreateCombatTab()
             TweenService:Create(_kaefBtn, TweenInfo.new(0.15), {BackgroundColor3 = ThemeColors.Background, BackgroundTransparency = 0.05}):Play()
             TweenService:Create(_kaefStroke, TweenInfo.new(0.15), {Transparency = 0.10, Thickness = 1.5}):Play()
         end)
-        _kaefBtn.MouseButton1Click:Connect(function()
+        _kaefBtn.Activated:Connect(function()
             TweenService:Create(_kaefBtn, TweenInfo.new(0.07), {BackgroundColor3 = ThemeColors.Accent, BackgroundTransparency = 0.05}):Play()
             TweenService:Create(_kaefStroke, TweenInfo.new(0.07), {Color = ThemeColors.Accent, Thickness = 2.5}):Play()
             task.wait(0.12)
@@ -41673,7 +41599,7 @@ function CreateCombatTab()
             closeBtn.BorderSizePixel = 0
             closeBtn.ZIndex = 13
             Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-            closeBtn.MouseButton1Click:Connect(_destroyCopyKnifeGui)
+            closeBtn.Activated:Connect(_destroyCopyKnifeGui)
 
             -- Variables para anlisis
             local _fpsHistory   = {}
@@ -42692,7 +42618,7 @@ function CreateCombatTab()
         })
         repBgGrad.Rotation = 0
 
-        repairBtn.MouseButton1Click:Connect(function()
+        repairBtn.Activated:Connect(function()
             pcall(function()
                 local knife = _getKnife()
                 local handle = knife and knife:FindFirstChild("Handle")
@@ -43225,9 +43151,57 @@ function CreateCombatTab()
                 end
                 state.enabled = true
                 _dualStartArm(state, _dualGunKeywords)
+
+                -- FIX: si el jugador no tiene la gun todavia (es Murderer u Observer),
+                -- escuchar el Backpack para re-armar cuando la gun llegue en esta vida.
+                if _G._dualGunBpConn then
+                    pcall(function() _G._dualGunBpConn:Disconnect() end)
+                    _G._dualGunBpConn = nil
+                end
+                _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
+                    if not (state and state.enabled) then return end
+                    if not tool:IsA("Tool") then return end
+                    if _dualGunKeywords[tool.Name] then
+                        task.wait(0.1)
+                        if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
+                        if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
+                        if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
+                        _dualStartArm(state, _dualGunKeywords)
+                    end
+                end)
+
+                -- FIX: tambien escuchar Character.ChildAdded por si la gun llega
+                -- directamente equipada al char (no pasa por Backpack en MM2).
+                if _G._dualGunCharPickupConn then
+                    pcall(function() _G._dualGunCharPickupConn:Disconnect() end)
+                    _G._dualGunCharPickupConn = nil
+                end
+                local _dgChar = LocalPlayer.Character
+                if _dgChar then
+                    _G._dualGunCharPickupConn = _dgChar.ChildAdded:Connect(function(tool)
+                        if not (state and state.enabled) then return end
+                        if not tool:IsA("Tool") then return end
+                        if _dualGunKeywords[tool.Name] then
+                            task.wait(0.1)
+                            if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
+                            if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
+                            if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
+                            _dualStartArm(state, _dualGunKeywords)
+                        end
+                    end)
+                end
+
                 CreateCustomNotification("DUAL GUN", "OK Activado  Click Derecho para atacar", 3)
             else
                 _dualStopArm(state)
+                if _G._dualGunBpConn then
+                    pcall(function() _G._dualGunBpConn:Disconnect() end)
+                    _G._dualGunBpConn = nil
+                end
+                if _G._dualGunCharPickupConn then
+                    pcall(function() _G._dualGunCharPickupConn:Disconnect() end)
+                    _G._dualGunCharPickupConn = nil
+                end
                 CreateCustomNotification("DUAL GUN", "X Desactivado", 2)
             end
         end, false)
@@ -43886,7 +43860,7 @@ function CreateCombatTab()
             acStroke.Thickness = 1.5
             acStroke.Transparency = 0.3
 
-            acBtn.MouseButton1Click:Connect(function()
+            acBtn.Activated:Connect(function()
                 local ping = 80
                 pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 1000) end)
 
@@ -44017,7 +43991,7 @@ function CreateCombatTab()
             acStroke.Thickness = 1.5
             acStroke.Transparency = 0.3
 
-            acBtn.MouseButton1Click:Connect(function()
+            acBtn.Activated:Connect(function()
                 local ping = 80
                 pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 1000) end)
 
@@ -44148,11 +44122,36 @@ function CreateCombatTab()
             if _ssEnabled then _ssApplyDisable() end
             _ourConn=gun.Activated:Connect(function()
                 if _ssEnabled then
-                    _sp(function() _ssFire(gun) end)
+                    -- En mobile, Activated se dispara con touch; ejecutar inmediatamente
+                    local now = tick()
+                    if now - _ssLast >= _ssCD then
+                        _ssLast = now
+                        _sp(function() _ssFire(gun) end)
+                    end
                 end
                 -- Si _ssEnabled=false: no hacer nada, las conexiones originales
                 -- siguen habilitadas y manejan el disparo normalmente
             end)
+            -- MOBILE EXTRA: hookear TouchTap directo en la gun como fallback
+            -- (en algunos devices Activated no se dispara si el juego consume el touch)
+            if UserInputService.TouchEnabled then
+                pcall(function()
+                    local _touchConn = gun.InputBegan:Connect(function(inp)
+                        if not _ssEnabled then return end
+                        if inp.UserInputType == Enum.UserInputType.Touch then
+                            local now = tick()
+                            if now - _ssLast >= _ssCD then
+                                _ssLast = now
+                                _sp(function() _ssFire(gun) end)
+                            end
+                        end
+                    end)
+                    -- Desconectar si la gun cambia
+                    gun.AncestryChanged:Connect(function()
+                        if not gun.Parent then pcall(function() _touchConn:Disconnect() end) end
+                    end)
+                end)
+            end
         end
         local function _ssTryHook()
             local char=LocalPlayer.Character; if not char then return end
@@ -44171,9 +44170,12 @@ function CreateCombatTab()
                 if _hookedGun then _ssApplyDisable() end
                 -- LMB / Touch: solo dispara si la gun esta EQUIPADA en el personaje
                 _ssLmbConn = UserInputService.InputBegan:Connect(function(i, gp)
-                    if gp or not _ssEnabled then return end
-                    if i.UserInputType ~= Enum.UserInputType.MouseButton1
-                       and i.UserInputType ~= Enum.UserInputType.Touch then return end
+                    if not _ssEnabled then return end
+                    local isTouch = i.UserInputType == Enum.UserInputType.Touch
+                    local isMouse = i.UserInputType == Enum.UserInputType.MouseButton1
+                    -- En mobile (touch) no bloquear por gameProcessed, en PC si
+                    if not isTouch and not isMouse then return end
+                    if gp and not isTouch then return end
                     -- Verificar que la gun este equipada (en el Character, NO en Backpack)
                     local char = LocalPlayer.Character
                     if not char then return end
@@ -44327,7 +44329,7 @@ function CreateCombatTab()
             local dr,ds,sp=false,nil,nil
             btn.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dr=true;ds=i.Position;sp=btn.Position; i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dr=false end end) end end)
             UserInputService.InputChanged:Connect(function(i) if dr and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then local d=i.Position-ds; btn.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y) end end)
-            btn.MouseButton1Click:Connect(function()
+            btn.Activated:Connect(function()
                 if not _pEnabled then return end
                 local now=tick(); if now-_pLastShot<_pCooldown then return end; _pLastShot=now
                 TweenService:Create(btn,TweenInfo.new(0.08),{BackgroundTransparency=0}):Play()
@@ -44775,7 +44777,7 @@ function CreateCombatTab()
             local _listening = false
             local _listenConn = nil
 
-            kfBtn.MouseButton1Click:Connect(function()
+            kfBtn.Activated:Connect(function()
                 if _listening then return end
                 _listening = true
                 kfBtn.Text = "..."
@@ -45233,7 +45235,7 @@ function CreateCombatTab()
                                 lock.ZIndex                 = btn.ZIndex + 10
                                 lock.AutoButtonColor        = false
                                 lock.Active                 = true
-                                lock.MouseButton1Click:Connect(function()
+                                lock.Activated:Connect(function()
                                     CreateCustomNotification("⭐ PREMIUM", "Loguea en el tab PREMIUM para usar este modo.", 4)
                                 end)
                             end
@@ -45774,222 +45776,6 @@ function CreateCombatTab()
     end
 
     end  -- close TK SILENT AIM do
-
-    -- ======================================================================
-    -- SECCIÓN: TRAJECTORY INFO & BULLET TRACER (Combat Tab)
-    -- ======================================================================
-    do
-        _currentMainSectionFrame = nil
-        local _tibtSection = (CreateBorderedSection and leftColumn)
-            and CreateBorderedSection(leftColumn, " ⬢ TRAJECTORY INFO & BULLET TRACER")
-            or Instance.new("Frame")
-
-        -- Reutiliza el estado de GUN UTILITIES para no duplicar lógica
-        CombatTabState._gunUtil = CombatTabState._gunUtil or {
-            _btLiveEnabled   = false,
-            _btLiveLine      = nil,
-            _btLiveConn      = nil,
-            trajEnabled      = false,
-            _trajConn        = nil,
-            _trajLine        = nil,
-            _trajLabel       = nil,
-            autoEquipRange   = false,
-            equippingRange   = 80,
-            _autoEquipConn   = nil,
-            _onlyEquipRange  = 30,
-        }
-        local _GU = CombatTabState._gunUtil
-
-        -- =====================================================================
-        -- BULLET TRACER — línea roja en tiempo real desde Gun → Murder
-        -- =====================================================================
-        do
-            local function _cbt_stop()
-                if _GU._btLiveConn then
-                    pcall(function() _GU._btLiveConn:Disconnect() end)
-                    _GU._btLiveConn = nil
-                end
-                if _GU._btLiveLine then
-                    pcall(function() _GU._btLiveLine.Visible = false end)
-                end
-            end
-
-            local function _cbt_start()
-                _cbt_stop()
-                if not _GU._btLiveLine then
-                    local ln = Drawing.new("Line")
-                    ln.Visible      = false
-                    ln.Color        = Color3.fromRGB(255, 40, 40)
-                    ln.Thickness    = 2
-                    ln.Transparency = 0.15
-                    ln.ZIndex       = 5
-                    _GU._btLiveLine = ln
-                end
-                local line = _GU._btLiveLine
-                local _hbt = 0
-                _GU._btLiveConn = RunService.Heartbeat:Connect(function()
-                    _hbt = _hbt + 1; if _hbt < 3 then return end; _hbt = 0
-                    if not _GU._btLiveEnabled then line.Visible = false; return end
-                    if _G._visualRoundOver then line.Visible = false; return end
-                    local char = LocalPlayer.Character
-                    local cam  = workspace.CurrentCamera
-                    if not char or not cam then line.Visible = false; return end
-                    -- Solo activo si el jugador tiene la Gun equipada en mano
-                    local gunTool = _findGunIn and _findGunIn(char)
-                    if not gunTool then line.Visible = false; return end
-                    local gunHandle = gunTool:FindFirstChild("Handle")
-                    if not gunHandle then line.Visible = false; return end
-                    local target = (_G._getEffectiveTarget and _G._getEffectiveTarget())
-                               or (findMurderer and findMurderer())
-                    if not target then line.Visible = false; return end
-                    local tChar = target.Character
-                    local tHRP  = tChar and (tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso"))
-                    if not tHRP then line.Visible = false; return end
-                    local fromSc, ok1 = cam:WorldToViewportPoint(gunHandle.Position)
-                    local toSc,   ok2 = cam:WorldToViewportPoint(tHRP.Position)
-                    if not ok1 and not ok2 then line.Visible = false; return end
-                    line.Visible = true
-                    line.From    = Vector2.new(fromSc.X, fromSc.Y)
-                    line.To      = Vector2.new(toSc.X,   toSc.Y)
-                end)
-            end
-
-            CreateBorderedToggle(_tibtSection, "Bullet Tracer", function(enabled)
-                _GU._btLiveEnabled = enabled
-                if enabled then
-                    _cbt_start()
-                    CreateCustomNotification("BULLET TRACER", " Línea roja Gun → Murder activada", 2)
-                else
-                    _cbt_stop()
-                    CreateCustomNotification("BULLET TRACER", " Tracer desactivado", 1.5)
-                end
-            end, _GU._btLiveEnabled)
-
-            do
-                local _d = Instance.new("TextLabel", _tibtSection)
-                _d.Size = UDim2.new(1, -8, 0, 0); _d.AutomaticSize = Enum.AutomaticSize.Y
-                _d.BackgroundTransparency = 1
-                _d.Text = "Dibuja una línea roja en tiempo real desde tu arma hasta el Murder."
-                _d.TextColor3 = Color3.fromRGB(255, 100, 100)
-                _d.Font = Enum.Font.Montserrat; _d.TextSize = 10
-                _d.TextWrapped = true; _d.TextXAlignment = Enum.TextXAlignment.Left; _d.ZIndex = 13
-                local _p = Instance.new("UIPadding", _d)
-                _p.PaddingLeft = UDim.new(0,6); _p.PaddingRight = UDim.new(0,6)
-                _p.PaddingTop  = UDim.new(0,2); _p.PaddingBottom = UDim.new(0,4)
-            end
-        end
-
-        -- =====================================================================
-        -- TRAJECTORY INFO — panel con distancia, velocidad y tiempo de vuelo
-        -- =====================================================================
-        do
-            local function _ctj_stop()
-                if _GU._trajConn  then pcall(function() _GU._trajConn:Disconnect() end);  _GU._trajConn  = nil end
-                if _GU._trajLabel then pcall(function() _GU._trajLabel:Destroy() end);     _GU._trajLabel = nil end
-                if _GU._trajLine  then pcall(function() _GU._trajLine:Destroy() end);      _GU._trajLine  = nil end
-            end
-
-            local function _ctj_start()
-                _ctj_stop()
-                local sg = Instance.new("ScreenGui")
-                sg.Name           = "TrajectoryInfoGui"
-                sg.ResetOnSpawn   = false
-                sg.IgnoreGuiInset = true
-                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                sg.DisplayOrder   = 9800
-                pcall(function() sg.Parent = CoreGui end)
-                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
-
-                local fr = Instance.new("Frame", sg)
-                fr.AnchorPoint         = Vector2.new(0.5, 0)
-                fr.Position            = UDim2.new(0.5, 0, 0.08, 0)
-                fr.Size                = UDim2.new(0, 260, 0, 0)
-                fr.AutomaticSize       = Enum.AutomaticSize.Y
-                fr.BackgroundColor3    = Color3.fromRGB(10, 10, 18)
-                fr.BackgroundTransparency = 0.12
-                fr.BorderSizePixel     = 0
-                fr.ZIndex              = 9801
-                Instance.new("UICorner", fr).CornerRadius = UDim.new(0, 10)
-                local frs = Instance.new("UIStroke", fr)
-                frs.Color = Color3.fromRGB(255, 80, 80); frs.Thickness = 1.5; frs.Transparency = 0.2
-                local frl = Instance.new("UIListLayout", fr)
-                frl.Padding = UDim.new(0, 2); frl.FillDirection = Enum.FillDirection.Vertical
-                local frp = Instance.new("UIPadding", fr)
-                frp.PaddingTop = UDim.new(0,6); frp.PaddingBottom = UDim.new(0,6)
-                frp.PaddingLeft = UDim.new(0,8); frp.PaddingRight = UDim.new(0,8)
-
-                local title = Instance.new("TextLabel", fr)
-                title.Size = UDim2.new(1, 0, 0, 22); title.BackgroundTransparency = 1
-                title.Text = " ⬢ TRAJECTORY INFO"; title.TextColor3 = Color3.fromRGB(255, 80, 80)
-                title.Font = Enum.Font.Montserrat; title.TextSize = 13
-                title.TextXAlignment = Enum.TextXAlignment.Left; title.ZIndex = 9802
-
-                local lbl = Instance.new("TextLabel", fr)
-                lbl.Size = UDim2.new(1, 0, 0, 0); lbl.AutomaticSize = Enum.AutomaticSize.Y
-                lbl.BackgroundTransparency = 1
-                lbl.Text = "Calculando..."
-                lbl.TextColor3 = Color3.fromRGB(200, 230, 255)
-                lbl.Font = Enum.Font.Montserrat; lbl.TextSize = 11
-                lbl.TextWrapped = true; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.ZIndex = 9802
-                _GU._trajLabel = lbl
-
-                local _tjHb = 0
-                _GU._trajConn = RunService.Heartbeat:Connect(function()
-                    _tjHb = _tjHb + 1; if _tjHb < 6 then return end; _tjHb = 0
-                    if not _GU.trajEnabled or not sg.Parent then
-                        pcall(function() sg:Destroy() end); return
-                    end
-                    local char = LocalPlayer.Character
-                    if not char then lbl.Text = "Sin personaje"; return end
-                    local hrp = char:FindFirstChild("HumanoidRootPart")
-                    if not hrp then lbl.Text = "Sin HRP"; return end
-                    local target = (_G._getEffectiveTarget and _G._getEffectiveTarget())
-                               or (findMurderer and findMurderer())
-                    if not target then lbl.Text = "Sin target"; return end
-                    local tChar = target.Character
-                    local tHRP  = tChar and (tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso"))
-                    if not tHRP then lbl.Text = "Sin HRP target"; return end
-                    local dist   = (hrp.Position - tHRP.Position).Magnitude
-                    local vel    = tHRP.AssemblyLinearVelocity
-                    local speed  = math.round(vel.Magnitude * 10) / 10
-                    local tFly   = math.round((dist / math.max(speed, 1)) * 100) / 100
-                    local camDir = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.LookVector or Vector3.new(0,0,-1)
-                    local toTgt  = (tHRP.Position - hrp.Position).Unit
-                    local angle  = math.round(math.deg(math.acos(math.clamp(camDir:Dot(toTgt), -1, 1))))
-                    lbl.Text = string.format(
-                        "📏 Distancia:  %.1f st\n💨 Velocidad target:  %.1f st/s\n⏱ Tiempo vuelo est.:  %.2f s\n📐 Ángulo cam→target:  %d°",
-                        dist, speed, tFly, angle
-                    )
-                end)
-            end
-
-            CreateBorderedToggle(_tibtSection, "Trajectory Info", function(enabled)
-                _GU.trajEnabled = enabled
-                if enabled then
-                    _ctj_start()
-                    CreateCustomNotification("TRAJECTORY INFO", " Panel de trayectoria activado", 3)
-                else
-                    _ctj_stop()
-                    CreateCustomNotification("TRAJECTORY INFO", " Info de trayectoria desactivada", 2)
-                end
-            end, _GU.trajEnabled)
-
-            do
-                local _d = Instance.new("TextLabel", _tibtSection)
-                _d.Size = UDim2.new(1, -8, 0, 0); _d.AutomaticSize = Enum.AutomaticSize.Y
-                _d.BackgroundTransparency = 1
-                _d.Text = "Muestra en pantalla: distancia, velocidad del target, tiempo de vuelo estimado y ángulo cámara→target."
-                _d.TextColor3 = Color3.fromRGB(130, 170, 220)
-                _d.Font = Enum.Font.Montserrat; _d.TextSize = 10
-                _d.TextWrapped = true; _d.TextXAlignment = Enum.TextXAlignment.Left; _d.ZIndex = 13
-                local _p = Instance.new("UIPadding", _d)
-                _p.PaddingLeft = UDim.new(0,6); _p.PaddingRight = UDim.new(0,6)
-                _p.PaddingTop  = UDim.new(0,2); _p.PaddingBottom = UDim.new(0,4)
-            end
-        end
-
-        _currentMainSectionFrame = nil
-    end  -- close TRAJECTORY INFO & BULLET TRACER do
 
     -- ======================================================================
     -- SECCIÓN: GUN UTILITIES — Bullet Tracer, Trajectory Info, Auto-Equip Smart
@@ -46579,7 +46365,7 @@ function CreateCombatTab()
                     _ssUpdate(_ssPct(inp.Position.X))
                 end
             end)
-            _ssDrag.MouseButton1Click:Connect(function()
+            _ssDrag.Activated:Connect(function()
                 _ssUpdate(_ssPct(UserInputService:GetMouseLocation().X))
             end)
             _ssDrag.Activated:Connect(function()
@@ -46844,7 +46630,7 @@ function CreateCombatTab()
         end)
 
         -- Click en el botn: entrar en modo escucha
-        _skKeyBtn.MouseButton1Click:Connect(function()
+        _skKeyBtn.Activated:Connect(function()
             if SK.listening then
                 SK.listening = false
                 _skKeyBtn.Text = SK.keybind.Name
@@ -47225,11 +47011,12 @@ function CreateCombatTab()
         _scDescLabel.Text = _scDescTexts[_scSavedOpt] or ""
         _scDescLabel.TextColor3 = (_scSavedOpt == "Desactivado") and Color3.fromRGB(160,160,160) or Color3.fromRGB(210, 20, 15)
 
-        _scPrev.MouseButton1Click:Connect(function()
+        -- FIX MOBILE: Activated funciona en touch y PC
+        _scPrev.Activated:Connect(function()
             _scIndex = _scIndex > 1 and _scIndex - 1 or #_scOptions
             _scApply(_scOptions[_scIndex])
         end)
-        _scNext.MouseButton1Click:Connect(function()
+        _scNext.Activated:Connect(function()
             _scIndex = _scIndex < #_scOptions and _scIndex + 1 or 1
             _scApply(_scOptions[_scIndex])
         end)
@@ -47307,7 +47094,7 @@ minimizeBtn.MouseLeave:Connect(function()
     TweenService:Create(minimizeBtn, TweenInfo.new(0.18), {BackgroundTransparency=1, BackgroundColor3=Color3.fromRGB(255,255,255)}):Play()
 end)
 
-minimizeBtn.MouseButton1Click:Connect(function()
+minimizeBtn.Activated:Connect(function()
     -- FIX: respetar "No Minimize/Maximize Anim" de Settings
     if _G._hubSettings and _G._hubSettings.noMinMaxAnimations then
         hubGui.Enabled = false
@@ -47315,12 +47102,15 @@ minimizeBtn.MouseButton1Click:Connect(function()
     else
         local uiScaleClose = mainFrame:FindFirstChildOfClass("UIScale")
         if uiScaleClose then
-            TweenService:Create(uiScaleClose, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Scale = 0}):Play()
+            -- Animacion de cierre lenta y suave: escala baja con Quint + fade
+            TweenService:Create(uiScaleClose, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Scale = 0}):Play()
         end
-        TweenService:Create(mainFrame, TweenInfo.new(0.25), {BackgroundTransparency = 1}):Play()
-        task.wait(0.32)
-        hubGui.Enabled = false
-        _G._hubHidden  = true
+        TweenService:Create(mainFrame, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
+        -- FIX MOBILE: task.wait bloquea el hilo en celu; usar task.delay para no bloquear
+        task.delay(0.58, function()
+            hubGui.Enabled = false
+            _G._hubHidden  = true
+        end)
     end
 
     local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -47365,7 +47155,7 @@ minimizeBtn.MouseButton1Click:Connect(function()
         TweenService:Create(rBtn, TweenInfo.new(0.2), {ImageTransparency = 0}):Play()
     end)
 
-    rBtn.MouseButton1Click:Connect(function()
+    rBtn.Activated:Connect(function()
         for i = 1, 12 do
             local dot = Instance.new("Frame", skullMainFrame)
             dot.Size = UDim2.new(0, 5, 0, 5)
@@ -47400,7 +47190,7 @@ minimizeBtn.MouseButton1Click:Connect(function()
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
                     uiScale.Scale = 0
-                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                    TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
                 end
                 -- NO llamar _reloadActiveTab: no es necesario y disparaba
                 -- la pantalla de disculpas del premium al reconstruir el tab.
@@ -47411,7 +47201,7 @@ minimizeBtn.MouseButton1Click:Connect(function()
     end)
 end)
 
-infoBtn.MouseButton1Click:Connect(function()
+infoBtn.Activated:Connect(function()
 
     CloseExpandPanel()
     local infoGui = Instance.new("ScreenGui")
@@ -47515,7 +47305,7 @@ infoBtn.MouseButton1Click:Connect(function()
     closeBtnRow.BorderSizePixel = 0
     closeBtnRow.ZIndex = 101
     Instance.new("UICorner", closeBtnRow).CornerRadius = UDim.new(0, 8)
-    closeBtnRow.MouseButton1Click:Connect(function()
+    closeBtnRow.Activated:Connect(function()
         TweenService:Create(infoFrame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
             Size = UDim2.new(0, 380, 0, 0), BackgroundTransparency = 1
         }):Play()
@@ -47529,7 +47319,7 @@ infoBtn.MouseButton1Click:Connect(function()
     }):Play()
 end)
 
-closeBtn.MouseButton1Click:Connect(function()
+closeBtn.Activated:Connect(function()
 
     CloseExpandPanel()
     -- FIX v12: detener weapons/knife al cerrar el hub para que los loops
@@ -47631,7 +47421,7 @@ closeBtn.MouseButton1Click:Connect(function()
     end)
 
     -- Click: animacion de puntitos + abrir hub
-    skullBtn.MouseButton1Click:Connect(function()
+    skullBtn.Activated:Connect(function()
         -- Puntitos hacia el centro
         for i = 1, 12 do
             local dot = Instance.new("Frame", skullMainFrame)
@@ -47667,7 +47457,7 @@ closeBtn.MouseButton1Click:Connect(function()
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
                     uiScale.Scale = 0
-                    TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                    TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
                 end
                 -- NO llamar _reloadActiveTab: causaba el popup de premium
             else
@@ -47942,7 +47732,7 @@ do
     wlFillGrad.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0,   Color3.fromRGB(80, 100, 240)),
         ColorSequenceKeypoint.new(0.5, Color3.fromRGB(80, 255, 140)),
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(75, 90, 230)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(0, 191, 255)),
     })
 
     -- Actualizar la barra y el tiempo
@@ -48992,7 +48782,7 @@ function abrirHub()
             end)
         end
         -- PC: click del mouse
-        _btn.MouseButton1Click:Connect(_onContinuar)
+        _btn.Activated:Connect(_onContinuar)
         -- Movil: toque tactil (Activated funciona en ambos dispositivos)
         _btn.Activated:Connect(_onContinuar)
 
@@ -49026,7 +48816,7 @@ function abrirHub()
         local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
         if uiScale then
             uiScale.Scale = 0
-            TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+            TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
         end
         -- FIX: recargar el tab activo para restaurar bindables y botones
         task.defer(function()
@@ -49115,15 +48905,15 @@ print("3: mainFrame creado")
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 -- == ESTILO: Teal oscuro estilo MM2 hub ==
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-mainFrame.BackgroundTransparency = 1
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
+mainFrame.BackgroundTransparency = 0.12
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
 
 -- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
 -- El UIScale que se aplica abajo se encarga de que entre en pantalla.
-mainFrame.Size = UDim2.new(0, 730, 0, 430)
+mainFrame.Size = UDim2.new(0, 920, 0, 490)
 
 -- ==============================================================
 -- FONDO AZUL SLIDO  sin aurora animada, sin pulse dot
@@ -49137,9 +48927,9 @@ end
 
 -- Borde azul nen estilo OverdriveInterface
 glowBorder = Instance.new("UIStroke", mainFrame)
-glowBorder.Color = Color3.fromRGB(80, 80, 80)
+glowBorder.Color = Color3.fromRGB(0, 191, 255)
 glowBorder.Thickness = 2.0
-glowBorder.Transparency = 0.25
+glowBorder.Transparency = 0.10
 glowBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 uiScale = Instance.new("UIScale", mainFrame)
@@ -49151,8 +48941,8 @@ uiScale.Scale = 1
 -- En móvil se escala para que entre completo en pantalla.
 -- ================================================================
 do
-    local HUB_W = 730
-    local HUB_H = 430
+    local HUB_W = 920
+    local HUB_H = 490
 
     -- HELPER GLOBAL: devuelve la escala correcta según viewport actual.
     -- Todos los reopeners/animaciones deben animar HASTA este valor, no hasta 1.
@@ -49165,7 +48955,7 @@ do
         local scaleY = (vp.Y - marginY) / HUB_H
         local scale  = math.min(scaleX, scaleY)
         local minScale = isMobile and 0.30 or 0.5
-        return math.clamp(scale, minScale, 0.70)
+        return math.clamp(scale, minScale, isMobile and 0.85 or 1.0)
     end
 
     local function _applyScale()
@@ -49183,6 +48973,77 @@ do
     workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(_applyScale)
 
     print("[ZerqonHUB] Escala aplicada: " .. tostring(uiScale.Scale))
+
+    -- == COLOR SATURACION HUB (igual en PC y mobile) ==
+    -- Aplica el mismo tinte purpura/violeta al fondo del hub
+    -- para que la saturacion se vea igual en celular que en PC.
+    pcall(function()
+        local _isMobileColor = UserInputService.TouchEnabled
+
+        -- Eliminar gradiente anterior si existe (evita duplicados al re-ejecutar)
+        local _oldGrad = mainFrame:FindFirstChild("_HubSatGrad")
+        if _oldGrad then _oldGrad:Destroy() end
+        local _oldOrb = mainFrame:FindFirstChild("_HubSatOrb")
+        if _oldOrb then _oldOrb:Destroy() end
+        local _oldOrbBot = mainFrame:FindFirstChild("_HubSatOrbBot")
+        if _oldOrbBot then _oldOrbBot:Destroy() end
+
+        -- Gradiente diagonal: esquina superior izquierda mas clara, inferior derecha mas oscura
+        -- En mobile intensificamos un poco para que se vea igual con pantalla brillante
+        local satGrad = Instance.new("UIGradient", mainFrame)
+        satGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,   Color3.fromRGB(_isMobileColor and 55 or 40,  _isMobileColor and 22 or 18,  _isMobileColor and 100 or 80)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(_isMobileColor and 22 or 18,  _isMobileColor and 12 or 10,  _isMobileColor and 50  or 40)),
+            ColorSequenceKeypoint.new(1,   Color3.fromRGB(_isMobileColor and 12 or 10,  _isMobileColor and 6  or 5,   _isMobileColor and 30  or 25)),
+        })
+        satGrad.Transparency = NumberSequence.new(0)
+        satGrad.Rotation = 135  -- diagonal
+        satGrad.Name = "_HubSatGrad"
+        satGrad.ZOffset = 0
+
+        -- Capa de brillo purpura superior (orb ambient) - DENTRO del hub para mobile
+        -- En mobile el orb va dentro del frame (position 0.5, 0.05) para no quedar cortado
+        local satOrb = Instance.new("ImageLabel", mainFrame)
+        satOrb.Name          = "_HubSatOrb"
+        satOrb.Size          = UDim2.new(_isMobileColor and 1.0 or 0.8, 0, _isMobileColor and 0.7 or 0.8, 0)
+        satOrb.AnchorPoint   = Vector2.new(0.5, 0)
+        satOrb.Position      = UDim2.new(0.5, 0, _isMobileColor and 0.0 or -0.2, 0)
+        satOrb.BackgroundTransparency = 1
+        satOrb.Image         = "rbxassetid://4996318945"  -- radial glow
+        satOrb.ImageColor3   = Color3.fromRGB(_isMobileColor and 90 or 80, _isMobileColor and 45 or 40, _isMobileColor and 200 or 180)
+        satOrb.ImageTransparency = _isMobileColor and 0.60 or 0.72
+        satOrb.ScaleType     = Enum.ScaleType.Fit
+        satOrb.ZIndex        = 2
+        satOrb.BorderSizePixel = 0
+
+        -- Orb inferior sutil (solo mobile, da profundidad en pantalla pequena)
+        if _isMobileColor then
+            local satOrbBot = Instance.new("ImageLabel", mainFrame)
+            satOrbBot.Name          = "_HubSatOrbBot"
+            satOrbBot.Size          = UDim2.new(0.7, 0, 0.5, 0)
+            satOrbBot.AnchorPoint   = Vector2.new(0.5, 1)
+            satOrbBot.Position      = UDim2.new(0.5, 0, 1.0, 0)
+            satOrbBot.BackgroundTransparency = 1
+            satOrbBot.Image         = "rbxassetid://4996318945"
+            satOrbBot.ImageColor3   = Color3.fromRGB(60, 20, 140)
+            satOrbBot.ImageTransparency = 0.75
+            satOrbBot.ScaleType     = Enum.ScaleType.Fit
+            satOrbBot.ZIndex        = 2
+            satOrbBot.BorderSizePixel = 0
+        end
+
+        -- Stroke del borde ya existente: asegurar que siempre sea purpura neon
+        if glowBorder then
+            glowBorder.Color     = Color3.fromRGB(0, 191, 255)
+            glowBorder.Thickness = _isMobileColor and 2.5 or 2.0
+            glowBorder.Transparency = 0.05
+        end
+
+        -- En mobile: color base del mainFrame ligeramente mas saturado
+        if _isMobileColor then
+            mainFrame.BackgroundColor3 = Color3.fromRGB(25, 100, 145)
+        end
+    end)
 end
 -- ================================================================
 -- == FIN AUTO SCALE
@@ -49616,11 +49477,11 @@ do
     -- Gradiente principal animado (toda la superficie)
     local _mainGrad = Instance.new("UIGradient", _auroraBase)
     _mainGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    Color3.fromRGB(8,   5,  30)),
-        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(50,  20, 100)),
+        ColorSequenceKeypoint.new(0,    Color3.fromRGB(10, 60, 100)),
+        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(0, 120, 180)),
         ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(0,  150, 140)),
-        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(100, 20, 160)),
-        ColorSequenceKeypoint.new(1,    Color3.fromRGB(8,   5,  30)),
+        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0, 160, 220)),
+        ColorSequenceKeypoint.new(1,    Color3.fromRGB(10, 60, 100)),
     })
     _mainGrad.Rotation = 120
     _mainGrad.Transparency = NumberSequence.new(0)
@@ -49744,8 +49605,8 @@ particles = {}
     header.Name = "TopBar"
     header.Size = UDim2.new(1, 0, 0, 36)
     header.Position = UDim2.new(0, 0, 0, 0)
-    header.BackgroundColor3 = Color3.fromRGB(6, 30, 26)
-    header.BackgroundTransparency = 1
+    header.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
+    header.BackgroundTransparency = 0.1
     header.BorderSizePixel = 0
     header.ZIndex = 10
     header.Active = true
@@ -49756,8 +49617,8 @@ particles = {}
     local _hdrLine = Instance.new("Frame", header)
     _hdrLine.Size = UDim2.new(1, 0, 0, 1)
     _hdrLine.Position = UDim2.new(0, 0, 1, -1)
-    _hdrLine.BackgroundColor3 = Color3.fromRGB(40, 160, 130)
-    _hdrLine.BackgroundTransparency = 0.5
+    _hdrLine.BackgroundColor3 = Color3.fromRGB(0, 191, 255)
+    _hdrLine.BackgroundTransparency = 0.3
     _hdrLine.BorderSizePixel = 0
     _hdrLine.ZIndex = 11
 
@@ -50066,14 +49927,14 @@ particles = {}
     _contentBg.Name = "ContentBackground"
     _contentBg.Size = UDim2.new(1, 0, 1, -36)
     _contentBg.Position = UDim2.new(0, 0, 0, 34)
-    _contentBg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    _contentBg.BackgroundTransparency = 1
+    _contentBg.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
+    _contentBg.BackgroundTransparency = 0.15
     _contentBg.BorderSizePixel = 0
     _contentBg.ZIndex = 5
-    _contentBg.Visible = false
+    _contentBg.Visible = true
     -- Sincronizar visibilidad con contentContainer
     contentContainer:GetPropertyChangedSignal("Visible"):Connect(function()
-        _contentBg.Visible = contentContainer.Visible
+        _contentBg.Visible = true  -- siempre visible para cubrir el fondo
     end)
 
     -- Aurora effect (igual que antes)
@@ -50150,10 +50011,10 @@ particles = {}
     sideLayout.Padding = UDim.new(0, 6)
     sideLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
-    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "FARM"}
+    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "EMOTES"}
     local tabFunctions = {CreateMainTab, CreateWorldTab, CreateVisualsTab, CreatePremiumTab, CreateExclusiveTab, CreateCombatTab,
-        function() CreateUseTab() end,  -- late binding: CreateUseTab se define despues de esta tabla
-        CreateFarmTab}
+        function() CreateUseTab() end,      -- late binding: CreateUseTab se define despues de esta tabla
+        function() CreateEmotesTab() end}   -- late binding: CreateEmotesTab
     local tabIcons = {
         "rbxassetid://104322605423609",  -- MAIN
         "rbxassetid://105507739661539",  -- WORLD
@@ -50162,7 +50023,7 @@ particles = {}
         "rbxassetid://103503754018914",  -- SETTINGS
         "rbxassetid://134041781822125",  -- COMBAT
         "rbxassetid://106189149164668",  -- USE
-        "rbxassetid://104322605423609",  -- FARM (usa mismo icono que MAIN como fallback)
+        "rbxassetid://106189149164668",  -- EMOTES
     }
 
     local sideButtons = {}
@@ -50243,11 +50104,11 @@ particles = {}
         local lbl2     = r and r.lbl2
         if isActive then
             -- Tab activa: fondo blanco semitransparente para destacar
-            TweenService:Create(btn, _ti_tab, {BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0.8}):Play()
-            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = Color3.fromRGB(255, 255, 255)}):Play() end
-            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(255,255,255)}):Play() end
-            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(255,255,255)}):Play() end
-            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(255, 255, 255)}):Play() end
+            TweenService:Create(btn, _ti_tab, {BackgroundColor3 = Color3.fromRGB(0, 191, 255), BackgroundTransparency = 0.5}):Play()
+            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = Color3.fromRGB(200, 240, 255)}):Play() end
+            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(120, 80, 255)}):Play() end
+            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(120, 80, 255)}):Play() end
+            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(220, 245, 255)}):Play() end
         else
             -- Tab inactiva: completamente transparente, borde blanco, texto blanco
             TweenService:Create(btn, _ti_tab, {BackgroundTransparency = 1}):Play()
@@ -50328,7 +50189,11 @@ particles = {}
             if not _tabCache[idx] or not _tabCache[idx].Parent then
                 _tabBuilt[idx] = nil
                 _tabCache[idx] = nil
+                -- Marcar como rebuild de pestaña para que CreateAuroraToggle NO
+                -- re-ejecute callbacks (la funcionalidad ya está corriendo en memoria)
+                _G._isTabRebuild = true
                 _buildTabCached(idx)
+                _G._isTabRebuild = false
             end
         end
         if _tabCache[idx] then
@@ -50375,7 +50240,7 @@ particles = {}
     -- SIEMPRE usar layout de PC (sidebar vertical) — el auto-scale se encarga
     -- de que el hub entre completo en pantalla, tanto en PC como en móvil.
     local _isMobileLayout = false
-    local SIDEBAR_W = 240
+    local SIDEBAR_W = 200
     local TAB_BAR_BOTTOM_H = 0
 
     local tabDockFrame = Instance.new("Frame", mainFrame)
@@ -50384,7 +50249,7 @@ particles = {}
     tabDockFrame.BorderSizePixel = 0
     tabDockFrame.ZIndex = 12
     tabDockFrame.ClipsDescendants = true
-    tabDockFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    tabDockFrame.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
 
     if _isMobileLayout then
         -- Móvil: barra horizontal en la parte inferior del hub
@@ -50395,13 +50260,13 @@ particles = {}
         -- Desktop: sidebar vertical izquierda
         tabDockFrame.Position = UDim2.new(0, 0, 0, 36)
         tabDockFrame.Size = UDim2.new(0, SIDEBAR_W, 1, -36)
-        tabDockFrame.BackgroundTransparency = 1
+        tabDockFrame.BackgroundTransparency = 0.15
     end
 
     local _dockStroke = Instance.new("UIStroke", tabDockFrame)
-    _dockStroke.Color = Color3.fromRGB(80, 80, 80)
-    _dockStroke.Thickness = 1.8
-    _dockStroke.Transparency = 0.35
+    _dockStroke.Color = Color3.fromRGB(0, 191, 255)
+    _dockStroke.Thickness = 1.5
+    _dockStroke.Transparency = 0.3
     _dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local tabDockList = Instance.new("ScrollingFrame", tabDockFrame)
@@ -50437,7 +50302,7 @@ particles = {}
         dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
         dockLayout.Padding = UDim.new(0, 2)
         dockPad.PaddingTop    = UDim.new(0, 6)
-        dockPad.PaddingBottom = UDim.new(0, 6)
+        dockPad.PaddingBottom = UDim.new(0, 0)
         dockPad.PaddingLeft   = UDim.new(0, 4)
         dockPad.PaddingRight  = UDim.new(0, 4)
     end
@@ -50484,9 +50349,9 @@ particles = {}
 
         -- Borde blanco permanente
         local btnStroke = Instance.new("UIStroke", btn)
-        btnStroke.Color = Color3.fromRGB(255, 255, 255)
-        btnStroke.Thickness = 3
-        btnStroke.Transparency = 0
+        btnStroke.Color = Color3.fromRGB(0, 191, 255)
+        btnStroke.Thickness = 2
+        btnStroke.Transparency = 0.2
         btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         -- Barra lateral izquierda (indicador activo)
@@ -50555,7 +50420,7 @@ particles = {}
             end
         end)
 
-        btn.MouseButton1Click:Connect(function()
+        btn.Activated:Connect(function()
             PlayTabSound()
             local wasVisible = contentContainer.Visible
             if not wasVisible then
@@ -50744,19 +50609,19 @@ particles = {}
                     end
                 end)
             end
-            rBtn2.MouseButton1Click:Connect(_reopenHub)
+            rBtn2.Activated:Connect(_reopenHub)
             rBtn2.InputBegan:Connect(function(inp)
                 if inp.UserInputType == Enum.UserInputType.Touch then _reopenHub() end
             end)
         end
     end
     -- Conectar tanto MouseButton1Click como InputBegan (touch) para compatibilidad movil
-    arrowToggleBtn.MouseButton1Click:Connect(_arrowBtnFire)
+    arrowToggleBtn.Activated:Connect(_arrowBtnFire)  -- FIX MOBILE: reemplaza MouseButton1Click
     arrowToggleBtn.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.Touch then _arrowBtnFire() end
     end)
 
-    restoreBtn.MouseButton1Click:Connect(function()
+    restoreBtn.Activated:Connect(function()
         _goBackToEmpty()
     end)
 
@@ -50851,6 +50716,10 @@ particles = {}
                 _G._tabContentActive = true
                 pcall(function() SetActiveTab(1) end)
             end)
+            -- FIX AUTO SAVE: pre-buildear Settings en background (path _hubAlreadyBuilt)
+            task.delay(0.5, function()
+                pcall(function() _buildTabCached(5) end)
+            end)
             return
         end
 
@@ -50893,7 +50762,10 @@ particles = {}
         _oval.AnchorPoint = Vector2.new(0.5, 0.5)
         _oval.Position = UDim2.new(0.5, 0, 0.5, 0)
         _oval.Size = UDim2.new(0, 0, 0, 0)
-        _oval.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+        local _loaderAccent = (Themes[currentThemeName] and Themes[currentThemeName].Aurora3)
+                           or (Themes[currentThemeName] and Themes[currentThemeName].Primary)
+                           or ThemeColors.Accent
+        _oval.BackgroundColor3 = _loaderAccent
         _oval.BackgroundTransparency = 0.35
         _oval.BorderSizePixel = 0
         _oval.ZIndex = 5
@@ -50902,7 +50774,7 @@ particles = {}
         _ovalCorner.CornerRadius = UDim.new(0.5, 0)   -- ovalo perfecto
 
         local _ovalStroke = Instance.new("UIStroke", _oval)
-        _ovalStroke.Color = Color3.fromRGB(140, 140, 140)
+        _ovalStroke.Color = _loaderAccent
         _ovalStroke.Thickness = 3
         _ovalStroke.Transparency = 0.1
         _ovalStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -50958,12 +50830,12 @@ particles = {}
         end)
         -- Fondo del ovalo mantiene semitransparencia (se ve el juego detras)
         TweenService:Create(_oval, TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-            BackgroundColor3 = Color3.fromRGB(80, 80, 80),
+            BackgroundColor3 = _loaderAccent,
             BackgroundTransparency = 0.35,
         }):Play()
         -- Borde pasa de azul brillante a color del hub
         TweenService:Create(_ovalStroke, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-            Color = ThemeColors.Primary,
+            Color = _loaderAccent,
             Thickness = 2.0,
             Transparency = 0.3,
         }):Play()
@@ -51106,6 +50978,30 @@ particles = {}
             _G._tabContentActive = true
             pcall(function() SetActiveTab(1) end)
         end)
+        -- FIX AUTO SAVE: pre-buildear el tab Settings (idx=5) en background
+        -- para que CreateAuroraToggle("Auto Save Config") se ejecute y el toggle
+        -- se auto-active si estaba ON en disco. Sin esto, el toggle solo se crea
+        -- cuando el usuario navega a Settings manualmente.
+        task.delay(0.5, function()
+            pcall(function() _buildTabCached(5) end)
+        end)
+        -- AUTORESTORE: notificar si se restauraron toggles activos desde disco (config por jugador)
+        if _G._restoredActiveCount and _G._restoredActiveCount > 0 then
+            task.delay(1.2, function()
+                pcall(function()
+                    local _playerName = _G._restoredForPlayer
+                        or (Players.LocalPlayer and Players.LocalPlayer.Name)
+                        or "Jugador"
+                    CreateCustomNotification(
+                        "AUTO RESTORE — " .. _playerName,
+                        "✅ " .. _G._restoredActiveCount .. " toggle" .. (_G._restoredActiveCount == 1 and "" or "s") .. " restaurado" .. (_G._restoredActiveCount == 1 and "" or "s") .. " para " .. _playerName,
+                        4
+                    )
+                end)
+                _G._restoredActiveCount = 0
+                _G._restoredForPlayer = nil
+            end)
+        end
         end)  -- cierre del pcall de animacion
         -- FIX: si la animacion fallo por cualquier razon, mostrar el hub igual
         if not _animOk then
@@ -51123,6 +51019,10 @@ particles = {}
             task.defer(function()
                 _G._tabContentActive = true
                 pcall(function() SetActiveTab(1) end)
+            end)
+            -- FIX AUTO SAVE: pre-buildear Settings en background (path fallback animacion)
+            task.delay(0.5, function()
+                pcall(function() _buildTabCached(5) end)
             end)
         end
     end)
@@ -51396,6 +51296,329 @@ LocalPlayer.CharacterAdded:Connect(function()
 end)
 
 
+
+-- ================================================================
+-- == EMOTES TAB
+-- ================================================================
+function CreateEmotesTab()
+    if not contentContainer or not contentContainer.Parent then
+        task.wait(0.15)
+        if not contentContainer or not contentContainer.Parent then return end
+    end
+    _makeTwoColumns()
+
+    _G._emoteState = _G._emoteState or {
+        loopConn     = nil,
+        loopActive   = false,
+        currentTrack = nil,
+        loopSpeed    = 1.0,
+    }
+    local ES = _G._emoteState
+
+    local EMOTES = {
+        { name = "Zerq 1",  id = "rbxassetid://92587731065850" },
+        { name = "Zerq 2",  id = "rbxassetid://10714061912"    },
+        { name = "Zerq 3",  id = "rbxassetid://76510079095692" },
+        { name = "Zerq 4",  id = "rbxassetid://10714347256"    },
+        { name = "Zerq 5",  id = "rbxassetid://10714352626"    },
+        { name = "Zerq 6",  id = "rbxassetid://10921258489"    },
+        { name = "Zerq 7",  id = "rbxassetid://10214314957"    },
+        { name = "Zerq 8",  id = "rbxassetid://10713981723"    },
+        { name = "Zerq 9",  id = "rbxassetid://14352340648"    },
+    }
+
+    local POSES = {}
+
+    local function _getAnimator()
+        local char = LocalPlayer.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        return hum and hum:FindFirstChildOfClass("Animator")
+    end
+
+    local function _stopEmote()
+        if ES.loopConn then
+            pcall(function() ES.loopConn:Disconnect() end)
+            ES.loopConn = nil
+        end
+        ES.loopActive = false
+        if ES.currentTrack then
+            pcall(function() ES.currentTrack:Stop() end)
+            ES.currentTrack = nil
+        end
+    end
+
+    local function _playEmote(animId, loop)
+        _stopEmote()
+        local animr = _getAnimator()
+        if not animr then
+            CreateCustomNotification("EMOTES", "Personaje no disponible", 2)
+            return
+        end
+        local anim = Instance.new("Animation")
+        anim.AnimationId = animId
+        local ok, track = pcall(function() return animr:LoadAnimation(anim) end)
+        if not ok or not track then
+            CreateCustomNotification("EMOTES", "Error al cargar animacion", 2)
+            return
+        end
+        track:AdjustSpeed(ES.loopSpeed)
+        track.Looped = loop
+        track:Play()
+        ES.currentTrack = track
+        if loop then
+            ES.loopActive = true
+            ES.loopConn = track.Stopped:Connect(function()
+                if ES.loopActive then
+                    task.defer(function()
+                        if ES.loopActive then _playEmote(animId, true) end
+                    end)
+                end
+            end)
+        end
+    end
+
+    -- SECCION: CONTROLES
+    local ctrlSec = CreateBorderedSectionGlobal(leftColumn, "CONTROLES")
+
+    CreateAuroraToggle(ctrlSec, "Loop Emote (repite automaticamente)", function(on)
+        if on then
+            ES.loopActive = true
+            if ES.currentTrack and ES.currentTrack.IsPlaying then
+                local animId = ES.currentTrack.Animation and ES.currentTrack.Animation.AnimationId
+                if animId then _playEmote(animId, true) end
+            else
+                CreateCustomNotification("EMOTES", "Activa Loop y luego elige un emote", 2)
+            end
+        else
+            ES.loopActive = false
+            if ES.loopConn then
+                pcall(function() ES.loopConn:Disconnect() end)
+                ES.loopConn = nil
+            end
+        end
+    end, false)
+
+    -- Velocidad
+    do
+        local speedRow = Instance.new("Frame", ctrlSec)
+        speedRow.Size = UDim2.new(1, -8, 0, 30)
+        speedRow.BackgroundTransparency = 1
+        speedRow.BorderSizePixel = 0
+
+        local speedLbl = Instance.new("TextLabel", speedRow)
+        speedLbl.Size = UDim2.new(0.58, 0, 1, 0)
+        speedLbl.Position = UDim2.new(0, 6, 0, 0)
+        speedLbl.BackgroundTransparency = 1
+        speedLbl.Text = "Velocidad: 1.0x"
+        speedLbl.TextColor3 = Color3.fromRGB(200, 200, 220)
+        speedLbl.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+        speedLbl.TextSize = 11
+        speedLbl.TextXAlignment = Enum.TextXAlignment.Left
+        speedLbl.ZIndex = 14
+
+        local speeds  = {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0}
+        local speedIdx = 4
+
+        local function _applySpeed()
+            ES.loopSpeed = speeds[speedIdx]
+            speedLbl.Text = "Velocidad: " .. tostring(speeds[speedIdx]) .. "x"
+            if ES.currentTrack and ES.currentTrack.IsPlaying then
+                pcall(function() ES.currentTrack:AdjustSpeed(ES.loopSpeed) end)
+            end
+        end
+
+        local _ti = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+        local btnMinus = Instance.new("TextButton", speedRow)
+        btnMinus.Size = UDim2.new(0, 26, 0, 22)
+        btnMinus.Position = UDim2.new(0.6, 0, 0.12, 0)
+        btnMinus.BackgroundColor3 = Color3.fromRGB(60, 30, 120)
+        btnMinus.BorderSizePixel = 0
+        btnMinus.Text = "-"
+        btnMinus.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btnMinus.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        btnMinus.TextSize = 14
+        btnMinus.ZIndex = 14
+        Instance.new("UICorner", btnMinus).CornerRadius = UDim.new(0, 5)
+        btnMinus.Activated:Connect(function()
+            if speedIdx > 1 then speedIdx = speedIdx - 1; _applySpeed() end
+        end)
+
+        local btnPlus = Instance.new("TextButton", speedRow)
+        btnPlus.Size = UDim2.new(0, 26, 0, 22)
+        btnPlus.Position = UDim2.new(0.6, 32, 0.12, 0)
+        btnPlus.BackgroundColor3 = Color3.fromRGB(60, 30, 120)
+        btnPlus.BorderSizePixel = 0
+        btnPlus.Text = "+"
+        btnPlus.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btnPlus.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        btnPlus.TextSize = 14
+        btnPlus.ZIndex = 14
+        Instance.new("UICorner", btnPlus).CornerRadius = UDim.new(0, 5)
+        btnPlus.Activated:Connect(function()
+            if speedIdx < #speeds then speedIdx = speedIdx + 1; _applySpeed() end
+        end)
+    end
+
+    -- Boton Stop
+    do
+        local stopBtn = Instance.new("TextButton", ctrlSec)
+        stopBtn.Size = UDim2.new(1, -12, 0, 28)
+        stopBtn.BackgroundColor3 = Color3.fromRGB(110, 25, 55)
+        stopBtn.BorderSizePixel = 0
+        stopBtn.Text = "DETENER EMOTE"
+        stopBtn.TextColor3 = Color3.fromRGB(255, 200, 215)
+        stopBtn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        stopBtn.TextSize = 12
+        stopBtn.ZIndex = 14
+        Instance.new("UICorner", stopBtn).CornerRadius = UDim.new(0, 8)
+        local _ss = Instance.new("UIStroke", stopBtn)
+        _ss.Color = Color3.fromRGB(200, 50, 90)
+        _ss.Thickness = 1.5
+        _ss.Transparency = 0.3
+        stopBtn.Activated:Connect(function()
+            _stopEmote()
+            CreateCustomNotification("EMOTES", "Emote detenido", 1.5)
+        end)
+    end
+
+    -- Custom ID
+    local customSec = CreateBorderedSectionGlobal(leftColumn, "CUSTOM EMOTE (ID)")
+    do
+        local hintLbl = Instance.new("TextLabel", customSec)
+        hintLbl.Size = UDim2.new(1, -8, 0, 18)
+        hintLbl.BackgroundTransparency = 1
+        hintLbl.Text = "Animation ID manual:"
+        hintLbl.TextColor3 = Color3.fromRGB(170, 150, 210)
+        hintLbl.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+        hintLbl.TextSize = 11
+        hintLbl.TextXAlignment = Enum.TextXAlignment.Left
+        hintLbl.ZIndex = 14
+        local _hp = Instance.new("UIPadding", hintLbl)
+        _hp.PaddingLeft = UDim.new(0, 6)
+
+        local inputBox = Instance.new("TextBox", customSec)
+        inputBox.Size = UDim2.new(1, -8, 0, 28)
+        inputBox.BackgroundColor3 = Color3.fromRGB(12, 6, 28)
+        inputBox.BackgroundTransparency = 0.3
+        inputBox.BorderSizePixel = 0
+        inputBox.PlaceholderText = "rbxassetid://000000000"
+        inputBox.PlaceholderColor3 = Color3.fromRGB(100, 80, 130)
+        inputBox.Text = ""
+        inputBox.TextColor3 = Color3.fromRGB(220, 245, 255)
+        inputBox.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+        inputBox.TextSize = 11
+        inputBox.ClearTextOnFocus = false
+        inputBox.ZIndex = 14
+        Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0, 8)
+        local _is = Instance.new("UIStroke", inputBox)
+        _is.Color = Color3.fromRGB(0, 150, 210)
+        _is.Thickness = 1
+        _is.Transparency = 0.4
+        local _ip2 = Instance.new("UIPadding", inputBox)
+        _ip2.PaddingLeft = UDim.new(0, 8)
+
+        local playBtn = Instance.new("TextButton", customSec)
+        playBtn.Size = UDim2.new(1, -8, 0, 28)
+        playBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 160)
+        playBtn.BorderSizePixel = 0
+        playBtn.Text = "Reproducir Custom"
+        playBtn.TextColor3 = Color3.fromRGB(220, 245, 255)
+        playBtn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        playBtn.TextSize = 12
+        playBtn.ZIndex = 14
+        Instance.new("UICorner", playBtn).CornerRadius = UDim.new(0, 8)
+        local _pbs = Instance.new("UIStroke", playBtn)
+        _pbs.Color = Color3.fromRGB(0, 191, 255)
+        _pbs.Thickness = 1.5
+        _pbs.Transparency = 0.3
+
+        playBtn.Activated:Connect(function()
+            local raw = inputBox.Text:gsub("%s", "")
+            if raw == "" then CreateCustomNotification("EMOTES", "Ingresa un ID primero", 2); return end
+            local finalId = raw
+            if not raw:find("rbxassetid://") then
+                local num = raw:match("%d+")
+                if not num then CreateCustomNotification("EMOTES", "ID invalido", 2); return end
+                finalId = "rbxassetid://" .. num
+            end
+            _playEmote(finalId, ES.loopActive)
+            CreateCustomNotification("EMOTES", "Custom: " .. finalId, 2)
+        end)
+    end
+
+    -- SECCION: LISTA DE EMOTES (columna izquierda abajo / derecha)
+    local emoteSec = CreateBorderedSectionGlobal(rightColumn, "EMOTES")
+    for _, emote in ipairs(EMOTES) do
+        local row = Instance.new("TextButton", emoteSec)
+        row.Size = UDim2.new(1, -8, 0, 30)
+        row.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
+        row.BackgroundTransparency = 0.4
+        row.BorderSizePixel = 0
+        row.Text = "  " .. emote.name
+        row.TextColor3 = Color3.fromRGB(200, 240, 255)
+        row.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+        row.TextSize = 12
+        row.TextXAlignment = Enum.TextXAlignment.Left
+        row.ZIndex = 14
+        local _rp = Instance.new("UIPadding", row)
+        _rp.PaddingLeft = UDim.new(0, 10)
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+        local _rs = Instance.new("UIStroke", row)
+        _rs.Color = Color3.fromRGB(0, 150, 210)
+        _rs.Thickness = 1
+        _rs.Transparency = 0.5
+        local _tiE = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        row.MouseEnter:Connect(function()
+            TweenService:Create(row, _tiE, {BackgroundTransparency = 0.1, TextColor3 = Color3.fromRGB(235, 248, 255)}):Play()
+        end)
+        row.MouseLeave:Connect(function()
+            TweenService:Create(row, _tiE, {BackgroundTransparency = 0.4, TextColor3 = Color3.fromRGB(200, 240, 255)}):Play()
+        end)
+        local _eId = emote.id
+        local _eName = emote.name
+        row.Activated:Connect(function()
+            _playEmote(_eId, ES.loopActive)
+            CreateCustomNotification("EMOTES", _eName .. (ES.loopActive and " (loop)" or ""), 1.5)
+        end)
+    end
+
+    -- SECCION: POSES
+    local posesSec = CreateBorderedSectionGlobal(rightColumn, "POSES Y ESPECIALES")
+    for _, pose in ipairs(POSES) do
+        local row = Instance.new("TextButton", posesSec)
+        row.Size = UDim2.new(1, -8, 0, 30)
+        row.BackgroundColor3 = Color3.fromRGB(8, 14, 42)
+        row.BackgroundTransparency = 0.4
+        row.BorderSizePixel = 0
+        row.Text = "  " .. pose.name
+        row.TextColor3 = Color3.fromRGB(180, 215, 255)
+        row.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
+        row.TextSize = 12
+        row.TextXAlignment = Enum.TextXAlignment.Left
+        row.ZIndex = 14
+        local _rp2 = Instance.new("UIPadding", row)
+        _rp2.PaddingLeft = UDim.new(0, 10)
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+        local _rs2 = Instance.new("UIStroke", row)
+        _rs2.Color = Color3.fromRGB(0, 150, 210)
+        _rs2.Thickness = 1
+        _rs2.Transparency = 0.5
+        local _tiP = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        row.MouseEnter:Connect(function()
+            TweenService:Create(row, _tiP, {BackgroundTransparency = 0.1, TextColor3 = Color3.fromRGB(210, 235, 255)}):Play()
+        end)
+        row.MouseLeave:Connect(function()
+            TweenService:Create(row, _tiP, {BackgroundTransparency = 0.4, TextColor3 = Color3.fromRGB(180, 215, 255)}):Play()
+        end)
+        local _pId = pose.id
+        local _pName = pose.name
+        row.Activated:Connect(function()
+            _playEmote(_pId, ES.loopActive)
+            CreateCustomNotification("EMOTES", _pName .. (ES.loopActive and " (loop)" or ""), 1.5)
+        end)
+    end
+end
 
 function CreateUseTab()
     ClearContent()
@@ -51967,7 +52190,7 @@ function CreateUseTab()
             TweenService:Create(rfBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.45}):Play()
             TweenService:Create(rfStroke, TweenInfo.new(0.12), {Transparency = 0.20}):Play()
         end)
-        rfBtn.MouseButton1Click:Connect(function()
+        rfBtn.Activated:Connect(function()
             local newList = _buildPlayerNames()
  CreateCustomNotification("PLAYERS", "Lista: " .. #newList .. " jugadores", 2)
             -- Destruir y recrear el NebulaSelector con la lista actualizada
@@ -51993,234 +52216,6 @@ function CreateUseTab()
     -- ANIMATION SELECTOR
     -- ================================================================
     -- ================================================================
-
-    -- ================================================================
-    -- 🎨 COLOR DEL HUB — cambia colores de todo el hub en tiempo real
-    -- ================================================================
-    do
-        local cpSec = CreateBorderedSectionGlobal(rightColumn, " 🎨 COLOR DEL HUB")
-
-        local cpTitle = Instance.new("TextLabel", cpSec)
-        cpTitle.Size = UDim2.new(1, -10, 0, 22)
-        cpTitle.BackgroundTransparency = 1
-        cpTitle.Text = "Elegir Color Principal"
-        cpTitle.TextColor3 = ThemeColors.TextPrimary
-        cpTitle.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        cpTitle.TextSize = 12
-        cpTitle.TextXAlignment = Enum.TextXAlignment.Left
-        cpTitle.ZIndex = 13
-
-        local cpSub = Instance.new("TextLabel", cpSec)
-        cpSub.Size = UDim2.new(1, -10, 0, 16)
-        cpSub.BackgroundTransparency = 1
-        cpSub.Text = "Cambia bindables, sliders, toggles y selectores"
-        cpSub.TextColor3 = ThemeColors.TextSecondary
-        cpSub.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        cpSub.TextSize = 10
-        cpSub.TextXAlignment = Enum.TextXAlignment.Left
-        cpSub.ZIndex = 13
-
-        -- Preview del color actual
-        local previewRow = Instance.new("Frame", cpSec)
-        previewRow.Size = UDim2.new(1, -8, 0, 32)
-        previewRow.BackgroundTransparency = 1
-        previewRow.BorderSizePixel = 0
-        local prLayout = Instance.new("UIListLayout", previewRow)
-        prLayout.FillDirection = Enum.FillDirection.Horizontal
-        prLayout.Padding = UDim.new(0, 8)
-        prLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-
-        local previewCircle = Instance.new("Frame", previewRow)
-        previewCircle.Size = UDim2.new(0, 22, 0, 22)
-        previewCircle.BackgroundColor3 = ThemeColors.Primary
-        previewCircle.BorderSizePixel = 0
-        Instance.new("UICorner", previewCircle).CornerRadius = UDim.new(1, 0)
-
-        local previewLbl = Instance.new("TextLabel", previewRow)
-        previewLbl.Size = UDim2.new(0, 180, 0, 22)
-        previewLbl.BackgroundTransparency = 1
-        previewLbl.Text = "Actual: " .. (currentThemeName or "Default")
-        previewLbl.TextColor3 = ThemeColors.TextPrimary
-        previewLbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        previewLbl.TextSize = 11
-        previewLbl.TextXAlignment = Enum.TextXAlignment.Left
-        previewLbl.ZIndex = 13
-
-        -- Paleta de 21 colores vibrantes
-        local _colorPaletteUse = {
-            {r=255, g=30,  b=60,   name="Crimson"},
-            {r=255, g=80,  b=180,  name="Hot Pink"},
-            {r=255, g=0,   b=128,  name="Neon Magenta"},
-            {r=230, g=50,  b=50,   name="Red"},
-            {r=255, g=120, b=50,   name="Orange"},
-            {r=255, g=200, b=0,    name="Gold"},
-            {r=200, g=255, b=0,    name="Lime"},
-            {r=0,   g=255, b=80,   name="Neon Green"},
-            {r=0,   g=220, b=180,  name="Emerald"},
-            {r=0,   g=255, b=220,  name="Cyan Glow"},
-            {r=0,   g=200, b=255,  name="Sky Blue"},
-            {r=30,  g=100, b=255,  name="Electric Blue"},
-            {r=100, g=50,  b=255,  name="Violet"},
-            {r=200, g=100, b=255,  name="Purple"},
-            {r=255, g=255, b=255,  name="White"},
-            {r=180, g=180, b=180,  name="Silver"},
-            {r=255, g=165, b=0,    name="Amber"},
-            {r=255, g=50,  b=150,  name="Rose"},
-            {r=0,   g=255, b=160,  name="Mint"},
-            {r=120, g=200, b=255,  name="Ice"},
-            {r=255, g=80,  b=80,   name="Coral"},
-        }
-
-        -- Grid de swatches
-        local swGrid = Instance.new("Frame", cpSec)
-        swGrid.Size = UDim2.new(1, -8, 0, 96)
-        swGrid.BackgroundTransparency = 1
-        swGrid.BorderSizePixel = 0
-        local swUIGrid = Instance.new("UIGridLayout", swGrid)
-        swUIGrid.CellSize = UDim2.new(0, 30, 0, 30)
-        swUIGrid.CellPadding = UDim2.new(0, 4, 0, 4)
-        swUIGrid.SortOrder = Enum.SortOrder.LayoutOrder
-
-        local _cpCustomR = ThemeColors.Primary.R * 255
-        local _cpCustomG = ThemeColors.Primary.G * 255
-        local _cpCustomB = ThemeColors.Primary.B * 255
-
-        local function _applyHubColor()
-            local r = math.clamp(math.floor(_cpCustomR), 0, 255)
-            local g = math.clamp(math.floor(_cpCustomG), 0, 255)
-            local b = math.clamp(math.floor(_cpCustomB), 0, 255)
-            local newColor = Color3.fromRGB(r, g, b)
-            Themes["Custom Color"] = {
-                Primary         = newColor,
-                Secondary       = Color3.fromRGB(math.floor(r*0.5), math.floor(g*0.5), math.floor(b*0.5)),
-                Accent          = Color3.fromRGB(math.clamp(math.floor(r*1.3),0,255), math.clamp(math.floor(g*1.3),0,255), math.clamp(math.floor(b*1.3),0,255)),
-                Background      = Color3.fromRGB(18, 18, 22),
-                BackgroundLight = Color3.fromRGB(28, 28, 36),
-                TextPrimary     = Color3.fromRGB(255, 255, 255),
-                TextSecondary   = Color3.fromRGB(math.clamp(math.floor(r*0.85),0,255), math.clamp(math.floor(g*0.85),0,255), math.clamp(math.floor(b*0.85),0,255)),
-                Aurora1         = newColor,
-                Aurora2         = Color3.fromRGB(math.floor(r*0.45), math.floor(g*0.45), math.floor(b*0.45)),
-                Aurora3         = Color3.fromRGB(math.clamp(math.floor(r*1.2),0,255), math.clamp(math.floor(g*1.2),0,255), math.clamp(math.floor(b*1.2),0,255)),
-                Aurora4         = Color3.fromRGB(math.floor(r*0.3), math.floor(g*0.3), math.floor(b*0.3)),
-            }
-            ApplyTheme("Custom Color")
-            previewCircle.BackgroundColor3 = newColor
-        end
-
-        for i, col in ipairs(_colorPaletteUse) do
-            local sw = Instance.new("TextButton", swGrid)
-            sw.Size = UDim2.new(0, 30, 0, 30)
-            sw.BackgroundColor3 = Color3.fromRGB(col.r, col.g, col.b)
-            sw.BorderSizePixel = 0
-            sw.Text = ""
-            sw.AutoButtonColor = false
-            sw.LayoutOrder = i
-            sw.ZIndex = 13
-            Instance.new("UICorner", sw).CornerRadius = UDim.new(0, 6)
-            local swStk = Instance.new("UIStroke", sw)
-            swStk.Color = Color3.fromRGB(255, 255, 255)
-            swStk.Thickness = 0
-            swStk.Transparency = 1
-
-            sw.MouseEnter:Connect(function()
-                TweenService:Create(swStk, TweenInfo.new(0.12), {Thickness=2.5, Transparency=0}):Play()
-                TweenService:Create(sw, TweenInfo.new(0.12), {BackgroundTransparency=0.25}):Play()
-            end)
-            sw.MouseLeave:Connect(function()
-                TweenService:Create(swStk, TweenInfo.new(0.12), {Thickness=0, Transparency=1}):Play()
-                TweenService:Create(sw, TweenInfo.new(0.12), {BackgroundTransparency=0}):Play()
-            end)
-            sw.MouseButton1Click:Connect(function()
-                _cpCustomR = col.r; _cpCustomG = col.g; _cpCustomB = col.b
-                _applyHubColor()
-                previewLbl.Text = "Actual: " .. col.name
-                CreateCustomNotification(" COLOR", col.name .. " aplicado", 1.5)
-                TweenService:Create(swStk, TweenInfo.new(0.1), {Thickness=3, Transparency=0}):Play()
-                task.wait(0.35)
-                TweenService:Create(swStk, TweenInfo.new(0.2), {Thickness=0, Transparency=1}):Play()
-            end)
-        end
-
-        -- Sliders RGB para color exacto
-        local rgbTitle = Instance.new("TextLabel", cpSec)
-        rgbTitle.Size = UDim2.new(1, -10, 0, 18)
-        rgbTitle.BackgroundTransparency = 1
-        rgbTitle.Text = "  Color exacto (RGB):"
-        rgbTitle.TextColor3 = ThemeColors.TextSecondary
-        rgbTitle.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        rgbTitle.TextSize = 10
-        rgbTitle.TextXAlignment = Enum.TextXAlignment.Left
-        rgbTitle.ZIndex = 13
-
-        local rgbContainer = Instance.new("Frame", cpSec)
-        rgbContainer.Size = UDim2.new(1, -8, 0, 0)
-        rgbContainer.AutomaticSize = Enum.AutomaticSize.Y
-        rgbContainer.BackgroundTransparency = 1
-        rgbContainer.BorderSizePixel = 0
-        Instance.new("UIListLayout", rgbContainer).Padding = UDim.new(0, 5)
-
-        local function makeRGBSlider(parent, label, labelColor, initVal, onSet)
-            local row = Instance.new("Frame", parent)
-            row.Size = UDim2.new(1, 0, 0, 26)
-            row.BackgroundTransparency = 1; row.BorderSizePixel = 0
-
-            local lbl = Instance.new("TextLabel", row)
-            lbl.Size = UDim2.new(0, 18, 1, 0); lbl.BackgroundTransparency = 1
-            lbl.Text = label; lbl.TextColor3 = labelColor
-            lbl.FontFace = Font.fromEnum(Enum.Font.Code); lbl.TextSize = 11; lbl.ZIndex = 13
-
-            local track = Instance.new("Frame", row)
-            track.Size = UDim2.new(1, -56, 0, 6)
-            track.Position = UDim2.new(0, 22, 0.5, -3)
-            track.BackgroundColor3 = Color3.fromRGB(35, 35, 45); track.BorderSizePixel = 0
-            Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-
-            local fill = Instance.new("Frame", track)
-            fill.Size = UDim2.new(initVal/255, 0, 1, 0)
-            fill.BackgroundColor3 = labelColor; fill.BorderSizePixel = 0
-            Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-            local thumb = Instance.new("Frame", track)
-            thumb.Size = UDim2.new(0, 14, 0, 14)
-            thumb.Position = UDim2.new(initVal/255, -7, 0.5, -7)
-            thumb.BackgroundColor3 = Color3.fromRGB(255,255,255); thumb.BorderSizePixel = 0
-            Instance.new("UICorner", thumb).CornerRadius = UDim.new(1, 0)
-
-            local valLbl = Instance.new("TextLabel", row)
-            valLbl.Size = UDim2.new(0, 30, 1, 0)
-            valLbl.Position = UDim2.new(1, -30, 0, 0)
-            valLbl.BackgroundTransparency = 1; valLbl.Text = tostring(math.floor(initVal))
-            valLbl.TextColor3 = Color3.fromRGB(255,255,255)
-            valLbl.FontFace = Font.fromEnum(Enum.Font.Code); valLbl.TextSize = 10; valLbl.ZIndex = 13
-
-            local dragging = false
-            local UIS = game:GetService("UserInputService")
-            local function updatePos(input)
-                local relX = math.clamp(input.Position.X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
-                local frac = relX / track.AbsoluteSize.X
-                local val = math.floor(frac * 255)
-                fill.Size = UDim2.new(frac, 0, 1, 0)
-                thumb.Position = UDim2.new(frac, -7, 0.5, -7)
-                valLbl.Text = tostring(val)
-                onSet(val)
-                _applyHubColor()
-                previewLbl.Text = "RGB(" .. math.floor(_cpCustomR) .. "," .. math.floor(_cpCustomG) .. "," .. math.floor(_cpCustomB) .. ")"
-            end
-            track.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=true; updatePos(inp) end
-            end)
-            track.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging=false end
-            end)
-            UIS.InputChanged:Connect(function(inp)
-                if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then updatePos(inp) end
-            end)
-        end
-
-        makeRGBSlider(rgbContainer, "R", Color3.fromRGB(255,80,80),  _cpCustomR, function(v) _cpCustomR=v end)
-        makeRGBSlider(rgbContainer, "G", Color3.fromRGB(80,255,100), _cpCustomG, function(v) _cpCustomG=v end)
-        makeRGBSlider(rgbContainer, "B", Color3.fromRGB(80,150,255), _cpCustomB, function(v) _cpCustomB=v end)
-    end
 
 end
 _animCurrentTrack = nil
