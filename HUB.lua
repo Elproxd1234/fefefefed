@@ -36136,6 +36136,145 @@ function CreateExclusiveTab()
         end)
     end)
 
+    -- ============================================================
+    --  FONT SELECTOR (Hub Labels)
+    --  Permite cambiar la fuente de las etiquetas de los botones
+    --  de la sidebar entre Normal (Gotham) y Arcade (PressStart2P).
+    -- ============================================================
+    do
+        local _FONTS = {
+            {
+                label    = "Normal",
+                fontFace = Font.fromEnum(Enum.Font.GothamMedium),
+                textSize = 15,
+            },
+            {
+                label    = "Arcade",
+                fontFace = Font.new(
+                    "rbxasset://fonts/families/PressStart2P.json",
+                    Enum.FontWeight.Bold,
+                    Enum.FontStyle.Normal
+                ),
+                textSize = 9,
+            },
+        }
+
+        -- Guardar estado en _hubSettings para persistencia
+        _G._hubSettings.fontMode = _G._hubSettings.fontMode or 1  -- 1=Normal, 2=Arcade
+
+        local function _applyHubFont(modeIdx)
+            _G._hubSettings.fontMode = modeIdx
+            local fd = _FONTS[modeIdx]
+            if not fd then return end
+            -- Aplicar a todos los TabLabel de la sidebar
+            pcall(function()
+                if not tabDockList then return end
+                for _, btn in ipairs(tabDockList:GetChildren()) do
+                    if btn:IsA("TextButton") then
+                        local lbl = btn:FindFirstChild("TabLabel")
+                        if lbl then
+                            lbl.FontFace = fd.fontFace
+                            lbl.TextSize = fd.textSize
+                        end
+                    end
+                end
+            end)
+        end
+
+        local fontSec = CreateBorderedSectionGlobal(rightColumn, " FONT SELECTOR")
+
+        -- Preview label
+        local previewLbl = Instance.new("TextLabel", fontSec)
+        previewLbl.Size                 = UDim2.new(1, -8, 0, 28)
+        previewLbl.BackgroundColor3     = Color3.fromRGB(10, 15, 40)
+        previewLbl.BackgroundTransparency = 0.4
+        previewLbl.BorderSizePixel      = 0
+        previewLbl.Text                 = "PREVIEW"
+        previewLbl.TextColor3           = Color3.fromRGB(180, 220, 255)
+        previewLbl.TextSize             = 13
+        previewLbl.FontFace             = Font.fromEnum(Enum.Font.GothamMedium)
+        previewLbl.TextXAlignment       = Enum.TextXAlignment.Center
+        previewLbl.ZIndex               = 14
+        Instance.new("UICorner", previewLbl).CornerRadius = UDim.new(0, 8)
+        Instance.new("UIStroke", previewLbl).Color        = Color3.fromRGB(0, 150, 210)
+
+        local function _refreshPreview(modeIdx)
+            local fd = _FONTS[modeIdx]
+            if not fd then return end
+            previewLbl.FontFace = fd.fontFace
+            previewLbl.TextSize = fd.textSize + 2  -- un poco mas grande en preview
+        end
+        _refreshPreview(_G._hubSettings.fontMode)
+
+        -- Botones de seleccion lado a lado
+        local btnRow = Instance.new("Frame", fontSec)
+        btnRow.Size                 = UDim2.new(1, -8, 0, 34)
+        btnRow.BackgroundTransparency = 1
+        btnRow.BorderSizePixel      = 0
+        local btnRowLayout = Instance.new("UIListLayout", btnRow)
+        btnRowLayout.FillDirection  = Enum.FillDirection.Horizontal
+        btnRowLayout.Padding        = UDim.new(0, 6)
+        btnRowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        btnRowLayout.VerticalAlignment   = Enum.VerticalAlignment.Center
+
+        local _fontBtns = {}
+        local _tiFont   = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+        local function _refreshFontBtns(activeIdx)
+            for i, btn in ipairs(_fontBtns) do
+                local isActive = (i == activeIdx)
+                TweenService:Create(btn, _tiFont, {
+                    BackgroundColor3     = isActive and Color3.fromRGB(0, 150, 220) or Color3.fromRGB(20, 30, 70),
+                    BackgroundTransparency = isActive and 0.15 or 0.55,
+                }):Play()
+                local st = btn:FindFirstChildOfClass("UIStroke")
+                if st then
+                    st.Transparency = isActive and 0 or 0.5
+                end
+            end
+        end
+
+        for i, fd in ipairs(_FONTS) do
+            local btn = Instance.new("TextButton", btnRow)
+            btn.Size                   = UDim2.new(0, 88, 1, 0)
+            btn.BackgroundColor3       = Color3.fromRGB(20, 30, 70)
+            btn.BackgroundTransparency = 0.55
+            btn.BorderSizePixel        = 0
+            btn.Text                   = fd.label
+            btn.TextColor3             = Color3.fromRGB(210, 235, 255)
+            btn.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
+            btn.TextSize               = 11
+            btn.AutoButtonColor        = false
+            btn.ZIndex                 = 14
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+            local st = Instance.new("UIStroke", btn)
+            st.Color       = Color3.fromRGB(0, 191, 255)
+            st.Thickness   = 1.5
+            st.Transparency = 0.5
+            st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+            local _i = i
+            btn.Activated:Connect(function()
+                _applyHubFont(_i)
+                _refreshPreview(_i)
+                _refreshFontBtns(_i)
+                CreateCustomNotification(
+                    "FONT SELECTOR",
+                    "Fuente: " .. fd.label,
+                    1.5
+                )
+            end)
+            _fontBtns[i] = btn
+        end
+
+        -- Marcar el activo al construir el tab
+        _refreshFontBtns(_G._hubSettings.fontMode)
+        -- Aplicar fuente guardada al construir (por si se reabre el hub)
+        task.defer(function()
+            _applyHubFont(_G._hubSettings.fontMode)
+        end)
+    end
+
     -- -- NOTIFICACIONES -------------------------------------------
     local notifSec = CreateBorderedSectionGlobal(rightColumn, " NOTIFICACIONES")
 
@@ -50548,10 +50687,11 @@ particles = {}
     sideLayout.Padding = UDim.new(0, 6)
     sideLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
-    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "EMOTES"}
+    local tabNames = {"MAIN", "WORLD", "VISUALS", "PREMIUM", "SETTINGS", "COMBAT", "USE", "EMOTES", "UPDATE"}
     local tabFunctions = {CreateMainTab, CreateWorldTab, CreateVisualsTab, CreatePremiumTab, CreateExclusiveTab, CreateCombatTab,
         function() CreateUseTab() end,      -- late binding: CreateUseTab se define despues de esta tabla
-        function() CreateEmotesTab() end}   -- late binding: CreateEmotesTab
+        function() CreateEmotesTab() end,   -- late binding: CreateEmotesTab
+        function() CreateUpdateTab() end}   -- late binding: CreateUpdateTab
     local tabIcons = {
         "rbxassetid://104322605423609",  -- MAIN
         "rbxassetid://105507739661539",  -- WORLD
@@ -50561,6 +50701,7 @@ particles = {}
         "rbxassetid://134041781822125",  -- COMBAT
         "rbxassetid://106189149164668",  -- USE
         "rbxassetid://106189149164668",  -- EMOTES
+        "rbxassetid://106189149164668",  -- UPDATE
     }
 
     local sideButtons = {}
@@ -50595,9 +50736,28 @@ particles = {}
     _G._tabScrollFrames = _G._tabScrollFrames or {}
     _G._tabBtnRefs      = _G._tabBtnRefs      or {}
 
-    local function _buildTabCached(idx)
-        if _tabBuilt[idx] then return end
-        _tabBuilt[idx] = true
+    -- FIX SERIALIZER: mutex global para que ningun dos tabs se construyan
+    -- en paralelo (evita race condition en leftColumn/rightColumn y el bug
+    -- de 'todo desaparece' al clickear rapido durante la carga del hub).
+    local _buildMutex    = false   -- true mientras hay un build corriendo
+    local _buildQueue    = {}      -- { idx, callback } pendientes
+    _G._tabBuilding      = {}      -- [idx] = true mientras ese tab se construye
+
+    local function _buildTabCached(idx, _onDone)
+        -- Ya construido: llamar callback inmediatamente y salir
+        if _tabBuilt[idx] then
+            if _onDone then _onDone() end
+            return
+        end
+        -- Si hay otro build corriendo, encolar
+        if _buildMutex then
+            table.insert(_buildQueue, { idx = idx, cb = _onDone })
+            return
+        end
+        -- Tomar el mutex
+        _buildMutex          = true
+        _G._tabBuilding[idx] = true
+        _tabBuilt[idx]       = true
         local tabFrame = Instance.new("Frame")
         tabFrame.Name                   = "TabCache_" .. tostring(idx)
         tabFrame.Size                   = UDim2.new(1, 0, 1, 0)
@@ -50622,6 +50782,15 @@ particles = {}
             end
             _G._tabScrollFrames[idx] = sfs
         end)
+        -- Liberar mutex y disparar el callback
+        _G._tabBuilding[idx] = nil
+        _buildMutex          = false
+        if _onDone then pcall(_onDone) end
+        -- Procesar siguiente elemento de la cola
+        if #_buildQueue > 0 then
+            local next = table.remove(_buildQueue, 1)
+            task.defer(function() _buildTabCached(next.idx, next.cb) end)
+        end
     end
 
     -- OPT: TweenInfo compartido fuera de SetActiveTab (una sola instancia, nunca se recrea)
@@ -50722,27 +50891,33 @@ particles = {}
         activeTabIdx = idx
         _applyBtnState(idx, true)
         -- Construir solo la primera vez; luego mostrar instantaneamente (sin lag)
-        _buildTabCached(idx)
-        _G._reloadActiveTab = function()
-            if not _tabCache[idx] or not _tabCache[idx].Parent then
-                _tabBuilt[idx] = nil
-                _tabCache[idx] = nil
-                -- Marcar como rebuild de pestaña para que CreateAuroraToggle NO
-                -- re-ejecute callbacks (la funcionalidad ya está corriendo en memoria)
-                _G._isTabRebuild = true
-                _buildTabCached(idx)
-                _G._isTabRebuild = false
+        -- FIX CLICK RAPIDO: _showTab se llama como callback cuando el build termina.
+        -- Si el tab ya estaba construido, el callback se llama inmediatamente.
+        -- Si estaba en cola (mutex ocupado), se llama cuando le toque construirse.
+        -- Esto evita que clickear rapido durante la carga deje todas las pestanas vacias.
+        local function _showTab()
+            -- Si el usuario cambio de tab mientras esperabamos, no mostrar este
+            if activeTabIdx ~= idx then return end
+            _G._reloadActiveTab = function()
+                if not _tabCache[idx] or not _tabCache[idx].Parent then
+                    _tabBuilt[idx] = nil
+                    _tabCache[idx] = nil
+                    _G._isTabRebuild = true
+                    _buildTabCached(idx)
+                    _G._isTabRebuild = false
+                end
+            end
+            if _tabCache[idx] then
+                local _tc = _tabCache[idx]
+                _tc.Position = UDim2.new(0, 0, 0, 12)
+                _tc.Visible  = true
+                local si = _tc:FindFirstChild("SearchInput", true)
+                if si then si.Text = "" end
+                -- OPT: TweenInfo compartido, sin task.spawn extra
+                TweenService:Create(_tc, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
             end
         end
-        if _tabCache[idx] then
-            local _tc = _tabCache[idx]
-            _tc.Position = UDim2.new(0, 0, 0, 12)
-            _tc.Visible  = true
-            local si = _tc:FindFirstChild("SearchInput", true)
-            if si then si.Text = "" end
-            -- OPT: TweenInfo compartido, sin task.spawn extra
-            TweenService:Create(_tc, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
-        end
+        _buildTabCached(idx, _showTab)
         _restoreToggleStates(idx)
         -- Restaurar posicion de scroll
         if tabScrollPositions[idx] and _tabCache[idx] then
@@ -51266,8 +51441,10 @@ particles = {}
             task.delay(1.0, function() pcall(function() _buildTabCached(2) end) end)
             task.delay(1.5, function() pcall(function() _buildTabCached(3) end) end)
             task.delay(2.0, function() pcall(function() _buildTabCached(6) end) end)
-            task.delay(2.5, function() pcall(function() _buildTabCached(7) end) end)
-            task.delay(3.0, function() pcall(function() _buildTabCached(8) end) end)
+            -- FIX USE EN BLANCO: gaps ampliados para evitar race condition en leftColumn/rightColumn
+            task.delay(3.5, function() pcall(function() _buildTabCached(7) end) end)
+            task.delay(5.0, function() pcall(function() _buildTabCached(8) end) end)
+            task.delay(6.5, function() pcall(function() _buildTabCached(9) end) end)
             return
         end
 
@@ -51540,8 +51717,10 @@ particles = {}
         task.delay(1.0, function() pcall(function() _buildTabCached(2) end) end)
         task.delay(1.5, function() pcall(function() _buildTabCached(3) end) end)
         task.delay(2.0, function() pcall(function() _buildTabCached(6) end) end)
-        task.delay(2.5, function() pcall(function() _buildTabCached(7) end) end)
-        task.delay(3.0, function() pcall(function() _buildTabCached(8) end) end)
+        -- FIX USE EN BLANCO: gaps ampliados para evitar race condition en leftColumn/rightColumn
+        task.delay(3.5, function() pcall(function() _buildTabCached(7) end) end)
+        task.delay(5.0, function() pcall(function() _buildTabCached(8) end) end)
+        task.delay(6.5, function() pcall(function() _buildTabCached(9) end) end)
         -- AUTORESTORE: notificar si se restauraron toggles activos desde disco (config por jugador)
         if _G._restoredActiveCount and _G._restoredActiveCount > 0 then
             task.delay(1.2, function()
@@ -51583,13 +51762,15 @@ particles = {}
             end)
             -- AUTO-BUILD TODOS LOS TABS: para que toggles guardados de cualquier pestaña
             -- se registren y ejecuten su función sin necesidad de entrar a cada pestaña.
-            -- idx: 1=Main 2=World 3=Visuals 4=Premium 5=Settings 6=Combat 7=Use 8=Emotes
+            -- idx: 1=Main 2=World 3=Visuals 4=Premium 5=Settings 6=Combat 7=Use 8=Emotes 9=Update
             -- FIX RACE: gaps de 0.5s entre tabs para que leftColumn/rightColumn no se pisen
             task.delay(1.0, function() pcall(function() _buildTabCached(2) end) end)
             task.delay(1.5, function() pcall(function() _buildTabCached(3) end) end)
             task.delay(2.0, function() pcall(function() _buildTabCached(6) end) end)
-            task.delay(2.5, function() pcall(function() _buildTabCached(7) end) end)
-            task.delay(3.0, function() pcall(function() _buildTabCached(8) end) end)
+            -- FIX USE EN BLANCO: gaps ampliados para evitar race condition en leftColumn/rightColumn
+            task.delay(3.5, function() pcall(function() _buildTabCached(7) end) end)
+            task.delay(5.0, function() pcall(function() _buildTabCached(8) end) end)
+            task.delay(6.5, function() pcall(function() _buildTabCached(9) end) end)
         end
     end)
 
@@ -51868,6 +52049,191 @@ end)
 -- ================================================================
 -- == EMOTES TAB
 -- ================================================================
+-- ==================================================================
+-- == PESTAÑA UPDATE — Changelog visual del hub
+-- ==================================================================
+function CreateUpdateTab()
+    if not contentContainer then return end
+    _currentMainSectionFrame = nil
+    _makeTwoColumns()
+    -- FIX RACE CONDITION: capturar columnas como locales antes de cualquier yield
+    local leftColumn  = leftColumn
+    local rightColumn = rightColumn
+
+    -- Datos del changelog
+    local UPDATES = {
+        {
+            version = "v1.01",
+            entries = {
+                {
+                    game = "Universal",
+                    lines = {
+                        "[+] Font Selector: switch hub labels between Normal and Arcade fonts.",
+                        "[+] Arcade font uses PressStart2P (retro pixel style).",
+                        "[+] Font preference remembered per session.",
+                    }
+                },
+                {
+                    game = "Murder Mystery 2",
+                    lines = {
+                        "[+] Fixed all-tabs-blank bug when clicking during hub load.",
+                        "[+] Tab build system serialized with mutex (no more race conditions).",
+                    }
+                },
+            },
+            whatsnew = {
+                "[+] Font Selector in Settings: Normal or Arcade (pixel) font for sidebar.",
+                "[+] Rock-solid tab loading - no more blank tabs on fast clicks.",
+            }
+        },
+        {
+            version = "v1.00",
+            entries = {
+                {
+                    game = "Murder Mystery 2",
+                    lines = {
+                        "[+] Added Use tab: Bang, Wall Hop V2, Information Roles & Dead, Backgrounds.",
+                        "[+] Fixed Use tab appearing blank when switching tabs (race condition fix).",
+                        "[+] Fixed Bang sliders (distance, offset, interval) not applying correctly.",
+                    }
+                },
+                {
+                    game = "Universal",
+                    lines = {
+                        "[+] Added screen backgrounds (wallpapers) with live preview cards.",
+                        "[+] Added Emotes tab with loop support, speed slider and bindables.",
+                        "[+] Added search bar to every tab.",
+                        "[+] Optimized tab pre-build system with 0.5s gaps between builds.",
+                        "[+] Fixed dark text visibility on AuroraToggle rows.",
+                    }
+                },
+            },
+            whatsnew = {
+                "[+] Initial public release — all core features included.",
+                "[+] Optimizations, background wallpapers, emotes and more.",
+            }
+        },
+    }
+
+    -- Helpers de UI
+    -- FIX: las cards van directo a leftColumn (ScrollingFrame con AutomaticSize=Y)
+    -- NO se crea un ScrollingFrame extra — evita scroll-dentro-scroll con altura 0.
+
+    local function _makeCard(parent, lo)
+        local card = Instance.new("Frame", parent)
+        card.Size = UDim2.new(1, -8, 0, 0)
+        card.AutomaticSize = Enum.AutomaticSize.Y
+        card.BackgroundColor3 = Color3.fromRGB(8, 20, 50)
+        card.BackgroundTransparency = 0.25
+        card.BorderSizePixel = 0
+        card.LayoutOrder = lo or 0
+        Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
+        local stroke = Instance.new("UIStroke", card)
+        stroke.Color = Color3.fromRGB(0, 191, 255)
+        stroke.Thickness = 1.5
+        stroke.Transparency = 0.35
+        local pad = Instance.new("UIPadding", card)
+        pad.PaddingLeft   = UDim.new(0, 10)
+        pad.PaddingRight  = UDim.new(0, 10)
+        pad.PaddingTop    = UDim.new(0, 8)
+        pad.PaddingBottom = UDim.new(0, 10)
+        local list = Instance.new("UIListLayout", card)
+        list.FillDirection = Enum.FillDirection.Vertical
+        list.Padding = UDim.new(0, 4)
+        list.SortOrder = Enum.SortOrder.LayoutOrder
+        return card
+    end
+
+    local function _makeLabel(parent, text, size, color, bold, lo)
+        local lbl = Instance.new("TextLabel", parent)
+        lbl.Size = UDim2.new(1, 0, 0, 0)
+        lbl.AutomaticSize = Enum.AutomaticSize.Y
+        lbl.BackgroundTransparency = 1
+        lbl.Text = text
+        lbl.TextSize = size or 13
+        lbl.TextColor3 = color or Color3.fromRGB(220, 240, 255)
+        lbl.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.TextWrapped = true
+        lbl.TextTransparency = 0
+        lbl.ZIndex = 10
+        lbl.LayoutOrder = lo or 0
+        return lbl
+    end
+
+    local function _makeDivider(parent, lo)
+        local div = Instance.new("Frame", parent)
+        div.Size = UDim2.new(1, 0, 0, 1)
+        div.BackgroundColor3 = Color3.fromRGB(0, 150, 210)
+        div.BackgroundTransparency = 0.6
+        div.BorderSizePixel = 0
+        div.LayoutOrder = lo or 0
+        return div
+    end
+
+    local function _makeSubCard(parent, lo)
+        local sc = Instance.new("Frame", parent)
+        sc.Size = UDim2.new(1, 0, 0, 0)
+        sc.AutomaticSize = Enum.AutomaticSize.Y
+        sc.BackgroundColor3 = Color3.fromRGB(5, 15, 40)
+        sc.BackgroundTransparency = 0.45
+        sc.BorderSizePixel = 0
+        sc.LayoutOrder = lo or 0
+        Instance.new("UICorner", sc).CornerRadius = UDim.new(0, 7)
+        local stroke = Instance.new("UIStroke", sc)
+        stroke.Color = Color3.fromRGB(0, 140, 200)
+        stroke.Thickness = 1
+        stroke.Transparency = 0.55
+        local pad = Instance.new("UIPadding", sc)
+        pad.PaddingLeft   = UDim.new(0, 8)
+        pad.PaddingRight  = UDim.new(0, 8)
+        pad.PaddingTop    = UDim.new(0, 6)
+        pad.PaddingBottom = UDim.new(0, 6)
+        local list = Instance.new("UIListLayout", sc)
+        list.FillDirection = Enum.FillDirection.Vertical
+        list.Padding = UDim.new(0, 2)
+        list.SortOrder = Enum.SortOrder.LayoutOrder
+        return sc
+    end
+
+    -- Renderizar versiones directamente en leftColumn (ya es ScrollingFrame)
+    for vi, upd in ipairs(UPDATES) do
+        local card = _makeCard(leftColumn, vi)
+
+        -- Version badge verde
+        local verLbl = _makeLabel(card, upd.version, 22,
+            Color3.fromRGB(0, 230, 120), true, 1)
+        verLbl.TextSize = 22
+
+        _makeDivider(card, 2)
+
+        _makeLabel(card, "WHAT'S NEW?", 13,
+            Color3.fromRGB(255, 255, 255), true, 3)
+
+        for li, line in ipairs(upd.whatsnew) do
+            _makeLabel(card, line, 11,
+                Color3.fromRGB(170, 215, 255), false, 3 + li)
+        end
+
+        local sp = Instance.new("Frame", card)
+        sp.Size = UDim2.new(1, 0, 0, 4)
+        sp.BackgroundTransparency = 1
+        sp.LayoutOrder = 3 + #upd.whatsnew + 1
+
+        local scLo = 3 + #upd.whatsnew + 2
+        for _, entry in ipairs(upd.entries) do
+            local sc = _makeSubCard(card, scLo)
+            scLo = scLo + 1
+            _makeLabel(sc, entry.game, 12,
+                Color3.fromRGB(255, 255, 255), true, 1)
+            for li2, line in ipairs(entry.lines) do
+                _makeLabel(sc, line, 10,
+                    Color3.fromRGB(160, 210, 255), false, 1 + li2)
+            end
+        end
+    end
+end
+
 function CreateEmotesTab()
     if not contentContainer or not contentContainer.Parent then
         task.wait(0.15)
@@ -52798,6 +53164,11 @@ function CreateUseTab()
                 imageId = "rbxassetid://71615109373748",
                 overlay = nil,
             },
+            {
+                name    = "The Creators",
+                imageId = "rbxassetid://109496357798799",
+                overlay = nil,
+            },
         }
 
         -- Guarda el tema activo antes de activar el fondo
@@ -53139,6 +53510,131 @@ function CreateUseTab()
             end)
         end
 
+        -- THE CREATORS: destello de estrellas doradas + pulso de luz blanca cinematico
+        -- Simula un highlight / reconocimiento a los creadores del hub.
+        local function _animCreators(img, token)
+            task.spawn(function()
+                -- Fade-in suave y lento (estilo reveal cinematico)
+                img.ImageTransparency = 1
+                local ti_in = TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+                TweenService:Create(img, ti_in, {ImageTransparency = 0.05}):Play()
+                task.wait(1.4)
+
+                -- Crear capa de lens-flare / brillo dorado
+                local flare = Instance.new("Frame", mainFrame)
+                flare.Name = "HubBgFlash"
+                flare.Size = UDim2.new(1, 0, 1, 0)
+                flare.Position = UDim2.new(0, 0, 0, 0)
+                flare.BackgroundColor3 = Color3.fromRGB(255, 220, 80)
+                flare.BackgroundTransparency = 1
+                flare.BorderSizePixel = 0
+                flare.ZIndex = 0
+
+                -- Funcion: destellar estrellas/particulas doradas
+                local _starColors = {
+                    Color3.fromRGB(255, 240, 120),  -- dorado brillante
+                    Color3.fromRGB(255, 200, 50),   -- amarillo oro
+                    Color3.fromRGB(255, 255, 200),  -- blanco calido
+                    Color3.fromRGB(255, 160, 30),   -- naranja dorado
+                    Color3.fromRGB(200, 170, 255),  -- lavanda suave (contraste)
+                }
+                local function _spawnStar()
+                    if not mainFrame or not mainFrame.Parent then return end
+                    if _bgAnimToken ~= token then return end
+                    local star = Instance.new("Frame", mainFrame)
+                    star.Name = "HubBgParticle"
+                    local sz = math.random(3, 9)
+                    star.Size = UDim2.new(0, sz, 0, sz)
+                    star.Position = UDim2.new(
+                        math.random(5, 95) / 100, 0,
+                        math.random(5, 90) / 100, 0
+                    )
+                    star.BackgroundColor3 = _starColors[math.random(1, #_starColors)]
+                    star.BackgroundTransparency = 0.1
+                    star.BorderSizePixel = 0
+                    star.ZIndex = 5
+                    star.Rotation = math.random(0, 45)
+                    Instance.new("UICorner", star).CornerRadius = UDim.new(0.5, 0)
+
+                    -- Fase 1: aparecer rapido
+                    local dur_in  = math.random(8, 18) / 100
+                    local dur_out = math.random(6, 16) / 10
+                    local scale_up = math.random(14, 26)
+                    local ti_app = TweenInfo.new(dur_in, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                    TweenService:Create(star, ti_app, {
+                        Size                   = UDim2.new(0, scale_up, 0, scale_up),
+                        BackgroundTransparency = 0.05,
+                    }):Play()
+                    -- Fase 2: desaparecer lento hacia arriba
+                    task.delay(dur_in, function()
+                        if not star or not star.Parent or _bgAnimToken ~= token then
+                            pcall(function() if star and star.Parent then star:Destroy() end end)
+                            return
+                        end
+                        local curPos = star.Position
+                        local ti_fade = TweenInfo.new(dur_out, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
+                        TweenService:Create(star, ti_fade, {
+                            Position               = UDim2.new(curPos.X.Scale, 0, curPos.Y.Scale - 0.06, 0),
+                            BackgroundTransparency = 0.95,
+                            Size                   = UDim2.new(0, scale_up + 4, 0, scale_up + 4),
+                        }):Play()
+                        task.delay(dur_out, function()
+                            pcall(function() if star and star.Parent then star:Destroy() end end)
+                        end)
+                    end)
+                end
+
+                -- Lluvia de estrellas: 2-4 por cada 0.35s
+                task.spawn(function()
+                    while img and img.Parent and _bgAnimToken == token do
+                        for _ = 1, math.random(2, 4) do
+                            pcall(_spawnStar)
+                        end
+                        task.wait(0.35)
+                    end
+                end)
+
+                -- Loop principal: pulso dorado lento (homenaje cinematico)
+                local phase  = 0
+                local _pulseColors = {
+                    Color3.fromRGB(255, 255, 255),  -- blanco puro (pico brillo)
+                    Color3.fromRGB(255, 240, 180),  -- crema dorado
+                    Color3.fromRGB(255, 210, 100),  -- dorado calido
+                    Color3.fromRGB(220, 200, 255),  -- lavanda suave
+                }
+                while img and img.Parent and _bgAnimToken == token do
+                    phase = (phase % #_pulseColors) + 1
+                    local dur = (phase == 1) and 1.0 or 2.2
+                    local alpha = (phase == 1) and 0.02 or 0.12
+                    local ti = TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+
+                    -- Pulso de imagen
+                    TweenService:Create(img, ti, {
+                        ImageTransparency = alpha,
+                        ImageColor3       = _pulseColors[phase],
+                    }):Play()
+
+                    -- Flare dorado intermitente (cada 3 ciclos)
+                    if phase == 1 and flare and flare.Parent then
+                        task.spawn(function()
+                            TweenService:Create(flare,
+                                TweenInfo.new(0.18, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                                {BackgroundTransparency = 0.80}):Play()
+                            task.wait(0.18)
+                            if flare and flare.Parent and _bgAnimToken == token then
+                                TweenService:Create(flare,
+                                    TweenInfo.new(0.55, Enum.EasingStyle.Sine, Enum.EasingDirection.In),
+                                    {BackgroundTransparency = 1}):Play()
+                            end
+                        end)
+                    end
+
+                    task.wait(dur)
+                end
+                pcall(function() if flare and flare.Parent then flare:Destroy() end end)
+            end)
+        end
+
         -- ================================================================
         -- TEMAS DE COLOR POR FONDO
         -- ================================================================
@@ -53187,11 +53683,27 @@ function CreateUseTab()
             Aurora4         = Color3.fromRGB(35, 5, 90),      -- índigo profundo
         }
 
+        -- THE CREATORS: dorado/blanco cinematico, oscuro profundo
+        Themes["_BG_TheCreators"] = {
+            Primary         = Color3.fromRGB(220, 175, 40),   -- dorado brillante
+            Secondary       = Color3.fromRGB(90, 70, 10),     -- dorado oscuro
+            Accent          = Color3.fromRGB(255, 240, 130),  -- amarillo palido
+            Background      = Color3.fromRGB(10, 8, 5),       -- negro calido profundo
+            BackgroundLight = Color3.fromRGB(30, 22, 8),      -- marron muy oscuro
+            TextPrimary     = Color3.fromRGB(255, 248, 210),  -- blanco dorado
+            TextSecondary   = Color3.fromRGB(200, 180, 100),  -- dorado apagado
+            Aurora1         = Color3.fromRGB(240, 200, 50),   -- oro
+            Aurora2         = Color3.fromRGB(150, 110, 20),   -- bronce
+            Aurora3         = Color3.fromRGB(255, 230, 100),  -- amarillo brillante
+            Aurora4         = Color3.fromRGB(60, 45, 10),     -- marron dorado
+        }
+
         -- Mapa nombre de fondo -> clave de tema
         local _BG_THEME_KEY = {
-            ["Sunset"]  = "_BG_Sunset",
-            ["Samurai"] = "_BG_Samurai",
-            ["Zerqon"]  = "_BG_Zerqon",
+            ["Sunset"]       = "_BG_Sunset",
+            ["Samurai"]      = "_BG_Samurai",
+            ["Zerqon"]       = "_BG_Zerqon",
+            ["The Creators"] = "_BG_TheCreators",
         }
 
         local function _applyBackground(idx)
@@ -53257,6 +53769,8 @@ function CreateUseTab()
                     _animSamurai(img, ov, myToken)
                 elseif bg.name == "Zerqon" then
                     _animZerqon(img, myToken)
+                elseif bg.name == "The Creators" then
+                    _animCreators(img, myToken)
                 else
                     -- Fallback: fade-in generico
                     task.spawn(function()
@@ -53274,6 +53788,7 @@ function CreateUseTab()
 
         local cardWrap = Instance.new("Frame", bgSec)
         cardWrap.Size = UDim2.new(1, -8, 0, 88)
+        cardWrap.AutomaticSize = Enum.AutomaticSize.X  -- crece con mas fondos
         cardWrap.BackgroundColor3 = Color3.fromRGB(10, 18, 35)
         cardWrap.BackgroundTransparency = 0.5
         cardWrap.BorderSizePixel = 0
@@ -53306,7 +53821,7 @@ function CreateUseTab()
 
         for i, bg in ipairs(_BG_LIST) do
             local card = Instance.new("TextButton", cardWrap)
-            card.Size = UDim2.new(0, 70, 0, 76)
+            card.Size = UDim2.new(0, 58, 0, 76)
             card.BackgroundColor3 = Color3.fromRGB(15, 35, 70)
             card.BackgroundTransparency = 0.65
             card.BorderSizePixel = 0
