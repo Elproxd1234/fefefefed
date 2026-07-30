@@ -497,6 +497,13 @@ local function _saveConfig()
         if hs.hubScale   then toSave["__hubScale"]   = hs.hubScale   end
         if hs.hubOpacity then toSave["__hubOpacity"] = hs.hubOpacity end
     end
+    -- FIX FONDOS: guardar índice de fondo activo y tema previo para restaurarlos al reabrir
+    if _G._hubBackgrounds then
+        toSave["__bgIndex"] = _G._hubBackgrounds.current or 0
+    end
+    if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
+        toSave["__bgPrevTheme"] = _G._hubBgPrevTheme
+    end
     local ok, json = pcall(function() return HttpService:JSONEncode(toSave) end)
     if ok and json then
         pcall(writefile, _CONFIG_FILE, json)
@@ -519,6 +526,16 @@ local function _loadConfig()
             _G._hubSettings = _G._hubSettings or {}
             if k == "__hubScale"   then _G._hubSettings.hubScale   = v end
             if k == "__hubOpacity" then _G._hubSettings.hubOpacity = v end
+        elseif k == "__bgIndex" then
+            -- FIX FONDOS: restaurar índice de fondo guardado
+            _G._hubBackgrounds = _G._hubBackgrounds or { current = 0 }
+            local idx = tonumber(v) or 0
+            _G._hubBackgrounds.current = idx
+        elseif k == "__bgPrevTheme" then
+            -- FIX FONDOS: restaurar tema previo para que al quitar el fondo vuelvan los colores correctos
+            if type(v) == "string" and v ~= "" then
+                _G._hubBgPrevTheme = v
+            end
         elseif not (_neverRestoreToggles and _neverRestoreToggles[k]) then
             _G._toggleStates[k] = v
             if v == true then _restoredActiveCount = _restoredActiveCount + 1 end
@@ -37880,6 +37897,103 @@ function CreateCombatTab()
     -- se envía un FireServer paralelo (spoof) apuntando al target real y
     -- el disparo original pasa sin modificar. Más difícil de detectar
     -- server-side porque el argumento visible del cliente no cambia.
+    -- =====================================================================
+    -- FIX TOGGLE PRINCIPAL: SILENT AIM ON/OFF (con soporte touch mobile)
+    -- Este toggle habilita/deshabilita el hook de namecall del Silent Aim.
+    -- Funciona con click de mouse Y con un solo toque en pantalla táctil.
+    -- =====================================================================
+    do
+        local _saMainRow = Instance.new("Frame", silentAimSection)
+        _saMainRow.Size = UDim2.new(1, -8, 0, 50)
+        _saMainRow.BackgroundColor3 = Color3.fromRGB(0, 80, 30)
+        _saMainRow.BackgroundTransparency = 0.55
+        _saMainRow.BorderSizePixel = 0
+        _saMainRow.ZIndex = 12
+        _saMainRow.LayoutOrder = -100  -- va primero
+        Instance.new("UICorner", _saMainRow).CornerRadius = UDim.new(0, 8)
+        local _saMainStroke = Instance.new("UIStroke", _saMainRow)
+        _saMainStroke.Color = Color3.fromRGB(0, 220, 80)
+        _saMainStroke.Thickness = 1.8
+        _saMainStroke.Transparency = 0.2
+
+        local _saMainLbl = Instance.new("TextLabel", _saMainRow)
+        _saMainLbl.Size = UDim2.new(0.65, 0, 1, 0)
+        _saMainLbl.Position = UDim2.new(0, 10, 0, 0)
+        _saMainLbl.BackgroundTransparency = 1
+        _saMainLbl.Text = "⚡ Silent Aim"
+        _saMainLbl.TextColor3 = Color3.fromRGB(180, 255, 200)
+        _saMainLbl.Font = Enum.Font.GothamBold
+        _saMainLbl.TextSize = 15
+        _saMainLbl.TextXAlignment = Enum.TextXAlignment.Left
+        _saMainLbl.ZIndex = 13
+
+        -- Indicador verde/rojo
+        local _saInd = Instance.new("Frame", _saMainRow)
+        _saInd.Size = UDim2.new(0, 24, 0, 24)
+        _saInd.AnchorPoint = Vector2.new(1, 0.5)
+        _saInd.Position = UDim2.new(1, -12, 0.5, 0)
+        _saInd.BackgroundColor3 = CombatTabState.silentAimEnabled and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(220, 50, 50)
+        _saInd.BorderSizePixel = 0
+        _saInd.ZIndex = 14
+        Instance.new("UICorner", _saInd).CornerRadius = UDim.new(0, 6)
+
+        local _saStatusLbl = Instance.new("TextLabel", _saMainRow)
+        _saStatusLbl.Size = UDim2.new(0.3, -20, 0, 20)
+        _saStatusLbl.AnchorPoint = Vector2.new(1, 0.5)
+        _saStatusLbl.Position = UDim2.new(1, -42, 0.5, 0)
+        _saStatusLbl.BackgroundTransparency = 1
+        _saStatusLbl.Text = CombatTabState.silentAimEnabled and "ON" or "OFF"
+        _saStatusLbl.TextColor3 = CombatTabState.silentAimEnabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 80, 80)
+        _saStatusLbl.Font = Enum.Font.GothamBold
+        _saStatusLbl.TextSize = 13
+        _saStatusLbl.TextXAlignment = Enum.TextXAlignment.Right
+        _saStatusLbl.ZIndex = 13
+
+        local _saMainBtn = Instance.new("TextButton", _saMainRow)
+        _saMainBtn.Size = UDim2.new(1, 0, 1, 0)
+        _saMainBtn.BackgroundTransparency = 1
+        _saMainBtn.Text = ""
+        _saMainBtn.ZIndex = 20
+        _saMainBtn.AutoButtonColor = false
+
+        local function _saMainApplyVisual(on)
+            local c = on and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(220, 50, 50)
+            TweenService:Create(_saInd, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {BackgroundColor3 = c}):Play()
+            _saStatusLbl.Text = on and "ON" or "OFF"
+            _saStatusLbl.TextColor3 = on and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 80, 80)
+            _saMainStroke.Color = on and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(0, 220, 80)
+        end
+
+        -- FIX TOUCH: usar Activated (funciona con UN solo toque en móvil Y con click en PC)
+        local _saMainLastTap = 0
+        _saMainBtn.Activated:Connect(function()
+            local now = tick()
+            if now - _saMainLastTap < 0.25 then return end  -- anti-doble tap
+            _saMainLastTap = now
+            CombatTabState.silentAimEnabled = not CombatTabState.silentAimEnabled
+            _G._toggleStates["Silent Aim"] = CombatTabState.silentAimEnabled
+            _saMainApplyVisual(CombatTabState.silentAimEnabled)
+            pcall(_saveConfig)
+            if CombatTabState.silentAimEnabled then
+                if not CombatTabState._saHookActive then _saApplyHook() end
+                if not _G._saInputConn then _saHookInput() end
+                CreateCustomNotification("SILENT AIM", "Silent Aim ON ✓", 2)
+            else
+                _saRemoveHook()
+                if _G._saInputConn then
+                    pcall(function() _G._saInputConn:Disconnect() end)
+                    _G._saInputConn = nil
+                end
+                CreateCustomNotification("SILENT AIM", "Silent Aim OFF", 1.5)
+            end
+        end)
+
+        _saMainApplyVisual(CombatTabState.silentAimEnabled)
+    end
+    -- =====================================================================
+    -- FIN TOGGLE PRINCIPAL SILENT AIM
+    -- =====================================================================
+
     CreatePremiumToggle(silentAimSection, "Spoof Method", function(enabled)
         CombatTabState.saUseSpoofMethod = enabled
         if enabled then
@@ -45021,39 +45135,63 @@ function CreateCombatTab()
 
         CreateAuroraToggle(ssSection,"Shooper Shot",function(on)
             _ssEnabled=on
-            -- Limpiar LMB conn anterior
+            -- Limpiar conexion anterior
             if _ssLmbConn then pcall(function() _ssLmbConn:Disconnect() end); _ssLmbConn=nil end
             if on then
-                -- Deshabilitar conexiones originales y hookear la gun
+                -- Hookear la gun al activar
                 _ssTryHook()
                 if _hookedGun then _ssApplyDisable() end
-                -- LMB / Touch: solo dispara si la gun esta EQUIPADA en el personaje
-                _ssLmbConn = UserInputService.InputBegan:Connect(function(i, gp)
-                    if not _ssEnabled then return end
-                    local isTouch = i.UserInputType == Enum.UserInputType.Touch
-                    local isMouse = i.UserInputType == Enum.UserInputType.MouseButton1
-                    -- En mobile (touch) no bloquear por gameProcessed, en PC si
-                    if not isTouch and not isMouse then return end
-                    if gp and not isTouch then return end
-                    -- Verificar que la gun este equipada (en el Character, NO en Backpack)
-                    local char = LocalPlayer.Character
-                    if not char then return end
-                    local equippedGun = nil
-                    for _, t in ipairs(char:GetChildren()) do
-                        if t:IsA("Tool") and (t:FindFirstChild("GunClient") or t:FindFirstChild("Shoot") or _ssGetR(t)) then
-                            equippedGun = t
-                            break
+
+                -- FIX TOUCH SINGLE TAP: UN solo toque en pantalla dispara inmediatamente.
+                -- En mobile usamos TouchTap (tap completo) para que NO requiera dos toques.
+                -- En PC seguimos con MouseButton1.
+                local _isMobileShoop = UserInputService.TouchEnabled
+
+                if _isMobileShoop then
+                    -- MOBILE: TouchTap = un solo tap completo -> dispara inmediatamente
+                    _ssLmbConn = UserInputService.TouchTap:Connect(function(positions, gp)
+                        if not _ssEnabled then return end
+                        if gp then return end
+                        local char = LocalPlayer.Character
+                        if not char then return end
+                        local equippedGun = nil
+                        for _, t in ipairs(char:GetChildren()) do
+                            if t:IsA("Tool") and (t:FindFirstChild("GunClient") or t:FindFirstChild("Shoot") or _ssGetR(t)) then
+                                equippedGun = t; break
+                            end
                         end
-                    end
-                    if not equippedGun then return end  -- sin gun equipada: ignorar el touch
-                    local now = tick()
-                    if now - _ssLast < _ssCD then return end
-                    _ssLast = now
-                    _sp(function() _ssFire(equippedGun) end)
-                end)
-                CreateCustomNotification("SHOOPER SHOT","ON -- LMB redirige automaticamente al murder",2)
+                        if not equippedGun then return end
+                        local now = tick()
+                        if now - _ssLast < _ssCD then return end
+                        _ssLast = now
+                        _sp(function() _ssFire(equippedGun) end)
+                    end)
+                else
+                    -- PC: MouseButton1
+                    _ssLmbConn = UserInputService.InputBegan:Connect(function(i, gp)
+                        if not _ssEnabled then return end
+                        if i.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+                        if gp then return end
+                        local char = LocalPlayer.Character
+                        if not char then return end
+                        local equippedGun = nil
+                        for _, t in ipairs(char:GetChildren()) do
+                            if t:IsA("Tool") and (t:FindFirstChild("GunClient") or t:FindFirstChild("Shoot") or _ssGetR(t)) then
+                                equippedGun = t; break
+                            end
+                        end
+                        if not equippedGun then return end
+                        local now = tick()
+                        if now - _ssLast < _ssCD then return end
+                        _ssLast = now
+                        _sp(function() _ssFire(equippedGun) end)
+                    end)
+                end
+
+                local modeText = _isMobileShoop and "ON -- 1 toque dispara al murder" or "ON -- LMB redirige al murder"
+                CreateCustomNotification("SHOOPER SHOT", modeText, 2)
             else
-                -- Restaurar conexiones originales para que el disparo normal funcione
+                -- Restaurar conexiones originales
                 _ssRestoreOrig()
                 CreateCustomNotification("SHOOPER SHOT","OFF",2)
             end
@@ -45064,7 +45202,9 @@ function CreateCombatTab()
             local _ssInfo = Instance.new("TextLabel", ssSection)
             _ssInfo.Size = UDim2.new(1,-8,0,0); _ssInfo.AutomaticSize = Enum.AutomaticSize.Y
             _ssInfo.BackgroundTransparency = 1
-            _ssInfo.Text = "Sin boton en pantalla. Cada LMB se redirige al Murder/target mas cercano automaticamente."
+            _ssInfo.Text = UserInputService.TouchEnabled
+                and "MOBILE: un solo toque en pantalla dispara al Murder automaticamente."
+                or  "PC: cada LMB se redirige al Murder/target mas cercano automaticamente."
             _ssInfo.TextColor3 = Color3.fromRGB(140,200,255); _ssInfo.Font = Enum.Font.Montserrat
             _ssInfo.TextSize = 10; _ssInfo.TextWrapped = true; _ssInfo.TextXAlignment = Enum.TextXAlignment.Left; _ssInfo.ZIndex = 13
             local _p=Instance.new("UIPadding",_ssInfo); _p.PaddingLeft=UDim.new(0,6); _p.PaddingRight=UDim.new(0,6); _p.PaddingTop=UDim.new(0,2); _p.PaddingBottom=UDim.new(0,4)
