@@ -221,7 +221,7 @@ do
             yellow  = Color3.fromRGB(255, 220, 50),
             orange  = Color3.fromRGB(255, 140, 30),
             purple  = Color3.fromRGB(170, 80,  255),
-            gray    = Color3.fromRGB(150, 150, 150),
+            gray    = Color3.fromRGB(120, 120, 120),
             darkBg  = Color3.fromRGB(20,  20,  26),
             accent  = Color3.fromRGB(90,  120, 255),
         }
@@ -1739,7 +1739,7 @@ function _hookMurdererDeath(murderer)
                 -- Limpiar highlight rol (murderer rojo -> quitar)
                 if _hl_remove then pcall(_hl_remove, dc) end
                 -- Pintar verde cham (Piece chams)
-                local GREEN_COL = Color3.fromRGB(0, 210, 180)
+                local GREEN_COL = Color3.fromRGB(  0, 255, 160)
                 pcall(function() _aplicarPieceChams(dc, GREEN_COL) end)
                 if chamHighlight then chamHighlight[murderer] = dc end
             end
@@ -1767,9 +1767,23 @@ function _hookSheriffDeath(sheriff)
     _sheriffDeathConn = sHum.Died:Connect(function()
         -- FIX: ignorar si ya pasamos a una ronda nueva
         if (_G._sgRoundToken or 0) ~= _hookRoundToken then return end
+
+        -- DETECCION KNIFE MURDER: si el murderer sigue vivo al morir el sheriff,
+        -- fue eliminado con knife. En ese caso pasa directo a inocente
+        -- sin activar StealGun ni GunDrop (la gun no cae al suelo).
+        local _killedByMurder = false
+        pcall(function()
+            local murder = _roleCache.murderer
+            if murder and murder.Character then
+                local mHum = murder.Character:FindFirstChildOfClass("Humanoid")
+                if mHum and mHum.Health > 0 then
+                    _killedByMurder = true
+                end
+            end
+        end)
+
         _roleCache.sheriff    = nil
         _roleCache.lastUpdate = 0
-        -- FIX: si el LocalPlayer era el sheriff, limpiar su rol local a Inocente
         if sheriff == LocalPlayer then
             _roleCache.localRole = "Innocent"
         end
@@ -1777,7 +1791,41 @@ function _hookSheriffDeath(sheriff)
             pcall(function() _sheriffDeathConn:Disconnect() end)
             _sheriffDeathConn = nil
         end
-        -- FIX STEAL GUN: notificar que el sheriff murio para que el loop busque en backpack
+
+        if _killedByMurder then
+            -- Murio por knife del murder: inocente eliminado, sin gun drop.
+            task.defer(function()
+                if (_G._sgRoundToken or 0) ~= _hookRoundToken then return end
+                local dc = sheriff and sheriff.Character
+                if dc then
+                    if _hl_remove then pcall(_hl_remove, dc) end
+                    local GREEN_COL = Color3.fromRGB(  0, 255, 160)
+                    pcall(function() _aplicarPieceChams(dc, GREEN_COL) end)
+                    if chamHighlight then chamHighlight[sheriff] = dc end
+                end
+                -- Hero pasa a nuevo Sheriff visual
+                local prevHero = _roleCache.hero
+                if prevHero and prevHero.Character then
+                    _roleCache.sheriff    = prevHero
+                    _roleCache.hero       = nil
+                    _roleCache.lastUpdate = 0
+                    local BLUE_COL = Color3.fromRGB(  0, 140, 255)
+                    local hc = prevHero.Character
+                    if hc then
+                        if _hl_remove then pcall(_hl_remove, hc) end
+                        pcall(function() _aplicarPieceChams(hc, BLUE_COL) end)
+                        if chamHighlight then chamHighlight[prevHero] = hc end
+                    end
+                    task.defer(function()
+                        if (_G._sgRoundToken or 0) ~= _hookRoundToken then return end
+                        pcall(_hookSheriffDeath, prevHero)
+                    end)
+                end
+            end)
+            return  -- no ejecutar StealGun ni GunDrop
+        end
+
+        -- Murio por otra causa (trampa, etc.): flujo normal
         if StealGunSystem and StealGunSystem.enabled then
             StealGunSystem.sheriffDeadDetected = true
             StealGunSystem.roleCheckDisabled   = true
@@ -1785,10 +1833,9 @@ function _hookSheriffDeath(sheriff)
             if not StealGunSystem.sheriffOriginalFound then
                 StealGunSystem.sheriffOriginalFound = sheriff
             end
-            -- Pintar al sheriff muerto de verde inmediatamente
             local _deadChar = sheriff and sheriff.Character
             if _deadChar then
-                local GREEN = Color3.fromRGB(0, 255, 80)
+                local GREEN = Color3.fromRGB(  0, 255, 160)
                 pcall(function() _aplicarPieceChams(_deadChar, GREEN) end)
             end
         end
@@ -1800,7 +1847,7 @@ function _hookSheriffDeath(sheriff)
                 -- Quitar highlight de rol
                 if _hl_remove then pcall(_hl_remove, dc) end
                 -- Pintar verde: ahora es inocente muerto
-                local GREEN_COL = Color3.fromRGB(0, 210, 180)
+                local GREEN_COL = Color3.fromRGB(  0, 255, 160)
                 pcall(function() _aplicarPieceChams(dc, GREEN_COL) end)
                 if chamHighlight then chamHighlight[sheriff] = dc end
             end
@@ -1813,7 +1860,7 @@ function _hookSheriffDeath(sheriff)
                 _roleCache.hero    = nil
                 _roleCache.lastUpdate = 0
                 -- Pintarlo azul (color de Sheriff)
-                local BLUE_COL = Color3.fromRGB(30, 144, 255)
+                local BLUE_COL = Color3.fromRGB(  0, 140, 255)
                 local hc = prevHero.Character
                 if hc then
                     if _hl_remove then pcall(_hl_remove, hc) end
@@ -1839,8 +1886,8 @@ function _hookSheriffDeath(sheriff)
                 end
 
                 local _dropNames = {GunDrop=true, DropGun=true, SheriffGun=true, HeroGun=true, Gun=true}
-                local YELLOW_COL = Color3.fromRGB(255, 220, 0)
-                local GREEN_COL2 = Color3.fromRGB(0, 210, 180)
+                local YELLOW_COL = Color3.fromRGB(255, 210,   0)
+                local GREEN_COL2 = Color3.fromRGB(  0, 255, 160)
                 local _monitorToken = _hookRoundToken
 
                 local function _onNewHeroGrabGun(newSheriffPlayer)
@@ -1860,7 +1907,7 @@ function _hookSheriffDeath(sheriff)
                         _vcdG.everyone or _vcdG.sheriff or _vcdG.survivor or _vcdG.assassin
                     )
                     if chamG then
-                        local BLUE_COL2 = Color3.fromRGB(30, 144, 255)
+                        local BLUE_COL2 = Color3.fromRGB(  0, 140, 255)
                         pcall(function() _aplicarPieceChams(pc, BLUE_COL2) end)
                         if chamHighlight then chamHighlight[newSheriffPlayer] = pc end
                     end
@@ -1976,7 +2023,7 @@ function _hookHeroDeath(hero)
             local dc = hero and hero.Character
             if dc then
                 if _hl_remove then pcall(_hl_remove, dc) end
-                local GREEN_COL = Color3.fromRGB(0, 210, 180)
+                local GREEN_COL = Color3.fromRGB(  0, 255, 160)
                 pcall(function() _aplicarPieceChams(dc, GREEN_COL) end)
                 if chamHighlight then chamHighlight[hero] = dc end
             end
@@ -4020,7 +4067,7 @@ local Themes = {
     ["Crimson"] = {
         Primary         = Color3.fromRGB(200, 0, 40),
         Secondary       = Color3.fromRGB(140, 0, 20),
-        Accent          = Color3.fromRGB(255, 60, 80),
+        Accent          = Color3.fromRGB(255,   0,  40),
         Background      = Color3.fromRGB(30, 30, 30),
         BackgroundLight = Color3.fromRGB(30, 30, 30),
         TextPrimary     = Color3.fromRGB(255, 200, 200),
@@ -4203,14 +4250,14 @@ local Themes = {
     ["Mi Tema Oscuro"] = {
     Primary         = Color3.fromRGB(200, 200, 200), -- bordes gris claro (casi blanco)
     Secondary       = Color3.fromRGB(80, 80, 80),    -- fondo de sliders gris
-    Accent          = Color3.fromRGB(150, 150, 150), -- acentos grises
+    Accent          = Color3.fromRGB(120, 120, 120), -- acentos grises
     Background      = Color3.fromRGB(0, 0, 0),       -- fondo negro puro
     BackgroundLight = Color3.fromRGB(30, 30, 30),    -- paneles ligeramente mas claros
     TextPrimary     = Color3.fromRGB(255, 255, 255), -- texto blanco
     TextSecondary   = Color3.fromRGB(180, 180, 180), -- texto gris
     Aurora1         = Color3.fromRGB(200, 200, 200),
     Aurora2         = Color3.fromRGB(80, 80, 80),
-    Aurora3         = Color3.fromRGB(150, 150, 150),
+    Aurora3         = Color3.fromRGB(120, 120, 120),
     Aurora4         = Color3.fromRGB(40, 40, 40),
 },
     -- -- TEMA TROPICAL NEON -- Azul profundo + cian vivido --
@@ -7269,16 +7316,16 @@ function GetPlayerRole(player)
 end
 
 function GetRoleColor(role)
-    if role == "Murderer"  then return Color3.fromRGB(255, 55,  55)  end  -- Rojo
-    if role == "Sheriff"   then return Color3.fromRGB(30,  144, 255) end  -- Azul (dodger blue)
-    if role == "Hero"      then return Color3.fromRGB(255, 200, 0)   end  -- Dorado
-    if role == "Dead"      then return Color3.fromRGB(150, 150, 150) end  -- Gris
+    if role == "Murderer"  then return Color3.fromRGB(255,   0,  40)  end  -- Rojo
+    if role == "Sheriff"   then return Color3.fromRGB(  0, 140, 255) end  -- Azul (dodger blue)
+    if role == "Hero"      then return Color3.fromRGB(255, 210,   0)   end  -- Dorado
+    if role == "Dead"      then return Color3.fromRGB(120, 120, 120) end  -- Gris
     if role == "Grey"      then return Color3.fromRGB(190, 190, 210) end  -- Gris claro
-    if role == "GunHolder" then return Color3.fromRGB(255, 220, 0)   end  -- Dorado/Amarillo
-    if role == "Assassin"  then return Color3.fromRGB(255, 206, 76)  end  -- Dorado-naranja
-    if role == "Zombie"    then return Color3.fromRGB(25,  172,  0)  end  -- Verde zombie
+    if role == "GunHolder" then return Color3.fromRGB(255, 210,   0)   end  -- Dorado/Amarillo
+    if role == "Assassin"  then return Color3.fromRGB(255, 210,   0)  end  -- Dorado-naranja
+    if role == "Zombie"    then return Color3.fromRGB( 40, 255,  40)  end  -- Verde zombie
     if role == "Survivor"  then return Color3.fromRGB(255, 255, 255) end  -- Blanco
-    if role == "Innocent"  then return Color3.fromRGB(0, 210, 180) end  -- Morado
+    if role == "Innocent"  then return Color3.fromRGB(  0, 255, 160) end  -- Morado
     return Color3.fromRGB(200, 200, 200)
 end
 
@@ -9296,10 +9343,10 @@ function CreateChams(player)
         elseif _roleCache.sheriff  == player then role = "Sheriff"
         elseif _roleCache.hero     == player then role = "Hero"
         end
-        if     role == "Murderer"  then color = Color3.fromRGB(255,  60,  80)
-        elseif role == "Sheriff"   then color = Color3.fromRGB(30, 144, 255)
-        elseif role == "Hero"      then color = Color3.fromRGB(255, 200, 0)
-        else                            color = Color3.fromRGB(200, 200, 200)  -- Innocent = VERDE Innocent
+        if     role == "Murderer"  then color = Color3.fromRGB(255,   0,  40)
+        elseif role == "Sheriff"   then color = Color3.fromRGB(  0, 140, 255)
+        elseif role == "Hero"      then color = Color3.fromRGB(255, 210,   0)
+        else                            color = Color3.fromRGB(  0, 255, 160)  -- Innocent
         end
 
         -- FIX CHAM FANTASMA: CreateChams usaba Settings.cham.enabled (sistema viejo)
@@ -9357,10 +9404,10 @@ _G._espBoxConn = nil
 
 local _espBoxColors = {
     everyone = Color3.fromRGB(0, 255, 0),    -- verde: todos
-    murderer = Color3.fromRGB(255, 40,  40), -- rojo
-    sheriff  = Color3.fromRGB(30,  144, 255),-- azul
-    hero     = Color3.fromRGB(255, 230, 0),  -- amarillo
-    assassin = Color3.fromRGB(255, 140, 0),  -- naranja
+    murderer = Color3.fromRGB(255,   0,  40), -- rojo
+    sheriff  = Color3.fromRGB(  0, 140, 255),-- azul
+    hero     = Color3.fromRGB(255, 210,   0),  -- amarillo
+    assassin = Color3.fromRGB(255, 140,   0),  -- naranja
     innocent = Color3.fromRGB(0,   255, 0),  -- verde
 }
 
@@ -9517,10 +9564,10 @@ function CreateOutline(player)
         end
 
         local color
-        if     role == "Murderer"  then color = Color3.fromRGB(255,  60,  80)
-        elseif role == "Sheriff"   then color = Color3.fromRGB(30, 144, 255)
-        elseif role == "Hero"      then color = Color3.fromRGB(255, 200,   0)
-        elseif role == "GunHolder" then color = Color3.fromRGB(255, 220,   0)
+        if     role == "Murderer"  then color = Color3.fromRGB(255,   0,  40)
+        elseif role == "Sheriff"   then color = Color3.fromRGB(  0, 140, 255)
+        elseif role == "Hero"      then color = Color3.fromRGB(255, 210,   0)
+        elseif role == "GunHolder" then color = Color3.fromRGB(255, 210,   0)
         else                            color = Color3.fromRGB(200, 200, 200)
         end
 
@@ -13062,7 +13109,7 @@ function CreateInfoPanel()
             local lineCount = 0
 
             if Settings.infoPanel.murdererInfo then
-                makeSep(" MURDERER ", Color3.fromRGB(255, 60, 80))
+                makeSep(" MURDERER ", Color3.fromRGB(255,   0,  40))
                 local murderer = findMurderer()
                 if murderer then
                     makeLabel("Name: " .. murderer.Name, ThemeColors.Accent)
@@ -13138,7 +13185,7 @@ function CreateInfoPanel()
                     else inn += 1 end
                 end
                 makeLabel("Innocents: " .. inn, Color3.fromRGB(255, 50, 50))
-                makeLabel("Murderers: " .. mur, Color3.fromRGB(255, 80,  80))
+                makeLabel("Murderers: " .. mur, Color3.fromRGB(255,   0,  40))
                 makeLabel("Sheriffs:  " .. she, Color3.fromRGB(0, 255, 0))
                 lineCount += 4
             end
@@ -13718,7 +13765,7 @@ function CreateFakeBombBindlePanel()
         FakeBombBindlePanel.gui = nil
     end
 
-    local BOMB_COLOR   = Color3.fromRGB(255, 80,  80)
+    local BOMB_COLOR   = Color3.fromRGB(255,   0,  40)
     local EQUIP_COLOR  = Color3.fromRGB(255, 160, 40)
     local LAUNCH_COLOR = Color3.fromRGB(170, 170, 170)
     local BTN_SIZE     = 62  -- diametro de cada boton circular
@@ -17102,7 +17149,7 @@ function CreateMainUI_GameInfo()
             if not T.active then
                 if lbl.Text ~= "--:--" then
                     lbl.Text       = "--:--"
-                    lbl.TextColor3 = Color3.fromRGB(150, 150, 150)
+                    lbl.TextColor3 = Color3.fromRGB(120, 120, 120)
                 end
                 return
             end
@@ -17139,15 +17186,15 @@ function CreateMainUI_GameInfo()
             game.Debris:AddItem(s, 3)
         end
         local _roleColors = {
-            Murderer = Color3.fromRGB(255,50,50),
+            Murderer = Color3.fromRGB(255,  0, 40),
             Sheriff  = ThemeColors.Primary,  -- Azul
-            Hero     = Color3.fromRGB(255,200,50),
-            Zombie   = Color3.fromRGB(25,172,0),
-            Survivor = Color3.fromRGB(130, 130, 130),
+            Hero     = Color3.fromRGB(255,210,  0),
+            Zombie   = Color3.fromRGB( 40,255, 40),
+            Survivor = Color3.fromRGB(255, 255, 255),
             Freezer  = Color3.fromRGB(200, 200, 200),
             Runner   = Color3.fromRGB(198, 100, 17),
-            Assassin = Color3.fromRGB(255,140,0),
-            Innocent = Color3.fromRGB(0, 210, 180),
+            Assassin = Color3.fromRGB(255,140,  0),
+            Innocent = Color3.fromRGB(  0, 255, 160),
         }
  CreateToggle(leftColumn, "Notify ROL My", function(on)
             _notifyRolState.enabled = on
@@ -22526,7 +22573,7 @@ ChamRaggyState = {
     enabled     = false,
     highlights  = {},   -- { [Model] = Highlight }
     fillColor   = Color3.fromRGB(255, 0,  40),       -- rojo vivo
-    outlineColor = Color3.fromRGB(255,  60,  80),
+    outlineColor = Color3.fromRGB(255,   0,  40),
     fillTransp  = 0.4,
     outTransp   = 0.0,
     conn        = nil,  -- workspace.DescendantAdded connection
@@ -22698,12 +22745,12 @@ function colorOf(role)
     -- FIX: verde hasta que murderer o sheriff sean detectados
     local rolesKnown = (_roleCache.murderer ~= nil) or (_roleCache.sheriff ~= nil)
     if not rolesKnown then
-        return Color3.fromRGB(0, 210, 180)  -- VERDE Innocent (todos innocents hasta detectar)
+        return Color3.fromRGB(  0, 255, 160)  -- VERDE Innocent (todos innocents hasta detectar)
     end
-    if role == "Murderer"  then return Color3.fromRGB(255,  60,  80)  end  -- rojo
-    if role == "Sheriff"   then return Color3.fromRGB(30, 144, 255)  end  -- Azul Sheriff
+    if role == "Murderer"  then return Color3.fromRGB(255,   0,  40)  end  -- rojo
+    if role == "Sheriff"   then return Color3.fromRGB(  0, 140, 255)  end  -- Azul Sheriff
     if role == "Hero"      then return Color3.fromRGB(255, 230, 0)    end
-    return Color3.fromRGB(0, 210, 180)  -- Innocent / resto (verde)
+    return Color3.fromRGB(  0, 255, 160)  -- Innocent / resto (verde)
 end
 
 -- vsShow: determina si el ESP/Cham debe mostrarse para este jugador
@@ -23124,7 +23171,7 @@ function updateCham(player)
         chamHighlight[player] = nil
     end
 
-    local GREEN = Color3.fromRGB(0, 210, 180)  -- VERDE Innocent para Innocents
+    local GREEN = Color3.fromRGB(  0, 255, 160)  -- VERDE Innocent para Innocents
 
     -- FIX TRANSICION: si estamos entre rondas (mapa viejo destruido, RoundStart no llego),
     -- bloquear chams completamente para evitar que roles viejos del cache pinten a todos.
@@ -23181,8 +23228,8 @@ function updateCham(player)
 
         -- Muertos (rol limpiado) -> VERDE. Roles activos -> su color
         local endCol
-        if     endRole == "Murderer" then endCol = Color3.fromRGB(255,  60,  80)
-        elseif endRole == "Sheriff"  then endCol = Color3.fromRGB(30, 144, 255)
+        if     endRole == "Murderer" then endCol = Color3.fromRGB(255,   0,  40)
+        elseif endRole == "Sheriff"  then endCol = Color3.fromRGB(  0, 140, 255)
         elseif endRole == "Hero"     then endCol = Color3.fromRGB(255, 230,   0)
         else                              endCol = GREEN  -- inocente o muerto = verde
         end
@@ -23212,8 +23259,8 @@ function updateCham(player)
     if not show then removeCham(player); return end
 
     local col
-    if     role == "Murderer"  then col = Color3.fromRGB(255,  60,  80)
-    elseif role == "Sheriff"   then col = Color3.fromRGB(30, 144, 255)
+    if     role == "Murderer"  then col = Color3.fromRGB(255,   0,  40)
+    elseif role == "Sheriff"   then col = Color3.fromRGB(  0, 140, 255)
     elseif role == "Hero"      then col = Color3.fromRGB(255, 230,   0)
     elseif role == "GunHolder" then col = Color3.fromRGB(255, 230,   0)
     else                            col = GREEN
@@ -23258,7 +23305,7 @@ function updateOutline(player)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then removeOutline(player); return end
 
-    local GREEN = Color3.fromRGB(0, 210, 180)
+    local GREEN = Color3.fromRGB(  0, 255, 160)
 
     -- Si el char cambio (respawn) -> limpiar outline del char viejo
     if outHighlight[player] and outHighlight[player] ~= char then
@@ -23280,7 +23327,7 @@ function updateOutline(player)
                         or (VisualState.outline.survivor and endRole == "Innocent")
         if not showEndOut then removeOutline(player); return end
         local colEnd
-        if     endRole == "Sheriff" then colEnd = Color3.fromRGB(30, 144, 255)
+        if     endRole == "Sheriff" then colEnd = Color3.fromRGB(  0, 140, 255)
         elseif endRole == "Hero"    then colEnd = Color3.fromRGB(255, 230,   0)
         else                             colEnd = GREEN
         end
@@ -23361,8 +23408,8 @@ function updateHighlight(player)
 
     -- Color por rol
     local col
-    if     role == "Murderer" then col = Color3.fromRGB(255,  60,  80)
-    elseif role == "Sheriff"  then col = Color3.fromRGB(30,  144, 255)
+    if     role == "Murderer" then col = Color3.fromRGB(255,   0,  40)
+    elseif role == "Sheriff"  then col = Color3.fromRGB(  0, 140, 255)
     elseif role == "Hero"     then col = Color3.fromRGB(255, 200,   0)
     else                           col = Color3.fromRGB(200, 200, 200)
     end
@@ -23949,7 +23996,7 @@ _DEATH_POSE_PARTS = {
 -- -- Obtener color de rol para el dead pose ------------------------------------
 function _getDeathPoseColor(player)
     if _roleCache and _roleCache.murderer == player then
-        return Color3.fromRGB(255,  60,  80)   -- rojo: murderer
+        return Color3.fromRGB(255,   0,  40)   -- rojo: murderer
     elseif _roleCache and (_roleCache.sheriff == player or _roleCache.hero == player) then
         return Color3.fromRGB(80, 80, 85)  -- morado: sheriff/hero
     else
@@ -24909,7 +24956,7 @@ do
                                 if chamActive then
                                     local dc = player.Character
                                     if dc then
-                                        local GREEN_COL = Color3.fromRGB(0, 210, 180)
+                                        local GREEN_COL = Color3.fromRGB(  0, 255, 160)
                                         pcall(function() _aplicarPieceChams(dc, GREEN_COL) end)
                                         chamHighlight[player] = dc
                                     end
@@ -24946,7 +24993,7 @@ do
                             if not chamG then return end
                             local pc = player.Character
                             if not pc then return end
-                            local YELLOW = Color3.fromRGB(255, 220, 0)
+                            local YELLOW = Color3.fromRGB(255, 210,   0)
                             pcall(function() _aplicarPieceChams(pc, YELLOW) end)
                             chamHighlight[player] = pc
                             -- Cuando suelte la gun, volver a verde inmediatamente
@@ -24966,7 +25013,7 @@ do
                                     _vcdG2.everyone or _vcdG2.survivor or _vcdG2.assassin
                                 )
                                 if not chamG2 then return end
-                                local GREEN2 = Color3.fromRGB(0, 210, 180)
+                                local GREEN2 = Color3.fromRGB(  0, 255, 160)
                                 pcall(function() _aplicarPieceChams(pc2, GREEN2) end)
                                 chamHighlight[player] = pc2
                             end)
@@ -25446,7 +25493,7 @@ function CreateVisualsTab()
         CreateAuroraToggle(inner, "Cham Sheriff Only", function(v) vc.sheriff=v end, vc.sheriff)
         MiniHeader(inner, "HERO", Color3.fromRGB(255, 181, 51))
         CreateAuroraToggle(inner, "Cham Hero Only", function(v) vc.hero=v end, vc.hero)
-        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 206, 76))
+        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Cham Assassin Only", function(v) vc.assassin=v end, vc.assassin)
         MiniHeader(inner, "DEAD", Color3.fromRGB(255,120,120))
  -- Cham Dead Only: muestra pose de muerte del jugador, dura TODA la ronda
@@ -25641,9 +25688,9 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "ESP Sheriff Only", function(v) ve.sheriff=v end, ve.sheriff)
         MiniHeader(inner, "HERO", Color3.fromRGB(255, 181, 51))
         CreateAuroraToggle(inner, "ESP Hero Only", function(v) ve.hero=v end, ve.hero)
-        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 206, 76))
+        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "ESP Assassin Only", function(v) ve.assassin=v end, ve.assassin)
-        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 206, 76))
+        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "ESP Survivor Only", function(v) ve.survivor=v end, ve.survivor)
         MiniHeader(inner, "ZOMBIE", Color3.fromRGB(90, 120, 255))
         CreateAuroraToggle(inner, "ESP Zombie Only", function(v) ve.zombie=v end, ve.zombie)
@@ -25785,7 +25832,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Highlight Hero Only", function(v)
             vh.hero=v; _recalcHL()
         end, vh.hero)
-        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 206, 76))
+        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Highlight Assassin Only", function(v)
             vh.assassin=v; _recalcHL()
         end, vh.assassin)
@@ -25793,7 +25840,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Highlight Innocent Only", function(v)
             vh.innocent=v; _recalcHL()
         end, vh.innocent or false)
-        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 206, 76))
+        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Highlight Survivor Only", function(v)
             vh.survivor=v; _recalcHL()
         end, vh.survivor)
@@ -25963,7 +26010,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Box Hero Only", function(v)
             vb.hero = v; _refreshBoxESP()
         end, vb.hero)
-        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 206, 76))
+        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Box Assassin Only", function(v)
             vb.assassin = v; _refreshBoxESP()
         end, vb.assassin)
@@ -26164,11 +26211,11 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Tracer Sheriff Only", function(v) vt.sheriff=v end, vt.sheriff)
         MiniHeader(inner, "HERO", Color3.fromRGB(255, 181, 51))
         CreateAuroraToggle(inner, "Tracer Hero Only", function(v) vt.hero=v end, vt.hero)
-        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 206, 76))
+        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Tracer Assassin Only", function(v) vt.assassin=v end, vt.assassin)
         MiniHeader(inner, "DEAD", Color3.fromRGB(255,120,120))
         CreateAuroraToggle(inner, "Tracer Dead Only", function(v) vt.dead=v end, vt.dead)
-        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 206, 76))
+        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Tracer Survivor Only", function(v) vt.survivor=v end, vt.survivor)
         MiniHeader(inner, "ZOMBIE", Color3.fromRGB(90, 120, 255))
         CreateAuroraToggle(inner, "Tracer Zombie Only", function(v) vt.zombie=v end, vt.zombie)
@@ -26190,11 +26237,11 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Skeleton Sheriff Only", function(v) vs2.sheriff=v end, vs2.sheriff)
         MiniHeader(inner, "HERO", Color3.fromRGB(255, 181, 51))
         CreateAuroraToggle(inner, "Skeleton Hero Only", function(v) vs2.hero=v end, vs2.hero)
-        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 206, 76))
+        MiniHeader(inner, "ASSASSIN", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Skeleton Assassin Only", function(v) vs2.assassin=v end, vs2.assassin)
         MiniHeader(inner, "DEAD", Color3.fromRGB(255,120,120))
         CreateAuroraToggle(inner, "Skeleton Dead Only", function(v) vs2.dead=v end, vs2.dead)
-        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 206, 76))
+        MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Skeleton Survivor Only", function(v) vs2.survivor=v end, vs2.survivor)
         MiniHeader(inner, "ZOMBIE", Color3.fromRGB(90, 120, 255))
         CreateAuroraToggle(inner, "Skeleton Zombie Only", function(v) vs2.zombie=v end, vs2.zombie)
@@ -31961,7 +32008,7 @@ function CreateWorldUI_ShiftLock()
     subLbl.Text = "UNIVERSAL"
     subLbl.Font = Enum.Font.Montserrat
     subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(0, 210, 180)
+    subLbl.TextColor3 = Color3.fromRGB(  0, 255, 160)
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
     subLbl.ZIndex = 13
 
@@ -32840,7 +32887,7 @@ function CreateWorldUI_BombJump()
             Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
             local stroke = Instance.new("UIStroke", frame)
-            stroke.Color        = Color3.fromRGB(255, 80, 80)
+            stroke.Color        = Color3.fromRGB(255,   0,  40)
             stroke.Thickness    = 2
             stroke.Transparency = 0.1
 
@@ -34349,7 +34396,7 @@ function CreatePremiumTab()
  lkDesc.Text = desc
         lkDesc.FontFace = Font.fromEnum(Enum.Font.Montserrat)
         lkDesc.TextSize = 10
-        lkDesc.TextColor3 = Color3.fromRGB(150, 150, 150)
+        lkDesc.TextColor3 = Color3.fromRGB(120, 120, 120)
         lkDesc.TextXAlignment = Enum.TextXAlignment.Left
         lkDesc.ZIndex = 13
 
@@ -37962,7 +38009,7 @@ function CreateCombatTab()
 
             -- Borde gris con pulso sutil
             local btnStroke = Instance.new("UIStroke", btnRoot)
-            btnStroke.Color       = Color3.fromRGB(150, 150, 150)
+            btnStroke.Color       = Color3.fromRGB(120, 120, 120)
             btnStroke.Thickness   = 2.5
             btnStroke.Transparency = 0.15
 
@@ -37980,7 +38027,7 @@ function CreateCombatTab()
             local accent = Instance.new("Frame", btnRoot)
             accent.Size            = UDim2.new(0, 4, 0.6, 0)
             accent.Position        = UDim2.new(0, 12, 0.2, 0)
-            accent.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+            accent.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
             accent.BorderSizePixel = 0
             accent.ZIndex          = 202
             Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 2)
@@ -38063,7 +38110,7 @@ function CreateCombatTab()
                         TweenService:Create(btnStroke, TweenInfo.new(0.07), {Color = Color3.fromRGB(220, 220, 220), Transparency = 0}):Play()
                         task.delay(0.14, function()
                             pcall(function()
-                                TweenService:Create(btnStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(150, 150, 150), Transparency = 0.15}):Play()
+                                TweenService:Create(btnStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(120, 120, 120), Transparency = 0.15}):Play()
                             end)
                         end)
                         -- Ejecutar el disparo con Silent Aim
@@ -45520,7 +45567,7 @@ function CreateCombatTab()
                 _listening = true
                 kfBtn.Text = "..."
                 kfBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
-                kbStroke.Color = Color3.fromRGB(255, 200, 0)
+                kbStroke.Color = Color3.fromRGB(255, 210,   0)
                 CreateCustomNotification("SHOOT KEYBIND", "Presion la tecla que quers usar", 2)
 
                 if _listenConn then pcall(function() _listenConn:Disconnect() end) end
@@ -46658,7 +46705,7 @@ function CreateCombatTab()
                 fr.ZIndex              = 9801
                 Instance.new("UICorner", fr).CornerRadius = UDim.new(0, 10)
                 local frs = Instance.new("UIStroke", fr)
-                frs.Color = Color3.fromRGB(255, 80, 80); frs.Thickness = 1.5; frs.Transparency = 0.2
+                frs.Color = Color3.fromRGB(255,   0,  40); frs.Thickness = 1.5; frs.Transparency = 0.2
                 local frl = Instance.new("UIListLayout", fr)
                 frl.Padding = UDim.new(0, 2); frl.FillDirection = Enum.FillDirection.Vertical
                 local frp = Instance.new("UIPadding", fr)
@@ -46668,7 +46715,7 @@ function CreateCombatTab()
                 -- Título
                 local title = Instance.new("TextLabel", fr)
                 title.Size = UDim2.new(1, 0, 0, 22); title.BackgroundTransparency = 1
-                title.Text = " ⬢ TRAJECTORY INFO"; title.TextColor3 = Color3.fromRGB(255, 80, 80)
+                title.Text = " ⬢ TRAJECTORY INFO"; title.TextColor3 = Color3.fromRGB(255,   0,  40)
                 title.Font = Enum.Font.Montserrat; title.TextSize = 13
                 title.TextXAlignment = Enum.TextXAlignment.Left; title.ZIndex = 9802
 
@@ -48379,7 +48426,7 @@ do
         local newTier, newColor
         if isExcl then
             newTier  = "* Exclusive"
-            newColor = Color3.fromRGB(255, 200, 0)
+            newColor = Color3.fromRGB(255, 210,   0)
         elseif isPrem then
             newTier  = "* Premium"
             newColor = Color3.fromRGB(90, 120, 255)
@@ -48504,7 +48551,7 @@ do
             elseif pct > 0.2 then
                 barColor = Color3.fromRGB(255, 200, 60)
             else
-                barColor = Color3.fromRGB(255, 80, 80)
+                barColor = Color3.fromRGB(255,   0,  40)
             end
             wlFill.BackgroundColor3 = barColor
             wlTimeLbl.TextColor3 = barColor
