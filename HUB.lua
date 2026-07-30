@@ -33636,23 +33636,25 @@ function CreateWorldTab()
         task.defer(function()
             _G._noAutoActivateWorld = false
             if not _G._toggleStates or not _G._toggleCallbacks then return end
-            -- Buscar en el tabFrame capturado O en contentContainer (fallback si se abrio normal)
-            local _searchRoot = (_worldTabFrame and _worldTabFrame.Parent and _worldTabFrame)
-                             or contentContainer
+
+            -- FIX AUTO-RESTORE CALLBACKS: ejecutar el callback de cada toggle guardado
+            -- sin depender de que su frame este en el arbol de la GUI.
+            -- Razon: al construir tabs en background (_buildTabCached), el tabFrame
+            -- existe pero puede no estar visible/parentado aun cuando llega este defer.
+            -- La solucion es llamar el callback directamente si el toggle esta registrado,
+            -- en vez de buscar su frame en la GUI (que puede fallar silenciosamente).
             for nombre, state in pairs(_G._toggleStates) do
                 if state == true
                 and not (_neverRestoreToggles and _neverRestoreToggles[nombre])
                 and _G._toggleCallbacks[nombre] then
-                    -- Verificar que este toggle pertenece al World Tab
-                    -- buscando su frame en el frame del tab (funciona tanto en build normal como background)
-                    local toggleFrame = _searchRoot and _searchRoot:FindFirstChild("AuroraToggleRow_" .. nombre, true)
-                    if toggleFrame then
-                        -- Silenciar notificaciones durante el restore
-                        local _origNotif = CreateCustomNotification
-                        CreateCustomNotification = function() end
-                        pcall(_G._toggleCallbacks[nombre], true)
-                        CreateCustomNotification = _origNotif
-                    end
+                    -- Silenciar notificaciones durante el restore
+                    local _origNotif = CreateCustomNotification
+                    CreateCustomNotification = function() end
+                    -- FIX: llamar callback directamente sin buscar el frame en GUI.
+                    -- El callback ya actualiza el estado interno (ej: GB.enabled = true
+                    -- y llama _startDetect() en Gold Bomb) sin necesitar el frame visual.
+                    pcall(_G._toggleCallbacks[nombre], true)
+                    CreateCustomNotification = _origNotif
                 end
             end
         end)
