@@ -11552,6 +11552,14 @@ function UpdateCustomCursor()
     if Settings.cursor.gunOnlyMode then
         Settings.cursor.image.Visible = false
     end
+    -- MOVIL: empieza oculto; solo se muestra si Shift Lock esta activo
+    if _isMobile and not Settings.cursor.gunOnlyMode then
+        local _slInitActive = (UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter)
+            or (_G._shiftLockState and _G._shiftLockState.enabled == true)
+        if not _slInitActive then
+            Settings.cursor.image.Visible = false
+        end
+    end
 
     if Settings.cursor.rotation.enabled then
         local rotation = 0
@@ -11584,10 +11592,16 @@ function UpdateCustomCursor()
     local function _updateCursorPos()
         if not Settings.cursor.image or not Settings.cursor.image.Parent then return end
         if _isMobile then
-            -- MOVIL: la mira siempre centrada en pantalla.
-            -- En shift lock MM2 el personaje apunta al centro, la mira va ahi.
-            -- Sin shift lock el joystick tactil no mueve el cursor del sistema,
-            -- asi que centrar es lo correcto (mira fija de precision).
+            -- MOVIL: la mira solo aparece cuando Shift Lock esta activo.
+            -- Detectamos shift lock por MouseBehavior (LockCenter) o por el estado
+            -- del toggle Shift Lock del hub (_G._shiftLockState.enabled).
+            local slActive = _getShiftLock()
+                or (_G._shiftLockState and _G._shiftLockState.enabled == true)
+            if not slActive then
+                Settings.cursor.image.Visible = false
+                return
+            end
+            Settings.cursor.image.Visible = true
             local cx, cy = _getViewportCenter()
             Settings.cursor.image.Position = UDim2.new(0, cx, 0, cy)
         elseif _getShiftLock() then
@@ -53408,7 +53422,13 @@ function CreateUseTab()
         }
 
         -- Guarda el tema activo antes de activar el fondo
-        local _bgPrevTheme = nil
+        -- FIX COLORES AL REABRIR: _bgPrevTheme debe sobrevivir entre reaperturas del hub.
+        -- Si es local, al recrear CreateUseTab arranca en nil y _applyBackground guarda
+        -- el tema por defecto del hub nuevo en vez del tema real que tenia el usuario.
+        -- Al quitar/cambiar fondo restaura ese tema incorrecto -> colores celeste por defecto.
+        _G._hubBgPrevTheme = _G._hubBgPrevTheme  -- preservar si ya existe
+        local function _getBgPrevTheme() return _G._hubBgPrevTheme end
+        local function _setBgPrevTheme(v) _G._hubBgPrevTheme = v end
 
         -- Token de animacion activa: cada fondo activo tiene su propio token.
         -- Cuando se cambia de fondo o se elimina, el token viejo se invalida
@@ -53429,11 +53449,11 @@ function CreateUseTab()
                 end
                 -- Restaurar el tema que habia antes de activar el fondo
                 -- (solo si no vamos a aplicar otro tema inmediatamente despues)
-                if _bgPrevTheme and not skipThemeRestore then
-                    ApplyTheme(_bgPrevTheme)
-                    _bgPrevTheme = nil
+                if _getBgPrevTheme() and not skipThemeRestore then
+                    ApplyTheme(_getBgPrevTheme())
+                    _setBgPrevTheme(nil)
                 elseif skipThemeRestore then
-                    _bgPrevTheme = nil  -- limpiar igual para que no quede stale
+                    _setBgPrevTheme(nil)  -- limpiar igual para que no quede stale
                 end
                 -- Restaurar transparencia de la capa de contenido
                 if _G._hubContentBg then
@@ -54125,11 +54145,11 @@ function CreateUseTab()
         local function _applyBackground(idx)
             _G._hubBackgrounds.current = idx
             -- Guardar tema actual ANTES de llamar _removeBgImages (que lo restauraria)
-            local _themeToSave = (_bgPrevTheme == nil) and currentThemeName or _bgPrevTheme
+            local _themeToSave = (_getBgPrevTheme() == nil) and currentThemeName or _getBgPrevTheme()
             -- Limpiar fondo anterior. skipThemeRestore=true porque vamos a aplicar
             -- un nuevo tema enseguida: evita el flash de colores viejos entre fondos.
             _removeBgImages(true)
-            _bgPrevTheme = _themeToSave
+            _setBgPrevTheme(_themeToSave)
             local bg = _BG_LIST[idx]
             if not bg then return end
 
