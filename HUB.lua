@@ -50375,6 +50375,8 @@ particles = {}
     _contentBg.BorderSizePixel = 0
     _contentBg.ZIndex = 5
     _contentBg.Visible = true
+    -- Exponer globalmente para que _applyBackground pueda ajustar la transparencia
+    _G._hubContentBg = _contentBg
     -- Sincronizar visibilidad con contentContainer
     contentContainer:GetPropertyChangedSignal("Visible"):Connect(function()
         _contentBg.Visible = true  -- siempre visible para cubrir el fondo
@@ -50687,6 +50689,7 @@ particles = {}
     local TAB_BAR_BOTTOM_H = 0
 
     local tabDockFrame = Instance.new("Frame", mainFrame)
+    _G._hubTabDockFrame = tabDockFrame
     tabDockFrame.Name = "TabDock"
     tabDockFrame.AnchorPoint = Vector2.new(0, 0)
     tabDockFrame.BorderSizePixel = 0
@@ -52782,6 +52785,28 @@ function CreateUseTab()
             },
         }
 
+        local _HUB_COLOR_ORIG   = Color3.fromRGB(20, 80, 120)
+        local _HUB_COLOR_BLACK  = Color3.fromRGB(5, 5, 8)
+
+        local function _setHubTheme(black)
+            pcall(function()
+                local col   = black and _HUB_COLOR_BLACK or _HUB_COLOR_ORIG
+                local trans = black and 0.05             or 0.12
+                if mainFrame then
+                    mainFrame.BackgroundColor3       = col
+                    mainFrame.BackgroundTransparency = trans
+                end
+                if _G._hubContentBg then
+                    _G._hubContentBg.BackgroundColor3       = col
+                    _G._hubContentBg.BackgroundTransparency = black and 0.85 or 0.15
+                end
+                if _G._hubTabDockFrame then
+                    _G._hubTabDockFrame.BackgroundColor3       = col
+                    _G._hubTabDockFrame.BackgroundTransparency = black and 0.05 or 0.15
+                end
+            end)
+        end
+
         local function _removeBgImages()
             pcall(function()
                 if mainFrame then
@@ -52791,6 +52816,7 @@ function CreateUseTab()
                         end
                     end
                 end
+                _setHubTheme(false)  -- restaurar colores originales del hub
             end)
         end
 
@@ -52800,6 +52826,9 @@ function CreateUseTab()
             local bg = _BG_LIST[idx]
             if not bg then return end
             pcall(function()
+                -- ZIndex 6: encima de _contentBg (5) para que la imagen sea visible,
+                -- pero debajo del contenido de tabs (10+). El contentContainer tiene
+                -- BackgroundTransparency = 1, asi que el fondo se ve a traves del
                 local img = Instance.new("ImageLabel", mainFrame)
                 img.Name = "HubBackground"
                 img.Size = UDim2.new(1, 0, 1, 0)
@@ -52807,8 +52836,10 @@ function CreateUseTab()
                 img.BackgroundTransparency = 1
                 img.Image = bg.imageId
                 img.ScaleType = Enum.ScaleType.Crop
-                img.ImageTransparency = 0.25
-                img.ZIndex = 1
+                img.ImageTransparency = 0.15
+                img.ZIndex = 6
+                -- Poner el hub en modo negro para que la imagen de fondo se vea limpia
+                _setHubTheme(true)
                 if bg.overlay then
                     local ov = Instance.new("ImageLabel", mainFrame)
                     ov.Name = "HubBackgroundOverlay"
@@ -52817,8 +52848,8 @@ function CreateUseTab()
                     ov.BackgroundTransparency = 1
                     ov.Image = bg.overlay
                     ov.ScaleType = Enum.ScaleType.Crop
-                    ov.ImageTransparency = 0.35
-                    ov.ZIndex = 2
+                    ov.ImageTransparency = 0.25
+                    ov.ZIndex = 7
                 end
             end)
             CreateCustomNotification("BACKGROUNDS", "Background: " .. bg.name, 2)
