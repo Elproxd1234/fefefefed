@@ -14200,8 +14200,8 @@ function CreateMainUI_SwimFlyGithub()
         UserInputService.InputBegan:Connect(function(inp, gp)
             if gp or _ajListening then return end
             if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == _ajKeybind then
-                if AJ.enabled then stopAutoJump(); -- [notif removed]
-                else startAutoJump(); -- [notif removed] end
+                if AJ.enabled then stopAutoJump()
+                else startAutoJump() end
             end
         end)
     end
@@ -14262,8 +14262,8 @@ function CreateMainUI_SwimFlyGithub()
                 TweenService:Create(frame, TweenInfo.new(0.08), {BackgroundColor3 = Color3.fromRGB(55, 55, 130)}):Play()
                 _w(0.1)
                 TweenService:Create(frame, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(35, 35, 95), BackgroundTransparency = 0.75}):Play()
-                if AJ.enabled then stopAutoJump(); -- [notif removed]
-                else startAutoJump(); -- [notif removed] end
+                if AJ.enabled then stopAutoJump()
+                else startAutoJump() end
                 updateDot()
             end)
             _sp(function()
@@ -16196,7 +16196,7 @@ function CreateMainUI_LogoSelector()
             _hfOn = on
             if not on then
                 if _hfConn then pcall(function() _hfConn:Disconnect() end); _hfConn = nil end
-                -- [notif removed]; return
+                return
             end
             _hfLoop()
             -- [notif removed]
@@ -19248,7 +19248,7 @@ function CreateMainTab()
         -- -- Anti AFK --
         CreateAuroraToggle(_protSection, "Anti AFK", function(on)
             if _mp.afkThread then pcall(function() pcall(function() coroutine.close(_mp.afkThread) end) end); _mp.afkThread = nil end
-            if not on then -- [notif removed]; return end
+            if not on then return end
             local vu = game:GetService("VirtualUser")
             _mp.afkThread = _sp(function()
                 while _G._mainProt and _mp.afkThread do
@@ -53412,8 +53412,8 @@ function CreateUseTab()
  CreateAuroraToggle(infoRolesSec, "Information Roles (avatar en tiempo real)", function(on)
         rolesPanel.Visible = on
         allPlayersFrame.Visible = on
- if on then startRolesUpdate(); -- [notif removed]
- else if rolesConn then rolesConn:Disconnect(); rolesConn=nil end; -- [notif removed] end
+ if on then startRolesUpdate()
+ else if rolesConn then rolesConn:Disconnect(); rolesConn=nil end end
     end, false)
     rolesPanel.Visible = false
     allPlayersFrame.Visible = false
@@ -53490,8 +53490,8 @@ function CreateUseTab()
     end
  CreateAuroraToggle(infoDeadSec, "Information Dead (avatar + hora de muerte)", function(on)
         deadLogFrame.Visible = on
- if on then startDeadInfo(); -- [notif removed]
- else stopDeadInfo(); -- [notif removed] end
+ if on then startDeadInfo()
+ else stopDeadInfo() end
     end, false)
     deadLogFrame.Visible = false
 
