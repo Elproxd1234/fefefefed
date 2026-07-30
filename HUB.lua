@@ -53280,7 +53280,7 @@ function CreateUseTab()
         -- y todos los loops de animacion de ese fondo se detienen solos.
         local _bgAnimToken = 0
 
-        local function _removeBgImages()
+        local function _removeBgImages(skipThemeRestore)
             pcall(function()
                 -- Invalidar animaciones del fondo anterior
                 _bgAnimToken = _bgAnimToken + 1
@@ -53293,9 +53293,12 @@ function CreateUseTab()
                     end
                 end
                 -- Restaurar el tema que habia antes de activar el fondo
-                if _bgPrevTheme then
+                -- (solo si no vamos a aplicar otro tema inmediatamente despues)
+                if _bgPrevTheme and not skipThemeRestore then
                     ApplyTheme(_bgPrevTheme)
                     _bgPrevTheme = nil
+                elseif skipThemeRestore then
+                    _bgPrevTheme = nil  -- limpiar igual para que no quede stale
                 end
                 -- Restaurar transparencia de la capa de contenido
                 if _G._hubContentBg then
@@ -53840,131 +53843,60 @@ function CreateUseTab()
         -- AURORA: ondas de luz verde/cyan/violeta que se desplazan lentamente + partículas flotantes
         local function _animAurora(img, token)
             task.spawn(function()
-                -- Fade-in suave inicial (estilo aparicion boreal)
-                img.ImageTransparency = 1
-                img.ImageColor3 = Color3.fromRGB(120, 255, 200)
-                local ti_in = TweenInfo.new(1.8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-                TweenService:Create(img, ti_in, {ImageTransparency = 0.08}):Play()
-                task.wait(1.8)
+                -- ============================================================
+                -- AURORA BOREAL v3: SHIMMER INTEGRADO EN LA IMAGEN
+                -- Solo anima ImageColor3 e ImageTransparency de la imagen base.
+                -- No crea ningun Frame hijo: nada sobresale del fondo.
+                -- ============================================================
 
-                -- Colores auroreales ciclicos (verde boreal -> cyan -> violeta -> azul -> verde)
-                local _auroraColors = {
-                    Color3.fromRGB(80,  255, 180),  -- verde boreal
-                    Color3.fromRGB(60,  220, 255),  -- cyan polar
-                    Color3.fromRGB(140, 100, 255),  -- violeta aurora
-                    Color3.fromRGB(50,  180, 255),  -- azul hielo
-                    Color3.fromRGB(100, 255, 220),  -- turquesa brillante
-                    Color3.fromRGB(180, 80,  255),  -- lila intenso
+                -- Fade-in rapido al activar
+                img.ImageTransparency = 0.85
+                img.ImageColor3 = Color3.fromRGB(80, 255, 160)
+                TweenService:Create(img,
+                    TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                    {ImageTransparency = 0.05}):Play()
+                task.wait(0.8)
+                if _bgAnimToken ~= token then return end
+
+                -- Paleta boreal: verde predominante con transiciones a cyan y violeta
+                local _cols = {
+                    Color3.fromRGB(60,  255, 140),  -- verde boreal vivo
+                    Color3.fromRGB(40,  230, 200),  -- verde-cyan glacial
+                    Color3.fromRGB(80,  255, 110),  -- verde electrico
+                    Color3.fromRGB(50,  200, 255),  -- cyan polar
+                    Color3.fromRGB(110, 255, 170),  -- lima boreal
+                    Color3.fromRGB(40,  255, 220),  -- turquesa polar
+                    Color3.fromRGB(130,  90, 255),  -- violeta aurora (acento)
+                    Color3.fromRGB(60,  240, 180),  -- menta boreal
                 }
 
-                -- === PARTICULAS FLOTANTES (luces boreales descendentes) ===
-                local _particleColors = {
-                    Color3.fromRGB(100, 255, 200),
-                    Color3.fromRGB(80,  200, 255),
-                    Color3.fromRGB(160, 120, 255),
-                    Color3.fromRGB(60,  255, 180),
-                    Color3.fromRGB(200, 150, 255),
-                }
-                local function _spawnAuroraParticle()
-                    if not mainFrame or not mainFrame.Parent then return end
-                    if _bgAnimToken ~= token then return end
-                    local p = Instance.new("Frame", mainFrame)
-                    p.Name = "HubBgParticle"
-                    local w = math.random(2, 6)
-                    local h = math.random(18, 55)  -- alargadas vertical (rayos boreales)
-                    p.Size = UDim2.new(0, w, 0, h)
-                    p.Position = UDim2.new(
-                        math.random(2, 98) / 100, 0,
-                        math.random(-10, 40) / 100, 0
-                    )
-                    p.BackgroundColor3 = _particleColors[math.random(1, #_particleColors)]
-                    p.BackgroundTransparency = 0.25
-                    p.BorderSizePixel = 0
-                    p.ZIndex = 4
-                    p.Rotation = math.random(-8, 8)
-                    Instance.new("UICorner", p).CornerRadius = UDim.new(0.5, 0)
+                -- Alphas con mayor contraste: cicla entre muy brillante y mas apagado
+                local _alphas = {0.02, 0.20, 0.03, 0.22, 0.01, 0.18, 0.04, 0.16}
 
-                    local dur_fall = math.random(18, 40) / 10
-                    local drift    = math.random(-4, 4) / 100
-                    local curX     = p.Position.X.Scale
-                    local curY     = p.Position.Y.Scale
-                    -- Fade-in
-                    TweenService:Create(p,
-                        TweenInfo.new(0.4, Enum.EasingStyle.Sine),
-                        {BackgroundTransparency = 0.05}):Play()
-                    -- Caida suave con derive lateral
-                    task.delay(0.4, function()
-                        if not p or not p.Parent or _bgAnimToken ~= token then
-                            pcall(function() if p and p.Parent then p:Destroy() end end)
-                            return
-                        end
-                        TweenService:Create(p,
-                            TweenInfo.new(dur_fall, Enum.EasingStyle.Sine, Enum.EasingDirection.In),
-                            {
-                                Position               = UDim2.new(curX + drift, 0, curY + 0.70, 0),
-                                BackgroundTransparency = 0.95,
-                                Size                   = UDim2.new(0, w, 0, h * 0.4),
-                            }):Play()
-                        task.delay(dur_fall, function()
-                            pcall(function() if p and p.Parent then p:Destroy() end end)
-                        end)
-                    end)
-                end
-
-                -- Spawner de particulas boreales
-                task.spawn(function()
-                    while img and img.Parent and _bgAnimToken == token do
-                        for _ = 1, math.random(1, 3) do
-                            pcall(_spawnAuroraParticle)
-                        end
-                        task.wait(math.random(18, 35) / 100)
-                    end
-                end)
-
-                -- === CAPA DE BRILLO ONDULANTE (simula la cortina de luz) ===
-                local glow = Instance.new("Frame", mainFrame)
-                glow.Name = "HubBgFlash"
-                glow.Size = UDim2.new(1, 0, 0.5, 0)
-                glow.Position = UDim2.new(0, 0, 0, 0)
-                glow.BackgroundColor3 = Color3.fromRGB(60, 200, 180)
-                glow.BackgroundTransparency = 1
-                glow.BorderSizePixel = 0
-                glow.ZIndex = 0
-
-                -- === LOOP PRINCIPAL: pulso de color boreal en la imagen ===
                 local phase = 0
-                local _alphaSeq = {0.05, 0.12, 0.06, 0.14, 0.04, 0.10}
                 while img and img.Parent and _bgAnimToken == token do
-                    phase = (phase % #_auroraColors) + 1
-                    local dur   = math.random(20, 40) / 10  -- 2.0 - 4.0 s por ciclo
-                    local alpha = _alphaSeq[(phase % #_alphaSeq) + 1]
-                    local col   = _auroraColors[phase]
-                    local ti    = TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                    phase = (phase % #_cols) + 1
+                    local col   = _cols[phase]
+                    local alpha = _alphas[(phase % #_alphas) + 1]
 
-                    -- Transicion suave de tono boreal en la imagen
-                    TweenService:Create(img, ti, {
-                        ImageTransparency = alpha,
-                        ImageColor3       = col,
-                    }):Play()
+                    -- Ciclos rapidos: 0.5s - 1.2s para que el cambio se note
+                    local dur = math.random(5, 12) / 10
 
-                    -- Pulso de la capa de brillo (cortina tenue)
-                    if glow and glow.Parent then
-                        glow.BackgroundColor3 = col
-                        TweenService:Create(glow,
-                            TweenInfo.new(dur * 0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
-                            {BackgroundTransparency = 0.88}):Play()
-                        task.delay(dur * 0.45, function()
-                            if glow and glow.Parent and _bgAnimToken == token then
-                                TweenService:Create(glow,
-                                    TweenInfo.new(dur * 0.55, Enum.EasingStyle.Sine, Enum.EasingDirection.In),
-                                    {BackgroundTransparency = 1}):Play()
-                            end
-                        end)
-                    end
+                    TweenService:Create(img,
+                        TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                        {ImageColor3 = col, ImageTransparency = alpha}):Play()
+
+                    -- Flash de brillo a mitad del ciclo
+                    task.delay(dur * 0.4, function()
+                        if img and img.Parent and _bgAnimToken == token then
+                            TweenService:Create(img,
+                                TweenInfo.new(dur * 0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                                {ImageTransparency = math.max(0.0, alpha - 0.08)}):Play()
+                        end
+                    end)
 
                     task.wait(dur)
                 end
-                pcall(function() if glow and glow.Parent then glow:Destroy() end end)
             end)
         end
 
@@ -54059,15 +53991,30 @@ function CreateUseTab()
             _G._hubBackgrounds.current = idx
             -- Guardar tema actual ANTES de llamar _removeBgImages (que lo restauraria)
             local _themeToSave = (_bgPrevTheme == nil) and currentThemeName or _bgPrevTheme
-            -- Limpiar fondo anterior + colores anteriores completamente
-            -- (esto tambien incrementa _bgAnimToken, matando loops viejos)
-            _removeBgImages()
+            -- Limpiar fondo anterior. skipThemeRestore=true porque vamos a aplicar
+            -- un nuevo tema enseguida: evita el flash de colores viejos entre fondos.
+            _removeBgImages(true)
             _bgPrevTheme = _themeToSave
             local bg = _BG_LIST[idx]
             if not bg then return end
 
             -- Capturar token DESPUES de _removeBgImages para que sea el nuevo
             local myToken = _bgAnimToken
+
+            -- FIX RACE CONDITION: dar 2 frames para que los task.spawn de la animacion
+            -- anterior detecten el token invalido y dejen de crear nuevos hijos.
+            -- Luego limpiar una segunda vez por si alguno alcanzo a spawnar algo nuevo.
+            task.defer(function() end)
+            task.defer(function() end)
+            pcall(function()
+                if mainFrame then
+                    for _, c in ipairs(mainFrame:GetChildren()) do
+                        if c.Name == "HubBgParticle" or c.Name == "HubBgFlash" then
+                            c:Destroy()
+                        end
+                    end
+                end
+            end)
 
             local img, ov
             pcall(function()
