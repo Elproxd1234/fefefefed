@@ -27179,12 +27179,14 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
             or lower:find("spoof") or lower:find("secure tp")
         )
 
-        -- AUTO-RESTORE ON REEXEC: toggle funcional guardado en disco
-        -- Si es re-ejecucion real (!_isTabRebuild) Y savedState=true → disparar callback
-        -- con task.spawn + wait(0.3) igual que el Fly del ejemplo de referencia.
-        if isPhysical and _isAutoRestore and not _isTabRebuild and savedState == true then
+        -- AUTO-RESTORE: disparar callback para TODOS los toggles con savedState=true
+        -- al re-ejecutar el hub (not _isTabRebuild). En tab rebuild, los toggles fisicos
+        -- se bloquean (isPhysical=true) para no duplicar loops ya activos; los no fisicos
+        -- siempre se disparan porque son stateless (settings, visuals, etc.).
+        if isPhysical and not _isTabRebuild and savedState == true then
+            -- Toggle fisico en re-ejecucion real: disparar con delay para que el personaje este listo
             task.spawn(function()
-                task.wait(0.3)  -- esperar a que el personaje y la UI esten listos
+                task.wait(0.3)
                 local _orig = CreateCustomNotification
                 CreateCustomNotification = function() end
                 pcall(callback, true)
