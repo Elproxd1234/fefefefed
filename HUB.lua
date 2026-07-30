@@ -52012,25 +52012,96 @@ particles = {}
             _loadSG.Parent = LocalPlayer.PlayerGui
         end
 
-        -- Fondo negro (empieza transparente para que en Fase 1 se vea el juego detras del ovalo)
+        -- ── FONDO GLITCH SETTINGS (cyber violeta, estilo pestaña Zerqon) ──
+        -- Fondo negro base
         local _bg = Instance.new("Frame", _loadSG)
         _bg.Size = UDim2.new(1, 0, 1, 0)
-        _bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        _bg.BackgroundTransparency = 1             -- invisible al inicio: el juego se ve detras
+        _bg.BackgroundColor3 = Color3.fromRGB(5, 0, 20)   -- negro violeta (igual que _BG_Zerqon)
+        _bg.BackgroundTransparency = 0                     -- OPACO desde el inicio
         _bg.BorderSizePixel = 0
         _bg.ZIndex = 1
 
-        -- ── FASE 1: Ovalo grande cubriendo casi toda la pantalla (como la imagen referencia) ──
-        -- Fondo semitransparente azul, borde azul brillante, el juego se ve detras
+        -- Capa de imagen de fondo glitch (el mismo fondo que usa Settings/Zerqon)
+        local _bgImg = Instance.new("ImageLabel", _loadSG)
+        _bgImg.Size = UDim2.new(1, 0, 1, 0)
+        _bgImg.Position = UDim2.new(0, 0, 0, 0)
+        _bgImg.BackgroundTransparency = 1
+        _bgImg.Image = "rbxassetid://79318526231460"       -- misma imagen del fondo Zerqon
+        _bgImg.ImageColor3 = Color3.fromRGB(120, 40, 255) -- tinte violeta cyber
+        _bgImg.ImageTransparency = 0.12
+        _bgImg.ScaleType = Enum.ScaleType.Crop
+        _bgImg.ZIndex = 2
+
+        -- Capa de flash/glitch que parpadea (efecto cyber)
+        local _glitchFlash = Instance.new("Frame", _loadSG)
+        _glitchFlash.Size = UDim2.new(1, 0, 1, 0)
+        _glitchFlash.BackgroundColor3 = Color3.fromRGB(120, 40, 255)
+        _glitchFlash.BackgroundTransparency = 1
+        _glitchFlash.BorderSizePixel = 0
+        _glitchFlash.ZIndex = 3
+
+        -- Scanlines horizontales (lineas de TV corrupta)
+        local _scanlines = Instance.new("Frame", _loadSG)
+        _scanlines.Size = UDim2.new(1, 0, 1, 0)
+        _scanlines.BackgroundTransparency = 1
+        _scanlines.BorderSizePixel = 0
+        _scanlines.ZIndex = 4
+
+        -- Loop de animacion glitch en el fondo
+        local _glitchRunning = true
+        local _glitchColors = {
+            Color3.fromRGB(180, 140, 255),  -- violeta claro
+            Color3.fromRGB(80,  20,  200),  -- morado profundo
+            Color3.fromRGB(160, 60,  255),  -- lila neon
+            Color3.fromRGB(40,  0,   140),  -- indigo oscuro
+        }
+        task.spawn(function()
+            local _tick = 0
+            while _glitchRunning do
+                _tick = _tick + 1
+                local bright = (_tick % 2 == 0)
+                local dur = bright and 1.2 or 1.8
+                local alpha = bright and 0.06 or 0.22
+                local colorTarget = _glitchColors[(_tick % #_glitchColors) + 1]
+                TweenService:Create(_bgImg, TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                    ImageTransparency = alpha,
+                    ImageColor3       = colorTarget,
+                }):Play()
+                -- Glitch flash rapido cada ~5 ciclos
+                if _tick % 5 == 0 then
+                    task.spawn(function()
+                        _glitchFlash.BackgroundTransparency = 0.72
+                        task.wait(0.04)
+                        _glitchFlash.BackgroundTransparency = 1
+                        task.wait(0.06)
+                        if _glitchRunning then
+                            _glitchFlash.BackgroundTransparency = 0.85
+                            task.wait(0.03)
+                            _glitchFlash.BackgroundTransparency = 1
+                        end
+                    end)
+                end
+                -- Micro-glitch de posicion en la imagen (shift horizontal rapido)
+                if _tick % 3 == 0 then
+                    task.spawn(function()
+                        local _shiftX = math.random(-3, 3)
+                        _bgImg.Position = UDim2.new(0, _shiftX, 0, 0)
+                        task.wait(0.05)
+                        _bgImg.Position = UDim2.new(0, 0, 0, 0)
+                    end)
+                end
+                task.wait(dur)
+            end
+        end)
+
+        -- ── FASE 1: Ovalo sobre el fondo glitch ──
         local _oval = Instance.new("Frame", _loadSG)
         _oval.AnchorPoint = Vector2.new(0.5, 0.5)
         _oval.Position = UDim2.new(0.5, 0, 0.5, 0)
         _oval.Size = UDim2.new(0, 0, 0, 0)
-        local _loaderAccent = (Themes[currentThemeName] and Themes[currentThemeName].Aurora3)
-                           or (Themes[currentThemeName] and Themes[currentThemeName].Primary)
-                           or ThemeColors.Accent
-        _oval.BackgroundColor3 = _loaderAccent
-        _oval.BackgroundTransparency = 0.35
+        local _loaderAccent = Color3.fromRGB(160, 80, 255)  -- violeta brillante Zerqon
+        _oval.BackgroundColor3 = Color3.fromRGB(20, 5, 50)  -- indigo oscuro Zerqon
+        _oval.BackgroundTransparency = 0.25
         _oval.BorderSizePixel = 0
         _oval.ZIndex = 5
 
@@ -52047,33 +52118,37 @@ particles = {}
         local _OVAL_W = 0.65
         local _OVAL_H = 0.58
 
-        -- Expansion rapida del ovalo hasta casi toda la pantalla
-        TweenService:Create(_oval, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
-            Size = UDim2.new(_OVAL_W, 0, _OVAL_H, 0)
-        }):Play()
-        task.wait(0.8)
-
-        -- Pausa: ovalo visible completo ~0.6s
-        task.wait(0.6)
-
-        -- ── FASE 2: Solo los BORDES cambian — el tamaño NO cambia ──
-        -- CornerRadius baja de 0.5 (ovalo) a 0 (rectangulo puro)
-        -- El fondo se vuelve opaco y del color del hub
-        -- El borde azul pasa al color del hub
-
-        -- Logo imagen reemplaza el texto ZERQON HUB
+        -- ── LOGO ZERQON visible DESDE EL INICIO (antes de que aparezca el ovalo) ──
         local _titleLbl = Instance.new("ImageLabel", _loadSG)
         _titleLbl.AnchorPoint = Vector2.new(0.5, 0.5)
         _titleLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
         _titleLbl.Size = UDim2.new(0, 520, 0, 260)
         _titleLbl.BackgroundTransparency = 1
         _titleLbl.Image = "rbxassetid://79318526231460"
-        _titleLbl.ImageTransparency = 1
+        _titleLbl.ImageTransparency = 0.15    -- VISIBLE inmediatamente con leve transparencia
+        _titleLbl.ImageColor3 = Color3.fromRGB(220, 200, 255)  -- tinte lila suave
         _titleLbl.ScaleType = Enum.ScaleType.Fit
         _titleLbl.ZIndex = 20
 
-        -- Fondo permanece transparente (no ocultar la pantalla)
-        -- _bg no se anima, queda invisible todo el tiempo
+        -- Fade-in rapido del logo desde el inicio
+        TweenService:Create(_titleLbl, TweenInfo.new(0.4, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+            ImageTransparency = 0.05,
+            ImageColor3 = Color3.fromRGB(255, 255, 255)
+        }):Play()
+
+        -- Expansion rapida del ovalo hasta casi toda la pantalla
+        TweenService:Create(_oval, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+            Size = UDim2.new(_OVAL_W, 0, _OVAL_H, 0)
+        }):Play()
+        task.wait(0.8)
+
+        -- Pausa: ovalo y logo visibles ~0.6s
+        task.wait(0.6)
+
+        -- ── FASE 2: Solo los BORDES cambian — el tamaño NO cambia ──
+        -- CornerRadius baja de 0.5 (ovalo) a 0 (rectangulo puro)
+
+        -- Fondo permanece con el glitch activo durante toda la carga
 
         -- SOLO cambia CornerRadius: de ovalo (0.5) a rectangulo (0)
         -- Se usa Heartbeat porque TweenService NO anima UDim y task.wait en spawn es poco confiable
@@ -52092,24 +52167,19 @@ particles = {}
                 _cornerConn:Disconnect()
             end
         end)
-        -- Fondo del ovalo mantiene semitransparencia (se ve el juego detras)
+        -- Ovalo se vuelve mas transparente para ver mejor el fondo glitch
         TweenService:Create(_oval, TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-            BackgroundColor3 = _loaderAccent,
-            BackgroundTransparency = 0.35,
+            BackgroundColor3 = Color3.fromRGB(20, 5, 50),
+            BackgroundTransparency = 0.45,
         }):Play()
-        -- Borde pasa de azul brillante a color del hub
+        -- Borde pulsa con el color violeta Zerqon
         TweenService:Create(_ovalStroke, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-            Color = _loaderAccent,
+            Color = Color3.fromRGB(180, 100, 255),
             Thickness = 2.0,
-            Transparency = 0.3,
+            Transparency = 0.2,
         }):Play()
 
-        -- Texto aparece a mitad de la morph de bordes
-        task.delay(0.4, function()
-            TweenService:Create(_titleLbl, TweenInfo.new(0.65, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
-                ImageTransparency = 0.45
-            }):Play()
-        end)
+        -- Logo sube un poco para dar espacio a la barra (ya esta visible)
         task.wait(1.3)
 
         -- ── FASE 3: Barra de carga dentro del rectangulo grande ──
@@ -52197,14 +52267,17 @@ particles = {}
         task.wait(0.5)
 
         -- Fade out de todo el loader
+        _glitchRunning = false  -- detener el loop de animacion glitch
         local _ft = 0.4
-        TweenService:Create(_bg,    TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(_oval,  TweenInfo.new(_ft), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
-        TweenService:Create(_titleLbl, TweenInfo.new(_ft), {ImageTransparency = 1}):Play()
-        TweenService:Create(_pctLbl, TweenInfo.new(_ft), {TextTransparency = 1}):Play()
+        TweenService:Create(_bg,        TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(_bgImg,     TweenInfo.new(_ft), {ImageTransparency = 1}):Play()
+        TweenService:Create(_glitchFlash, TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(_oval,      TweenInfo.new(_ft), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
+        TweenService:Create(_titleLbl,  TweenInfo.new(_ft), {ImageTransparency = 1}):Play()
+        TweenService:Create(_pctLbl,    TweenInfo.new(_ft), {TextTransparency = 1}):Play()
         TweenService:Create(_barContainer, TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(_barFill, TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(_barLbl, TweenInfo.new(_ft), {TextTransparency = 1}):Play()
+        TweenService:Create(_barFill,   TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(_barLbl,    TweenInfo.new(_ft), {TextTransparency = 1}):Play()
         pcall(function() TweenService:Create(_barStroke, TweenInfo.new(_ft), {Transparency = 1}):Play() end)
         task.wait(_ft + 0.05)
 
