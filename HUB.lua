@@ -415,7 +415,9 @@ Players.PlayerRemoving:Connect(function() task.defer(_rebuildPlayerCache) end)
 -- AUTO-SAVE CONFIG -- persiste opciones entre ejecuciones del hub
 -- Usa writefile/readfile (Synapse/Wave/Krnl) con fallback seguro
 -- ==================================================================
-local _CONFIG_FILE = "rex_config.json"
+-- CONFIG POR JUGADOR: cada UserId tiene su propio archivo de configuracion
+-- Asi el hub recuerda los toggles de CADA jugador por separado
+local _CONFIG_FILE = "rex_config_" .. tostring(Players.LocalPlayer and Players.LocalPlayer.UserId or "unknown") .. ".json"
 local _configSaveThrottle = 0  -- throttle: no guardar mas de 1 vez por segundo
 
 -- COMPAT FILE I/O: soporta Synapse X, Wave, Krnl, Fluxus, Delta, Arceus X, Comet
@@ -690,6 +692,8 @@ local function _loadConfig()
     end
     -- Guardar cuantos toggles activos se restauraron (para notificacion al cargar)
     _G._restoredActiveCount = _restoredActiveCount
+    -- Guardar nombre del jugador detectado (para mostrar en la notificacion)
+    _G._restoredForPlayer = Players.LocalPlayer and Players.LocalPlayer.Name or nil
 end
 
 -- Cargar configuracion guardada ANTES de crear la UI
@@ -26837,6 +26841,13 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local savedState = _G._toggleStates[nombre]
     local estado = (savedState ~= nil) and savedState or (initialValue or false)
 
+    -- REGISTRO DE CALLBACKS: guardar el callback por nombre para poder
+    -- restaurar toggles del World Tab (y otros) desde el auto-restore
+    if callback then
+        _G._toggleCallbacks = _G._toggleCallbacks or {}
+        _G._toggleCallbacks[nombre] = callback
+    end
+
     local C_IND_ON  = Color3.fromRGB(0, 200, 80)   -- verde cuando activo
     local C_IND_OFF = Color3.fromRGB(255, 0, 0)     -- rojo cuando inactivo
     local TWEEN_T   = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -33459,10 +33470,29 @@ function CreateWorldTab()
     _safeCall(CreateWorldUI_TeleportMurdererBindable,  "TeleportMurdererBindable")
 
 
-    -- FIX AUTO-ACTIVAR: limpiar flag despues de que todos los task.defer de los toggles corran
+    -- AUTO-RESTORE WORLD TAB: restaurar toggles guardados en disco
+    -- Se corre DESPUES de que todos los toggles del tab se registraron en _toggleCallbacks.
+    -- Solo activa los que tienen savedState=true y no estan en la blacklist.
     task.defer(function()
         task.defer(function()
             _G._noAutoActivateWorld = false
+            if not _G._toggleStates or not _G._toggleCallbacks then return end
+            for nombre, state in pairs(_G._toggleStates) do
+                if state == true
+                and not (_neverRestoreToggles and _neverRestoreToggles[nombre])
+                and _G._toggleCallbacks[nombre] then
+                    -- Verificar que este toggle pertenece al World Tab
+                    -- buscando su frame en el contentContainer actual
+                    local toggleFrame = contentContainer and contentContainer:FindFirstChild("AuroraToggleRow_" .. nombre, true)
+                    if toggleFrame then
+                        -- Silenciar notificaciones durante el restore
+                        local _origNotif = CreateCustomNotification
+                        CreateCustomNotification = function() end
+                        pcall(_G._toggleCallbacks[nombre], true)
+                        CreateCustomNotification = _origNotif
+                    end
+                end
+            end
         end)
     end)
 end
@@ -35582,14 +35612,16 @@ function CreateExclusiveTab()
 
     -- -- AUTO SAVE CONFIG -----------------------------------------
     -- initialValue viene de _G._autoSaveEnabled que _loadConfig() ya restauro del disco
+    -- La config se guarda POR JUGADOR (archivo unico por UserId)
     CreateAuroraToggle(settSec, "Auto Save Config", function(on)
         _G._autoSaveEnabled = on
         if on then
             -- Guardar inmediatamente con el estado actual de todos los toggles
             _hubWriteFile(_CONFIG_FILE, _serializeConfig())
-            CreateCustomNotification("SETTINGS", "Auto Save ON", 2)
+            local _pName = Players.LocalPlayer and Players.LocalPlayer.Name or "?"
+            CreateCustomNotification("SETTINGS", "Auto Save ON — config guardada para " .. _pName, 3)
         else
-            CreateCustomNotification("SETTINGS", "Auto Save OFF", 2)
+            CreateCustomNotification("SETTINGS", "Auto Save OFF — los toggles no se recordaran", 2)
         end
     end, _G._autoSaveEnabled)
 
@@ -51013,17 +51045,21 @@ particles = {}
             _G._tabContentActive = true
             pcall(function() SetActiveTab(1) end)
         end)
-        -- AUTORESTORE: notificar si se restauraron toggles activos desde disco
+        -- AUTORESTORE: notificar si se restauraron toggles activos desde disco (config por jugador)
         if _G._restoredActiveCount and _G._restoredActiveCount > 0 then
             task.delay(1.2, function()
                 pcall(function()
+                    local _playerName = _G._restoredForPlayer
+                        or (Players.LocalPlayer and Players.LocalPlayer.Name)
+                        or "Jugador"
                     CreateCustomNotification(
-                        "AUTO RESTORE",
-                        "✅ " .. _G._restoredActiveCount .. " toggle" .. (_G._restoredActiveCount == 1 and "" or "s") .. " restaurado" .. (_G._restoredActiveCount == 1 and "" or "s") .. " desde la sesión anterior",
-                        3
+                        "AUTO RESTORE — " .. _playerName,
+                        "✅ " .. _G._restoredActiveCount .. " toggle" .. (_G._restoredActiveCount == 1 and "" or "s") .. " restaurado" .. (_G._restoredActiveCount == 1 and "" or "s") .. " para " .. _playerName,
+                        4
                     )
                 end)
                 _G._restoredActiveCount = 0
+                _G._restoredForPlayer = nil
             end)
         end
         end)  -- cierre del pcall de animacion
