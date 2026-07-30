@@ -9730,19 +9730,27 @@ _notifQueue = {}
 _notifRunning = false
 _notifOffset = 0  -- offset Y acumulado para stack
 
+-- ANTI-SPAM: historial reciente de notificaciones [clave] = tick()
+-- Evita que la misma notif aparezca varias veces en menos de _NOTIF_COOLDOWN segundos
+_notifHistory = {}
+local _NOTIF_COOLDOWN   = 1.5   -- segundos minimos entre la misma notif
+local _NOTIF_MAX_QUEUE  = 4     -- cola maxima; descarta las mas viejas si se supera
+local _NOTIF_MAX_PER_SEC = 3    -- no mas de 3 notifs distintas por segundo
+local _notifRateWindow  = 0     -- tick del ultimo "lote" de rate-limit
+local _notifRateCount   = 0     -- cuantas notifs se enviaron en ese lote
+
 function _processNotifQueue()
     if _notifRunning then return end
     _notifRunning = true
     task.spawn(function()
-        -- FIX: limitar la cola a 6 notificaciones activas para evitar acumulacion
-        -- Si hay mas de 6 pendientes, descartar las mas viejas (mantener las recientes)
-        while #_notifQueue > 6 do
+        -- Descartar exceso: mantener solo las mas recientes
+        while #_notifQueue > _NOTIF_MAX_QUEUE do
             table.remove(_notifQueue, 1)
         end
         while #_notifQueue > 0 do
             local item = table.remove(_notifQueue, 1)
             pcall(item)
-            task.wait(0.12)
+            task.wait(0.18)  -- gap minimo entre notifs para evitar superposicion visual
         end
         _notifRunning = false
     end)
@@ -9762,6 +9770,38 @@ function _getPlayerUserId(name)
 end
 
 function CreateCustomNotification(titleRaw, message, duration)
+    -- ANTI-SPAM: construir clave unica para esta notif
+    local _nKey = tostring(titleRaw) .. "|" .. tostring(message)
+    local _now  = tick()
+
+    -- 1) Bloquear si la misma notif ya aparecio hace menos de _NOTIF_COOLDOWN segundos
+    if _notifHistory[_nKey] and (_now - _notifHistory[_nKey]) < _NOTIF_COOLDOWN then
+        return  -- duplicado reciente: ignorar silenciosamente
+    end
+
+    -- 2) Rate-limit global: no mas de _NOTIF_MAX_PER_SEC notifs distintas por segundo
+    if (_now - _notifRateWindow) < 1.0 then
+        _notifRateCount = _notifRateCount + 1
+        if _notifRateCount > _NOTIF_MAX_PER_SEC then
+            return  -- demasiadas notifs en este segundo: descartar
+        end
+    else
+        -- Nueva ventana de 1 segundo
+        _notifRateWindow = _now
+        _notifRateCount  = 1
+    end
+
+    -- 3) Registrar en historial
+    _notifHistory[_nKey] = _now
+
+    -- 4) Limpiar entradas viejas del historial (> 10 segundos) para no acumular memoria
+    if math.fmod(_notifRateCount, 5) == 0 then
+        local _cutoff = _now - 10
+        for k, v in pairs(_notifHistory) do
+            if v < _cutoff then _notifHistory[k] = nil end
+        end
+    end
+
     table.insert(_notifQueue, function()
         duration = duration or (_G._notifDefaultDuration) or 4
 
