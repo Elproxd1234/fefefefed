@@ -7614,11 +7614,11 @@ _G._bindablePosSave   = _G._bindablePosSave   or {}
 -- Cada vez que se crea un bindable se registra; al destruirse se libera
 _G._bindableActiveSlots = _G._bindableActiveSlots or {}  -- label -> slotIndex asignado
 
-_BIND_CS    = 44   -- tamaño del circulo
-_BIND_GAP   = 12
+_BIND_CS    = 54   -- tamaño del circulo (un poco mas grande, mas facil de tocar en movil)
+_BIND_GAP   = 10
 _BIND_COLS  = 10  -- muchas columnas para que queden en fila arriba
 _BIND_PAD_X = 12
-_BIND_PAD_Y = 10  -- pegado arriba
+_BIND_PAD_Y = 60  -- FIX MOBILE: baja los botones 60px para que no queden tapados por la barra del sistema
 
 function _getBindablePosition(slotIndex)
     local col = slotIndex % _BIND_COLS
@@ -7645,6 +7645,201 @@ function _releaseSlot(label)
     _G._bindableActiveSlots[label] = nil
 end
 
+-- ================================================================
+-- _NewBindable: botón flotante minimalista, siempre visible.
+-- No usa UIScale, TweenService ni UIDragDetector.
+-- Retorna el ScreenGui. Llame _NewBindable(label, cb) y guarde la ref.
+-- Para destruir: screenGuiRef:Destroy()
+-- ================================================================
+_G._newBindReg = _G._newBindReg or {}  -- label -> ScreenGui
+
+function _NewBindable(label, callback, optX, optY)
+    -- Destruir instancia previa con el mismo label
+    local prev = _G._newBindReg[label]
+    if prev then pcall(function() prev:Destroy() end) end
+    _G._newBindReg[label] = nil
+
+    local slot = _assignSlot(label)
+    local bx, by = _getBindablePosition(slot)
+    if optX then bx = optX end
+    if optY then by = optY end
+
+    local sz = _BIND_CS
+
+    -- ScreenGui contenedor
+    local sg = Instance.new("ScreenGui")
+    sg.Name           = "NewBind_" .. tostring(label):gsub("%s","_")
+    sg.ResetOnSpawn   = false
+    sg.DisplayOrder   = 10000   -- encima de todo
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.IgnoreGuiInset = true
+    -- Intentar CoreGui primero, fallback PlayerGui
+    local _cg = game:GetService("CoreGui")
+    local _pg = game:GetService("Players").LocalPlayer
+    local ok = pcall(function() sg.Parent = _cg end)
+    if not ok or not sg.Parent then
+        sg.Parent = _pg:WaitForChild("PlayerGui")
+    end
+
+    -- Frame contenedor (drag manual)
+    local root = Instance.new("Frame", sg)
+    root.Name                   = "Root"
+    root.Size                   = UDim2.fromOffset(sz, sz)
+    root.Position               = UDim2.fromOffset(bx, by)
+    root.BackgroundTransparency = 1
+    root.BorderSizePixel        = 0
+    root.Active                 = true
+    root.ZIndex                 = 10
+
+    -- Circulo de fondo
+    local bg = Instance.new("Frame", root)
+    bg.Name                   = "BG"
+    bg.Size                   = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3       = Color3.fromRGB(15, 20, 45)
+    bg.BackgroundTransparency = 0.15
+    bg.BorderSizePixel        = 0
+    bg.ZIndex                 = 11
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+
+    -- Borde
+    local stroke = Instance.new("UIStroke", bg)
+    stroke.Color        = Color3.fromRGB(0, 180, 255)
+    stroke.Thickness    = 2.5
+    stroke.Transparency = 0
+
+    -- Texto
+    local lbl = Instance.new("TextLabel", bg)
+    lbl.Size                   = UDim2.new(1, -4, 1, -4)
+    lbl.Position               = UDim2.new(0, 2, 0, 2)
+    lbl.BackgroundTransparency = 1
+    lbl.Text                   = tostring(label)
+    lbl.TextColor3             = Color3.fromRGB(255, 255, 255)
+    lbl.Font                   = Enum.Font.GothamBold
+    lbl.TextSize               = 11
+    lbl.TextWrapped            = true
+    lbl.TextScaled             = false
+    lbl.ZIndex                 = 12
+
+    -- Boton invisible encima (captura clicks y touches)
+    local btn = Instance.new("TextButton", root)
+    btn.Name                   = "Btn"
+    btn.Size                   = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text                   = ""
+    btn.ZIndex                 = 15
+    btn.AutoButtonColor        = false
+    btn.Active                 = true
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+
+    -- Drag manual
+    local _dragging, _dragStartInput, _dragStartPos = false, nil, nil
+    local _moved = false
+    local _lastTap = 0
+
+    btn.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            _dragging = true
+            _moved = false
+            _dragStartInput = inp.Position
+            _dragStartPos   = root.Position
+        end
+    end)
+
+    local UIS = game:GetService("UserInputService")
+    UIS.InputChanged:Connect(function(inp)
+        if not _dragging then return end
+        if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+        and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+        local delta = inp.Position - _dragStartInput
+        if delta.Magnitude > 6 then _moved = true end
+        local vp = workspace.CurrentCamera.ViewportSize
+        root.Position = UDim2.fromOffset(
+            math.clamp(_dragStartPos.X.Offset + delta.X, 0, vp.X - sz),
+            math.clamp(_dragStartPos.Y.Offset + delta.Y, 0, vp.Y - sz)
+        )
+    end)
+
+    UIS.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            if not _dragging then return end  -- FIX: ignorar inputs que no comenzaron sobre este boton
+            local wasDrag = _moved
+            _dragging = false
+            task.defer(function() _moved = false end)
+            if not wasDrag then
+                local now = tick()
+                if now - _lastTap > 0.2 then
+                    _lastTap = now
+                    -- Feedback visual rapido
+                    bg.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+                    task.delay(0.12, function()
+                        if bg and bg.Parent then
+                            bg.BackgroundColor3 = Color3.fromRGB(15, 20, 45)
+                        end
+                    end)
+                    if callback then task.spawn(callback) end
+                end
+            end
+        end
+    end)
+
+    -- Tambien Activated por si el executor prefiere ese path
+    btn.Activated:Connect(function()
+        local now = tick()
+        if now - _lastTap > 0.2 then
+            _lastTap = now
+            bg.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+            task.delay(0.12, function()
+                if bg and bg.Parent then
+                    bg.BackgroundColor3 = Color3.fromRGB(15, 20, 45)
+                end
+            end)
+            if callback then task.spawn(callback) end
+        end
+    end)
+
+    _G._newBindReg[label] = sg
+
+    -- Limpiar slot al destruirse
+    sg.AncestryChanged:Connect(function()
+        if not sg.Parent then
+            _releaseSlot(label)
+            if _G._newBindReg[label] == sg then
+                _G._newBindReg[label] = nil
+            end
+        end
+    end)
+
+    return sg
+end
+
+function _DestroyNewBindable(label)
+    local sg = _G._newBindReg and _G._newBindReg[label]
+    if sg then
+        pcall(function() sg:Destroy() end)
+        _G._newBindReg[label] = nil
+    end
+    _releaseSlot(label)
+    -- Sweep por nombre por si la referencia ya no es valida
+    pcall(function()
+        local name = "NewBind_" .. tostring(label):gsub("%s","_")
+        for _, g in ipairs(game:GetService("CoreGui"):GetChildren()) do
+            if g.Name == name then pcall(function() g:Destroy() end) end
+        end
+        local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+        if pg then
+            for _, g in ipairs(pg:GetChildren()) do
+                if g.Name == name then pcall(function() g:Destroy() end) end
+            end
+        end
+    end)
+end
+-- ================================================================
+-- FIN _NewBindable
+-- ================================================================
+
+
 -- Registro global: label -> _bindSg, para destruccion directa sin buscar por nombre
 -- FIX TOTAL: limpiar registries al inicio para evitar basura de ejecuciones anteriores
 do
@@ -7667,336 +7862,43 @@ _G._capyBindRegistry       = {}   -- siempre fresco al cargar el hub
 _G._capyBindParentRegistry = {}
 
 function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
-    -- ======================================================
-    -- NUEVO DISENO: boton cuadrado redondeado, borde rojo
-    -- animado, colores Soft Gray del hub, feedback visual
-    -- ======================================================
-    local BTN_W = 80  -- se sobreescribe abajo, se mantiene para calculos de posicion
-    local BTN_H = 80
-    local _coreGui = game:GetService("CoreGui")
-    local _sgName  = "CapyBindSg_" .. tostring(labelText):gsub("%s","")
-    local _posKey  = tostring(labelText)
+    -- SHIM: delega al nuevo sistema _NewBindable que siempre aparece en pantalla.
+    -- Mantiene la misma firma y retorna un objeto compatible con el resto del hub.
+    local sg = _NewBindable(tostring(labelText), callback, optPosX, optPosY)
 
-    -- POSICION: siempre slot automatico o posicion manual -- NUNCA restaurar la guardada.
-    -- Motivo: al cambiar de pestana el boton se destruye y recrea; restaurar la posicion
-    -- guardada lo hacia aparecer en el lugar donde el usuario lo habia dejado antes,
-    -- en vez de aparecer siempre en su posicion inicial de slot.
-    local vp = workspace.CurrentCamera.ViewportSize
-    local posXOff, posYOff
-    if optPosX and optPosY then
-        posXOff = math.clamp(optPosX, 4, vp.X - BTN_W - 4)
-        posYOff = math.clamp(optPosY, 4, vp.Y - BTN_H - 4)
-    else
-        local mySlot = _assignSlot(tostring(labelText))
-        posXOff, posYOff = _getBindablePosition(mySlot)
+    -- Objeto fake que el resto del hub guarda como "bg"
+    local bg = {}
+    bg._bindSg = sg
+    bg.SetActiveState = function(self, on) end  -- visual-only, no critico
+    bg.SetShape       = function(self, shape) end
+    bg._animatedDestroy = function()
+        pcall(function() sg:Destroy() end)
+        _DestroyNewBindable(tostring(labelText))
     end
-
-    -- Destruir instancia anterior si existe
-    local _prevSg = _G._capyBindRegistry and _G._capyBindRegistry[labelText]
-    if _prevSg then pcall(function() _prevSg:Destroy() end) end
-    pcall(function()
-        for _, g in ipairs(_coreGui:GetChildren()) do
-            if g.Name == _sgName then g:Destroy() end
-        end
-    end)
-    pcall(function()
-        local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
-        if pg then
-            for _, g in ipairs(pg:GetChildren()) do
-                if g.Name == _sgName then g:Destroy() end
-            end
-        end
-    end)
-
-    -- ScreenGui contenedor
-    local _bindSg = Instance.new("ScreenGui")
-    _bindSg.Name           = _sgName
-    _bindSg.ResetOnSpawn   = false
-    _bindSg.DisplayOrder   = 9998
-    _bindSg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    _bindSg.IgnoreGuiInset = true
-    pcall(function() _bindSg.Parent = _coreGui end)
-    if not _bindSg.Parent then
-        _bindSg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-    end
-    _G._capyBindRegistry = _G._capyBindRegistry or {}
-    _G._capyBindRegistry[labelText] = _bindSg
-
-    -- Destruir cuando el padre del toggle muere
-    if guiParent and guiParent ~= _bindSg and guiParent ~= _coreGui then
-        pcall(function()
-            guiParent.AncestryChanged:Connect(function()
-                if not guiParent.Parent then
-                    pcall(function() _bindSg:Destroy() end)
-                end
-            end)
-        end)
-    end
-
-    -- Tamaño circular
-    BTN_W = _BIND_CS
-    BTN_H = _BIND_CS
-
-    -- -- CONTENEDOR RAIZ ----------------------------------
-    local bg = Instance.new("Frame", _bindSg)
-    bg.Name                   = "CapyBindBtn"
-    bg.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
-    bg.Position               = UDim2.fromOffset(posXOff, posYOff)
-    bg.AnchorPoint            = Vector2.new(0, 0)
-    bg.BackgroundTransparency = 1
-    bg.BorderSizePixel        = 0
-    bg.ZIndex                 = 200
-    bg.Active                 = true
-
-    -- UIScale para animacion de entrada
-    local _bindUiScale = Instance.new("UIScale", bg)
-    _bindUiScale.Scale = 0
-
-    -- -- CIRCULO PRINCIPAL (fondo oscuro semi-transparente) --
-    local fill = Instance.new("TextButton", bg)
-    fill.Name                   = "Fill"
-    fill.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
-    fill.AnchorPoint            = Vector2.new(0.5, 0.5)
-    fill.Position               = UDim2.fromScale(0.5, 0.5)
-    fill.BackgroundColor3       = ThemeColors.Aurora3
-    fill.BackgroundTransparency = 0.45
-    fill.BorderSizePixel        = 0
-    fill.Text                   = ""
-    fill.AutoButtonColor        = false
-    fill.Active                 = true
-    fill.ZIndex                 = 202
-    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-    -- Borde gris claro (igual al Shoot Murderer)
-    local fillStroke = Instance.new("UIStroke", fill)
-    fillStroke.Color           = ThemeColors.Aurora3
-    fillStroke.Thickness       = 2
-    fillStroke.Transparency    = 0.1
-    fillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-    -- TextLabel centrado en el círculo
-    local textLabel = Instance.new("TextLabel", fill)
-    textLabel.Size                   = UDim2.new(1, -10, 1, 0)
-    textLabel.Position               = UDim2.new(0, 5, 0, 0)
-    textLabel.BackgroundTransparency = 1
-    textLabel.Text                   = tostring(labelText)
-    textLabel.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-    textLabel.TextSize               = 12
-    textLabel.TextColor3             = Color3.fromRGB(220, 220, 220)
-    textLabel.TextXAlignment         = Enum.TextXAlignment.Center
-    textLabel.TextWrapped            = true
-    textLabel.ZIndex                 = 203
-
-    local textStroke = Instance.new("UIStroke", textLabel)
-    textStroke.Color        = Color3.fromRGB(0, 0, 0)
-    textStroke.Thickness    = 1
-    textStroke.Transparency = 0.6
-
-    -- AUTO-REGISTRO de idioma
-    if _LangObjects then
-        table.insert(_LangObjects, {obj=textLabel, key=tostring(labelText), prefix="", suffix=""})
-        if _G.HubLanguage and _LangStrings then
-            local _d = _LangStrings[_G.HubLanguage]
-            if _d and _d[tostring(labelText)] then textLabel.Text = _d[tostring(labelText)] end
-        end
-    end
-
-    -- -- ANIMACION DE ENTRADA ------------------------------
-    task.spawn(function()
-        task.wait(0.05)
-        TweenService:Create(_bindUiScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
-    end)
-
-    -- -- DRAG ---------------------------------------------
-    local _dragConn  = nil
-    local _dragging  = false
-    local _dragStart = nil
-    local _startPos  = nil
-    local _moved     = false
-
-    if pcall(function()
-        local dd = Instance.new("UIDragDetector", bg)
-        dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
-        dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
-        dd.Dragged:Connect(function()
-            if _G._sliderDragging then return end
-            _moved = true
-            local vpNow = workspace.CurrentCamera.ViewportSize
-            bg.Position = UDim2.fromOffset(
-                math.clamp(bg.Position.X.Offset, 0, vpNow.X - BTN_W),
-                math.clamp(bg.Position.Y.Offset, 0, vpNow.Y - BTN_H)
-            )
-            _G._bindablePosSave = _G._bindablePosSave or {}
-            _G._bindablePosSave[_posKey] = {x=bg.Position.X.Offset, y=bg.Position.Y.Offset}
-        end)
-        dd.DragEnd:Connect(function() task.defer(function() _moved = false end) end)
-    end) then
-        -- UIDragDetector OK
-    else
-        fill.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                _dragging = true; _moved = false
-                _dragStart = input.Position; _startPos = bg.Position
-            end
-        end)
-        _dragConn = UserInputService.InputChanged:Connect(function(input)
-            if not _dragging then return end
-            if _G._sliderDragging then return end
-            if input.UserInputType ~= Enum.UserInputType.MouseMovement
-            and input.UserInputType ~= Enum.UserInputType.Touch then return end
-            local delta = input.Position - _dragStart
-            if delta.Magnitude > 4 then _moved = true end
-            local vpNow = workspace.CurrentCamera.ViewportSize
-            bg.Position = UDim2.fromOffset(
-                math.clamp(_startPos.X.Offset + delta.X, 0, vpNow.X - BTN_W),
-                math.clamp(_startPos.Y.Offset + delta.Y, 0, vpNow.Y - BTN_H)
-            )
-        end)
-        fill.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                _dragging = false
-                if _moved then
-                    _G._bindablePosSave = _G._bindablePosSave or {}
-                    _G._bindablePosSave[_posKey] = {x=bg.Position.X.Offset, y=bg.Position.Y.Offset}
-                end
-                task.defer(function() _moved = false end)
-            end
-        end)
-    end
-
-    -- Colores del hub (igual que CreateButton)
-    local _C_IDLE_BG    = ThemeColors.Aurora3
-    local _C_HOVER_BG   = ThemeColors.Aurora1
-    local _C_CLICK_BG   = ThemeColors.Primary
-    local _C_TEXT_IDLE  = Color3.fromRGB(255, 255, 255)
-    local _C_TEXT_WHITE = Color3.fromRGB(255, 255, 255)
-
-    -- Hover
-    fill.MouseEnter:Connect(function()
-        TweenService:Create(fill,      TweenInfo.new(0.12), {BackgroundColor3=_C_HOVER_BG, BackgroundTransparency=0.2}):Play()
-        TweenService:Create(fillStroke,TweenInfo.new(0.12), {Transparency=0, Thickness=2.5}):Play()
-        TweenService:Create(textLabel, TweenInfo.new(0.12), {TextColor3=_C_TEXT_WHITE}):Play()
-    end)
-    fill.MouseLeave:Connect(function()
-        TweenService:Create(fill,      TweenInfo.new(0.12), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.35}):Play()
-        TweenService:Create(fillStroke,TweenInfo.new(0.12), {Transparency=0.1, Thickness=2}):Play()
-        TweenService:Create(textLabel, TweenInfo.new(0.12), {TextColor3=_C_TEXT_IDLE}):Play()
-    end)
-
-    -- -- CLICK --------------------------------------------
-    local _capyIsActive = false
-    fill.MouseButton1Down:Connect(function()
-        if _moved then return end
-        TweenService:Create(fill, TweenInfo.new(0.07), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
-        TweenService:Create(fillStroke, TweenInfo.new(0.07), {Color=ThemeColors.Primary}):Play()
-    end)
-    fill.MouseButton1Up:Connect(function()
-        if _moved then return end
-        TweenService:Create(fill, TweenInfo.new(0.15), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
-        TweenService:Create(fillStroke, TweenInfo.new(0.15), {Color=ThemeColors.Aurora3}):Play()
-        if callback then task.spawn(function() callback(_capyIsActive) end) end
-    end)
-
-    -- -- SetActiveState ------------------------------------
-    local function _setActive(on)
-        _capyIsActive = on
-        if on then
-            TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
-            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0, Thickness=2.5, Color=ThemeColors.Primary}):Play()
-        else
-            TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
-            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0.1, Thickness=2, Color=ThemeColors.Aurora3}):Play()
-        end
-    end
-    fill.SetActiveState  = function(self, on) _setActive(on) end
-    bg.SetActiveState    = function(self, on) _setActive(on) end
-
-    -- -- Shape system (compatibilidad) ---------------------
-    local function _applyShape(shape)
-        local corner = fill:FindFirstChildOfClass("UICorner")
-        fill.Rotation = 0
-        if shape == "circle" then
-            if corner then corner.CornerRadius = UDim.new(1, 0) end
-        elseif shape == "square" then
-            if corner then corner.CornerRadius = UDim.new(0, 4) end
-        elseif shape == "rounded" then
-            if corner then corner.CornerRadius = UDim.new(0, 22) end
-        elseif shape == "diamond" then
-            if corner then corner.CornerRadius = UDim.new(0, 2) end
-            fill.Rotation = 45
-        end
-    end
-    _applyShape(_G._bindableShape or "circle")
-    task.spawn(function()
-        local last = _G._bindableShape or "circle"
-        while fill and fill.Parent do
-            task.wait(0.3)
-            local gs = _G._bindableShape or "circle"
-            if gs ~= last then last = gs; pcall(_applyShape, gs) end
-        end
-    end)
-    bg.SetShape = function(self, shape) _applyShape(shape) end
-
-    -- -- Alias para compatibilidad (capyButton) ------------
-    local capyButton = fill
-
-    -- -- Destruccion animada -------------------------------
-    local _destroying = false
-    local function _animatedDestroy()
-        if _destroying then return end
-        _destroying = true
-        if _dragConn then pcall(function() _dragConn:Disconnect() end) end
-        TweenService:Create(textLabel,  TweenInfo.new(0.25, Enum.EasingStyle.Quad), {TextTransparency=1}):Play()
-        TweenService:Create(fillStroke, TweenInfo.new(0.3,  Enum.EasingStyle.Quad), {Transparency=1}):Play()
-        TweenService:Create(fill,       TweenInfo.new(0.5,  Enum.EasingStyle.Quad), {BackgroundTransparency=1}):Play()
-        task.wait(0.12)
-        TweenService:Create(_bindUiScale, TweenInfo.new(0.6, Enum.EasingStyle.Elastic, Enum.EasingDirection.In, 0, 0.4), {Scale=0}):Play()
-        task.delay(0.8, function() pcall(function() _bindSg:Destroy() end) end)
-    end
-    bg._animatedDestroy      = _animatedDestroy
-    _bindSg._animatedDestroy = _animatedDestroy
-
-    -- Limpiar registry al destruirse
-    _bindSg.AncestryChanged:Connect(function()
-        if not _bindSg.Parent then
-            if not (optPosX and optPosY) then pcall(function() _releaseSlot(tostring(labelText)) end) end
-            if _G._capyBindRegistry and _G._capyBindRegistry[labelText] == _bindSg then
-                _G._capyBindRegistry[labelText] = nil
-            end
-        end
-    end)
-
-    bg._bindSg = _bindSg
     return bg
 end
 
 -- Helper global: destruye el ScreenGui interno de un bindable por su label
 -- Usar esto en el else de cada toggle en vez de (o ademas de) destruir el sg externo
 function DestroyCapyBind(labelText)
-    -- Destruir POR REFERENCIA DIRECTA (mas rapido y confiable)
+    -- Destruir nuevo sistema _NewBindable
+    _DestroyNewBindable(tostring(labelText))
+
+    -- Destruir viejo sistema (compatibilidad)
     local reg = _G._capyBindRegistry
     if reg and reg[labelText] then
         local sg = reg[labelText]
         reg[labelText] = nil
-        if sg._animatedDestroy then
-            pcall(sg._animatedDestroy)
-        else
-            pcall(function() sg:Destroy() end)
-        end
+        pcall(function() sg:Destroy() end)
     end
 
-    -- Barrido por nombre en CoreGui Y PlayerGui (cubre casos donde el registry fallo)
+    -- Barrido por nombre en CoreGui Y PlayerGui
     local _sgName = "CapyBindSg_" .. tostring(labelText):gsub("%s","")
     local function _sweepGui(parent)
         if not parent then return end
         pcall(function()
             for _, g in ipairs(parent:GetChildren()) do
-                if g.Name == _sgName then
-                    if g._animatedDestroy then pcall(g._animatedDestroy)
-                    else pcall(function() g:Destroy() end) end
-                end
+                if g.Name == _sgName then pcall(function() g:Destroy() end) end
             end
         end)
     end
@@ -8072,242 +7974,39 @@ function AddBindableShapeSelector(parent, getBindFrame)
     end)
 end
 function createBindableButton(name, color)
+    -- SHIM: delega al nuevo sistema _NewBindable que siempre aparece en pantalla.
     if _BindableButtons[name] then
         pcall(function() _BindableButtons[name]:Destroy() end)
         _BindableButtons[name] = nil
     end
+    _DestroyNewBindable(name)
 
-    local gui = Instance.new("ScreenGui")
-    gui.Name           = name .. "_CapyBtn"
-    gui.ResetOnSpawn   = false
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    gui.IgnoreGuiInset = true
-    gui.DisplayOrder   = 9900
-    pcall(function() gui.Parent = game:GetService("CoreGui") end)
-    if not gui.Parent then gui.Parent = LocalPlayer.PlayerGui end
+    local _tapCallbacks = {}
 
-    -- ==============================================================
-    -- BOTON SA REDISENADO -- moderno, colores del hub, definido
-    -- ==============================================================
-    local BTN_SIZE = _BIND_CS
-    local vp       = workspace.CurrentCamera.ViewportSize
+    local sg = _NewBindable(name, function()
+        for _, cb in ipairs(_tapCallbacks) do task.spawn(cb) end
+    end)
 
-    -- POSICION: siempre slot automatico -- no restaurar posicion guardada
-    local _posKey  = tostring(name)
-    local posX, posY
-    do
-        local slot = _assignSlot(name)
-        posX, posY  = _getBindablePosition(slot)
-        posX = math.clamp(posX, 4, vp.X - BTN_SIZE - 4)
-        posY = math.clamp(posY, 4, vp.Y - BTN_SIZE - 4)
+    _BindableButtons[name] = sg
+    _registerBindableGui(name .. "_CapyBtn", sg)
+
+    -- Compatibilidad con codigo que usa gui.Frame o gui:onTap
+    local gui = sg
+    gui.Frame = sg  -- fallback: algunos sitios hacen gui.Frame.algo
+    gui.onTap = function(_, fn)
+        table.insert(_tapCallbacks, fn)
     end
-
-    -- -- CONTENEDOR raiz (invisible, solo para drag) --------------
-    local bg = Instance.new("Frame", gui)
-    bg.Name                   = "CapyBindBtn"
-    bg.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
-    bg.Position               = UDim2.fromOffset(posX, posY)
-    bg.BackgroundTransparency = 1
-    bg.BorderSizePixel        = 0
-    bg.ZIndex                 = 200
-    bg.Active                 = true
-
-    local _bgScale = Instance.new("UIScale", bg)
-    _bgScale.Scale = 0
-
-    -- -- FONDO CIRCULAR oscuro del hub ----------------------------
-    local circle = Instance.new("Frame", bg)
-    circle.Name                   = "Circle"
-    circle.AnchorPoint            = Vector2.new(0.5, 0.5)
-    circle.Position               = UDim2.fromScale(0.5, 0.5)
-    circle.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
-    circle.BackgroundColor3       = ThemeColors.Background
-    circle.BackgroundTransparency = 0.15
-    circle.BorderSizePixel        = 0
-    circle.ZIndex                 = 201
-    Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
-
-    -- Gradiente del hub en el fondo (mezcla Aurora1 -> Background)
-    local bgGrad = Instance.new("UIGradient", circle)
-    bgGrad.Rotation = 135
-    bgGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,   ThemeColors.Aurora1),
-        ColorSequenceKeypoint.new(0.45, ThemeColors.BackgroundLight),
-        ColorSequenceKeypoint.new(1,   ThemeColors.Background),
-    })
-    bgGrad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0,   0.35),
-        NumberSequenceKeypoint.new(0.5, 0.55),
-        NumberSequenceKeypoint.new(1,   0.75),
-    })
-
-    -- -- ANILLO EXTERIOR -- running lines del hub -------------------
-    local outerRing = Instance.new("Frame", bg)
-    outerRing.Name                   = "OuterRing"
-    outerRing.AnchorPoint            = Vector2.new(0.5, 0.5)
-    outerRing.Position               = UDim2.fromScale(0.5, 0.5)
-    outerRing.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
-    outerRing.BackgroundTransparency = 1
-    outerRing.BorderSizePixel        = 0
-    outerRing.ZIndex                 = 202
-    Instance.new("UICorner", outerRing).CornerRadius = UDim.new(1, 0)
-
-    local outerStroke = Instance.new("UIStroke", outerRing)
-    outerStroke.Color           = Color3.new(1, 1, 1)
-    outerStroke.Thickness       = 3
-    outerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-    -- Gradiente running lines (igual que el hub y los toggles)
-    local outerGrad = Instance.new("UIGradient", outerStroke)
-    outerGrad.Rotation = 135
-    outerGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    ThemeColors.Aurora1),
-        ColorSequenceKeypoint.new(0.15, ThemeColors.Background),
-        ColorSequenceKeypoint.new(0.5,  ThemeColors.Aurora1),
-        ColorSequenceKeypoint.new(0.85, ThemeColors.Background),
-        ColorSequenceKeypoint.new(1,    ThemeColors.Aurora1),
-    })
-
-    -- -- ANILLO INTERIOR -- accent del hub -------------------------
-    local innerRing = Instance.new("Frame", bg)
-    innerRing.Name                   = "InnerRing"
-    innerRing.AnchorPoint            = Vector2.new(0.5, 0.5)
-    innerRing.Position               = UDim2.fromScale(0.5, 0.5)
-    innerRing.Size                   = UDim2.fromOffset(BTN_SIZE - 12, BTN_SIZE - 12)
-    innerRing.BackgroundTransparency = 1
-    innerRing.BorderSizePixel        = 0
-    innerRing.ZIndex                 = 203
-    Instance.new("UICorner", innerRing).CornerRadius = UDim.new(1, 0)
-
-    local innerStroke = Instance.new("UIStroke", innerRing)
-    innerStroke.Color           = ThemeColors.Accent
-    innerStroke.Thickness       = 1.5
-    innerStroke.Transparency    = 0.4
-    innerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-    -- -- ICONO  centrado -----------------------------------------
-    local icon = Instance.new("TextLabel", bg)
-    icon.AnchorPoint            = Vector2.new(0.5, 0.5)
-    icon.Position               = UDim2.fromScale(0.5, 0.38)
-    icon.Size                   = UDim2.fromOffset(BTN_SIZE, 28)
-    icon.BackgroundTransparency = 1
-    icon.Text                   = ""
-    icon.TextSize               = 22
-    icon.Font                   = Enum.Font.GothamBold
-    icon.TextColor3             = ThemeColors.TextPrimary
-    icon.ZIndex                 = 205
-
-    -- -- TEXTO debajo del icono ------------------------------------
-    local lbl = Instance.new("TextLabel", bg)
-    lbl.AnchorPoint            = Vector2.new(0.5, 0.5)
-    lbl.Position               = UDim2.fromScale(0.5, 0.72)
-    lbl.Size                   = UDim2.fromOffset(BTN_SIZE - 6, 20)
-    lbl.BackgroundTransparency = 1
-    lbl.Text                   = "SHOOT"
-    lbl.TextSize               = 10
-    lbl.Font                   = Enum.Font.GothamBold
-    lbl.TextColor3             = ThemeColors.TextPrimary
-    lbl.TextWrapped            = true
-    lbl.ZIndex                 = 205
-
-    -- -- BOTON INVISIBLE encima para capturar clicks ---------------
-    local fill = Instance.new("TextButton", bg)
-    fill.Name                   = "Fill"
-    fill.AnchorPoint            = Vector2.new(0.5, 0.5)
-    fill.Position               = UDim2.fromScale(0.5, 0.5)
-    fill.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
-    fill.BackgroundTransparency = 1
-    fill.Text                   = ""
-    fill.AutoButtonColor        = false
-    fill.ZIndex                 = 210
-    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-    -- -- GLOW de fondo (ImageLabel resplandor) ---------------------
-    local glow = Instance.new("ImageLabel", bg)
-    glow.AnchorPoint            = Vector2.new(0.5, 0.5)
-    glow.Position               = UDim2.fromScale(0.5, 0.5)
-    glow.Size                   = UDim2.fromOffset(BTN_SIZE * 1.4, BTN_SIZE * 1.4)
-    glow.BackgroundTransparency = 1
-    glow.Image                  = "rbxassetid://4970638706"
-    glow.ImageColor3            = ThemeColors.Aurora1
-    glow.ImageTransparency      = 0.78
-    glow.ZIndex                 = 199
-
-    -- -- ANIMACION DE ENTRADA --------------------------------------
-    task.spawn(function()
-        task.wait(0.05)
-        TweenService:Create(_bgScale, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
-        task.wait(0.45)
-
-        -- Rotar running lines
-        task.spawn(function()
-            local rot = 135
-            while outerGrad and outerGrad.Parent do
-                rot = (rot + 0.5) % 360
-                outerGrad.Rotation = rot
-                task.wait(0.03)
-            end
-        end)
-
-        -- Pulso del glow
-        task.spawn(function()
-            while glow and glow.Parent do
-                TweenService:Create(glow, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                    {ImageTransparency = 0.58}):Play()
-                task.wait(1.6)
-                if not (glow and glow.Parent) then break end
-                TweenService:Create(glow, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                    {ImageTransparency = 0.82}):Play()
-                task.wait(1.6)
-            end
-        end)
-    end)
-
-    -- -- FEEDBACK DE CLICK -----------------------------------------
-    fill.Activated:Connect(function()
-        TweenService:Create(_bgScale, TweenInfo.new(0.08), {Scale = 0.88}):Play()
-        TweenService:Create(circle, TweenInfo.new(0.08), {BackgroundTransparency = 0}):Play()
-        TweenService:Create(glow, TweenInfo.new(0.08), {ImageTransparency = 0.38}):Play()
-        task.delay(0.1, function()
-            TweenService:Create(_bgScale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
-            TweenService:Create(circle, TweenInfo.new(0.2), {BackgroundTransparency = 0.15}):Play()
-            TweenService:Create(glow, TweenInfo.new(0.25), {ImageTransparency = 0.78}):Play()
-        end)
-    end)
-
-    -- -- DRAG ------------------------------------------------------
-    local _moved = false
-    pcall(function()
-        local dd = Instance.new("UIDragDetector", bg)
-        dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
-        dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
-        dd.Dragged:Connect(function()
-            -- Respetar flag Undraggable Bindable Buttons
-            if _G._hubUndraggableButtons then return end
-            _moved = true
-            local vpN = workspace.CurrentCamera.ViewportSize
-            bg.Position = UDim2.fromOffset(
-                math.clamp(bg.Position.X.Offset, 0, vpN.X - BTN_SIZE),
-                math.clamp(bg.Position.Y.Offset, 0, vpN.Y - BTN_SIZE))
-            _G._bindablePosSave = _G._bindablePosSave or {}
-            _G._bindablePosSave[_posKey] = {x = bg.Position.X.Offset, y = bg.Position.Y.Offset}
-        end)
-        dd.DragEnd:Connect(function() task.defer(function() _moved = false end) end)
-    end)
-
-    _BindableButtons[name] = gui
-    _registerBindableGui(name .. "_CapyBtn", gui)
-    gui.Frame = fill   -- exponer el boton clickeable como gui.Frame
     return gui
 end
 
 function destroyBindableButton(name)
+    _DestroyNewBindable(name)
     if _BindableButtons[name] then
         pcall(function() _BindableButtons[name]:Destroy() end)
         _BindableButtons[name] = nil
     end
     _destroyNamedBindableGui(name .. "_CapyBtn")
-    _releaseSlot(name)  -- liberar slot del grid
+    _releaseSlot(name)
 end
 
 function updateBindables()
@@ -8336,22 +8035,8 @@ function updateBindables()
                     end
                 end
             end
-            -- PC: click izquierdo
-            shootBtnGui.Frame.MouseButton1Click:Connect(_doShootMurderer)
-            -- MOBILE: touch (TouchTap o Activated)
-            pcall(function()
-                shootBtnGui.Frame.TouchTap:Connect(function()
-                    _doShootMurderer()
-                end)
-            end)
-            -- Fallback mobile: InputBegan sobre el boton
-            pcall(function()
-                shootBtnGui.Frame.InputBegan:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.Touch then
-                        _doShootMurderer()
-                    end
-                end)
-            end)
+            -- PC + MOBILE: onTap usa Activated+InputBegan Touch internamente
+            shootBtnGui:onTap(_doShootMurderer)
         end
     else
         if shootBtnGui then
@@ -20002,21 +19687,18 @@ function CreateMainTab()
         end,_ss.autoPlay)
     end
 
-    _sp(function()
-        if not leftColumn  or not leftColumn.Parent  then return end
-        if not rightColumn or not rightColumn.Parent then return end
-        -- OPT: local en vez de global para no contaminar el entorno en cada apertura
-        local function recalcCanvas(col)
-            local layout = col:FindFirstChildOfClass("UIListLayout")
-            if not layout then return end
-            col.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 40)
+    -- FIX: AutomaticCanvasSize=Y ya maneja el canvas automaticamente.
+    -- El recalcCanvas manual sobreescribia el valor con AbsoluteContentSize=0 (layout aun no calculado),
+    -- cortando la mitad del contenido. Se elimina; el padding inferior del layout da el espacio extra.
+    pcall(function()
+        if leftColumn then
+            local lpad = leftColumn:FindFirstChildOfClass("UIPadding")
+            if lpad then lpad.PaddingBottom = UDim.new(0, 40) end
         end
-        _w(0.15)
-        recalcCanvas(leftColumn)
-        recalcCanvas(rightColumn)
-        _w(0.3)
-        recalcCanvas(leftColumn)
-        recalcCanvas(rightColumn)
+        if rightColumn and rightColumn ~= leftColumn then
+            local rpad = rightColumn:FindFirstChildOfClass("UIPadding")
+            if rpad then rpad.PaddingBottom = UDim.new(0, 40) end
+        end
     end)
 end
 
@@ -27096,6 +26778,10 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         end
     end
     ApplyState(estado, false)
+    -- Si el estado inicial es OFF, arrancar oculto
+    if not estado then
+        container.Visible = false
+    end
 
     -- Sin hover (toggle transparente)
     clickRow.MouseEnter:Connect(function() end)
@@ -27110,14 +26796,25 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         ApplyState(estado, true)
         PlayToggleSound(estado)
 
-        -- PASO 3: Auto-guardar inmediatamente en el JSON
+        -- PASO 3: Ocultar/mostrar el toggle segun estado
+        if not estado then
+            task.delay(0.25, function()
+                if container and container.Parent then
+                    container.Visible = false
+                end
+            end)
+        else
+            container.Visible = true
+        end
+
+        -- PASO 4: Auto-guardar inmediatamente en el JSON
         pcall(_saveConfig)
 
         -- PASO 4: Ejecutar la accion real del toggle (callback del feature)
         -- Suprimir notificaciones durante el callback, salvo que el callback
         -- sea de tipo Info Panel (marcado con _isInfoPanelCallback = true)
         if callback then
-            if callback._isInfoPanelCallback then
+            if type(callback) == "table" and callback._isInfoPanelCallback then
                 callback(estado)
             else
                 local _origNotif = CreateCustomNotification
@@ -27893,7 +27590,7 @@ function CreateWorldUI_Emotes()
         _currentMainSectionFrame = _savedSection
     end
 
-    local _stopEmoteContainer = _makeTPButton("Stop Current Emote", function()
+    local _stopEmoteContainer = _makeTPButton and _makeTPButton("Stop Current Emote", function()
         StopEmote()
         CreateCustomNotification("EMOTE", "Emote detenido.", 2)
     end, _emotesSec)
@@ -27910,7 +27607,7 @@ function CreateWorldUI_Emotes()
         end
     end
 
-    _makeTPButton("Disable All Bindable Emote Buttons", function()
+    if _makeTPButton then _makeTPButton("Disable All Bindable Emote Buttons", function()
         for _, emote in ipairs(EMOTES) do
             local bd = EmoteState.bindable[emote.name]
             bd.enabled = false
@@ -27921,7 +27618,7 @@ function CreateWorldUI_Emotes()
             end
         end
         if not UserInputService.TouchEnabled then CreateCustomNotification("EMOTES", "Todos los bindable desactivados.", 2) end
-    end, _emotesSec)
+    end, _emotesSec) end
 end
 
 -- =============================================
@@ -32213,19 +31910,8 @@ function CreateWorldUI_ShiftLock()
                 end)
             end
 
-            -- PC: click
-            pcall(function() _slBtn.Frame.MouseButton1Click:Connect(_onPress) end)
-            -- Mobile: touch
-            pcall(function()
-                _slBtn.Frame.TouchTap:Connect(_onPress)
-            end)
-            pcall(function()
-                _slBtn.Frame.InputBegan:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.Touch then
-                        _onPress()
-                    end
-                end)
-            end)
+            -- PC + MOBILE: onTap cubre click y touch sin triplicar conexiones
+            _slBtn:onTap(_onPress)
         end
     end, false)
 end
@@ -50802,6 +50488,18 @@ particles = {}
         mainFrame.Position = UDim2.new(0, absX, 0, absY)
     end
 
+    local function _deactivateDragEffect()
+        local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
+        if _hubCorner then
+            TweenService:Create(_hubCorner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 14)}):Play()
+        end
+        TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Thickness    = 1.6,
+            Transparency = 0.6,
+            Color        = Color3.fromRGB(220, 220, 220),
+        }):Play()
+    end
+
     do
         -- Drag via UserInputService global para evitar que hijos del header
         -- (ImageLabel, TextLabel, botones) intercepten el click
@@ -50838,18 +50536,6 @@ particles = {}
                 Thickness    = 6,
                 Transparency = 0.0,
                 Color        = Color3.fromRGB(0, 191, 255),
-            }):Play()
-        end
-
-        local function _deactivateDragEffect()
-            local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
-            if _hubCorner then
-                TweenService:Create(_hubCorner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 14)}):Play()
-            end
-            TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Thickness    = 1.6,
-                Transparency = 0.6,
-                Color        = Color3.fromRGB(220, 220, 220),
             }):Play()
         end
 
@@ -54626,7 +54312,7 @@ task.spawn(function()
     if not _mainF then return end
 
     local function _fixLabel(obj)
-        if obj:IsA("TextLabel") the
+        if obj:IsA("TextLabel") then
             local p = obj.Parent
             while p and p ~= _mainF do
                 if p.Name and #p.Name >= 16 and p.Name:sub(1,16) == "AuroraToggleRow_" then
