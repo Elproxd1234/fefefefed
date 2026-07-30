@@ -33358,6 +33358,127 @@ function CreateWorldUI_AutoVote()
     end
 end
 
+-- ==============================================================
+-- 🏃 SAFE ESCAPE — TP corto en direccion opuesta al murderer
+-- ==============================================================
+function CreateWorldUI_SafeEscape()
+    local sec = CreateSection(rightColumn, "", "🏃 SAFE ESCAPE", ThemeColors.Primary)
+    _currentMainSectionFrame = sec
+
+    -- Sub-etiqueta informativa
+    local subLbl = Instance.new("TextLabel", sec)
+    subLbl.Size = UDim2.new(1, -12, 0, 14)
+    subLbl.BackgroundTransparency = 1
+    subLbl.Text = "TP corto opuesto al Murderer"
+    subLbl.Font = Enum.Font.Montserrat
+    subLbl.TextSize = 10
+    subLbl.TextColor3 = Color3.fromRGB(0, 190, 255)
+    subLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    _G._safeEscape = _G._safeEscape or {
+        studs    = 8,    -- distancia del TP (studs)
+        fontSize = 10,
+        sizeX    = 38,
+        sizeY    = 38,
+        conn     = nil,
+        enabled  = false,
+    }
+    local SE = _G._safeEscape
+
+    -- Logica principal del escape
+    local function doSafeEscape()
+        local char = LocalPlayer.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then
+            CreateCustomNotification("SAFE ESCAPE", "⚠ Sin personaje", 1.5)
+            return
+        end
+
+        local murderer = findMurderer()
+        local dir
+
+        if murderer and murderer.Character then
+            local mHrp = murderer.Character:FindFirstChild("HumanoidRootPart")
+            if mHrp then
+                -- Vector del murderer hacia nosotros, normalizado
+                local toUs = (hrp.Position - mHrp.Position)
+                if toUs.Magnitude > 0.1 then
+                    dir = toUs.Unit
+                else
+                    -- Si estamos exactamente encima, escapar en la direccion que miramos
+                    dir = hrp.CFrame.LookVector
+                end
+            end
+        end
+
+        -- Si no hay murderer detectado, escapar en la direccion que mira el jugador
+        if not dir then
+            dir = hrp.CFrame.LookVector
+            CreateCustomNotification("SAFE ESCAPE", "⚠ Murderer no detectado — TP hacia adelante", 1.8)
+        else
+            CreateCustomNotification("SAFE ESCAPE", "🏃 Escape: " .. math.floor(SE.studs) .. " studs", 1.5)
+        end
+
+        -- TP corto: sumar al eje horizontal (ignorar Y para no volar/caer)
+        local flatDir = Vector3.new(dir.X, 0, dir.Z)
+        if flatDir.Magnitude < 0.01 then flatDir = Vector3.new(dir.X, dir.Y, dir.Z) end
+        flatDir = flatDir.Unit
+
+        local newPos = hrp.Position + flatDir * SE.studs
+        pcall(function()
+            hrp.CFrame = CFrame.new(newPos, newPos + flatDir) * CFrame.Angles(0, math.pi, 0)
+        end)
+        -- Segundo intento por si el primer CFrame falla
+        task.wait(0.05)
+        pcall(function()
+            local c2  = LocalPlayer.Character
+            local h2  = c2 and c2:FindFirstChild("HumanoidRootPart")
+            if h2 and (h2.Position - hrp.Position).Magnitude < 0.5 then
+                h2.CFrame = CFrame.new(newPos)
+            end
+        end)
+    end
+
+    -- Boton principal
+    _currentMainSectionFrame = sec
+    _makeTPButton("🏃 Safe Escape", doSafeEscape, sec)
+
+    -- Slider de studs
+    CreateSlider(sec, "Distancia de Escape (Studs)", 3, 30, SE.studs, function(v)
+        SE.studs = v
+    end, 1)
+
+    -- Toggle para boton flotante bindable
+    CreateToggle(sec, "Enable Safe Escape Bindable Button", false, function(on)
+        SE.enabled = on
+        if SE.conn then pcall(function() SE.conn:Disconnect() end) SE.conn = nil end
+        _destroyNamedBindableGui("SafeEscape_CapyBtn")
+        if on then
+            local _sg = Instance.new("ScreenGui")
+            _sg.Name = "SafeEscapeBindable"; _sg.ResetOnSpawn = false
+            _sg.Parent = LocalPlayer.PlayerGui
+            local _bf = MakeCapyBindableFrame(_sg, "ESCAPE", function()
+                doSafeEscape()
+            end)
+            if _bf then
+                pcall(function()
+                    _bf.Size = UDim2.new(0, SE.sizeX, 0, SE.sizeY)
+                    local lbl = _bf:FindFirstChildOfClass("TextLabel")
+                    if lbl then lbl.TextSize = SE.fontSize end
+                end)
+            end
+            SE.conn = UserInputService.InputBegan:Connect(function(inp, gpe)
+                if gpe or _G._hubDisableKeybinds then return end
+                if inp.KeyCode == Enum.KeyCode.E then doSafeEscape() end
+            end)
+        end
+    end)
+
+    CreateSlider(sec, "Safe Escape Bind Text Size", 6, 24, SE.fontSize, function(v) SE.fontSize = v end)
+    CreateSlider(sec, "Safe Escape Bind Size X",    20, 120, SE.sizeX,  function(v) SE.sizeX   = v end)
+    CreateSlider(sec, "Safe Escape Bind Size Y",    20, 120, SE.sizeY,  function(v) SE.sizeY   = v end)
+end
+
 function CreateWorldTab()
     if not contentContainer or not contentContainer.Parent then
         task.wait(0.15)
@@ -33493,6 +33614,11 @@ function CreateWorldTab()
             if _G._tpVotingMap.conn then pcall(function() _G._tpVotingMap.conn:Disconnect() end) _G._tpVotingMap.conn = nil end
             _G._tpVotingMap.enabled = false
         end
+        -- Safe Escape conn
+        if _G._safeEscape then
+            if _G._safeEscape.conn then pcall(function() _G._safeEscape.conn:Disconnect() end) _G._safeEscape.conn = nil end
+            _G._safeEscape.enabled = false
+        end
         -- ProximityPrompts -- resetear al estado default SOLO si los toggles estan apagados
         pcall(function()
             local _ps = _G._proxState
@@ -33562,6 +33688,7 @@ function CreateWorldTab()
     _safeCall(CreateWorldUI_TeleportToVoid,            "TeleportToVoid")
     _safeCall(CreateWorldUI_TeleportSheriffBindable,   "TeleportSheriffBindable")
     _safeCall(CreateWorldUI_TeleportMurdererBindable,  "TeleportMurdererBindable")
+    _safeCall(CreateWorldUI_SafeEscape,                "SafeEscape")
 
 
     -- AUTO-RESTORE WORLD TAB: restaurar toggles guardados en disco
