@@ -4568,7 +4568,7 @@ Settings = {
         bindable = { shoot = false, aimlock = false }
     },
     cursor = {
-        enabled = false, currentScopeIndex = 1, size = { x = 50, y = 50 },
+        enabled = true, currentScopeIndex = 1, size = { x = 50, y = 50 },
         rotation = { enabled = false, speed = 2 }, transparency = 0,
         color = Color3.fromRGB(255, 255, 255), gui = nil, image = nil,
         customMiraId = "",
@@ -11566,56 +11566,57 @@ function UpdateCustomCursor()
         Settings.cursor.image.Rotation = 0
     end
 
-    -- Posicionar: sigue al mouse en modo normal, se queda centrado en Shift Lock
-    local _isShiftLock = false
+    -- Detectar si es movil/tactil
+    local _isMobile = (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled)
 
     local function _getShiftLock()
-        -- Detectar Shift Lock: el juego lo indica via MouseBehavior
-        pcall(function()
-            _isShiftLock = UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+        local ok, sl = pcall(function()
+            return UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
         end)
-        return _isShiftLock
+        return ok and sl or false
+    end
+
+    local function _getViewportCenter()
+        local vp = workspace.CurrentCamera.ViewportSize
+        return vp.X / 2, vp.Y / 2
     end
 
     local function _updateCursorPos()
         if not Settings.cursor.image or not Settings.cursor.image.Parent then return end
-        if _getShiftLock() then
-            -- Shift Lock activo: centrar la mira en pantalla
-            local vp = workspace.CurrentCamera.ViewportSize
-            Settings.cursor.image.Position = UDim2.new(0, vp.X / 2, 0, vp.Y / 2)
+        if _isMobile then
+            -- MOVIL: la mira siempre centrada en pantalla.
+            -- En shift lock MM2 el personaje apunta al centro, la mira va ahi.
+            -- Sin shift lock el joystick tactil no mueve el cursor del sistema,
+            -- asi que centrar es lo correcto (mira fija de precision).
+            local cx, cy = _getViewportCenter()
+            Settings.cursor.image.Position = UDim2.new(0, cx, 0, cy)
+        elseif _getShiftLock() then
+            -- PC con Shift Lock activo: mira centrada
+            local cx, cy = _getViewportCenter()
+            Settings.cursor.image.Position = UDim2.new(0, cx, 0, cy)
         else
-            -- Normal: seguir al mouse
+            -- PC modo normal: seguir al mouse
             local mp = UserInputService:GetMouseLocation()
             Settings.cursor.image.Position = UDim2.new(0, mp.X, 0, mp.Y)
         end
     end
 
-    -- Ocultar cursor del sistema solo cuando NO esta en Shift Lock
-    -- (Shift Lock ya lo gestiona internamente con LockCenter)
-    local function _syncMouseIcon()
-        if _getShiftLock() then
-            -- En Shift Lock dejar que el juego gestione MouseIconEnabled
-            -- solo ocultamos el cursor nativo de Roblox para que no aparezca doble
-            UserInputService.MouseIconEnabled = false
-        else
-            UserInputService.MouseIconEnabled = false
-        end
-    end
-    _syncMouseIcon()
+    -- Ocultar cursor nativo siempre que la mira este activa
+    UserInputService.MouseIconEnabled = false
 
     _updateCursorPos()
     Settings.cursor.connections.position = RunService.RenderStepped:Connect(function()
         if not Settings.cursor.image or not Settings.cursor.image.Parent then return end
         _updateCursorPos()
-        -- Re-aplicar MouseIconEnabled en cada frame para que Shift Lock no lo pise
         UserInputService.MouseIconEnabled = false
     end)
 
-    -- Tambien actualizar al cambiar MouseBehavior (entrada/salida de Shift Lock)
-    UserInputService:GetPropertyChangedSignal("MouseBehavior"):Connect(function()
-        _syncMouseIcon()
-        _updateCursorPos()
-    end)
+    -- PC: reaccionar inmediatamente al entrar/salir de Shift Lock
+    if not _isMobile then
+        UserInputService:GetPropertyChangedSignal("MouseBehavior"):Connect(function()
+            _updateCursorPos()
+        end)
+    end
 end
 
 
@@ -51593,6 +51594,13 @@ particles = {}
             task.defer(function()
                 _G._tabContentActive = true
                 pcall(function() SetActiveTab(1) end)
+            -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
+            task.delay(0.6, function()
+                local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
+                if _savedBg > 0 and _G._restoreBackground then
+                    pcall(_G._restoreBackground, _savedBg)
+                end
+            end)
             end)
         end
     end)
@@ -51625,6 +51633,13 @@ particles = {}
             task.defer(function()
                 _G._tabContentActive = true
                 pcall(function() SetActiveTab(1) end)
+            -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
+            task.delay(0.6, function()
+                local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
+                if _savedBg > 0 and _G._restoreBackground then
+                    pcall(_G._restoreBackground, _savedBg)
+                end
+            end)
             end)
             -- FIX AUTO SAVE: pre-buildear Settings en background (path _hubAlreadyBuilt)
             task.delay(0.5, function()
@@ -51898,6 +51913,13 @@ particles = {}
         task.defer(function()
             _G._tabContentActive = true
             pcall(function() SetActiveTab(1) end)
+            -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
+            task.delay(0.5, function()
+                local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
+                if _savedBg and _savedBg > 0 and _G._restoreBackground then
+                    pcall(_G._restoreBackground, _savedBg)
+                end
+            end)
         end)
         -- FIX AUTO SAVE: pre-buildear el tab Settings (idx=5) en background
         -- para que CreateAuroraToggle("Auto Save Config") se ejecute y el toggle
@@ -51951,6 +51973,13 @@ particles = {}
             task.defer(function()
                 _G._tabContentActive = true
                 pcall(function() SetActiveTab(1) end)
+            -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
+            task.delay(0.6, function()
+                local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
+                if _savedBg > 0 and _G._restoreBackground then
+                    pcall(_G._restoreBackground, _savedBg)
+                end
+            end)
             end)
             -- FIX AUTO SAVE: pre-buildear Settings en background (path fallback animacion)
             task.delay(0.5, function()
@@ -54187,6 +54216,8 @@ function CreateUseTab()
 
             CreateCustomNotification("BACKGROUNDS", "Background: " .. bg.name, 2)
         end
+        -- Exponer globalmente para restaurar el fondo al reabrir el hub
+        _G._restoreBackground = _applyBackground
 
         local bgSec = CreateBorderedSectionGlobal(rightColumn, " \xf0\x9f\x96\xbc  BACKGROUNDS")
 
