@@ -52167,6 +52167,9 @@ function CreateUpdateTab()
                         "[+] Font Selector: switch hub labels between Normal and Arcade fonts.",
                         "[+] Arcade font uses PressStart2P (retro pixel style).",
                         "[+] Font preference remembered per session.",
+                        "[+] New background: Aurora — animated northern lights with color pulse.",
+                        "[*] Background animations no longer bleed outside the image bounds.",
+                        "[*] Fixed leftover colors when switching between Zerqon and Sunset backgrounds.",
                     }
                 },
                 {
@@ -52180,6 +52183,7 @@ function CreateUpdateTab()
             whatsnew = {
                 "[+] Font Selector in Settings: Normal or Arcade (pixel) font for sidebar.",
                 "[+] Rock-solid tab loading - no more blank tabs on fast clicks.",
+                "[+] New Aurora background with northern lights animation.",
             }
         },
         {
