@@ -10730,6 +10730,9 @@ function CreateBorderedSectionGlobal(parent, title)
     layout.Padding = UDim.new(0, 4)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    -- FIX TOGGLES INVISIBLES: setear _currentMainSectionFrame para que
+    -- CreateAuroraToggle/CreateSlider/etc. agreguen sus hijos a ESTA sección
+    _currentMainSectionFrame = section
     return section
 end
 
@@ -22385,6 +22388,69 @@ VisualState = {
     coins    = { esp=false },
 }
 
+-- FIX VISUALS AUTO-RESTORE v2: Pre-seedear VisualState desde _toggleStates guardados en disco.
+-- Sin este bloque, el instanceLoop arrancaba con VisualState todo en false (interval=2s "sin visuals"),
+-- y los toggles del tab Visuals solo se creaban al ENTRAR al tab por primera vez.
+-- Ahora los estados guardados se aplican al VisualState ANTES de que startPlayerESPLoop() arranque.
+do
+    local _ts = _G._toggleStates or {}
+    -- Mapa: nombre del toggle -> {tabla de VisualState, clave booleana}
+    local _vsMap = {
+        -- ESP
+        ["ESP Everyone"]      = {VisualState.esp, "everyone"},
+        ["ESP Murderer Only"] = {VisualState.esp, "murderer"},
+        ["ESP Sheriff Only"]  = {VisualState.esp, "sheriff"},
+        ["ESP Hero Only"]     = {VisualState.esp, "hero"},
+        ["ESP Assassin Only"] = {VisualState.esp, "assassin"},
+        ["ESP Survivor Only"] = {VisualState.esp, "survivor"},
+        ["ESP Zombie Only"]   = {VisualState.esp, "zombie"},
+        ["ESP Display Distance"] = {VisualState.esp, "distance"},
+        -- Cham
+        ["Cham Everyone"]      = {VisualState.cham, "everyone"},
+        ["Cham Murderer Only"] = {VisualState.cham, "murderer"},
+        ["Cham Sheriff Only"]  = {VisualState.cham, "sheriff"},
+        ["Cham Hero Only"]     = {VisualState.cham, "hero"},
+        ["Cham Assassin Only"] = {VisualState.cham, "assassin"},
+        ["Cham Dead Only"]     = {VisualState.cham, "dead"},
+        -- Outline (Highlight)
+        ["Highlight Everyone"]      = {VisualState.outline, "everyone"},
+        ["Highlight Murderer Only"] = {VisualState.outline, "murderer"},
+        ["Highlight Sheriff Only"]  = {VisualState.outline, "sheriff"},
+        ["Highlight Hero Only"]     = {VisualState.outline, "hero"},
+        ["Highlight Assassin Only"] = {VisualState.outline, "assassin"},
+        -- Box ESP
+        ["Box ESP Everyone"]      = {VisualState.box, "everyone"},
+        ["Box ESP Murderer Only"] = {VisualState.box, "murderer"},
+        ["Box ESP Sheriff Only"]  = {VisualState.box, "sheriff"},
+        ["Box ESP Hero Only"]     = {VisualState.box, "hero"},
+        ["Box ESP Assassin Only"] = {VisualState.box, "assassin"},
+        -- Skeleton
+        ["Skeleton Everyone"]      = {VisualState.skeleton, "everyone"},
+        ["Skeleton Murderer Only"] = {VisualState.skeleton, "murderer"},
+        ["Skeleton Sheriff Only"]  = {VisualState.skeleton, "sheriff"},
+        -- Tracer
+        ["Tracer Everyone"]      = {VisualState.tracer, "everyone"},
+        ["Tracer Murderer Only"] = {VisualState.tracer, "murderer"},
+        ["Tracer Sheriff Only"]  = {VisualState.tracer, "sheriff"},
+        -- Coins
+        ["ESP Coins"] = {VisualState.coins, "esp"},
+    }
+    for toggleName, vsEntry in pairs(_vsMap) do
+        if _ts[toggleName] == true then
+            vsEntry[1][vsEntry[2]] = true
+        end
+    end
+    -- Si algun visual esta activo, forzar tick inmediato cuando el loop arranque
+    local _anyPreseeded = false
+    for _, sub in pairs(VisualState) do
+        for _, v in pairs(sub) do
+            if v == true then _anyPreseeded = true; break end
+        end
+        if _anyPreseeded then break end
+    end
+    if _anyPreseeded then _G._forceInstanceTick = true end
+end
+
 LinePool = {}
 linePoolIndex = 0
 
@@ -26993,6 +27059,24 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
                 CreateCustomNotification = function() end
                 pcall(callback, true)
                 CreateCustomNotification = _orig
+                -- FIX VISUALS AUTO-RESTORE: si es un toggle visual (ESP/Cham/Outline/Box/Skeleton/Tracer),
+                -- forzar tick inmediato del instanceLoop para que el ESP se pinte sin esperar el intervalo de 2s.
+                -- Sin este fix, al cargar con ESP guardado ON el loop corria a 2s porque
+                -- _anyVisual era false en ese momento (VisualState aun no habia sido seteado).
+                local _ln = nombre:lower()
+                local _isVisualToggle = _ln:find("^esp ") or _ln:find("^cham ") or _ln:find("^box esp")
+                    or _ln:find("^outline ") or _ln:find("^skeleton ") or _ln:find("^tracer ")
+                    or _ln:find("^highlight ") or _ln:find("^view trap") or _ln:find("esp display")
+                    or _ln:find("esp dropped") or _ln:find("esp gun") or _ln:find("esp knife")
+                    or _ln:find("coin.*esp") or _ln:find("esp.*coin")
+                if _isVisualToggle then
+                    _G._forceInstanceTick = true
+                    -- Refrescar chams/outlines/boxes que dependen de _vcRefreshAll
+                    task.defer(function()
+                        task.wait(0.12)
+                        if _vcRefreshAll then pcall(_vcRefreshAll) end
+                    end)
+                end
             end)
         end
     end
@@ -50360,12 +50444,13 @@ particles = {}
     contentContainer.BackgroundTransparency = 1
     contentContainer.BorderSizePixel = 0
     contentContainer.ClipsDescendants = true
-    contentContainer.ZIndex = 10
+    contentContainer.ZIndex = 50   -- FIX FRAME AZUL: ZIndex alto para estar SIEMPRE encima de _contentBg (ZIndex 2)
     contentContainer.Visible = false  -- empieza cerrado, se abre al clickear tab
     local _ccPad = Instance.new("UIPadding", contentContainer)
 
     -- FIX FONDO: capa oscura que bloquea la imagen de fondo del hub
-    -- ZIndex 5: encima de HubBackground (4) pero debajo del contenido de tabs (10+)
+    -- ZIndex 2: debajo de contentContainer (50) y debajo de HubBackground (6)
+    -- Con ZIndexBehavior=Global: efectivo = mainFrame(1) + 2 = 3, bien debajo de contentContainer (1+50=51)
     local _contentBg = Instance.new("Frame", mainFrame)
     _contentBg.Name = "ContentBackground"
     _contentBg.Size = UDim2.new(1, 0, 1, -36)
@@ -50373,7 +50458,7 @@ particles = {}
     _contentBg.BackgroundColor3 = Color3.fromRGB(20, 80, 120)
     _contentBg.BackgroundTransparency = 0.15
     _contentBg.BorderSizePixel = 0
-    _contentBg.ZIndex = 5
+    _contentBg.ZIndex = 0   -- FIX: ZIndex=0, debajo de todo contenido (Global mode). Actua como dim layer cuando hay fondo personalizado.
     _contentBg.Visible = true
     -- Exponer globalmente para que _applyBackground pueda ajustar la transparencia
     _G._hubContentBg = _contentBg
@@ -50512,6 +50597,7 @@ particles = {}
         tabFrame.Position               = UDim2.new(0, 0, 0, 0)
         tabFrame.BackgroundTransparency = 1
         tabFrame.BorderSizePixel        = 0
+        tabFrame.ZIndex                 = 1   -- ZIndex standard (imagenes de fondo usan ZIndex=0)
         tabFrame.Visible                = false
         tabFrame.Parent                 = contentContainer
         _tabCache[idx] = tabFrame
@@ -50930,7 +51016,7 @@ particles = {}
             if fpsConn then fpsConn:Disconnect(); fpsConn = nil end
             if tabDockFrame then tabDockFrame.BackgroundTransparency = 1 end
             if contentContainer.Visible then
-                contentContainer.Position = UDim2.new(0, 0, 0, 34)
+                contentContainer.Position = UDim2.new(0, SIDEBAR_W, 0, 36)
             end
         else
             TweenService:Create(serverPanel, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Position = UDim2.new(0, 20, 1.5, 0)}):Play()
@@ -50940,7 +51026,7 @@ particles = {}
             -- Restaurar dock de tabs
             if tabDockFrame then TweenService:Create(tabDockFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.55}):Play() end
             if contentContainer.Visible then
-                TweenService:Create(contentContainer, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 34)}):Play()
+                TweenService:Create(contentContainer, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = UDim2.new(0, SIDEBAR_W, 0, 36)}):Play()
             end
         end
     end
@@ -52093,11 +52179,12 @@ function CreateEmotesTab()
 end
 
 function CreateUseTab()
-    -- Guard: igual a CreateEmotesTab — evita correr antes de que contentContainer esté listo
-    if not contentContainer or not contentContainer.Parent then
-        task.wait(0.15)
-        if not contentContainer or not contentContainer.Parent then return end
-    end
+    -- Guard: verificar contentContainer sin usar task.wait (el wait romperia la redireccion
+    -- de contentContainer que hace _buildTabCached, dejando la pestana en blanco)
+    -- FIX PESTANA USE EN BLANCO: el guard de .Parent fue eliminado porque _buildTabCached
+    -- redirige contentContainer a un tabFrame que puede no tener parent aun en build
+    -- background, causando que el tab quedara completamente vacio.
+    if not contentContainer then return end
     -- Resetear frame de sección residual ANTES de construir columnas
     _currentMainSectionFrame = nil
     _makeTwoColumns()
@@ -52788,11 +52875,19 @@ function CreateUseTab()
         -- Guarda el tema activo antes de activar el fondo
         local _bgPrevTheme = nil
 
+        -- Token de animacion activa: cada fondo activo tiene su propio token.
+        -- Cuando se cambia de fondo o se elimina, el token viejo se invalida
+        -- y todos los loops de animacion de ese fondo se detienen solos.
+        local _bgAnimToken = 0
+
         local function _removeBgImages()
             pcall(function()
+                -- Invalidar animaciones del fondo anterior
+                _bgAnimToken = _bgAnimToken + 1
                 if mainFrame then
                     for _, c in ipairs(mainFrame:GetChildren()) do
-                        if c.Name == "HubBackground" or c.Name == "HubBackgroundOverlay" then
+                        if c.Name == "HubBackground" or c.Name == "HubBackgroundOverlay"
+                        or c.Name == "HubBgParticle" or c.Name == "HubBgFlash" then
                             c:Destroy()
                         end
                     end
@@ -52809,42 +52904,345 @@ function CreateUseTab()
             end)
         end
 
+        -- ================================================================
+        -- ANIMACIONES POR FONDO
+        -- ================================================================
+
+        -- SUNSET: pulso suave de brillo cálido + tinte naranja/rosa que oscila
+        local function _animSunset(img, token)
+            task.spawn(function()
+                -- Fade-in inicial desde transparente
+                local ti_in = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+                TweenService:Create(img, ti_in, {ImageTransparency = 0.08}):Play()
+                task.wait(0.8)
+                -- Loop: pulso lento de brillo (simula sol moviendose)
+                local bright = true
+                while img and img.Parent and _bgAnimToken == token do
+                    local target = bright and 0.04 or 0.18
+                    local dur = bright and 2.8 or 3.2
+                    local ti = TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                    TweenService:Create(img, ti, {ImageTransparency = target}):Play()
+                    -- Color tint que alterna entre naranja cálido y rosa atardecer
+                    local tintTarget = bright
+                        and Color3.fromRGB(255, 180, 120)   -- naranja dorado
+                        or  Color3.fromRGB(220, 100, 140)   -- rosa magenta
+                    TweenService:Create(img, ti, {ImageColor3 = tintTarget}):Play()
+                    bright = not bright
+                    task.wait(dur)
+                end
+            end)
+        end
+
+        -- SAMURAI: niebla pulsante en overlay + leve desplazamiento horizontal del fondo
+        local function _animSamurai(img, ov, token)
+            -- ================================================================
+            -- ANIMACION SAMURAI v2: niebla + sakura cayendo + tint + ken burns
+            -- ================================================================
+            task.spawn(function()
+                -- --- 1. FADE-IN CINEMATICO --------------------------------
+                local ti_in = TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+                TweenService:Create(img, ti_in, {ImageTransparency = 0.06}):Play()
+                task.wait(1.2)
+                if not img or not img.Parent or _bgAnimToken ~= token then return end
+
+                -- --- 2. PETALO DE SAKURA (frame rosa pequeño redondeado) --
+                local _sakuraColors = {
+                    Color3.fromRGB(255, 180, 190),  -- rosa palido
+                    Color3.fromRGB(230, 140, 160),  -- rosa medio
+                    Color3.fromRGB(255, 210, 215),  -- casi blanco
+                    Color3.fromRGB(210, 100, 130),  -- rosa oscuro
+                }
+                local function _spawnPetal()
+                    if not mainFrame or not mainFrame.Parent then return end
+                    if _bgAnimToken ~= token then return end
+                    local petal = Instance.new("Frame", mainFrame)
+                    petal.Name = "HubBgParticle"
+                    local startX = math.random(5, 90) / 100
+                    local size   = math.random(4, 10)
+                    petal.Size = UDim2.new(0, size, 0, size * 0.6)
+                    petal.Position = UDim2.new(startX, 0, -0.05, 0)
+                    petal.BackgroundColor3 = _sakuraColors[math.random(1, #_sakuraColors)]
+                    petal.BackgroundTransparency = 0.25
+                    petal.BorderSizePixel = 0
+                    petal.ZIndex = 5  -- encima de _contentBg(4) pero los contenidos lo tapan
+                    petal.Rotation = math.random(0, 45)
+                    Instance.new("UICorner", petal).CornerRadius = UDim.new(0.5, 0)
+
+                    local fallDur   = math.random(35, 65) / 10   -- 3.5 a 6.5 segundos
+                    local driftX    = math.random(-8, 8) / 100   -- deriva horizontal suave
+                    local endX      = startX + driftX
+                    local endRot    = petal.Rotation + math.random(-30, 30)
+
+                    local ti_fall = TweenInfo.new(fallDur, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
+                    TweenService:Create(petal, ti_fall, {
+                        Position            = UDim2.new(endX, 0, 1.05, 0),
+                        Rotation            = endRot,
+                        BackgroundTransparency = 0.9,
+                    }):Play()
+                    task.delay(fallDur, function()
+                        pcall(function() if petal and petal.Parent then petal:Destroy() end end)
+                    end)
+                end
+
+                -- Loop de lluvia de sakura (1 petalo cada 0.6-1.4s)
+                task.spawn(function()
+                    while img and img.Parent and _bgAnimToken == token do
+                        pcall(_spawnPetal)
+                        task.wait(math.random(6, 14) / 10)
+                    end
+                end)
+
+                -- --- 3. LOOP PRINCIPAL: niebla + tint rojo/azul + ken burns --
+                local fogIn   = true
+                local tintIdx = 0
+                local _tints  = {
+                    Color3.fromRGB(200, 200, 220),  -- azul frio (neblina)
+                    Color3.fromRGB(220, 160, 160),  -- rojo sangre suave (luna roja)
+                    Color3.fromRGB(180, 190, 215),  -- gris azulado
+                    Color3.fromRGB(210, 170, 180),  -- rojizo palido
+                }
+                -- Ken Burns: alternar entre leve zoom-in y leve zoom-out
+                local kbZoomed = false
+                local function _kenBurns()
+                    if not img or not img.Parent or _bgAnimToken ~= token then return end
+                    kbZoomed = not kbZoomed
+                    local newSize = kbZoomed
+                        and UDim2.new(1.04, 0, 1.04, 0)   -- muy leve zoom in
+                        or  UDim2.new(1.00, 0, 1.00, 0)   -- volver a normal
+                    local newPos  = kbZoomed
+                        and UDim2.new(-0.02, 0, -0.02, 0)
+                        or  UDim2.new(0,     0, 0,     0)
+                    TweenService:Create(img,
+                        TweenInfo.new(8.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                        {Size = newSize, Position = newPos}):Play()
+                end
+                _kenBurns()  -- iniciar primer ken burns
+
+                while img and img.Parent and _bgAnimToken == token do
+                    tintIdx = (tintIdx % #_tints) + 1
+                    local fogAlpha  = fogIn and 0.08 or 0.50
+                    local imgAlpha  = fogIn and 0.04 or 0.22
+                    local dur       = fogIn and 4.0 or 4.8
+                    local ti = TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+
+                    -- Overlay (niebla): pulso de opacidad
+                    if ov and ov.Parent then
+                        TweenService:Create(ov, ti, {ImageTransparency = fogAlpha}):Play()
+                    end
+
+                    -- Imagen principal: pulso de brillo + cambio de tint
+                    TweenService:Create(img, ti, {
+                        ImageTransparency = imgAlpha,
+                        ImageColor3       = _tints[tintIdx],
+                    }):Play()
+
+                    fogIn = not fogIn
+
+                    -- Ken Burns cada 2 ciclos (16 segundos)
+                    if tintIdx % 2 == 0 then
+                        task.spawn(_kenBurns)
+                    end
+
+                    task.wait(dur)
+                end
+
+                -- Limpiar al salir: restaurar Size/Position de la imagen
+                pcall(function()
+                    if img and img.Parent then
+                        img.Size     = UDim2.new(1, 0, 1, 0)
+                        img.Position = UDim2.new(0, 0, 0, 0)
+                    end
+                end)
+            end)
+        end
+
+        -- ZERQON: parpadeo cyber violeta + flash de energia rapido intermitente
+        local function _animZerqon(img, token)
+            task.spawn(function()
+                -- Fade-in rapido estilo "encendido"
+                img.ImageTransparency = 0.95
+                local ti_in = TweenInfo.new(0.15, Enum.EasingStyle.Linear)
+                TweenService:Create(img, ti_in, {ImageTransparency = 0.12}):Play()
+                task.wait(0.15)
+
+                -- Crear capa de flash de energia (efecto glitch)
+                local flash = Instance.new("Frame", mainFrame)
+                flash.Name = "HubBgFlash"
+                flash.Size = UDim2.new(1, 0, 1, 0)
+                flash.Position = UDim2.new(0, 0, 0, 0)
+                flash.BackgroundColor3 = Color3.fromRGB(120, 40, 255)
+                flash.BackgroundTransparency = 1
+                flash.BorderSizePixel = 0
+                flash.ZIndex = 0   -- FIX: debajo de contenido (Global ZIndex)
+
+                -- Loop: cyber pulse con glitch ocasional
+                local tick = 0
+                while img and img.Parent and _bgAnimToken == token do
+                    tick = tick + 1
+                    -- Pulso normal lento (brillo violeta)
+                    local bright = (tick % 2 == 0)
+                    local dur = bright and 1.2 or 1.8
+                    local alpha = bright and 0.06 or 0.22
+                    local colorTarget = bright
+                        and Color3.fromRGB(180, 140, 255)  -- violeta claro
+                        or  Color3.fromRGB(80,  20, 200)   -- morado profundo
+                    local ti = TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                    TweenService:Create(img, ti, {
+                        ImageTransparency = alpha,
+                        ImageColor3       = colorTarget,
+                    }):Play()
+
+                    -- Glitch flash aleatorio cada ~5 ciclos
+                    if tick % 5 == 0 and flash and flash.Parent then
+                        task.spawn(function()
+                            -- Flash rapido blanco-violeta (glitch)
+                            flash.BackgroundTransparency = 0.72
+                            task.wait(0.04)
+                            flash.BackgroundTransparency = 1
+                            task.wait(0.06)
+                            if flash and flash.Parent then
+                                flash.BackgroundTransparency = 0.85
+                                task.wait(0.03)
+                                flash.BackgroundTransparency = 1
+                            end
+                        end)
+                    end
+
+                    task.wait(dur)
+                end
+                -- Limpiar flash si el loop termino
+                pcall(function() if flash and flash.Parent then flash:Destroy() end end)
+            end)
+        end
+
+        -- ================================================================
+        -- TEMAS DE COLOR POR FONDO
+        -- ================================================================
+
+        -- Inyectar temas de color únicos por fondo en la tabla global Themes
+        -- SUNSET: colores cálidos de atardecer (naranja fuego, rosa, dorado, púrpura nocturno)
+        Themes["_BG_Sunset"] = {
+            Primary         = Color3.fromRGB(255, 120, 30),   -- naranja fuego
+            Secondary       = Color3.fromRGB(180, 50, 80),    -- rosa oscuro
+            Accent          = Color3.fromRGB(255, 200, 80),   -- dorado cálido
+            Background      = Color3.fromRGB(20, 5, 25),      -- negro violeta profundo
+            BackgroundLight = Color3.fromRGB(50, 15, 35),     -- púrpura oscuro
+            TextPrimary     = Color3.fromRGB(255, 230, 180),  -- crema cálido
+            TextSecondary   = Color3.fromRGB(255, 160, 100),  -- melocotón
+            Aurora1         = Color3.fromRGB(255, 90, 20),    -- naranja intenso
+            Aurora2         = Color3.fromRGB(200, 40, 100),   -- magenta rosa
+            Aurora3         = Color3.fromRGB(255, 180, 60),   -- ámbar
+            Aurora4         = Color3.fromRGB(120, 20, 60),    -- vino oscuro
+        }
+        -- SAMURAI: colores del fondo de la imagen (azul frío niebla, rojo sakura, gris acero)
+        Themes["_BG_Samurai"] = {
+            Primary         = Color3.fromRGB(180, 40, 50),    -- rojo sakura
+            Secondary       = Color3.fromRGB(30, 55, 90),     -- azul acero oscuro
+            Accent          = Color3.fromRGB(200, 80, 90),    -- rojo rosado
+            Background      = Color3.fromRGB(8, 18, 35),      -- azul noche profundo
+            BackgroundLight = Color3.fromRGB(18, 35, 60),     -- azul grisáceo oscuro
+            TextPrimary     = Color3.fromRGB(210, 225, 245),  -- blanco azulado
+            TextSecondary   = Color3.fromRGB(160, 180, 210),  -- gris azulado
+            Aurora1         = Color3.fromRGB(160, 35, 45),    -- rojo sangre
+            Aurora2         = Color3.fromRGB(25, 50, 85),     -- azul medianoche
+            Aurora3         = Color3.fromRGB(190, 60, 70),    -- carmesí
+            Aurora4         = Color3.fromRGB(10, 22, 45),     -- azul muy oscuro
+        }
+        -- ZERQON: colores oscuros con acento violeta/morado (estilo cyber oscuro)
+        Themes["_BG_Zerqon"] = {
+            Primary         = Color3.fromRGB(100, 30, 210),   -- morado eléctrico
+            Secondary       = Color3.fromRGB(50, 10, 110),    -- índigo oscuro
+            Accent          = Color3.fromRGB(160, 80, 255),   -- violeta brillante
+            Background      = Color3.fromRGB(5, 0, 20),       -- negro violeta
+            BackgroundLight = Color3.fromRGB(20, 5, 50),      -- índigo muy oscuro
+            TextPrimary     = Color3.fromRGB(220, 200, 255),  -- lila claro
+            TextSecondary   = Color3.fromRGB(160, 120, 220),  -- lavanda
+            Aurora1         = Color3.fromRGB(120, 40, 240),   -- violeta eléctrico
+            Aurora2         = Color3.fromRGB(60, 10, 140),    -- morado oscuro
+            Aurora3         = Color3.fromRGB(180, 100, 255),  -- lila neon
+            Aurora4         = Color3.fromRGB(35, 5, 90),      -- índigo profundo
+        }
+
+        -- Mapa nombre de fondo -> clave de tema
+        local _BG_THEME_KEY = {
+            ["Sunset"]  = "_BG_Sunset",
+            ["Samurai"] = "_BG_Samurai",
+            ["Zerqon"]  = "_BG_Zerqon",
+        }
+
         local function _applyBackground(idx)
             _G._hubBackgrounds.current = idx
             -- Guardar tema actual ANTES de llamar _removeBgImages (que lo restauraria)
             local _themeToSave = (_bgPrevTheme == nil) and currentThemeName or _bgPrevTheme
+            -- Limpiar fondo anterior + colores anteriores completamente
+            -- (esto tambien incrementa _bgAnimToken, matando loops viejos)
             _removeBgImages()
             _bgPrevTheme = _themeToSave
             local bg = _BG_LIST[idx]
             if not bg then return end
+
+            -- Capturar token DESPUES de _removeBgImages para que sea el nuevo
+            local myToken = _bgAnimToken
+
+            local img, ov
             pcall(function()
-                local img = Instance.new("ImageLabel", mainFrame)
+                -- Imagen principal: arranca invisible, la animacion hace el fade-in
+                img = Instance.new("ImageLabel", mainFrame)
                 img.Name = "HubBackground"
                 img.Size = UDim2.new(1, 0, 1, 0)
                 img.Position = UDim2.new(0, 0, 0, 0)
                 img.BackgroundTransparency = 1
                 img.Image = bg.imageId
                 img.ScaleType = Enum.ScaleType.Crop
-                img.ImageTransparency = 0.10
-                img.ZIndex = 6
+                img.ImageTransparency = 0.95   -- comienza invisible, animacion hace fade-in
+                img.ZIndex = 0   -- FIX: ZIndex=0 queda DEBAJO de todo contenido (minimo absoluto con Global mode)
+                img.Active = false  -- FIX: no interceptar clics ni input del usuario
                 if bg.overlay then
-                    local ov = Instance.new("ImageLabel", mainFrame)
+                    ov = Instance.new("ImageLabel", mainFrame)
                     ov.Name = "HubBackgroundOverlay"
                     ov.Size = UDim2.new(1, 0, 1, 0)
                     ov.Position = UDim2.new(0, 0, 0, 0)
                     ov.BackgroundTransparency = 1
                     ov.Image = bg.overlay
                     ov.ScaleType = Enum.ScaleType.Crop
-                    ov.ImageTransparency = 0.20
-                    ov.ZIndex = 7
+                    ov.ImageTransparency = 0.95  -- arranca invisible, animacion hace fade-in
+                    ov.ZIndex = 0   -- FIX: mismo nivel que img, ambos debajo del contenido
+                    ov.Active = false  -- FIX: no interceptar clics ni input del usuario
                 end
             end)
-            -- Cambiar todo el hub a negro usando el sistema de temas existente
-            ApplyTheme("Amoled")
+
+            -- Aplicar el tema de colores específico del fondo usando el sistema de temas
+            -- Esto elimina TODOS los colores viejos y aplica los nuevos en toda la UI
+            local bgThemeKey = _BG_THEME_KEY[bg.name]
+            if bgThemeKey then
+                ApplyTheme(bgThemeKey)
+            else
+                ApplyTheme("Amoled")
+            end
+
             -- La capa de contenido casi invisible para ver la imagen
             if _G._hubContentBg then
                 _G._hubContentBg.BackgroundTransparency = 0.92
             end
+
+            -- Lanzar animacion especifica del fondo
+            if img then
+                if bg.name == "Sunset" then
+                    _animSunset(img, myToken)
+                elseif bg.name == "Samurai" then
+                    _animSamurai(img, ov, myToken)
+                elseif bg.name == "Zerqon" then
+                    _animZerqon(img, myToken)
+                else
+                    -- Fallback: fade-in generico
+                    task.spawn(function()
+                        TweenService:Create(img,
+                            TweenInfo.new(0.6, Enum.EasingStyle.Sine),
+                            {ImageTransparency = 0.10}):Play()
+                    end)
+                end
+            end
+
             CreateCustomNotification("BACKGROUNDS", "Background: " .. bg.name, 2)
         end
 
