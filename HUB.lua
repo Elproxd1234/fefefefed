@@ -53303,27 +53303,128 @@ function CreateUseTab()
         -- ANIMACIONES POR FONDO
         -- ================================================================
 
-        -- SUNSET: pulso suave de brillo cálido + tinte naranja/rosa que oscila
+        -- SUNSET: animacion completa - tinte calido ciclico + rayos de sol + destello aurora
         local function _animSunset(img, token)
+            -- FIX: establecer color inicial explicito (blanco = sin tinte, naranja = atardecer real)
+            img.ImageColor3 = Color3.fromRGB(255, 160, 80)  -- naranja atardecer como base
+
+            -- === RAYOS DE SOL (franjas diagonales que suben y se desvanecen) ===
             task.spawn(function()
-                -- Fade-in inicial desde transparente
-                local ti_in = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-                TweenService:Create(img, ti_in, {ImageTransparency = 0.08}):Play()
-                task.wait(0.8)
-                -- Loop: pulso lento de brillo (simula sol moviendose)
-                local bright = true
+                local _sunColors = {
+                    Color3.fromRGB(255, 210, 100),  -- dorado
+                    Color3.fromRGB(255, 170, 60),   -- naranja
+                    Color3.fromRGB(255, 140, 100),  -- salmon
+                    Color3.fromRGB(255, 200, 130),  -- crema calido
+                }
+                local function _spawnSunRay()
+                    if not mainFrame or not mainFrame.Parent then return end
+                    if _bgAnimToken ~= token then return end
+                    local ray = Instance.new("Frame", mainFrame)
+                    ray.Name = "HubBgParticle"
+                    local startX = math.random(10, 85) / 100
+                    local rayW   = math.random(2, 7)
+                    ray.Size = UDim2.new(0, rayW, 0.9, 0)
+                    ray.Position = UDim2.new(startX, 0, 0.05, 0)
+                    ray.BackgroundColor3 = _sunColors[math.random(1, #_sunColors)]
+                    ray.BackgroundTransparency = 0.88
+                    ray.BorderSizePixel = 0
+                    ray.ZIndex = 1
+                    ray.Rotation = math.random(-8, 8)  -- leve inclinacion diagonal
+                    Instance.new("UICorner", ray).CornerRadius = UDim.new(0, rayW)
+
+                    local riseDur = math.random(30, 60) / 10
+                    -- El rayo sube ligeramente y se desvanece
+                    local ti_rise = TweenInfo.new(riseDur, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+                    TweenService:Create(ray, ti_rise, {
+                        Position               = UDim2.new(startX + math.random(-3,3)/100, 0, -0.02, 0),
+                        BackgroundTransparency = 1,
+                    }):Play()
+                    task.delay(riseDur, function()
+                        pcall(function() if ray and ray.Parent then ray:Destroy() end end)
+                    end)
+                end
+
                 while img and img.Parent and _bgAnimToken == token do
-                    local target = bright and 0.04 or 0.18
-                    local dur = bright and 2.8 or 3.2
-                    local ti = TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-                    TweenService:Create(img, ti, {ImageTransparency = target}):Play()
-                    -- Color tint que alterna entre naranja cálido y rosa atardecer
-                    local tintTarget = bright
-                        and Color3.fromRGB(255, 180, 120)   -- naranja dorado
-                        or  Color3.fromRGB(220, 100, 140)   -- rosa magenta
-                    TweenService:Create(img, ti, {ImageColor3 = tintTarget}):Play()
-                    bright = not bright
-                    task.wait(dur)
+                    pcall(_spawnSunRay)
+                    task.wait(math.random(12, 28) / 10)
+                end
+            end)
+
+            -- === DESTELLO DE AURORA (flash suave horizontal en la parte inferior) ===
+            task.spawn(function()
+                task.wait(1.5)
+                local _auroraColors = {
+                    Color3.fromRGB(255, 100, 50),   -- rojo naranja
+                    Color3.fromRGB(200, 60, 120),   -- magenta rosa
+                    Color3.fromRGB(255, 180, 0),    -- ambar
+                    Color3.fromRGB(180, 40, 90),    -- vino
+                }
+                while img and img.Parent and _bgAnimToken == token do
+                    if mainFrame and mainFrame.Parent and _bgAnimToken == token then
+                        local flare = Instance.new("Frame", mainFrame)
+                        flare.Name = "HubBgParticle"
+                        local flareH = math.random(8, 22) / 100
+                        flare.Size = UDim2.new(1.2, 0, flareH, 0)
+                        flare.Position = UDim2.new(-0.1, 0, math.random(65, 88) / 100, 0)
+                        flare.BackgroundColor3 = _auroraColors[math.random(1, #_auroraColors)]
+                        flare.BackgroundTransparency = 0.82
+                        flare.BorderSizePixel = 0
+                        flare.ZIndex = 1
+                        local g = Instance.new("UIGradient", flare)
+                        g.Transparency = NumberSequence.new({
+                            NumberSequenceKeypoint.new(0,   1),
+                            NumberSequenceKeypoint.new(0.2, 0.75),
+                            NumberSequenceKeypoint.new(0.5, 0.70),
+                            NumberSequenceKeypoint.new(0.8, 0.75),
+                            NumberSequenceKeypoint.new(1,   1),
+                        })
+                        local flareDur = math.random(25, 50) / 10
+                        TweenService:Create(flare,
+                            TweenInfo.new(flareDur * 0.4, Enum.EasingStyle.Sine),
+                            {BackgroundTransparency = 0.70}):Play()
+                        task.delay(flareDur * 0.4, function()
+                            if flare and flare.Parent and _bgAnimToken == token then
+                                TweenService:Create(flare,
+                                    TweenInfo.new(flareDur * 0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.In),
+                                    {BackgroundTransparency = 1}):Play()
+                            end
+                        end)
+                        task.delay(flareDur, function()
+                            pcall(function() if flare and flare.Parent then flare:Destroy() end end)
+                        end)
+                    end
+                    task.wait(math.random(35, 75) / 10)
+                end
+            end)
+
+            -- === LOOP PRINCIPAL: tinte + brillo en UN SOLO tween (evita conflicto) ===
+            task.spawn(function()
+                -- FIX: Fade-in inicial correcto (imagen empieza casi invisible)
+                local ti_in = TweenInfo.new(1.0, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+                TweenService:Create(img, ti_in, {
+                    ImageTransparency = 0.06,
+                    ImageColor3       = Color3.fromRGB(255, 160, 80),   -- naranja atardecer real
+                }):Play()
+                task.wait(1.0)
+
+                -- Ciclo de 4 fases del atardecer (cada tween incluye color + transparencia juntos)
+                local phases = {
+                    { color = Color3.fromRGB(255, 160, 80),  transp = 0.04, dur = 3.0 }, -- naranja dorado
+                    { color = Color3.fromRGB(230, 100, 130), transp = 0.15, dur = 3.5 }, -- rosa magenta
+                    { color = Color3.fromRGB(255, 130, 40),  transp = 0.06, dur = 2.8 }, -- naranja fuego
+                    { color = Color3.fromRGB(180, 60, 110),  transp = 0.20, dur = 4.0 }, -- purpura oscuro
+                }
+                local phase = 1
+                while img and img.Parent and _bgAnimToken == token do
+                    local p = phases[phase]
+                    local ti = TweenInfo.new(p.dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                    -- FIX: un solo tween con AMBAS propiedades -> sin conflicto
+                    TweenService:Create(img, ti, {
+                        ImageTransparency = p.transp,
+                        ImageColor3       = p.color,
+                    }):Play()
+                    phase = (phase % #phases) + 1
+                    task.wait(p.dur)
                 end
             end)
         end
