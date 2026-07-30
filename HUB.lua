@@ -51262,11 +51262,12 @@ particles = {}
             -- AUTO-BUILD TODOS LOS TABS: para que toggles guardados de cualquier pestaña
             -- se registren y ejecuten su función sin necesidad de entrar a cada pestaña.
             -- idx: 1=Main 2=World 3=Visuals 4=Premium 5=Settings 6=Combat 7=Use 8=Emotes
+            -- FIX RACE: gaps de 0.5s entre tabs para que leftColumn/rightColumn no se pisen
             task.delay(1.0, function() pcall(function() _buildTabCached(2) end) end)
-            task.delay(1.3, function() pcall(function() _buildTabCached(3) end) end)
-            task.delay(1.6, function() pcall(function() _buildTabCached(6) end) end)
-            task.delay(1.9, function() pcall(function() _buildTabCached(7) end) end)
-            task.delay(2.2, function() pcall(function() _buildTabCached(8) end) end)
+            task.delay(1.5, function() pcall(function() _buildTabCached(3) end) end)
+            task.delay(2.0, function() pcall(function() _buildTabCached(6) end) end)
+            task.delay(2.5, function() pcall(function() _buildTabCached(7) end) end)
+            task.delay(3.0, function() pcall(function() _buildTabCached(8) end) end)
             return
         end
 
@@ -51535,11 +51536,12 @@ particles = {}
         -- AUTO-BUILD TODOS LOS TABS: para que toggles guardados de cualquier pestaña
         -- se registren y ejecuten su función sin necesidad de entrar a cada pestaña.
         -- idx: 1=Main 2=World 3=Visuals 4=Premium 5=Settings 6=Combat 7=Use 8=Emotes
+        -- FIX RACE: gaps de 0.5s entre tabs para que leftColumn/rightColumn no se pisen
         task.delay(1.0, function() pcall(function() _buildTabCached(2) end) end)
-        task.delay(1.3, function() pcall(function() _buildTabCached(3) end) end)
-        task.delay(1.6, function() pcall(function() _buildTabCached(6) end) end)
-        task.delay(1.9, function() pcall(function() _buildTabCached(7) end) end)
-        task.delay(2.2, function() pcall(function() _buildTabCached(8) end) end)
+        task.delay(1.5, function() pcall(function() _buildTabCached(3) end) end)
+        task.delay(2.0, function() pcall(function() _buildTabCached(6) end) end)
+        task.delay(2.5, function() pcall(function() _buildTabCached(7) end) end)
+        task.delay(3.0, function() pcall(function() _buildTabCached(8) end) end)
         -- AUTORESTORE: notificar si se restauraron toggles activos desde disco (config por jugador)
         if _G._restoredActiveCount and _G._restoredActiveCount > 0 then
             task.delay(1.2, function()
@@ -51582,11 +51584,12 @@ particles = {}
             -- AUTO-BUILD TODOS LOS TABS: para que toggles guardados de cualquier pestaña
             -- se registren y ejecuten su función sin necesidad de entrar a cada pestaña.
             -- idx: 1=Main 2=World 3=Visuals 4=Premium 5=Settings 6=Combat 7=Use 8=Emotes
+            -- FIX RACE: gaps de 0.5s entre tabs para que leftColumn/rightColumn no se pisen
             task.delay(1.0, function() pcall(function() _buildTabCached(2) end) end)
-            task.delay(1.3, function() pcall(function() _buildTabCached(3) end) end)
-            task.delay(1.6, function() pcall(function() _buildTabCached(6) end) end)
-            task.delay(1.9, function() pcall(function() _buildTabCached(7) end) end)
-            task.delay(2.2, function() pcall(function() _buildTabCached(8) end) end)
+            task.delay(1.5, function() pcall(function() _buildTabCached(3) end) end)
+            task.delay(2.0, function() pcall(function() _buildTabCached(6) end) end)
+            task.delay(2.5, function() pcall(function() _buildTabCached(7) end) end)
+            task.delay(3.0, function() pcall(function() _buildTabCached(8) end) end)
         end
     end)
 
@@ -52195,6 +52198,13 @@ function CreateUseTab()
     -- Resetear frame de sección residual ANTES de construir columnas
     _currentMainSectionFrame = nil
     _makeTwoColumns()
+    -- FIX RACE CONDITION: capturar leftColumn/rightColumn como locales INMEDIATAMENTE
+    -- despues de _makeTwoColumns(), antes de cualquier yield/spawn. Las variables globales
+    -- leftColumn y rightColumn pueden ser pisadas por el pre-build de otros tabs en background
+    -- (task.delay 1.9s = USE, 2.2s = EMOTES se solapan), causando que el contenido del USE
+    -- tab se construya dentro del frame equivocado (tab de Emotes) y quede en blanco.
+    local leftColumn  = leftColumn   -- shadow del global: protege contra pisadas concurrentes
+    local rightColumn = rightColumn  -- idem
     local col = leftColumn
 
     local bangSec = CreateBorderedSectionGlobal(col, " BANG")
@@ -52239,7 +52249,9 @@ function CreateUseTab()
         -- FIX BANG ESPALDA: Z positivo = detras del personaje (espalda)
         -- En Roblox el LookVector apunta hacia "adelante" del model,
         -- entonces +Z va hacia la espalda del personaje objetivo
-        local behindCF = tHRP.CFrame * CFrame.new(0, 0, 2.5)
+        local dist = _bang._behindDist or 2.5
+        local offY = _bang._offsetY or 0
+        local behindCF = tHRP.CFrame * CFrame.new(0, offY, dist)
 
         pcall(function()
             myHRP.CFrame = CFrame.new(behindCF.Position, tHRP.Position)
@@ -52283,7 +52295,7 @@ function CreateUseTab()
             if not _bang.enabled[role] then return end
             if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
             local now = tick()
-            if now - _bangLastTP < 0.05 then return end
+            if now - _bangLastTP < (_bang._interval or 0.05) then return end
             _bangLastTP = now
             local t = _bangGetTarget(role)
             if not t then return end
@@ -52356,7 +52368,7 @@ function CreateUseTab()
         -- intervalo entre bangs en centesimas de segundo
         _bang._interval = v / 100
     end)
- CreateSlider(bangSec, "Distancia Detras (studs)", 1, 8, 25, function(v)
+ CreateSlider(bangSec, "Distancia Detras (studs x10)", 5, 80, 25, function(v)
         _bang._behindDist = v / 10
     end)
  CreateSlider(bangSec, "Offset Altura (Y)", -5, 10, 0, function(v)
