@@ -586,97 +586,102 @@ local _neverRestoreToggles = {
     [" Bindable: Bang Innocent"] = true,
     ["Secure TP"] = true,
 
-    -- == TOGGLES QUE SIEMPRE ARRANCAN EN FALSE (nunca se restauran activos) ==
-    -- Combate / Shoot
-    ["Auto Shoot Murder"] = true,
-    ["Auto Shoot Murder Wall Check"] = true,
-    ["Shoot Pick"] = true,
-    ["Shoot Pick Wall Check"] = true,
-    ["Wall Check Shoot"] = true,
-    ["Silent Aim (Shoot Murderer Btn)"] = true,
-    ["Bindable Silent Aim"] = true,
-    ["Aimlock"] = true,
-    ["Aimlock Gun"] = true,
-    ["Aimlock No Wall Check"] = true,
-    ["Pierce Bullet (Premium)"] = true,
-    ["Shoot Camuflado (Premium)"] = true,
-    ["Shooper Shot"] = true,
-    ["Strafe Prediction"] = true,
-    ["Tianca Prediction (Gun SA)"] = true,
-    ["Throwing Knife Silent Aim"] = true,
-    ["Bullet Tracer"] = true,
-    ["Prediction Tracer"] = true,
-    ["Velocity Prediction"] = true,
-    ["Auto Ping Compensation"] = true,
-    -- Cuchillo / melee
-    ["Auto Stab"] = true,
-    ["Auto Slash (Premium)"] = true,
-    ["Fast Slash (Premium)"] = true,
-    ["Auto Throw"] = true,
-    ["Fast Throw (Premium)"] = true,
-    ["Instant Throw (Premium)"] = true,
-    ["Knife Silent Aim"] = true,
-    ["Knife Silent Aim Wall Check"] = true,
-    -- Movimiento / fisica
-    ["Fly (WASD + Space/Ctrl + Shift boost)"] = true,
-    ["Fly+Noclip"] = true,
-    ["Swim Fly"] = true,
-    ["Noclip"] = true,
-    ["Noclip (Keybind Active)"] = true,
-    ["Noclip (Button)"] = true,
-    ["Noclip Camera"] = true,
-    ["Camera Noclip"] = true,
-    ["Enable WalkSpeed"] = true,
-    ["Enable Speed Glitch"] = true,
-    ["Always speed"] = true,
-    ["Power Jump/Always"] = true,
-    ["Infinite Jump"] = true,
-    ["Infinity Jump"] = true,
-    ["Auto Jump"] = true,
-    ["Bindable Auto Jump"] = true,
-    ["Wall Hop V2"] = true,
-    ["Spin"] = true,
-    -- Teleporte
-    ["TP Low Map (teleportar bajo el mapa)"] = true,
-    ["TP Low Map Bindable"] = true,
-    [" Auto Teleport On Throw"] = true,
-    -- Farm / auto
-    ["Auto Farm"] = true,
-    ["Auto Prestige"] = true,
-    ["Auto Grab Gun (cualquier rol)"] = true,
-    ["Auto Equip Gun (Murder en rango)"] = true,
-    ["Coin Aura (Risky)"] = true,
-    ["Auto Remove Coins"] = true,
-    ["Auto Remove Corpses"] = true,
-    ["Auto Remove Pets"] = true,
-    ["Auto Remove Traps"] = true,
-    ["Auto Remove Chroma"] = true,
-    -- Dual / skins
-    -- ["Dual Knife"] = true,  -- FIX AUTO SAFE: se permite guardar/restaurar
-    -- ["Dual Gun"] = true,    -- FIX AUTO SAFE: se permite guardar/restaurar
-    -- Visual activo (puede afectar rendimiento/detectabilidad)
-    ["Invisible"] = true,
-    ["Invisible (Bindable)"] = true,
-    ["XRay"] = true,
-    ["Second Life"] = true,
-    ["Orbit Player"] = true,
-    ["Skip Death Animation"] = true,
-    ["Trap Immune"] = true,
-    ["Bug Tramp (no te atrapa)"] = true,
-    [" Auto Esquivar al Murder"] = true,
-    [" Auto Spectate Murder"] = true,
-    ["Auto Announce Murder"] = true,
-    ["Auto Reset Inocent Sheriff Murder"] = true,
-    ["Ping Boost"] = true,
-    ["Own Ping Mode"] = true,
-    [" Bindable Secure Auto (boton pantalla)"] = true,
-    ["Bindable Boton Booster"] = true,
-    ["Show Bindable Button (Speed Glitch)"] = true,
     -- Custom Crosshair: al auto-restaurar solo aparece la mira sola (sin rotacion activa)
     ["Rotate Crosshair"] = true,
     -- Cham Dead Only: sub-toggles no se auto-restauran (el principal Cham Dead Only si lo hace)
     ["Tracer Dead Only"] = true,
     ["Skeleton Dead Only"] = true,
+}
+
+-- =======================================================================
+-- TOGGLES CON AUTO-RESTORE AL RE-EJECUTAR (nueva lista v20)
+-- Estos toggles SI se guardan en el JSON y SI disparan su funcion
+-- al re-ejecutar el hub desde cero (igual que Fly del ejemplo).
+-- Al cambiar de pestana (tab rebuild) NO se re-disparan: ya corren.
+-- =======================================================================
+local _autoRestoreOnReexec = {
+    -- Combate / Shoot
+    ["Auto Shoot Murder"]                   = true,
+    ["Auto Shoot Murder Wall Check"]         = true,
+    ["Shoot Pick"]                           = true,
+    ["Shoot Pick Wall Check"]                = true,
+    ["Wall Check Shoot"]                     = true,
+    ["Silent Aim (Shoot Murderer Btn)"]      = true,
+    ["Bindable Silent Aim"]                  = true,
+    ["Aimlock"]                              = true,
+    ["Aimlock Gun"]                          = true,
+    ["Aimlock No Wall Check"]                = true,
+    ["Pierce Bullet (Premium)"]              = true,
+    ["Shoot Camuflado (Premium)"]            = true,
+    ["Shooper Shot"]                         = true,
+    ["Strafe Prediction"]                    = true,
+    ["Tianca Prediction (Gun SA)"]           = true,
+    ["Throwing Knife Silent Aim"]            = true,
+    ["Bullet Tracer"]                        = true,
+    ["Prediction Tracer"]                    = true,
+    ["Velocity Prediction"]                  = true,
+    ["Auto Ping Compensation"]               = true,
+    -- Cuchillo / melee
+    ["Auto Stab"]                            = true,
+    ["Auto Slash (Premium)"]                 = true,
+    ["Fast Slash (Premium)"]                 = true,
+    ["Auto Throw"]                           = true,
+    ["Fast Throw (Premium)"]                 = true,
+    ["Instant Throw (Premium)"]              = true,
+    ["Knife Silent Aim"]                     = true,
+    ["Knife Silent Aim Wall Check"]          = true,
+    -- Movimiento / fisica
+    ["Fly (WASD + Space/Ctrl + Shift boost)"] = true,
+    ["Fly+Noclip"]                           = true,
+    ["Swim Fly"]                             = true,
+    ["Noclip"]                               = true,
+    ["Noclip (Keybind Active)"]              = true,
+    ["Noclip (Button)"]                      = true,
+    ["Noclip Camera"]                        = true,
+    ["Camera Noclip"]                        = true,
+    ["Enable WalkSpeed"]                     = true,
+    ["Enable Speed Glitch"]                  = true,
+    ["Always speed"]                         = true,
+    ["Power Jump/Always"]                    = true,
+    ["Infinite Jump"]                        = true,
+    ["Infinity Jump"]                        = true,
+    ["Auto Jump"]                            = true,
+    ["Bindable Auto Jump"]                   = true,
+    ["Wall Hop V2"]                          = true,
+    ["Spin"]                                 = true,
+    -- Teleporte
+    ["TP Low Map (teleportar bajo el mapa)"] = true,
+    ["TP Low Map Bindable"]                  = true,
+    [" Auto Teleport On Throw"]              = true,
+    -- Farm / auto
+    ["Auto Farm"]                            = true,
+    ["Auto Prestige"]                        = true,
+    ["Auto Grab Gun (cualquier rol)"]        = true,
+    ["Auto Equip Gun (Murder en rango)"]     = true,
+    ["Coin Aura (Risky)"]                    = true,
+    ["Auto Remove Coins"]                    = true,
+    ["Auto Remove Corpses"]                  = true,
+    ["Auto Remove Pets"]                     = true,
+    ["Auto Remove Traps"]                    = true,
+    ["Auto Remove Chroma"]                   = true,
+    -- Visual / estado del personaje
+    ["Invisible"]                            = true,
+    ["Invisible (Bindable)"]                 = true,
+    ["XRay"]                                 = true,
+    ["Second Life"]                          = true,
+    ["Orbit Player"]                         = true,
+    ["Skip Death Animation"]                 = true,
+    ["Trap Immune"]                          = true,
+    ["Bug Tramp (no te atrapa)"]             = true,
+    [" Auto Esquivar al Murder"]             = true,
+    [" Auto Spectate Murder"]                = true,
+    ["Auto Announce Murder"]                 = true,
+    ["Auto Reset Inocent Sheriff Murder"]    = true,
+    ["Ping Boost"]                           = true,
+    ["Own Ping Mode"]                        = true,
+    [" Bindable Secure Auto (boton pantalla)"] = true,
+    ["Bindable Boton Booster"]               = true,
+    ["Show Bindable Button (Speed Glitch)"]  = true,
 }
 
 -- Cargar configuracion guardada ANTES de crear la UI
@@ -719,43 +724,14 @@ do
         "Enable TP To Lobby Bindable Button", "Enable TP To VM Bindable Button",
         "Auto Expose Murderer's Perk", "Auto Expose Roles",
 
-        -- == TODOS LOS TOGGLES FUNCIONALES — siempre OFF al arrancar ==
-        "Auto Shoot Murder", "Auto Shoot Murder Wall Check",
-        "Shoot Pick", "Shoot Pick Wall Check", "Wall Check Shoot",
-        "Silent Aim (Shoot Murderer Btn)", "Bindable Silent Aim",
-        "Aimlock", "Aimlock Gun", "Aimlock No Wall Check",
-        "Pierce Bullet (Premium)", "Shoot Camuflado (Premium)",
-        "Shooper Shot",
-        "Strafe Prediction", "Tianca Prediction (Gun SA)",
-        "Throwing Knife Silent Aim", "Bullet Tracer", "Prediction Tracer",
-        "Velocity Prediction", "Auto Ping Compensation",
-        "Auto Stab", "Auto Slash (Premium)", "Fast Slash (Premium)",
-        "Auto Throw", "Fast Throw (Premium)", "Instant Throw (Premium)",
-        "Knife Silent Aim", "Knife Silent Aim Wall Check",
-        "Fly (WASD + Space/Ctrl + Shift boost)", "Fly+Noclip", "Swim Fly",
-        "Noclip", "Noclip (Keybind Active)", "Noclip (Button)", "Noclip Camera", "Camera Noclip",
-        "Enable WalkSpeed", "Enable Speed Glitch", "Always speed",
-        "Power Jump/Always", "Infinite Jump", "Infinity Jump", "Auto Jump", "Bindable Auto Jump",
-        "Wall Hop V2", "Spin",
-        "TP Low Map (teleportar bajo el mapa)", "TP Low Map Bindable",
-        " Auto Teleport On Throw",
-        "Auto Farm", "Auto Prestige",
-        "Auto Grab Gun (cualquier rol)", "Auto Equip Gun (Murder en rango)",
-        "Coin Aura (Risky)", "Auto Remove Coins", "Auto Remove Corpses",
-        "Auto Remove Pets", "Auto Remove Traps", "Auto Remove Chroma",
-        -- "Dual Knife", "Dual Gun",  -- FIX AUTO SAFE: se restauran desde config
-        "Invisible", "Invisible (Bindable)", "XRay", "Second Life",
-        "Orbit Player", "Skip Death Animation", "Trap Immune",
-        "Bug Tramp (no te atrapa)", " Auto Esquivar al Murder",
-        " Auto Spectate Murder", "Auto Announce Murder",
-        "Auto Reset Inocent Sheriff Murder",
-        "Ping Boost", "Own Ping Mode",
-        " Bindable Secure Auto (boton pantalla)", "Bindable Boton Booster",
-        "Show Bindable Button (Speed Glitch)",
+        -- Los toggles de _autoRestoreOnReexec YA NO se fuerzan a false aqui:
+        -- se cargan del JSON y se restauran al re-ejecutar.
     }
-    -- Forzar a false (todos están en _neverRestoreToggles, _saveConfig los excluye)
+    -- Forzar a false solo los peligrosos (los de _autoRestoreOnReexec se cargan del disco)
     for _, name in ipairs(_killTogglesToReset) do
-        _G._toggleStates[name] = false
+        if not _autoRestoreOnReexec[name] then
+            _G._toggleStates[name] = false
+        end
     end
 end
 
@@ -27107,18 +27083,24 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     -- Auto-activar al cargar (misma logica que antes)
     local _isBoostNoAuto = _G._boostNoAutoThisSession and _G._boostNoAutoThisSession[nombre]
-    -- NUNCA auto-activar toggles que están en _neverRestoreToggles (siempre arrancan OFF)
-    local _isNeverRestore = _neverRestoreToggles and _neverRestoreToggles[nombre]
-    -- AUTORESTORE FIX v2:
+    -- _isNeverRestore: true solo si esta en _neverRestoreToggles Y NO esta en _autoRestoreOnReexec
+    -- Los toggles en _autoRestoreOnReexec SIEMPRE se restauran en re-ejecucion real
+    local _isNeverRestore = (_neverRestoreToggles and _neverRestoreToggles[nombre])
+                            and not (_autoRestoreOnReexec and _autoRestoreOnReexec[nombre])
+    -- _isAutoRestore: toggle que debe restaurarse en re-ejecucion (no en tab rebuild)
+    local _isAutoRestore  = _autoRestoreOnReexec and _autoRestoreOnReexec[nombre]
+    -- AUTORESTORE v2 + AUTO-RESTORE ON REEXEC:
     -- _wasUserSet    → habia un estado guardado (en disco o en sesion)
-    -- _isTabRebuild  → es solo un cambio de pestaña (UI se recrea, funcionalidad ya corre)
+    -- _isTabRebuild  → es solo un cambio de pestana (UI se recrea, funcionalidad ya corre)
     -- Diferencia clave:
     --   Tab rebuild:   _G._isTabRebuild == true  → NO llamar callback (ya esta corriendo)
-    --   Re-ejecucion:  _G._isTabRebuild == false/nil → SÍ llamar callback (hub nuevo, nada corre)
+    --   Re-ejecucion:  _G._isTabRebuild == false/nil → SI llamar callback (hub nuevo, nada corre)
     -- Caso A: toggle sin estado previo con initialValue=true → auto-activar (comportamiento original)
-    -- Caso B: toggle con savedState=true y NO es tab rebuild → restaurar desde disco al re-ejecutar
+    -- Caso B: toggle con savedState=true y NO es tab rebuild → restaurar desde disco
+    -- Caso C (_autoRestoreOnReexec): savedState=true + NO tab rebuild → restaurar Y disparar funcion
     local _wasUserSet   = (savedState ~= nil)
     local _isTabRebuild = (_G._isTabRebuild == true)
+    -- Para _autoRestoreOnReexec: activar si el disco dice true Y no es tab rebuild
     local _shouldAutoActivate = estado and callback
         and not _isBoostNoAuto
         and not _G._noAutoActivateWorld
@@ -27188,7 +27170,18 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
             or lower:find("spoof") or lower:find("secure tp")
         )
 
-        if not isPhysical then
+        -- AUTO-RESTORE ON REEXEC: toggle funcional guardado en disco
+        -- Si es re-ejecucion real (!_isTabRebuild) Y savedState=true → disparar callback
+        -- con task.spawn + wait(0.3) igual que el Fly del ejemplo de referencia.
+        if isPhysical and _isAutoRestore and not _isTabRebuild and savedState == true then
+            task.spawn(function()
+                task.wait(0.3)  -- esperar a que el personaje y la UI esten listos
+                local _orig = CreateCustomNotification
+                CreateCustomNotification = function() end
+                pcall(callback, true)
+                CreateCustomNotification = _orig
+            end)
+        elseif not isPhysical then
             task.defer(function()
                 local _orig = CreateCustomNotification
                 CreateCustomNotification = function() end
