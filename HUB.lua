@@ -34883,13 +34883,12 @@ function CreatePremiumTab()
                 meshId = "http://www.roblox.com/asset/?id=95356090",
                 texId  = "http://www.roblox.com/asset/?id=126534866",
                 scale  = Vector3.new(1.7999999523162842, 1.7999999523162842, 1.7999999523162842),
-                -- FIX GRIP: Z=+0.5 empujaba el arma hacia adentro del torso.
-                -- Cambiado a Z=-0.5 para que quede adelante de la mano apuntando al frente.
+                -- GRIP: mismo agarre que ElderwoodGun
                 grip   = CFrame.new(
-                    0, -0.5, -0.5,
-                    0.999924004,    -0.00871835742, -0.00871835742,
-                    0.00871835742,   0.999961972,   -3.80063248e-05,
-                    0.00871835742,  -3.80063248e-05,  0.999961972
+                    -0.567565918, -0.124303818, -0.0424308777,
+                    -0.000212550163, 0.0230092816, -0.999735236,
+                    -0.011778634,   0.999665856,   0.0230101906,
+                     0.99993062,    0.0117804073,  5.85317612e-05
                 ),
             },
             {
@@ -34897,9 +34896,13 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://7775027413",
                 texId  = "http://www.roblox.com/asset/?id=7775245551",
                 scale  = Vector3.new(0.05999999865889549, 0.05000000074505806, 0.05000000074505806),
-                -- FIX GRIP: mismo mesh que Harvester knife (_KNIFE_SKINS) -- sincronizado con Y=-1
-                -- El -0.9 dejaba el arma levemente alta respecto al agarre real de la mano.
-                grip   = CFrame.new(0, -1, 0) * CFrame.Angles(math.rad(-90), 0, 0),
+                -- GRIP: mismo agarre que ElderwoodGun
+                grip   = CFrame.new(
+                    -0.567565918, -0.124303818, -0.0424308777,
+                    -0.000212550163, 0.0230092816, -0.999735236,
+                    -0.011778634,   0.999665856,   0.0230101906,
+                     0.99993062,    0.0117804073,  5.85317612e-05
+                ),
                 dualGun = true,
             },
             {
@@ -34936,9 +34939,13 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://15374602183",
                 texId  = "rbxassetid://15409041564",
                 scale  = Vector3.new(0.08, 0.08, 0.08),
-                -- FIX GRIP: identidad dejaba el scope mal agarrado.
-                -- Unificado con el grip probado en _GUN_SKINS (Items Fake).
-                grip   = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0),
+                -- GRIP: mismo agarre que ElderwoodGun
+                grip   = CFrame.new(
+                    -0.567565918, -0.124303818, -0.0424308777,
+                    -0.000212550163, 0.0230092816, -0.999735236,
+                    -0.011778634,   0.999665856,   0.0230101906,
+                     0.99993062,    0.0117804073,  5.85317612e-05
+                ),
                 dualGun = true,
             },
         }
@@ -52758,97 +52765,6 @@ function CreateUseTab()
 
 
     -- ================================================================
-    -- ANIMATION SELECTOR
-    -- ================================================================
-    do
-        local animSec = CreateBorderedSectionGlobal(rightColumn, " ANIMATION SELECTOR")
-
-        _animCurrentTrack = nil
-        _animTogglesGlobal = {}
-
-        local function _animStopAll()
-            if _animCurrentTrack then
-                pcall(function()
-                    if _animCurrentTrack.IsPlaying then _animCurrentTrack:Stop() end
-                end)
-                _animCurrentTrack = nil
-            end
-            for _, t in pairs(_animTogglesGlobal) do
-                if t.setOn then pcall(function() t.setOn(false) end) end
-            end
-        end
-
-        local ANIMS = {
-            { name = "Lay Down",      id = "rbxassetid://5918726674" },
-            { name = "Sit",           id = "rbxassetid://2506281703" },
-            { name = "Sleep",         id = "rbxassetid://3576968502" },
-            { name = "Laugh",         id = "rbxassetid://3337294591" },
-            { name = "Cheer",         id = "rbxassetid://507770677"  },
-            { name = "Wave",          id = "rbxassetid://507770239"  },
-            { name = "Dance",         id = "rbxassetid://507771019"  },
-            { name = "Zombie Walk",   id = "rbxassetid://616163682"  },
-            { name = "Robot",         id = "rbxassetid://616157476"  },
-            { name = "Ninja Run",     id = "rbxassetid://616121105"  },
-            { name = "Superhero Fly", id = "rbxassetid://616072311"  },
-            { name = "Swim",          id = "rbxassetid://507784897"  },
-        }
-
-        local animSpeedMult = 1.0
-        CreateSlider(animSec, "Velocidad Animacion", 1, 30, 10, function(v)
-            animSpeedMult = v / 10
-            if _animCurrentTrack and _animCurrentTrack.IsPlaying then
-                pcall(function() _animCurrentTrack:AdjustSpeed(animSpeedMult) end)
-            end
-        end)
-
-        CreateButton(animSec, "Detener Animacion", function()
-            _animStopAll()
-            CreateCustomNotification("ANIM", "Animacion detenida", 2)
-        end)
-
-        for _, anim in ipairs(ANIMS) do
-            local capturedId   = anim.id
-            local capturedName = anim.name
-            local toggleRef = {}
-            local function setOnFn(v) if toggleRef.setOn then pcall(toggleRef.setOn, v) end end
-            _animTogglesGlobal[capturedName] = { setOn = setOnFn }
-
-            CreateAuroraToggle(animSec, capturedName, function(on)
-                if on then
-                    _animStopAll()
-                    task.spawn(function()
-                        local char  = LocalPlayer.Character
-                        local hum   = char and char:FindFirstChildOfClass("Humanoid")
-                        local animr = hum and hum:FindFirstChildOfClass("Animator")
-                        if not animr then
-                            CreateCustomNotification("ANIM", "Animator no encontrado", 2)
-                            return
-                        end
-                        local a = Instance.new("Animation")
-                        a.AnimationId = capturedId
-                        local ok, track = pcall(function() return animr:LoadAnimation(a) end)
-                        if ok and track then
-                            track.Priority = Enum.AnimationPriority.Action4
-                            track:AdjustSpeed(animSpeedMult)
-                            track:Play()
-                            _animCurrentTrack = track
-                            track.Stopped:Connect(function()
-                                if _animCurrentTrack == track then _animCurrentTrack = nil end
-                            end)
-                            CreateCustomNotification("ANIM", capturedName .. " ON", 2)
-                        else
-                            CreateCustomNotification("ANIM", "Error al cargar: " .. capturedName, 2)
-                        end
-                    end)
-                else
-                    _animStopAll()
-                    CreateCustomNotification("ANIM", capturedName .. " OFF", 2)
-                end
-            end, false)
-        end
-    end
-
-    -- ================================================================
     -- BACKGROUNDS SELECTOR (Use Tab)
     -- ================================================================
     do
@@ -53370,20 +53286,6 @@ function CreateUseTab()
     end
 
 end -- cierra CreateUseTab
-
-_animCurrentTrack = nil
-_animTogglesGlobal = {}
-function _animStopGlobal()
-    if _animCurrentTrack then
-        pcall(function()
-            if _animCurrentTrack.IsPlaying then _animCurrentTrack:Stop() end
-        end)
-        _animCurrentTrack = nil
-    end
-    for _, t in pairs(_animTogglesGlobal) do
-        if t.setOn then pcall(function() t.setOn(false) end) end
-    end
-end
 
 _ItemsFakeState = _G._ItemsFakeState or {
     activeKnifeSkin = nil,
