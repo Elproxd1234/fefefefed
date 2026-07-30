@@ -53265,6 +53265,11 @@ function CreateUseTab()
                 imageId = "rbxassetid://109496357798799",
                 overlay = nil,
             },
+            {
+                name    = "Aurora",
+                imageId = "rbxassetid://139776066876209",
+                overlay = nil,
+            },
         }
 
         -- Guarda el tema activo antes de activar el fondo
@@ -53832,6 +53837,137 @@ function CreateUseTab()
             end)
         end
 
+        -- AURORA: ondas de luz verde/cyan/violeta que se desplazan lentamente + partículas flotantes
+        local function _animAurora(img, token)
+            task.spawn(function()
+                -- Fade-in suave inicial (estilo aparicion boreal)
+                img.ImageTransparency = 1
+                img.ImageColor3 = Color3.fromRGB(120, 255, 200)
+                local ti_in = TweenInfo.new(1.8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+                TweenService:Create(img, ti_in, {ImageTransparency = 0.08}):Play()
+                task.wait(1.8)
+
+                -- Colores auroreales ciclicos (verde boreal -> cyan -> violeta -> azul -> verde)
+                local _auroraColors = {
+                    Color3.fromRGB(80,  255, 180),  -- verde boreal
+                    Color3.fromRGB(60,  220, 255),  -- cyan polar
+                    Color3.fromRGB(140, 100, 255),  -- violeta aurora
+                    Color3.fromRGB(50,  180, 255),  -- azul hielo
+                    Color3.fromRGB(100, 255, 220),  -- turquesa brillante
+                    Color3.fromRGB(180, 80,  255),  -- lila intenso
+                }
+
+                -- === PARTICULAS FLOTANTES (luces boreales descendentes) ===
+                local _particleColors = {
+                    Color3.fromRGB(100, 255, 200),
+                    Color3.fromRGB(80,  200, 255),
+                    Color3.fromRGB(160, 120, 255),
+                    Color3.fromRGB(60,  255, 180),
+                    Color3.fromRGB(200, 150, 255),
+                }
+                local function _spawnAuroraParticle()
+                    if not mainFrame or not mainFrame.Parent then return end
+                    if _bgAnimToken ~= token then return end
+                    local p = Instance.new("Frame", mainFrame)
+                    p.Name = "HubBgParticle"
+                    local w = math.random(2, 6)
+                    local h = math.random(18, 55)  -- alargadas vertical (rayos boreales)
+                    p.Size = UDim2.new(0, w, 0, h)
+                    p.Position = UDim2.new(
+                        math.random(2, 98) / 100, 0,
+                        math.random(-10, 40) / 100, 0
+                    )
+                    p.BackgroundColor3 = _particleColors[math.random(1, #_particleColors)]
+                    p.BackgroundTransparency = 0.25
+                    p.BorderSizePixel = 0
+                    p.ZIndex = 4
+                    p.Rotation = math.random(-8, 8)
+                    Instance.new("UICorner", p).CornerRadius = UDim.new(0.5, 0)
+
+                    local dur_fall = math.random(18, 40) / 10
+                    local drift    = math.random(-4, 4) / 100
+                    local curX     = p.Position.X.Scale
+                    local curY     = p.Position.Y.Scale
+                    -- Fade-in
+                    TweenService:Create(p,
+                        TweenInfo.new(0.4, Enum.EasingStyle.Sine),
+                        {BackgroundTransparency = 0.05}):Play()
+                    -- Caida suave con derive lateral
+                    task.delay(0.4, function()
+                        if not p or not p.Parent or _bgAnimToken ~= token then
+                            pcall(function() if p and p.Parent then p:Destroy() end end)
+                            return
+                        end
+                        TweenService:Create(p,
+                            TweenInfo.new(dur_fall, Enum.EasingStyle.Sine, Enum.EasingDirection.In),
+                            {
+                                Position               = UDim2.new(curX + drift, 0, curY + 0.70, 0),
+                                BackgroundTransparency = 0.95,
+                                Size                   = UDim2.new(0, w, 0, h * 0.4),
+                            }):Play()
+                        task.delay(dur_fall, function()
+                            pcall(function() if p and p.Parent then p:Destroy() end end)
+                        end)
+                    end)
+                end
+
+                -- Spawner de particulas boreales
+                task.spawn(function()
+                    while img and img.Parent and _bgAnimToken == token do
+                        for _ = 1, math.random(1, 3) do
+                            pcall(_spawnAuroraParticle)
+                        end
+                        task.wait(math.random(18, 35) / 100)
+                    end
+                end)
+
+                -- === CAPA DE BRILLO ONDULANTE (simula la cortina de luz) ===
+                local glow = Instance.new("Frame", mainFrame)
+                glow.Name = "HubBgFlash"
+                glow.Size = UDim2.new(1, 0, 0.5, 0)
+                glow.Position = UDim2.new(0, 0, 0, 0)
+                glow.BackgroundColor3 = Color3.fromRGB(60, 200, 180)
+                glow.BackgroundTransparency = 1
+                glow.BorderSizePixel = 0
+                glow.ZIndex = 0
+
+                -- === LOOP PRINCIPAL: pulso de color boreal en la imagen ===
+                local phase = 0
+                local _alphaSeq = {0.05, 0.12, 0.06, 0.14, 0.04, 0.10}
+                while img and img.Parent and _bgAnimToken == token do
+                    phase = (phase % #_auroraColors) + 1
+                    local dur   = math.random(20, 40) / 10  -- 2.0 - 4.0 s por ciclo
+                    local alpha = _alphaSeq[(phase % #_alphaSeq) + 1]
+                    local col   = _auroraColors[phase]
+                    local ti    = TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+
+                    -- Transicion suave de tono boreal en la imagen
+                    TweenService:Create(img, ti, {
+                        ImageTransparency = alpha,
+                        ImageColor3       = col,
+                    }):Play()
+
+                    -- Pulso de la capa de brillo (cortina tenue)
+                    if glow and glow.Parent then
+                        glow.BackgroundColor3 = col
+                        TweenService:Create(glow,
+                            TweenInfo.new(dur * 0.45, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                            {BackgroundTransparency = 0.88}):Play()
+                        task.delay(dur * 0.45, function()
+                            if glow and glow.Parent and _bgAnimToken == token then
+                                TweenService:Create(glow,
+                                    TweenInfo.new(dur * 0.55, Enum.EasingStyle.Sine, Enum.EasingDirection.In),
+                                    {BackgroundTransparency = 1}):Play()
+                            end
+                        end)
+                    end
+
+                    task.wait(dur)
+                end
+                pcall(function() if glow and glow.Parent then glow:Destroy() end end)
+            end)
+        end
+
         -- ================================================================
         -- TEMAS DE COLOR POR FONDO
         -- ================================================================
@@ -53895,12 +54031,28 @@ function CreateUseTab()
             Aurora4         = Color3.fromRGB(60, 45, 10),     -- marron dorado
         }
 
+        -- AURORA: verdes boreales, cyan glacial, violeta nocturno
+        Themes["_BG_Aurora"] = {
+            Primary         = Color3.fromRGB(60,  220, 170),  -- verde boreal brillante
+            Secondary       = Color3.fromRGB(30,  80,  120),  -- azul glacial oscuro
+            Accent          = Color3.fromRGB(140, 255, 210),  -- turquesa neon
+            Background      = Color3.fromRGB(4,   12,  25),   -- negro polar profundo
+            BackgroundLight = Color3.fromRGB(10,  28,  50),   -- azul noche
+            TextPrimary     = Color3.fromRGB(200, 255, 235),  -- blanco verdoso
+            TextSecondary   = Color3.fromRGB(130, 210, 195),  -- cyan apagado
+            Aurora1         = Color3.fromRGB(70,  240, 180),  -- verde boreal
+            Aurora2         = Color3.fromRGB(50,  150, 255),  -- azul hielo
+            Aurora3         = Color3.fromRGB(160, 100, 255),  -- violeta aurora
+            Aurora4         = Color3.fromRGB(20,  60,  100),  -- azul noche profundo
+        }
+
         -- Mapa nombre de fondo -> clave de tema
         local _BG_THEME_KEY = {
             ["Sunset"]       = "_BG_Sunset",
             ["Samurai"]      = "_BG_Samurai",
             ["Zerqon"]       = "_BG_Zerqon",
             ["The Creators"] = "_BG_TheCreators",
+            ["Aurora"]       = "_BG_Aurora",
         }
 
         local function _applyBackground(idx)
@@ -53968,6 +54120,8 @@ function CreateUseTab()
                     _animZerqon(img, myToken)
                 elseif bg.name == "The Creators" then
                     _animCreators(img, myToken)
+                elseif bg.name == "Aurora" then
+                    _animAurora(img, myToken)
                 else
                     -- Fallback: fade-in generico
                     task.spawn(function()
