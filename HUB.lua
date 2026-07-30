@@ -14456,7 +14456,7 @@ function CreateMainUI_SwimFlyGithub()
                     _jbKeyBtn.BackgroundTransparency = 0.35
                     JB.listening = false; conn:Disconnect()
                     jbStatusL.Text = "Jump Booster: " .. (JB.enabled and "ON" or "OFF") .. "  tecla [" .. keyName .. "]"
-                    CreateCustomNotification("JUMP BOOSTER", "Tecla cambiada a [" .. keyName .. "]", 2)
+                    if not UserInputService.TouchEnabled then CreateCustomNotification("JUMP BOOSTER", "Tecla cambiada a [" .. keyName .. "]", 2) end
                 end
             end)
         end)
@@ -19354,7 +19354,7 @@ function CreateMainTab()
             if not on then return end
             if _ncKeybindWaiting then return end
             _ncKeybindWaiting = true
-            CreateCustomNotification("KEYBIND", "Presiona la tecla que queres usar para Noclip...", 3)
+            if not UserInputService.TouchEnabled then CreateCustomNotification("KEYBIND", "Presiona la tecla que queres usar para Noclip...", 3) end
             -- Escuchar la proxima tecla
             if _ncKeybindListenConn then pcall(function() _ncKeybindListenConn:Disconnect() end) end
             _ncKeybindListenConn = UserInput.InputBegan:Connect(function(input, gpe)
@@ -19370,7 +19370,7 @@ function CreateMainTab()
                 _nc.keybind = input.KeyCode  -- FIX: persistir en _G._ncState
                 _ncKeybindLabel = "Noclip (Keybind) [" .. tostring(input.KeyCode.Name) .. "]"
                 _ncKeybindWaiting = false
-                CreateCustomNotification("KEYBIND", "Noclip -> " .. tostring(input.KeyCode.Name), 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("KEYBIND", "Noclip -> " .. tostring(input.KeyCode.Name), 2) end
                 _sp(function() _G._toggleStates[_ncKeybindLabel] = false end)
                 pcall(function() _ncKeybindListenConn:Disconnect() end)
             end)
@@ -27792,7 +27792,7 @@ function CreateWorldUI_Emotes()
                     end
                 end
             end)
- CreateCustomNotification("KEYBINDS ON", "Z/X/C/V/B/N activos!", 3)
+ if not UserInputService.TouchEnabled then CreateCustomNotification("KEYBINDS ON", "Z/X/C/V/B/N activos!", 3) end
         else
             StopEmote()
         end
@@ -35831,7 +35831,7 @@ function CreateExclusiveTab()
     CreateAuroraToggle(settSec, "Disable Keybinds", function(on)
         _hs().disableKeybinds = on
         _G._hubDisableKeybinds = on
-        CreateCustomNotification("SETTINGS", on and "Keybinds OFF" or "Keybinds ON", 1.5)
+        if not UserInputService.TouchEnabled then CreateCustomNotification("SETTINGS", on and "Keybinds OFF" or "Keybinds ON", 1.5) end
     end, HS.disableKeybinds)
 
     CreateAuroraToggle(settSec, "Undraggable Bindable Buttons", function(on)
@@ -45849,7 +45849,7 @@ function CreateCombatTab()
                 kfBtn.Text = "..."
                 kfBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
                 kbStroke.Color = Color3.fromRGB(255, 210,   0)
-                CreateCustomNotification("SHOOT KEYBIND", "Presion la tecla que quers usar", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "Presion la tecla que quers usar", 2) end
 
                 if _listenConn then pcall(function() _listenConn:Disconnect() end) end
                 _listenConn = UserInputService.InputBegan:Connect(function(inp, gp)
@@ -45871,7 +45871,7 @@ function CreateCombatTab()
                         kbStroke.Color = Color3.fromRGB(90, 120, 255)
                         _listening = false
                         pcall(function() _listenConn:Disconnect() end)
-                        CreateCustomNotification("SHOOT KEYBIND", "Tecla -> " .. keyName, 2)
+                        if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "Tecla -> " .. keyName, 2) end
                     end
                 end)
             end)
@@ -47598,7 +47598,7 @@ function CreateCombatTab()
         -- -- Funcin de disparo (usa el mismo _csDoShoot / SA) --------------
         local function _skShoot()
             if not CombatTabState.silentAimEnabled then
-                CreateCustomNotification(" SHOOT KEYBIND", "Activ Silent Aim primero!", 2.5)
+                if not UserInputService.TouchEnabled then CreateCustomNotification(" SHOOT KEYBIND", "Activ Silent Aim primero!", 2.5) end
                 return
             end
             local fn = CombatTabState and CombatTabState.silentAimShootFn
@@ -47683,7 +47683,7 @@ function CreateCombatTab()
                     _skKeyBtn.Text = inp.KeyCode.Name
                     _skKeyBtn.BackgroundColor3 = ThemeColors.Background
                     _skKeyStroke.Color = ThemeColors.Primary
-                    CreateCustomNotification(" SHOOT KEYBIND", "Tecla asignada: " .. inp.KeyCode.Name, 2)
+                    if not UserInputService.TouchEnabled then CreateCustomNotification(" SHOOT KEYBIND", "Tecla asignada: " .. inp.KeyCode.Name, 2) end
                 end
                 return
             end
@@ -47707,7 +47707,7 @@ function CreateCombatTab()
                 _skKeyBtn.Text = "..."
                 _skKeyBtn.BackgroundColor3 = Color3.fromRGB(90, 35, 10)
                 _skKeyStroke.Color = Color3.fromRGB(255, 160, 60)
-                CreateCustomNotification(" SHOOT KEYBIND", "Presion una tecla para asignar", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification(" SHOOT KEYBIND", "Presion una tecla para asignar", 2) end
             end
         end)
 
