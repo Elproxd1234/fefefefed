@@ -13690,7 +13690,7 @@ function CreateMainUI_Fly()
             if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == _flyKeybind and not _flyListening then
                 flyNoclipEnabled = not flyNoclipEnabled
                 if flyNoclipEnabled then startFlyNoclip() end
-                CreateCustomNotification("FLY", flyNoclipEnabled and "ON (keybind)" or "OFF (keybind)", 1.5)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("FLY", flyNoclipEnabled and "ON (keybind)" or "OFF (keybind)", 1.5) end
             end
         end)
     end
@@ -14220,8 +14220,8 @@ function CreateMainUI_SwimFlyGithub()
         UserInputService.InputBegan:Connect(function(inp, gp)
             if gp or _ajListening then return end
             if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == _ajKeybind then
-                if AJ.enabled then stopAutoJump(); CreateCustomNotification("AUTO JUMP", "OFF (keybind)", 1.5)
-                else startAutoJump(); CreateCustomNotification("AUTO JUMP", "ON (keybind)", 1.5) end
+                if AJ.enabled then stopAutoJump(); if not UserInputService.TouchEnabled then CreateCustomNotification("AUTO JUMP", "OFF (keybind)", 1.5) end
+                else startAutoJump(); if not UserInputService.TouchEnabled then CreateCustomNotification("AUTO JUMP", "ON (keybind)", 1.5) end end
             end
         end)
     end
@@ -14444,7 +14444,7 @@ function CreateMainUI_SwimFlyGithub()
             end)
             jbStatusL.Text = "Jump Booster: ON  tecla [" .. tostring(JB.keybind):gsub("Enum.KeyCode.", "") .. "]"
             jbStatusL.TextColor3 = Color3.fromRGB(90, 120, 255)
-            CreateCustomNotification("JUMP BOOSTER", "ON  presiona [" .. tostring(JB.keybind):gsub("Enum.KeyCode.", "") .. "] para saltar", 3)
+            if not UserInputService.TouchEnabled then CreateCustomNotification("JUMP BOOSTER", "ON  presiona [" .. tostring(JB.keybind):gsub("Enum.KeyCode.", "") .. "] para saltar", 3) end
         else
             jbStatusL.Text = "Jump Booster: OFF"
             jbStatusL.TextColor3 = Color3.fromRGB(255, 200, 200)
@@ -14491,7 +14491,7 @@ function CreateMainUI_SwimFlyGithub()
                     _jbKeyBtn.BackgroundTransparency = 0.35
                     JB.listening = false; conn:Disconnect()
                     jbStatusL.Text = "Jump Booster: " .. (JB.enabled and "ON" or "OFF") .. "  tecla [" .. keyName .. "]"
-                    CreateCustomNotification("JUMP BOOSTER", "Tecla cambiada a [" .. keyName .. "]", 2)
+                    if not UserInputService.TouchEnabled then CreateCustomNotification("JUMP BOOSTER", "Tecla cambiada a [" .. keyName .. "]", 2) end
                 end
             end)
         end)
@@ -14512,7 +14512,7 @@ function CreateMainUI_SwimFlyGithub()
         MakeCapyBindableFrame(sg, "BOOST", function()
             fireJumpBooster()
         end, 20, 280)
-        CreateCustomNotification("JUMP BOOSTER", "Bindable activo  presiona BOOST para saltar", 2)
+        if not UserInputService.TouchEnabled then CreateCustomNotification("JUMP BOOSTER", "Bindable activo  presiona BOOST para saltar", 2) end
     end, false)
 
     -- Sliders Jump Booster
@@ -16931,9 +16931,9 @@ function CreateMainUI_InvisibleGhost()
                         CreateCustomNotification("INVIS OFF", "Visible", 2)
                     end
                 end, 20, 320)
-                CreateCustomNotification("INVIS BIND", "Bindable activo", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("INVIS BIND", "Bindable activo", 2) end
             else
-                CreateCustomNotification("INVIS BIND", "Bindable removido", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("INVIS BIND", "Bindable removido", 2) end
             end
         end, _invBind.enabled)
     end
@@ -19389,7 +19389,7 @@ function CreateMainTab()
             if not on then return end
             if _ncKeybindWaiting then return end
             _ncKeybindWaiting = true
-            CreateCustomNotification("KEYBIND", "Presiona la tecla que queres usar para Noclip...", 3)
+            if not UserInputService.TouchEnabled then CreateCustomNotification("KEYBIND", "Presiona la tecla que queres usar para Noclip...", 3) end
             -- Escuchar la proxima tecla
             if _ncKeybindListenConn then pcall(function() _ncKeybindListenConn:Disconnect() end) end
             _ncKeybindListenConn = UserInput.InputBegan:Connect(function(input, gpe)
@@ -19405,7 +19405,7 @@ function CreateMainTab()
                 _nc.keybind = input.KeyCode  -- FIX: persistir en _G._ncState
                 _ncKeybindLabel = "Noclip (Keybind) [" .. tostring(input.KeyCode.Name) .. "]"
                 _ncKeybindWaiting = false
-                CreateCustomNotification("KEYBIND", "Noclip -> " .. tostring(input.KeyCode.Name), 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("KEYBIND", "Noclip -> " .. tostring(input.KeyCode.Name), 2) end
                 _sp(function() _G._toggleStates[_ncKeybindLabel] = false end)
                 pcall(function() _ncKeybindListenConn:Disconnect() end)
             end)
@@ -27750,7 +27750,7 @@ function CreateWorldUI_Emotes()
                     end
                 end
             end)
- CreateCustomNotification("KEYBINDS ON", "Z/X/C/V/B/N activos!", 3)
+ if not UserInputService.TouchEnabled then CreateCustomNotification("KEYBINDS ON", "Z/X/C/V/B/N activos!", 3) end
         else
             StopEmote()
         end
@@ -27920,7 +27920,7 @@ function CreateWorldUI_Emotes()
                 bd.frame = nil
             end
         end
-        CreateCustomNotification("EMOTES", "Todos los bindable desactivados.", 2)
+        if not UserInputService.TouchEnabled then CreateCustomNotification("EMOTES", "Todos los bindable desactivados.", 2) end
     end, _emotesSec)
 end
 
@@ -28193,9 +28193,9 @@ function CreateWorldUI_OrbitPlayer()
                     if _op.active then _startOrbitPlayer() else _stopOrbitPlayer() end
                     CreateCustomNotification("ORBIT PLYR", _op.active and "ON" or "OFF", 2)
                 end, _op.bindSizeX, _op.bindSizeY)
-                CreateCustomNotification("OB BIND", "Bindable ON", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("OB BIND", "Bindable ON", 2) end
             else
-                CreateCustomNotification("OB BIND", "Bindable OFF", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("OB BIND", "Bindable OFF", 2) end
             end
         end, _obBind.enabled)
     end
@@ -29444,10 +29444,10 @@ function CreateWorldUI_AutoGrabGun()
         GrabState.bindable = enabled
         if enabled then
             MakeGrabBindableBtn()
-            CreateCustomNotification("GRAB GUN", "Boton bindable creado", 2)
+            if not UserInputService.TouchEnabled then CreateCustomNotification("GRAB GUN", "Boton bindable creado", 2) end
         else
             _destroyGrabBind()
-            CreateCustomNotification("GRAB GUN", "Boton bindable eliminado", 2)
+            if not UserInputService.TouchEnabled then CreateCustomNotification("GRAB GUN", "Boton bindable eliminado", 2) end
         end
     end, GrabState.bindable)
 
@@ -35036,9 +35036,9 @@ function CreatePremiumTab()
                     end
                 end, 200, 200)
 
-                CreateCustomNotification("FAKE DIED", "Bindable ON -- boton flotante activo", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("FAKE DIED", "Bindable ON -- boton flotante activo", 2) end
             else
-                CreateCustomNotification("FAKE DIED", "Bindable OFF", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("FAKE DIED", "Bindable OFF", 2) end
             end
         end, _G._fdBind.enabled)
     end
@@ -35852,13 +35852,13 @@ function CreateExclusiveTab()
     CreateAuroraToggle(settSec, "Disable Keybinds", function(on)
         _hs().disableKeybinds = on
         _G._hubDisableKeybinds = on
-        CreateCustomNotification("SETTINGS", on and "Keybinds OFF" or "Keybinds ON", 1.5)
+        if not UserInputService.TouchEnabled then CreateCustomNotification("SETTINGS", on and "Keybinds OFF" or "Keybinds ON", 1.5) end
     end, HS.disableKeybinds)
 
     CreateAuroraToggle(settSec, "Undraggable Bindable Buttons", function(on)
         _hs().undraggableButtons = on
         _G._hubUndraggableButtons = on
-        CreateCustomNotification("SETTINGS", on and "Bindable buttons fijos" or "Bindable buttons arrastrables", 1.5)
+        if not UserInputService.TouchEnabled then CreateCustomNotification("SETTINGS", on and "Bindable buttons fijos" or "Bindable buttons arrastrables", 1.5) end
     end, HS.undraggableButtons)
 
     -- -- HUB DRAG --------------------------------------------------
@@ -38463,7 +38463,7 @@ function CreateCombatTab()
                 end
             end
             if not gun then
-                CreateCustomNotification("BINDABLE SA", "Sin gun", 1.5)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("BINDABLE SA", "Sin gun", 1.5) end
                 return
             end
 
@@ -38478,7 +38478,7 @@ function CreateCombatTab()
             local target = findMurderer and findMurderer()
             if not target or not target.Character then
                 if handle then pcall(function() handle.Transparency = origTrans end) end
-                CreateCustomNotification("BINDABLE SA", "Sin target (murder)", 1)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("BINDABLE SA", "Sin target (murder)", 1) end
                 return
             end
             local tHRP2 = target.Character:FindFirstChild("HumanoidRootPart")
@@ -38541,7 +38541,7 @@ function CreateCombatTab()
             _bsaState.enabled = enabled
             _destroyBSA()
             if not enabled then
-                CreateCustomNotification("BINDABLE SA", "Desactivado", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("BINDABLE SA", "Desactivado", 2) end
                 return
             end
 
@@ -38679,7 +38679,7 @@ function CreateCombatTab()
                 end
             end)
 
-            CreateCustomNotification("BINDABLE SA", "Activado — botón circular en pantalla", 2)
+            if not UserInputService.TouchEnabled then CreateCustomNotification("BINDABLE SA", "Activado — botón circular en pantalla", 2) end
         end, false)
     end
     CombatState.saButtonSize = CombatState.saButtonSize or 240
@@ -45795,9 +45795,9 @@ function CreateCombatTab()
                     if gp or not _skbEnabled then return end
                     if inp.KeyCode == _skbKey then _sp(_skbFire) end
                 end)
-                CreateCustomNotification("SHOOT KEYBIND", "ON  tecla: " .. tostring(_skbKey).gsub(tostring(_skbKey), "Enum.KeyCode.", ""), 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "ON  tecla: " .. tostring(_skbKey).gsub(tostring(_skbKey), "Enum.KeyCode.", ""), 2) end
             else
-                CreateCustomNotification("SHOOT KEYBIND", "OFF", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "OFF", 2) end
             end
         end, false)
 
@@ -45853,7 +45853,7 @@ function CreateCombatTab()
                 kfBtn.Text = "..."
                 kfBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
                 kbStroke.Color = Color3.fromRGB(255, 210,   0)
-                CreateCustomNotification("SHOOT KEYBIND", "Presion la tecla que quers usar", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "Presion la tecla que quers usar", 2) end
 
                 if _listenConn then pcall(function() _listenConn:Disconnect() end) end
                 _listenConn = UserInputService.InputBegan:Connect(function(inp, gp)
@@ -45875,7 +45875,7 @@ function CreateCombatTab()
                         kbStroke.Color = Color3.fromRGB(90, 120, 255)
                         _listening = false
                         pcall(function() _listenConn:Disconnect() end)
-                        CreateCustomNotification("SHOOT KEYBIND", "Tecla -> " .. keyName, 2)
+                        if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "Tecla -> " .. keyName, 2) end
                     end
                 end)
             end)
@@ -47602,7 +47602,7 @@ function CreateCombatTab()
         -- -- Funcin de disparo (usa el mismo _csDoShoot / SA) --------------
         local function _skShoot()
             if not CombatTabState.silentAimEnabled then
-                CreateCustomNotification(" SHOOT KEYBIND", "Activ Silent Aim primero!", 2.5)
+                if not UserInputService.TouchEnabled then CreateCustomNotification(" SHOOT KEYBIND", "Activ Silent Aim primero!", 2.5) end
                 return
             end
             local fn = CombatTabState and CombatTabState.silentAimShootFn
@@ -47687,7 +47687,7 @@ function CreateCombatTab()
                     _skKeyBtn.Text = inp.KeyCode.Name
                     _skKeyBtn.BackgroundColor3 = ThemeColors.Background
                     _skKeyStroke.Color = ThemeColors.Primary
-                    CreateCustomNotification(" SHOOT KEYBIND", "Tecla asignada: " .. inp.KeyCode.Name, 2)
+                    if not UserInputService.TouchEnabled then CreateCustomNotification(" SHOOT KEYBIND", "Tecla asignada: " .. inp.KeyCode.Name, 2) end
                 end
                 return
             end
@@ -47711,7 +47711,7 @@ function CreateCombatTab()
                 _skKeyBtn.Text = "..."
                 _skKeyBtn.BackgroundColor3 = Color3.fromRGB(90, 35, 10)
                 _skKeyStroke.Color = Color3.fromRGB(255, 160, 60)
-                CreateCustomNotification(" SHOOT KEYBIND", "Presion una tecla para asignar", 2)
+                if not UserInputService.TouchEnabled then CreateCustomNotification(" SHOOT KEYBIND", "Presion una tecla para asignar", 2) end
             end
         end)
 
