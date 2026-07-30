@@ -7614,11 +7614,11 @@ _G._bindablePosSave   = _G._bindablePosSave   or {}
 -- Cada vez que se crea un bindable se registra; al destruirse se libera
 _G._bindableActiveSlots = _G._bindableActiveSlots or {}  -- label -> slotIndex asignado
 
-_BIND_CS    = 54   -- tamaño del circulo (un poco mas grande, mas facil de tocar en movil)
-_BIND_GAP   = 10
+_BIND_CS    = 44   -- tamaño del circulo
+_BIND_GAP   = 12
 _BIND_COLS  = 10  -- muchas columnas para que queden en fila arriba
 _BIND_PAD_X = 12
-_BIND_PAD_Y = 60  -- FIX MOBILE: baja los botones 60px para que no queden tapados por la barra del sistema
+_BIND_PAD_Y = 10  -- pegado arriba
 
 function _getBindablePosition(slotIndex)
     local col = slotIndex % _BIND_COLS
@@ -7645,201 +7645,6 @@ function _releaseSlot(label)
     _G._bindableActiveSlots[label] = nil
 end
 
--- ================================================================
--- _NewBindable: botón flotante minimalista, siempre visible.
--- No usa UIScale, TweenService ni UIDragDetector.
--- Retorna el ScreenGui. Llame _NewBindable(label, cb) y guarde la ref.
--- Para destruir: screenGuiRef:Destroy()
--- ================================================================
-_G._newBindReg = _G._newBindReg or {}  -- label -> ScreenGui
-
-function _NewBindable(label, callback, optX, optY)
-    -- Destruir instancia previa con el mismo label
-    local prev = _G._newBindReg[label]
-    if prev then pcall(function() prev:Destroy() end) end
-    _G._newBindReg[label] = nil
-
-    local slot = _assignSlot(label)
-    local bx, by = _getBindablePosition(slot)
-    if optX then bx = optX end
-    if optY then by = optY end
-
-    local sz = _BIND_CS
-
-    -- ScreenGui contenedor
-    local sg = Instance.new("ScreenGui")
-    sg.Name           = "NewBind_" .. tostring(label):gsub("%s","_")
-    sg.ResetOnSpawn   = false
-    sg.DisplayOrder   = 10000   -- encima de todo
-    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    sg.IgnoreGuiInset = true
-    -- Intentar CoreGui primero, fallback PlayerGui
-    local _cg = game:GetService("CoreGui")
-    local _pg = game:GetService("Players").LocalPlayer
-    local ok = pcall(function() sg.Parent = _cg end)
-    if not ok or not sg.Parent then
-        sg.Parent = _pg:WaitForChild("PlayerGui")
-    end
-
-    -- Frame contenedor (drag manual)
-    local root = Instance.new("Frame", sg)
-    root.Name                   = "Root"
-    root.Size                   = UDim2.fromOffset(sz, sz)
-    root.Position               = UDim2.fromOffset(bx, by)
-    root.BackgroundTransparency = 1
-    root.BorderSizePixel        = 0
-    root.Active                 = true
-    root.ZIndex                 = 10
-
-    -- Circulo de fondo
-    local bg = Instance.new("Frame", root)
-    bg.Name                   = "BG"
-    bg.Size                   = UDim2.new(1, 0, 1, 0)
-    bg.BackgroundColor3       = Color3.fromRGB(15, 20, 45)
-    bg.BackgroundTransparency = 0.15
-    bg.BorderSizePixel        = 0
-    bg.ZIndex                 = 11
-    Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
-
-    -- Borde
-    local stroke = Instance.new("UIStroke", bg)
-    stroke.Color        = Color3.fromRGB(0, 180, 255)
-    stroke.Thickness    = 2.5
-    stroke.Transparency = 0
-
-    -- Texto
-    local lbl = Instance.new("TextLabel", bg)
-    lbl.Size                   = UDim2.new(1, -4, 1, -4)
-    lbl.Position               = UDim2.new(0, 2, 0, 2)
-    lbl.BackgroundTransparency = 1
-    lbl.Text                   = tostring(label)
-    lbl.TextColor3             = Color3.fromRGB(255, 255, 255)
-    lbl.Font                   = Enum.Font.GothamBold
-    lbl.TextSize               = 11
-    lbl.TextWrapped            = true
-    lbl.TextScaled             = false
-    lbl.ZIndex                 = 12
-
-    -- Boton invisible encima (captura clicks y touches)
-    local btn = Instance.new("TextButton", root)
-    btn.Name                   = "Btn"
-    btn.Size                   = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1
-    btn.Text                   = ""
-    btn.ZIndex                 = 15
-    btn.AutoButtonColor        = false
-    btn.Active                 = true
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
-
-    -- Drag manual
-    local _dragging, _dragStartInput, _dragStartPos = false, nil, nil
-    local _moved = false
-    local _lastTap = 0
-
-    btn.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1
-        or inp.UserInputType == Enum.UserInputType.Touch then
-            _dragging = true
-            _moved = false
-            _dragStartInput = inp.Position
-            _dragStartPos   = root.Position
-        end
-    end)
-
-    local UIS = game:GetService("UserInputService")
-    UIS.InputChanged:Connect(function(inp)
-        if not _dragging then return end
-        if inp.UserInputType ~= Enum.UserInputType.MouseMovement
-        and inp.UserInputType ~= Enum.UserInputType.Touch then return end
-        local delta = inp.Position - _dragStartInput
-        if delta.Magnitude > 6 then _moved = true end
-        local vp = workspace.CurrentCamera.ViewportSize
-        root.Position = UDim2.fromOffset(
-            math.clamp(_dragStartPos.X.Offset + delta.X, 0, vp.X - sz),
-            math.clamp(_dragStartPos.Y.Offset + delta.Y, 0, vp.Y - sz)
-        )
-    end)
-
-    UIS.InputEnded:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1
-        or inp.UserInputType == Enum.UserInputType.Touch then
-            if not _dragging then return end  -- FIX: ignorar inputs que no comenzaron sobre este boton
-            local wasDrag = _moved
-            _dragging = false
-            task.defer(function() _moved = false end)
-            if not wasDrag then
-                local now = tick()
-                if now - _lastTap > 0.2 then
-                    _lastTap = now
-                    -- Feedback visual rapido
-                    bg.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-                    task.delay(0.12, function()
-                        if bg and bg.Parent then
-                            bg.BackgroundColor3 = Color3.fromRGB(15, 20, 45)
-                        end
-                    end)
-                    if callback then task.spawn(callback) end
-                end
-            end
-        end
-    end)
-
-    -- Tambien Activated por si el executor prefiere ese path
-    btn.Activated:Connect(function()
-        local now = tick()
-        if now - _lastTap > 0.2 then
-            _lastTap = now
-            bg.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-            task.delay(0.12, function()
-                if bg and bg.Parent then
-                    bg.BackgroundColor3 = Color3.fromRGB(15, 20, 45)
-                end
-            end)
-            if callback then task.spawn(callback) end
-        end
-    end)
-
-    _G._newBindReg[label] = sg
-
-    -- Limpiar slot al destruirse
-    sg.AncestryChanged:Connect(function()
-        if not sg.Parent then
-            _releaseSlot(label)
-            if _G._newBindReg[label] == sg then
-                _G._newBindReg[label] = nil
-            end
-        end
-    end)
-
-    return sg
-end
-
-function _DestroyNewBindable(label)
-    local sg = _G._newBindReg and _G._newBindReg[label]
-    if sg then
-        pcall(function() sg:Destroy() end)
-        _G._newBindReg[label] = nil
-    end
-    _releaseSlot(label)
-    -- Sweep por nombre por si la referencia ya no es valida
-    pcall(function()
-        local name = "NewBind_" .. tostring(label):gsub("%s","_")
-        for _, g in ipairs(game:GetService("CoreGui"):GetChildren()) do
-            if g.Name == name then pcall(function() g:Destroy() end) end
-        end
-        local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
-        if pg then
-            for _, g in ipairs(pg:GetChildren()) do
-                if g.Name == name then pcall(function() g:Destroy() end) end
-            end
-        end
-    end)
-end
--- ================================================================
--- FIN _NewBindable
--- ================================================================
-
-
 -- Registro global: label -> _bindSg, para destruccion directa sin buscar por nombre
 -- FIX TOTAL: limpiar registries al inicio para evitar basura de ejecuciones anteriores
 do
@@ -7862,43 +7667,336 @@ _G._capyBindRegistry       = {}   -- siempre fresco al cargar el hub
 _G._capyBindParentRegistry = {}
 
 function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
-    -- SHIM: delega al nuevo sistema _NewBindable que siempre aparece en pantalla.
-    -- Mantiene la misma firma y retorna un objeto compatible con el resto del hub.
-    local sg = _NewBindable(tostring(labelText), callback, optPosX, optPosY)
+    -- ======================================================
+    -- NUEVO DISENO: boton cuadrado redondeado, borde rojo
+    -- animado, colores Soft Gray del hub, feedback visual
+    -- ======================================================
+    local BTN_W = 80  -- se sobreescribe abajo, se mantiene para calculos de posicion
+    local BTN_H = 80
+    local _coreGui = game:GetService("CoreGui")
+    local _sgName  = "CapyBindSg_" .. tostring(labelText):gsub("%s","")
+    local _posKey  = tostring(labelText)
 
-    -- Objeto fake que el resto del hub guarda como "bg"
-    local bg = {}
-    bg._bindSg = sg
-    bg.SetActiveState = function(self, on) end  -- visual-only, no critico
-    bg.SetShape       = function(self, shape) end
-    bg._animatedDestroy = function()
-        pcall(function() sg:Destroy() end)
-        _DestroyNewBindable(tostring(labelText))
+    -- POSICION: siempre slot automatico o posicion manual -- NUNCA restaurar la guardada.
+    -- Motivo: al cambiar de pestana el boton se destruye y recrea; restaurar la posicion
+    -- guardada lo hacia aparecer en el lugar donde el usuario lo habia dejado antes,
+    -- en vez de aparecer siempre en su posicion inicial de slot.
+    local vp = workspace.CurrentCamera.ViewportSize
+    local posXOff, posYOff
+    if optPosX and optPosY then
+        posXOff = math.clamp(optPosX, 4, vp.X - BTN_W - 4)
+        posYOff = math.clamp(optPosY, 4, vp.Y - BTN_H - 4)
+    else
+        local mySlot = _assignSlot(tostring(labelText))
+        posXOff, posYOff = _getBindablePosition(mySlot)
     end
+
+    -- Destruir instancia anterior si existe
+    local _prevSg = _G._capyBindRegistry and _G._capyBindRegistry[labelText]
+    if _prevSg then pcall(function() _prevSg:Destroy() end) end
+    pcall(function()
+        for _, g in ipairs(_coreGui:GetChildren()) do
+            if g.Name == _sgName then g:Destroy() end
+        end
+    end)
+    pcall(function()
+        local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+        if pg then
+            for _, g in ipairs(pg:GetChildren()) do
+                if g.Name == _sgName then g:Destroy() end
+            end
+        end
+    end)
+
+    -- ScreenGui contenedor
+    local _bindSg = Instance.new("ScreenGui")
+    _bindSg.Name           = _sgName
+    _bindSg.ResetOnSpawn   = false
+    _bindSg.DisplayOrder   = 9998
+    _bindSg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    _bindSg.IgnoreGuiInset = true
+    pcall(function() _bindSg.Parent = _coreGui end)
+    if not _bindSg.Parent then
+        _bindSg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    end
+    _G._capyBindRegistry = _G._capyBindRegistry or {}
+    _G._capyBindRegistry[labelText] = _bindSg
+
+    -- Destruir cuando el padre del toggle muere
+    if guiParent and guiParent ~= _bindSg and guiParent ~= _coreGui then
+        pcall(function()
+            guiParent.AncestryChanged:Connect(function()
+                if not guiParent.Parent then
+                    pcall(function() _bindSg:Destroy() end)
+                end
+            end)
+        end)
+    end
+
+    -- Tamaño circular
+    BTN_W = _BIND_CS
+    BTN_H = _BIND_CS
+
+    -- -- CONTENEDOR RAIZ ----------------------------------
+    local bg = Instance.new("Frame", _bindSg)
+    bg.Name                   = "CapyBindBtn"
+    bg.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+    bg.Position               = UDim2.fromOffset(posXOff, posYOff)
+    bg.AnchorPoint            = Vector2.new(0, 0)
+    bg.BackgroundTransparency = 1
+    bg.BorderSizePixel        = 0
+    bg.ZIndex                 = 200
+    bg.Active                 = true
+
+    -- UIScale para animacion de entrada
+    local _bindUiScale = Instance.new("UIScale", bg)
+    _bindUiScale.Scale = 0
+
+    -- -- CIRCULO PRINCIPAL (fondo oscuro semi-transparente) --
+    local fill = Instance.new("TextButton", bg)
+    fill.Name                   = "Fill"
+    fill.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+    fill.AnchorPoint            = Vector2.new(0.5, 0.5)
+    fill.Position               = UDim2.fromScale(0.5, 0.5)
+    fill.BackgroundColor3       = ThemeColors.Aurora3
+    fill.BackgroundTransparency = 0.45
+    fill.BorderSizePixel        = 0
+    fill.Text                   = ""
+    fill.AutoButtonColor        = false
+    fill.Active                 = true
+    fill.ZIndex                 = 202
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+    -- Borde gris claro (igual al Shoot Murderer)
+    local fillStroke = Instance.new("UIStroke", fill)
+    fillStroke.Color           = ThemeColors.Aurora3
+    fillStroke.Thickness       = 2
+    fillStroke.Transparency    = 0.1
+    fillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- TextLabel centrado en el círculo
+    local textLabel = Instance.new("TextLabel", fill)
+    textLabel.Size                   = UDim2.new(1, -10, 1, 0)
+    textLabel.Position               = UDim2.new(0, 5, 0, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text                   = tostring(labelText)
+    textLabel.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
+    textLabel.TextSize               = 12
+    textLabel.TextColor3             = Color3.fromRGB(220, 220, 220)
+    textLabel.TextXAlignment         = Enum.TextXAlignment.Center
+    textLabel.TextWrapped            = true
+    textLabel.ZIndex                 = 203
+
+    local textStroke = Instance.new("UIStroke", textLabel)
+    textStroke.Color        = Color3.fromRGB(0, 0, 0)
+    textStroke.Thickness    = 1
+    textStroke.Transparency = 0.6
+
+    -- AUTO-REGISTRO de idioma
+    if _LangObjects then
+        table.insert(_LangObjects, {obj=textLabel, key=tostring(labelText), prefix="", suffix=""})
+        if _G.HubLanguage and _LangStrings then
+            local _d = _LangStrings[_G.HubLanguage]
+            if _d and _d[tostring(labelText)] then textLabel.Text = _d[tostring(labelText)] end
+        end
+    end
+
+    -- -- ANIMACION DE ENTRADA ------------------------------
+    task.spawn(function()
+        task.wait(0.05)
+        TweenService:Create(_bindUiScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
+    end)
+
+    -- -- DRAG ---------------------------------------------
+    local _dragConn  = nil
+    local _dragging  = false
+    local _dragStart = nil
+    local _startPos  = nil
+    local _moved     = false
+
+    if pcall(function()
+        local dd = Instance.new("UIDragDetector", bg)
+        dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
+        dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
+        dd.Dragged:Connect(function()
+            if _G._sliderDragging then return end
+            _moved = true
+            local vpNow = workspace.CurrentCamera.ViewportSize
+            bg.Position = UDim2.fromOffset(
+                math.clamp(bg.Position.X.Offset, 0, vpNow.X - BTN_W),
+                math.clamp(bg.Position.Y.Offset, 0, vpNow.Y - BTN_H)
+            )
+            _G._bindablePosSave = _G._bindablePosSave or {}
+            _G._bindablePosSave[_posKey] = {x=bg.Position.X.Offset, y=bg.Position.Y.Offset}
+        end)
+        dd.DragEnd:Connect(function() task.defer(function() _moved = false end) end)
+    end) then
+        -- UIDragDetector OK
+    else
+        fill.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                _dragging = true; _moved = false
+                _dragStart = input.Position; _startPos = bg.Position
+            end
+        end)
+        _dragConn = UserInputService.InputChanged:Connect(function(input)
+            if not _dragging then return end
+            if _G._sliderDragging then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement
+            and input.UserInputType ~= Enum.UserInputType.Touch then return end
+            local delta = input.Position - _dragStart
+            if delta.Magnitude > 4 then _moved = true end
+            local vpNow = workspace.CurrentCamera.ViewportSize
+            bg.Position = UDim2.fromOffset(
+                math.clamp(_startPos.X.Offset + delta.X, 0, vpNow.X - BTN_W),
+                math.clamp(_startPos.Y.Offset + delta.Y, 0, vpNow.Y - BTN_H)
+            )
+        end)
+        fill.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                _dragging = false
+                if _moved then
+                    _G._bindablePosSave = _G._bindablePosSave or {}
+                    _G._bindablePosSave[_posKey] = {x=bg.Position.X.Offset, y=bg.Position.Y.Offset}
+                end
+                task.defer(function() _moved = false end)
+            end
+        end)
+    end
+
+    -- Colores del hub (igual que CreateButton)
+    local _C_IDLE_BG    = ThemeColors.Aurora3
+    local _C_HOVER_BG   = ThemeColors.Aurora1
+    local _C_CLICK_BG   = ThemeColors.Primary
+    local _C_TEXT_IDLE  = Color3.fromRGB(255, 255, 255)
+    local _C_TEXT_WHITE = Color3.fromRGB(255, 255, 255)
+
+    -- Hover
+    fill.MouseEnter:Connect(function()
+        TweenService:Create(fill,      TweenInfo.new(0.12), {BackgroundColor3=_C_HOVER_BG, BackgroundTransparency=0.2}):Play()
+        TweenService:Create(fillStroke,TweenInfo.new(0.12), {Transparency=0, Thickness=2.5}):Play()
+        TweenService:Create(textLabel, TweenInfo.new(0.12), {TextColor3=_C_TEXT_WHITE}):Play()
+    end)
+    fill.MouseLeave:Connect(function()
+        TweenService:Create(fill,      TweenInfo.new(0.12), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.35}):Play()
+        TweenService:Create(fillStroke,TweenInfo.new(0.12), {Transparency=0.1, Thickness=2}):Play()
+        TweenService:Create(textLabel, TweenInfo.new(0.12), {TextColor3=_C_TEXT_IDLE}):Play()
+    end)
+
+    -- -- CLICK --------------------------------------------
+    local _capyIsActive = false
+    fill.MouseButton1Down:Connect(function()
+        if _moved then return end
+        TweenService:Create(fill, TweenInfo.new(0.07), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
+        TweenService:Create(fillStroke, TweenInfo.new(0.07), {Color=ThemeColors.Primary}):Play()
+    end)
+    fill.MouseButton1Up:Connect(function()
+        if _moved then return end
+        TweenService:Create(fill, TweenInfo.new(0.15), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
+        TweenService:Create(fillStroke, TweenInfo.new(0.15), {Color=ThemeColors.Aurora3}):Play()
+        if callback then task.spawn(function() callback(_capyIsActive) end) end
+    end)
+
+    -- -- SetActiveState ------------------------------------
+    local function _setActive(on)
+        _capyIsActive = on
+        if on then
+            TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
+            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0, Thickness=2.5, Color=ThemeColors.Primary}):Play()
+        else
+            TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
+            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0.1, Thickness=2, Color=ThemeColors.Aurora3}):Play()
+        end
+    end
+    fill.SetActiveState  = function(self, on) _setActive(on) end
+    bg.SetActiveState    = function(self, on) _setActive(on) end
+
+    -- -- Shape system (compatibilidad) ---------------------
+    local function _applyShape(shape)
+        local corner = fill:FindFirstChildOfClass("UICorner")
+        fill.Rotation = 0
+        if shape == "circle" then
+            if corner then corner.CornerRadius = UDim.new(1, 0) end
+        elseif shape == "square" then
+            if corner then corner.CornerRadius = UDim.new(0, 4) end
+        elseif shape == "rounded" then
+            if corner then corner.CornerRadius = UDim.new(0, 22) end
+        elseif shape == "diamond" then
+            if corner then corner.CornerRadius = UDim.new(0, 2) end
+            fill.Rotation = 45
+        end
+    end
+    _applyShape(_G._bindableShape or "circle")
+    task.spawn(function()
+        local last = _G._bindableShape or "circle"
+        while fill and fill.Parent do
+            task.wait(0.3)
+            local gs = _G._bindableShape or "circle"
+            if gs ~= last then last = gs; pcall(_applyShape, gs) end
+        end
+    end)
+    bg.SetShape = function(self, shape) _applyShape(shape) end
+
+    -- -- Alias para compatibilidad (capyButton) ------------
+    local capyButton = fill
+
+    -- -- Destruccion animada -------------------------------
+    local _destroying = false
+    local function _animatedDestroy()
+        if _destroying then return end
+        _destroying = true
+        if _dragConn then pcall(function() _dragConn:Disconnect() end) end
+        TweenService:Create(textLabel,  TweenInfo.new(0.25, Enum.EasingStyle.Quad), {TextTransparency=1}):Play()
+        TweenService:Create(fillStroke, TweenInfo.new(0.3,  Enum.EasingStyle.Quad), {Transparency=1}):Play()
+        TweenService:Create(fill,       TweenInfo.new(0.5,  Enum.EasingStyle.Quad), {BackgroundTransparency=1}):Play()
+        task.wait(0.12)
+        TweenService:Create(_bindUiScale, TweenInfo.new(0.6, Enum.EasingStyle.Elastic, Enum.EasingDirection.In, 0, 0.4), {Scale=0}):Play()
+        task.delay(0.8, function() pcall(function() _bindSg:Destroy() end) end)
+    end
+    bg._animatedDestroy      = _animatedDestroy
+    _bindSg._animatedDestroy = _animatedDestroy
+
+    -- Limpiar registry al destruirse
+    _bindSg.AncestryChanged:Connect(function()
+        if not _bindSg.Parent then
+            if not (optPosX and optPosY) then pcall(function() _releaseSlot(tostring(labelText)) end) end
+            if _G._capyBindRegistry and _G._capyBindRegistry[labelText] == _bindSg then
+                _G._capyBindRegistry[labelText] = nil
+            end
+        end
+    end)
+
+    bg._bindSg = _bindSg
     return bg
 end
 
 -- Helper global: destruye el ScreenGui interno de un bindable por su label
 -- Usar esto en el else de cada toggle en vez de (o ademas de) destruir el sg externo
 function DestroyCapyBind(labelText)
-    -- Destruir nuevo sistema _NewBindable
-    _DestroyNewBindable(tostring(labelText))
-
-    -- Destruir viejo sistema (compatibilidad)
+    -- Destruir POR REFERENCIA DIRECTA (mas rapido y confiable)
     local reg = _G._capyBindRegistry
     if reg and reg[labelText] then
         local sg = reg[labelText]
         reg[labelText] = nil
-        pcall(function() sg:Destroy() end)
+        if sg._animatedDestroy then
+            pcall(sg._animatedDestroy)
+        else
+            pcall(function() sg:Destroy() end)
+        end
     end
 
-    -- Barrido por nombre en CoreGui Y PlayerGui
+    -- Barrido por nombre en CoreGui Y PlayerGui (cubre casos donde el registry fallo)
     local _sgName = "CapyBindSg_" .. tostring(labelText):gsub("%s","")
     local function _sweepGui(parent)
         if not parent then return end
         pcall(function()
             for _, g in ipairs(parent:GetChildren()) do
-                if g.Name == _sgName then pcall(function() g:Destroy() end) end
+                if g.Name == _sgName then
+                    if g._animatedDestroy then pcall(g._animatedDestroy)
+                    else pcall(function() g:Destroy() end) end
+                end
             end
         end)
     end
@@ -7974,39 +8072,242 @@ function AddBindableShapeSelector(parent, getBindFrame)
     end)
 end
 function createBindableButton(name, color)
-    -- SHIM: delega al nuevo sistema _NewBindable que siempre aparece en pantalla.
     if _BindableButtons[name] then
         pcall(function() _BindableButtons[name]:Destroy() end)
         _BindableButtons[name] = nil
     end
-    _DestroyNewBindable(name)
 
-    local _tapCallbacks = {}
+    local gui = Instance.new("ScreenGui")
+    gui.Name           = name .. "_CapyBtn"
+    gui.ResetOnSpawn   = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.IgnoreGuiInset = true
+    gui.DisplayOrder   = 9900
+    pcall(function() gui.Parent = game:GetService("CoreGui") end)
+    if not gui.Parent then gui.Parent = LocalPlayer.PlayerGui end
 
-    local sg = _NewBindable(name, function()
-        for _, cb in ipairs(_tapCallbacks) do task.spawn(cb) end
+    -- ==============================================================
+    -- BOTON SA REDISENADO -- moderno, colores del hub, definido
+    -- ==============================================================
+    local BTN_SIZE = _BIND_CS
+    local vp       = workspace.CurrentCamera.ViewportSize
+
+    -- POSICION: siempre slot automatico -- no restaurar posicion guardada
+    local _posKey  = tostring(name)
+    local posX, posY
+    do
+        local slot = _assignSlot(name)
+        posX, posY  = _getBindablePosition(slot)
+        posX = math.clamp(posX, 4, vp.X - BTN_SIZE - 4)
+        posY = math.clamp(posY, 4, vp.Y - BTN_SIZE - 4)
+    end
+
+    -- -- CONTENEDOR raiz (invisible, solo para drag) --------------
+    local bg = Instance.new("Frame", gui)
+    bg.Name                   = "CapyBindBtn"
+    bg.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
+    bg.Position               = UDim2.fromOffset(posX, posY)
+    bg.BackgroundTransparency = 1
+    bg.BorderSizePixel        = 0
+    bg.ZIndex                 = 200
+    bg.Active                 = true
+
+    local _bgScale = Instance.new("UIScale", bg)
+    _bgScale.Scale = 0
+
+    -- -- FONDO CIRCULAR oscuro del hub ----------------------------
+    local circle = Instance.new("Frame", bg)
+    circle.Name                   = "Circle"
+    circle.AnchorPoint            = Vector2.new(0.5, 0.5)
+    circle.Position               = UDim2.fromScale(0.5, 0.5)
+    circle.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
+    circle.BackgroundColor3       = ThemeColors.Background
+    circle.BackgroundTransparency = 0.15
+    circle.BorderSizePixel        = 0
+    circle.ZIndex                 = 201
+    Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
+
+    -- Gradiente del hub en el fondo (mezcla Aurora1 -> Background)
+    local bgGrad = Instance.new("UIGradient", circle)
+    bgGrad.Rotation = 135
+    bgGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,   ThemeColors.Aurora1),
+        ColorSequenceKeypoint.new(0.45, ThemeColors.BackgroundLight),
+        ColorSequenceKeypoint.new(1,   ThemeColors.Background),
+    })
+    bgGrad.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0,   0.35),
+        NumberSequenceKeypoint.new(0.5, 0.55),
+        NumberSequenceKeypoint.new(1,   0.75),
+    })
+
+    -- -- ANILLO EXTERIOR -- running lines del hub -------------------
+    local outerRing = Instance.new("Frame", bg)
+    outerRing.Name                   = "OuterRing"
+    outerRing.AnchorPoint            = Vector2.new(0.5, 0.5)
+    outerRing.Position               = UDim2.fromScale(0.5, 0.5)
+    outerRing.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
+    outerRing.BackgroundTransparency = 1
+    outerRing.BorderSizePixel        = 0
+    outerRing.ZIndex                 = 202
+    Instance.new("UICorner", outerRing).CornerRadius = UDim.new(1, 0)
+
+    local outerStroke = Instance.new("UIStroke", outerRing)
+    outerStroke.Color           = Color3.new(1, 1, 1)
+    outerStroke.Thickness       = 3
+    outerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- Gradiente running lines (igual que el hub y los toggles)
+    local outerGrad = Instance.new("UIGradient", outerStroke)
+    outerGrad.Rotation = 135
+    outerGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,    ThemeColors.Aurora1),
+        ColorSequenceKeypoint.new(0.15, ThemeColors.Background),
+        ColorSequenceKeypoint.new(0.5,  ThemeColors.Aurora1),
+        ColorSequenceKeypoint.new(0.85, ThemeColors.Background),
+        ColorSequenceKeypoint.new(1,    ThemeColors.Aurora1),
+    })
+
+    -- -- ANILLO INTERIOR -- accent del hub -------------------------
+    local innerRing = Instance.new("Frame", bg)
+    innerRing.Name                   = "InnerRing"
+    innerRing.AnchorPoint            = Vector2.new(0.5, 0.5)
+    innerRing.Position               = UDim2.fromScale(0.5, 0.5)
+    innerRing.Size                   = UDim2.fromOffset(BTN_SIZE - 12, BTN_SIZE - 12)
+    innerRing.BackgroundTransparency = 1
+    innerRing.BorderSizePixel        = 0
+    innerRing.ZIndex                 = 203
+    Instance.new("UICorner", innerRing).CornerRadius = UDim.new(1, 0)
+
+    local innerStroke = Instance.new("UIStroke", innerRing)
+    innerStroke.Color           = ThemeColors.Accent
+    innerStroke.Thickness       = 1.5
+    innerStroke.Transparency    = 0.4
+    innerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- -- ICONO  centrado -----------------------------------------
+    local icon = Instance.new("TextLabel", bg)
+    icon.AnchorPoint            = Vector2.new(0.5, 0.5)
+    icon.Position               = UDim2.fromScale(0.5, 0.38)
+    icon.Size                   = UDim2.fromOffset(BTN_SIZE, 28)
+    icon.BackgroundTransparency = 1
+    icon.Text                   = ""
+    icon.TextSize               = 22
+    icon.Font                   = Enum.Font.GothamBold
+    icon.TextColor3             = ThemeColors.TextPrimary
+    icon.ZIndex                 = 205
+
+    -- -- TEXTO debajo del icono ------------------------------------
+    local lbl = Instance.new("TextLabel", bg)
+    lbl.AnchorPoint            = Vector2.new(0.5, 0.5)
+    lbl.Position               = UDim2.fromScale(0.5, 0.72)
+    lbl.Size                   = UDim2.fromOffset(BTN_SIZE - 6, 20)
+    lbl.BackgroundTransparency = 1
+    lbl.Text                   = "SHOOT"
+    lbl.TextSize               = 10
+    lbl.Font                   = Enum.Font.GothamBold
+    lbl.TextColor3             = ThemeColors.TextPrimary
+    lbl.TextWrapped            = true
+    lbl.ZIndex                 = 205
+
+    -- -- BOTON INVISIBLE encima para capturar clicks ---------------
+    local fill = Instance.new("TextButton", bg)
+    fill.Name                   = "Fill"
+    fill.AnchorPoint            = Vector2.new(0.5, 0.5)
+    fill.Position               = UDim2.fromScale(0.5, 0.5)
+    fill.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
+    fill.BackgroundTransparency = 1
+    fill.Text                   = ""
+    fill.AutoButtonColor        = false
+    fill.ZIndex                 = 210
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+    -- -- GLOW de fondo (ImageLabel resplandor) ---------------------
+    local glow = Instance.new("ImageLabel", bg)
+    glow.AnchorPoint            = Vector2.new(0.5, 0.5)
+    glow.Position               = UDim2.fromScale(0.5, 0.5)
+    glow.Size                   = UDim2.fromOffset(BTN_SIZE * 1.4, BTN_SIZE * 1.4)
+    glow.BackgroundTransparency = 1
+    glow.Image                  = "rbxassetid://4970638706"
+    glow.ImageColor3            = ThemeColors.Aurora1
+    glow.ImageTransparency      = 0.78
+    glow.ZIndex                 = 199
+
+    -- -- ANIMACION DE ENTRADA --------------------------------------
+    task.spawn(function()
+        task.wait(0.05)
+        TweenService:Create(_bgScale, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+        task.wait(0.45)
+
+        -- Rotar running lines
+        task.spawn(function()
+            local rot = 135
+            while outerGrad and outerGrad.Parent do
+                rot = (rot + 0.5) % 360
+                outerGrad.Rotation = rot
+                task.wait(0.03)
+            end
+        end)
+
+        -- Pulso del glow
+        task.spawn(function()
+            while glow and glow.Parent do
+                TweenService:Create(glow, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                    {ImageTransparency = 0.58}):Play()
+                task.wait(1.6)
+                if not (glow and glow.Parent) then break end
+                TweenService:Create(glow, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                    {ImageTransparency = 0.82}):Play()
+                task.wait(1.6)
+            end
+        end)
     end)
 
-    _BindableButtons[name] = sg
-    _registerBindableGui(name .. "_CapyBtn", sg)
+    -- -- FEEDBACK DE CLICK -----------------------------------------
+    fill.Activated:Connect(function()
+        TweenService:Create(_bgScale, TweenInfo.new(0.08), {Scale = 0.88}):Play()
+        TweenService:Create(circle, TweenInfo.new(0.08), {BackgroundTransparency = 0}):Play()
+        TweenService:Create(glow, TweenInfo.new(0.08), {ImageTransparency = 0.38}):Play()
+        task.delay(0.1, function()
+            TweenService:Create(_bgScale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+            TweenService:Create(circle, TweenInfo.new(0.2), {BackgroundTransparency = 0.15}):Play()
+            TweenService:Create(glow, TweenInfo.new(0.25), {ImageTransparency = 0.78}):Play()
+        end)
+    end)
 
-    -- Compatibilidad con codigo que usa gui.Frame o gui:onTap
-    local gui = sg
-    gui.Frame = sg  -- fallback: algunos sitios hacen gui.Frame.algo
-    gui.onTap = function(_, fn)
-        table.insert(_tapCallbacks, fn)
-    end
+    -- -- DRAG ------------------------------------------------------
+    local _moved = false
+    pcall(function()
+        local dd = Instance.new("UIDragDetector", bg)
+        dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
+        dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
+        dd.Dragged:Connect(function()
+            -- Respetar flag Undraggable Bindable Buttons
+            if _G._hubUndraggableButtons then return end
+            _moved = true
+            local vpN = workspace.CurrentCamera.ViewportSize
+            bg.Position = UDim2.fromOffset(
+                math.clamp(bg.Position.X.Offset, 0, vpN.X - BTN_SIZE),
+                math.clamp(bg.Position.Y.Offset, 0, vpN.Y - BTN_SIZE))
+            _G._bindablePosSave = _G._bindablePosSave or {}
+            _G._bindablePosSave[_posKey] = {x = bg.Position.X.Offset, y = bg.Position.Y.Offset}
+        end)
+        dd.DragEnd:Connect(function() task.defer(function() _moved = false end) end)
+    end)
+
+    _BindableButtons[name] = gui
+    _registerBindableGui(name .. "_CapyBtn", gui)
+    gui.Frame = fill   -- exponer el boton clickeable como gui.Frame
     return gui
 end
 
 function destroyBindableButton(name)
-    _DestroyNewBindable(name)
     if _BindableButtons[name] then
         pcall(function() _BindableButtons[name]:Destroy() end)
         _BindableButtons[name] = nil
     end
     _destroyNamedBindableGui(name .. "_CapyBtn")
-    _releaseSlot(name)
+    _releaseSlot(name)  -- liberar slot del grid
 end
 
 function updateBindables()
@@ -8035,8 +8336,22 @@ function updateBindables()
                     end
                 end
             end
-            -- PC + MOBILE: onTap usa Activated+InputBegan Touch internamente
-            shootBtnGui:onTap(_doShootMurderer)
+            -- PC: click izquierdo
+            shootBtnGui.Frame.MouseButton1Click:Connect(_doShootMurderer)
+            -- MOBILE: touch (TouchTap o Activated)
+            pcall(function()
+                shootBtnGui.Frame.TouchTap:Connect(function()
+                    _doShootMurderer()
+                end)
+            end)
+            -- Fallback mobile: InputBegan sobre el boton
+            pcall(function()
+                shootBtnGui.Frame.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.Touch then
+                        _doShootMurderer()
+                    end
+                end)
+            end)
         end
     else
         if shootBtnGui then
@@ -10826,12 +11141,7 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
         sliderThumb.Position = UDim2.new(ratio, 0, 0.5, 0)
         sliderFill.Size      = UDim2.new(ratio, 0, 1, 0)
         valueLabel.Text      = string.format("%.2f", v)
-        if callback then
-            local _origNotif = CreateCustomNotification
-            CreateCustomNotification = function() end
-            pcall(callback, v)
-            CreateCustomNotification = _origNotif
-        end
+        if callback then callback(v) end
     end
 
     applyValue(_initVal)
@@ -12607,7 +12917,7 @@ function _createBombBtn()
     btn.Activated:Connect(function()
         _syncBombJump(not _bombJumpEnabled)
         setVisual(_bombJumpEnabled)
- CreateCustomNotification("BOMB JUMP", _bombJumpEnabled and "ON -- lanza la FakeBomb!" or "OFF", 2)
+ -- [notif removed]
     end)
 
     -- Inicializar visual
@@ -12734,15 +13044,10 @@ function CreateInfoPanel()
         MainSystem.state.infoGui = InfoPanelSystem.gui
     end
 
-    -- Ajustar tamaño segun dispositivo
-    local _isMobilePanel = (pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled)
-    local _panelW    = _isMobilePanel and 220 or 380
-    local _panelOff  = _isMobilePanel and (_panelW + 10) or 400
-
     local mainPanel = Instance.new("Frame", InfoPanelSystem.gui)
     mainPanel.Name = "MainPanel"
-    mainPanel.Size = UDim2.new(0, _panelW, 0, 50)
-    mainPanel.Position = UDim2.new(1, -_panelOff, 0, 20)
+    mainPanel.Size = UDim2.new(0, 380, 0, 50)
+    mainPanel.Position = UDim2.new(1, -400, 0, 20)
     mainPanel.BackgroundColor3 = ThemeColors.Background
     mainPanel.BackgroundTransparency = 0.85
     mainPanel.BorderSizePixel = 0
@@ -12828,7 +13133,7 @@ function CreateInfoPanel()
     titleLbl.BackgroundTransparency = 1
  titleLbl.Text = convertirFuenteCursor(" INFORMATION PANEL")
     titleLbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-    titleLbl.TextSize = _isMobilePanel and 10 or 14
+    titleLbl.TextSize = 14
     titleLbl.TextColor3 = ThemeColors.TextPrimary
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -12848,18 +13153,13 @@ function CreateInfoPanel()
     scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
     scrollLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
-    local _lblH    = _isMobilePanel and 14 or 18
-    local _lblTxt  = _isMobilePanel and  9 or 11
-    local _sepH    = _isMobilePanel and 15 or 20
-    local _sepTxt  = _isMobilePanel and 10 or 12
-
     function makeLabel(text, color)
         local lbl = Instance.new("TextLabel", scroll)
-        lbl.Size = UDim2.new(1, -4, 0, _lblH)
+        lbl.Size = UDim2.new(1, -4, 0, 18)
         lbl.BackgroundTransparency = 1
  lbl.Text = convertirFuenteCursor(text)
         lbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        lbl.TextSize = _lblTxt
+        lbl.TextSize = 11
         lbl.TextColor3 = color or ThemeColors.TextPrimary
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.TextWrapped = true
@@ -12868,11 +13168,11 @@ function CreateInfoPanel()
 
     function makeSep(text, color)
         local lbl = Instance.new("TextLabel", scroll)
-        lbl.Size = UDim2.new(1, -4, 0, _sepH)
+        lbl.Size = UDim2.new(1, -4, 0, 20)
         lbl.BackgroundTransparency = 1
  lbl.Text = convertirFuenteCursor(text)
         lbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        lbl.TextSize = _sepTxt
+        lbl.TextSize = 12
         lbl.TextColor3 = color or ThemeColors.TextPrimary
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         return lbl
@@ -13013,12 +13313,9 @@ function CreateInfoPanel()
                 return
             end
 
-            local _lineH  = _isMobilePanel and 15 or 20
-            local _headerH = _isMobilePanel and 40 or 55
-            local _maxH    = _isMobilePanel and 320 or 540
-            local totalH = math.clamp(lineCount * _lineH + _headerH, 60, _maxH)
+            local totalH = math.clamp(lineCount * 20 + 55, 60, 540)
             TweenService:Create(mainPanel, TweenInfo.new(0.25), {
-                Size = UDim2.new(0, _panelW, 0, totalH)
+                Size = UDim2.new(0, 380, 0, totalH)
             }):Play()
 
             task.wait(0.5)
@@ -13038,7 +13335,7 @@ function CreateMainUI_InfoPanel()
  CreateSection(leftColumn, "", "INFORMATION PANEL", ThemeColors.Aurora1)
 
     local function CreateInfoToggleBtn(parent, label, key, color)
-        local _infoCb = function(on)
+        CreateAuroraToggle(parent, label, function(on)
             Settings.infoPanel[key] = on
             if on then
                 if not InfoPanelSystem.gui or not InfoPanelSystem.gui.Parent then
@@ -13051,9 +13348,7 @@ function CreateMainUI_InfoPanel()
                 if not anyOn then DestroyInfoPanel() end
                 CreateCustomNotification(LocalPlayer.Name .. " Says:", label:gsub("[^\32-\127]", "") .. " -- panel hidden", 2)
             end
-        end
-        _infoCb._isInfoPanelCallback = true
-        CreateAuroraToggle(parent, label, _infoCb, Settings.infoPanel[key] or false)
+        end, Settings.infoPanel[key] or false)
     end
 
     CreateInfoToggleBtn(leftColumn, " Murderer Information","murdererInfo",    ThemeColors.Accent)
@@ -13312,9 +13607,9 @@ function CreateMainUI_Fly()
         flyNoclipEnabled = on
         if on then
             startFlyNoclip()
-            CreateCustomNotification("FLY", "ON  WASD mover, Space subir, Ctrl/Q bajar, Shift boost", 3)
+            -- [notif removed]
         else
-            CreateCustomNotification("FLY", "OFF", 2)
+            -- [notif removed]
         end
     end, false)
 
@@ -13375,7 +13670,7 @@ function CreateMainUI_Fly()
             if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == _flyKeybind and not _flyListening then
                 flyNoclipEnabled = not flyNoclipEnabled
                 if flyNoclipEnabled then startFlyNoclip() end
-                if not UserInputService.TouchEnabled then CreateCustomNotification("FLY", flyNoclipEnabled and "ON (keybind)" or "OFF (keybind)", 1.5) end
+                -- [notif removed]
             end
         end)
     end
@@ -13395,7 +13690,7 @@ function CreateMainUI_Fly()
             MakeCapyBindableFrame(sg, "FLY", function()
                 flyNoclipEnabled = not flyNoclipEnabled
                 if flyNoclipEnabled then startFlyNoclip() end
-                CreateCustomNotification("FLY", flyNoclipEnabled and "ON" or "OFF", 1.5)
+                -- [notif removed]
             end, 20, 200)
         else
             if _flyBindGui then pcall(function() _flyBindGui:Destroy() end); _flyBindGui = nil end
@@ -13462,10 +13757,10 @@ function CreateMainUI_SwimFly()
                     if hum and hum.WalkSpeed < 5 then hum.WalkSpeed = 16; hum.JumpPower = 50 end
                 end
             end)
- CreateCustomNotification("BUG TRAMP", "ON -- la trampa no te va a atrapar", 3)
+ -- [notif removed]
         else
             if bugTrapMain.conn then bugTrapMain.conn:Disconnect(); bugTrapMain.conn = nil end
- CreateCustomNotification("BUG TRAMP", "OFF", 2)
+ -- [notif removed]
         end
     end, false)
 end
@@ -13710,9 +14005,9 @@ function CreateFakeBombBindlePanel()
                     end
                 end
             end)
- CreateCustomNotification("BOMB AUTO EQUIP", "ON -- equipa al acercarse el Murder (20 studs)", 3)
+ -- [notif removed]
         else
- CreateCustomNotification("BOMB AUTO EQUIP", "OFF", 2)
+ -- [notif removed]
         end
         TweenService:Create(b1, TweenInfo.new(0.25),
             {BackgroundColor3 = autoState and BOMB_COLOR or Color3.fromRGB(60,60,60),
@@ -13852,10 +14147,10 @@ function CreateMainUI_SwimFlyGithub()
     CreateAuroraToggle(sec, "Auto Jump", function(enabled)
         if enabled then
             startAutoJump()
-            CreateCustomNotification("AUTO JUMP", "ON  cada " .. string.format("%.1f", AJ.jumpInterval) .. "s", 3)
+            -- [notif removed]
         else
             stopAutoJump()
-            CreateCustomNotification("AUTO JUMP", "OFF", 2)
+            -- [notif removed]
         end
     end, false)
 
@@ -13905,8 +14200,8 @@ function CreateMainUI_SwimFlyGithub()
         UserInputService.InputBegan:Connect(function(inp, gp)
             if gp or _ajListening then return end
             if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == _ajKeybind then
-                if AJ.enabled then stopAutoJump(); if not UserInputService.TouchEnabled then CreateCustomNotification("AUTO JUMP", "OFF (keybind)", 1.5) end
-                else startAutoJump(); if not UserInputService.TouchEnabled then CreateCustomNotification("AUTO JUMP", "ON (keybind)", 1.5) end end
+                if AJ.enabled then stopAutoJump(); -- [notif removed]
+                else startAutoJump(); -- [notif removed] end
             end
         end)
     end
@@ -13967,8 +14262,8 @@ function CreateMainUI_SwimFlyGithub()
                 TweenService:Create(frame, TweenInfo.new(0.08), {BackgroundColor3 = Color3.fromRGB(55, 55, 130)}):Play()
                 _w(0.1)
                 TweenService:Create(frame, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(35, 35, 95), BackgroundTransparency = 0.75}):Play()
-                if AJ.enabled then stopAutoJump(); CreateCustomNotification("AUTO JUMP", "OFF", 2)
-                else startAutoJump(); CreateCustomNotification("AUTO JUMP", "ON", 2) end
+                if AJ.enabled then stopAutoJump(); -- [notif removed]
+                else startAutoJump(); -- [notif removed] end
                 updateDot()
             end)
             _sp(function()
@@ -14129,11 +14424,11 @@ function CreateMainUI_SwimFlyGithub()
             end)
             jbStatusL.Text = "Jump Booster: ON  tecla [" .. tostring(JB.keybind):gsub("Enum.KeyCode.", "") .. "]"
             jbStatusL.TextColor3 = Color3.fromRGB(90, 120, 255)
-            if not UserInputService.TouchEnabled then CreateCustomNotification("JUMP BOOSTER", "ON  presiona [" .. tostring(JB.keybind):gsub("Enum.KeyCode.", "") .. "] para saltar", 3) end
+            -- [notif removed]
         else
             jbStatusL.Text = "Jump Booster: OFF"
             jbStatusL.TextColor3 = Color3.fromRGB(255, 200, 200)
-            CreateCustomNotification("JUMP BOOSTER", "OFF", 2)
+            -- [notif removed]
         end
     end, false)
 
@@ -14176,7 +14471,7 @@ function CreateMainUI_SwimFlyGithub()
                     _jbKeyBtn.BackgroundTransparency = 0.35
                     JB.listening = false; conn:Disconnect()
                     jbStatusL.Text = "Jump Booster: " .. (JB.enabled and "ON" or "OFF") .. "  tecla [" .. keyName .. "]"
-                    if not UserInputService.TouchEnabled then CreateCustomNotification("JUMP BOOSTER", "Tecla cambiada a [" .. keyName .. "]", 2) end
+                    CreateCustomNotification("JUMP BOOSTER", "Tecla cambiada a [" .. keyName .. "]", 2)
                 end
             end)
         end)
@@ -14197,7 +14492,7 @@ function CreateMainUI_SwimFlyGithub()
         MakeCapyBindableFrame(sg, "BOOST", function()
             fireJumpBooster()
         end, 20, 280)
-        if not UserInputService.TouchEnabled then CreateCustomNotification("JUMP BOOSTER", "Bindable activo  presiona BOOST para saltar", 2) end
+        CreateCustomNotification("JUMP BOOSTER", "Bindable activo  presiona BOOST para saltar", 2)
     end, false)
 
     -- Sliders Jump Booster
@@ -14419,7 +14714,7 @@ function CreateMainUI_Universal()
             MakeCapyBindableFrame(sg, "FLOAT", function()
                 _floatEnabled = not _floatEnabled
                 if _floatEnabled then _startFloat() else _stopFloat() end
- CreateCustomNotification("FLOAT", _floatEnabled and "ON" or "OFF", 1.5)
+ -- [notif removed]
             end, 120, 160)
         end
 
@@ -14488,7 +14783,7 @@ function CreateMainUI_Universal()
                             h:ChangeState(Enum.HumanoidStateType.Jumping)
                         end
                         -- Actualizar UI toggle si existe
- CreateCustomNotification("LAY", "OFF -- levantado", 1.5)
+ -- [notif removed]
                     end
                 end
             end)
@@ -14534,7 +14829,7 @@ function CreateMainUI_Universal()
             MakeCapyBindableFrame(sg, "LAY", function()
                 _layEnabled = not _layEnabled
                 if _layEnabled then _startLay() else _stopLay() end
- CreateCustomNotification("LAY", _layEnabled and "ON" or "OFF", 1.5)
+ -- [notif removed]
             end, 220, 160)
         end
 
@@ -14608,10 +14903,10 @@ function CreateMainUI_Universal()
             if on then
                 local ok = _connectTrapImmune()
                 if ok then
- CreateCustomNotification("TRAP IMMUNE", "ON -- traps won't slow you down", 3)
+ -- [notif removed]
                 end
             else
- CreateCustomNotification("TRAP IMMUNE", "OFF", 2)
+ -- [notif removed]
             end
         end, false)
     
@@ -14680,10 +14975,10 @@ function CreateMainUI_Other()
             _esquivarEnabled = enabled
             if enabled then
                 _startEsquivarLoop()
- CreateCustomNotification("AUTO ESQUIVAR", "ON -- te teleportara al detectar al Murder cerca", 3)
+ -- [notif removed]
             else
                 if _esquivarConn then pcall(function() task.cancel(_esquivarConn) end); _esquivarConn = nil end
- CreateCustomNotification("AUTO ESQUIVAR", "OFF", 1)
+ -- [notif removed]
             end
         end, false)
 
@@ -14709,7 +15004,7 @@ function CreateMainUI_Other()
                     _esquivarEnabled = not _esquivarEnabled
                     if _esquivarEnabled then _startEsquivarLoop()
                     else if _esquivarConn then pcall(function() task.cancel(_esquivarConn) end); _esquivarConn = nil end end
- CreateCustomNotification("ESQUIVAR", _esquivarEnabled and "ON" or "OFF", 1.5)
+ -- [notif removed]
                 end, 320, 60)
             end
         end, false)
@@ -15901,10 +16196,10 @@ function CreateMainUI_LogoSelector()
             _hfOn = on
             if not on then
                 if _hfConn then pcall(function() _hfConn:Disconnect() end); _hfConn = nil end
-                CreateCustomNotification("HAND FLUTTER", "OFF", 1); return
+                -- [notif removed]; return
             end
             _hfLoop()
-            CreateCustomNotification("HAND FLUTTER", "ON", 2)
+            -- [notif removed]
         end, false)
 
         -- Bindable: reproduce ShakeAnimation
@@ -16172,7 +16467,7 @@ function CreateMainUI_BackgroundSelector()
                         _tpLowSetup(c)
                     end
                 end)
-                CreateCustomNotification("TP LOW MAP", "ON -- TP instantaneo bajo el mapa", 3)
+                -- [notif removed]
             else
                 _tpLowCleanup()
                 if _st.charConn then pcall(function() _st.charConn:Disconnect() end); _st.charConn = nil end
@@ -16187,7 +16482,7 @@ function CreateMainUI_BackgroundSelector()
                     end
                     pcall(TeleportToMap)
                 end
-                CreateCustomNotification("TP LOW MAP", "OFF -- volviendo al mapa", 1)
+                -- [notif removed]
             end
         end, _st.enabled)  -- restaurar estado al re-crear la UI
 
@@ -16213,13 +16508,13 @@ function CreateMainUI_BackgroundSelector()
                     _tpLowEnabled = not _tpLowEnabled
                     if _tpLowEnabled then
                         _tpLowSetup(LocalPlayer.Character)
- CreateCustomNotification("TP LOW MAP", "ON", 2)
+ -- [notif removed]
                     else
                         _tpLowCleanup()
                         local char2 = LocalPlayer.Character
                         local hrp3  = char2 and char2:FindFirstChild("HumanoidRootPart")
                         if hrp3 and hrp3.Position.Y < -100 then pcall(TeleportToMap) end
- CreateCustomNotification("TP LOW MAP", "OFF", 2)
+ -- [notif removed]
                     end
                 end, 160, 430)
             end
@@ -16616,9 +16911,9 @@ function CreateMainUI_InvisibleGhost()
                         CreateCustomNotification("INVIS OFF", "Visible", 2)
                     end
                 end, 20, 320)
-                if not UserInputService.TouchEnabled then CreateCustomNotification("INVIS BIND", "Bindable activo", 2) end
+                CreateCustomNotification("INVIS BIND", "Bindable activo", 2)
             else
-                if not UserInputService.TouchEnabled then CreateCustomNotification("INVIS BIND", "Bindable removido", 2) end
+                CreateCustomNotification("INVIS BIND", "Bindable removido", 2)
             end
         end, _invBind.enabled)
     end
@@ -18918,10 +19213,10 @@ function CreateMainTab()
             CreateAuroraToggle(_protSection, "Anti Fling", function(on)
                 if on then
                     _enableAntiFling()
-                    CreateCustomNotification("ANTI FLING", "ON -- colisiones eliminadas", 2)
+                    -- [notif removed]
                 else
                     _disableAntiFling()
-                    CreateCustomNotification("ANTI FLING", "OFF", 2)
+                    -- [notif removed]
                 end
             end, false)
         end
@@ -18953,7 +19248,7 @@ function CreateMainTab()
         -- -- Anti AFK --
         CreateAuroraToggle(_protSection, "Anti AFK", function(on)
             if _mp.afkThread then pcall(function() pcall(function() coroutine.close(_mp.afkThread) end) end); _mp.afkThread = nil end
-            if not on then CreateCustomNotification("ANTI AFK", "OFF", 1.5); return end
+            if not on then -- [notif removed]; return end
             local vu = game:GetService("VirtualUser")
             _mp.afkThread = _sp(function()
                 while _G._mainProt and _mp.afkThread do
@@ -18965,7 +19260,7 @@ function CreateMainTab()
                     _w(25)
                 end
             end)
-            CreateCustomNotification("ANTI AFK", "ON -- kick por AFK desactivado", 2)
+            -- [notif removed]
         end, _mp.afkThread ~= nil)
     end
 
@@ -19074,7 +19369,7 @@ function CreateMainTab()
             if not on then return end
             if _ncKeybindWaiting then return end
             _ncKeybindWaiting = true
-            if not UserInputService.TouchEnabled then CreateCustomNotification("KEYBIND", "Presiona la tecla que queres usar para Noclip...", 3) end
+            CreateCustomNotification("KEYBIND", "Presiona la tecla que queres usar para Noclip...", 3)
             -- Escuchar la proxima tecla
             if _ncKeybindListenConn then pcall(function() _ncKeybindListenConn:Disconnect() end) end
             _ncKeybindListenConn = UserInput.InputBegan:Connect(function(input, gpe)
@@ -19090,7 +19385,7 @@ function CreateMainTab()
                 _nc.keybind = input.KeyCode  -- FIX: persistir en _G._ncState
                 _ncKeybindLabel = "Noclip (Keybind) [" .. tostring(input.KeyCode.Name) .. "]"
                 _ncKeybindWaiting = false
-                if not UserInputService.TouchEnabled then CreateCustomNotification("KEYBIND", "Noclip -> " .. tostring(input.KeyCode.Name), 2) end
+                CreateCustomNotification("KEYBIND", "Noclip -> " .. tostring(input.KeyCode.Name), 2)
                 _sp(function() _G._toggleStates[_ncKeybindLabel] = false end)
                 pcall(function() _ncKeybindListenConn:Disconnect() end)
             end)
@@ -19289,14 +19584,14 @@ function CreateMainTab()
                         cam.CFrame  = CFrame.lookAt(camCF.Position, hrp.Position + Vector3.new(0, 1, 0))
                     end)
                 end)
-                CreateCustomNotification("NOCLIP CAM", "ON -- camara libre a traves de paredes", 2)
+                -- [notif removed]
             else
                 pcall(function()
                     cam.CameraType = Enum.CameraType.Custom
                     local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
                     if hum then cam.CameraSubject = hum end
                 end)
-                CreateCustomNotification("NOCLIP CAM", "OFF -- camara normal restaurada", 2)
+                -- [notif removed]
             end
         end, _cs.ncCamMode)
         -- OPT: restaurar Noclip Camera -- el toggle ya inicializa el loop, no duplicar
@@ -19687,18 +19982,21 @@ function CreateMainTab()
         end,_ss.autoPlay)
     end
 
-    -- FIX: AutomaticCanvasSize=Y ya maneja el canvas automaticamente.
-    -- El recalcCanvas manual sobreescribia el valor con AbsoluteContentSize=0 (layout aun no calculado),
-    -- cortando la mitad del contenido. Se elimina; el padding inferior del layout da el espacio extra.
-    pcall(function()
-        if leftColumn then
-            local lpad = leftColumn:FindFirstChildOfClass("UIPadding")
-            if lpad then lpad.PaddingBottom = UDim.new(0, 40) end
+    _sp(function()
+        if not leftColumn  or not leftColumn.Parent  then return end
+        if not rightColumn or not rightColumn.Parent then return end
+        -- OPT: local en vez de global para no contaminar el entorno en cada apertura
+        local function recalcCanvas(col)
+            local layout = col:FindFirstChildOfClass("UIListLayout")
+            if not layout then return end
+            col.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 40)
         end
-        if rightColumn and rightColumn ~= leftColumn then
-            local rpad = rightColumn:FindFirstChildOfClass("UIPadding")
-            if rpad then rpad.PaddingBottom = UDim.new(0, 40) end
-        end
+        _w(0.15)
+        recalcCanvas(leftColumn)
+        recalcCanvas(rightColumn)
+        _w(0.3)
+        recalcCanvas(leftColumn)
+        recalcCanvas(rightColumn)
     end)
 end
 
@@ -25915,10 +26213,10 @@ end, _G._chamDropGun or false)
                         _sp(function() pcall(addBillboard, obj) end)
                     end
                 end)
- CreateCustomNotification("VIEW TRAP", "ON -- trampas visibles e invisibles!", 3)
+ -- [notif removed]
             else
                 clearAll()
- CreateCustomNotification("VIEW TRAP", "OFF", 2)
+ -- [notif removed]
             end
         end, false)
 
@@ -26778,10 +27076,6 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         end
     end
     ApplyState(estado, false)
-    -- Si el estado inicial es OFF, arrancar oculto
-    if not estado then
-        container.Visible = false
-    end
 
     -- Sin hover (toggle transparente)
     clickRow.MouseEnter:Connect(function() end)
@@ -26796,33 +27090,11 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         ApplyState(estado, true)
         PlayToggleSound(estado)
 
-        -- PASO 3: Ocultar/mostrar el toggle segun estado
-        if not estado then
-            task.delay(0.25, function()
-                if container and container.Parent then
-                    container.Visible = false
-                end
-            end)
-        else
-            container.Visible = true
-        end
-
-        -- PASO 4: Auto-guardar inmediatamente en el JSON
+        -- PASO 3: Auto-guardar inmediatamente en el JSON
         pcall(_saveConfig)
 
         -- PASO 4: Ejecutar la accion real del toggle (callback del feature)
-        -- Suprimir notificaciones durante el callback, salvo que el callback
-        -- sea de tipo Info Panel (marcado con _isInfoPanelCallback = true)
-        if callback then
-            if type(callback) == "table" and callback._isInfoPanelCallback then
-                callback(estado)
-            else
-                local _origNotif = CreateCustomNotification
-                CreateCustomNotification = function() end
-                pcall(callback, estado)
-                CreateCustomNotification = _origNotif
-            end
-        end
+        if callback then callback(estado) end
 
         -- FIX: forzar tick inmediato del instanceLoop para que los visuals
         -- se apliquen o limpien en el proximo Heartbeat sin esperar el intervalo
@@ -27447,7 +27719,7 @@ function CreateWorldUI_Emotes()
                     end
                 end
             end)
- if not UserInputService.TouchEnabled then CreateCustomNotification("KEYBINDS ON", "Z/X/C/V/B/N activos!", 3) end
+ CreateCustomNotification("KEYBINDS ON", "Z/X/C/V/B/N activos!", 3)
         else
             StopEmote()
         end
@@ -27590,7 +27862,7 @@ function CreateWorldUI_Emotes()
         _currentMainSectionFrame = _savedSection
     end
 
-    local _stopEmoteContainer = _makeTPButton and _makeTPButton("Stop Current Emote", function()
+    local _stopEmoteContainer = _makeTPButton("Stop Current Emote", function()
         StopEmote()
         CreateCustomNotification("EMOTE", "Emote detenido.", 2)
     end, _emotesSec)
@@ -27607,7 +27879,7 @@ function CreateWorldUI_Emotes()
         end
     end
 
-    if _makeTPButton then _makeTPButton("Disable All Bindable Emote Buttons", function()
+    _makeTPButton("Disable All Bindable Emote Buttons", function()
         for _, emote in ipairs(EMOTES) do
             local bd = EmoteState.bindable[emote.name]
             bd.enabled = false
@@ -27617,8 +27889,8 @@ function CreateWorldUI_Emotes()
                 bd.frame = nil
             end
         end
-        if not UserInputService.TouchEnabled then CreateCustomNotification("EMOTES", "Todos los bindable desactivados.", 2) end
-    end, _emotesSec) end
+        CreateCustomNotification("EMOTES", "Todos los bindable desactivados.", 2)
+    end, _emotesSec)
 end
 
 -- =============================================
@@ -27888,11 +28160,11 @@ function CreateWorldUI_OrbitPlayer()
                 MakeCapyBindableFrame(sg, "ORBIT PLYR", function()
                     _op.active = not _op.active
                     if _op.active then _startOrbitPlayer() else _stopOrbitPlayer() end
-                    CreateCustomNotification("ORBIT PLYR", _op.active and "ON" or "OFF", 2)
+                    -- [notif removed]
                 end, _op.bindSizeX, _op.bindSizeY)
-                if not UserInputService.TouchEnabled then CreateCustomNotification("OB BIND", "Bindable ON", 2) end
+                CreateCustomNotification("OB BIND", "Bindable ON", 2)
             else
-                if not UserInputService.TouchEnabled then CreateCustomNotification("OB BIND", "Bindable OFF", 2) end
+                CreateCustomNotification("OB BIND", "Bindable OFF", 2)
             end
         end, _obBind.enabled)
     end
@@ -29141,10 +29413,10 @@ function CreateWorldUI_AutoGrabGun()
         GrabState.bindable = enabled
         if enabled then
             MakeGrabBindableBtn()
-            if not UserInputService.TouchEnabled then CreateCustomNotification("GRAB GUN", "Boton bindable creado", 2) end
+            CreateCustomNotification("GRAB GUN", "Boton bindable creado", 2)
         else
             _destroyGrabBind()
-            if not UserInputService.TouchEnabled then CreateCustomNotification("GRAB GUN", "Boton bindable eliminado", 2) end
+            CreateCustomNotification("GRAB GUN", "Boton bindable eliminado", 2)
         end
     end, GrabState.bindable)
 
@@ -29771,9 +30043,9 @@ function CreateWorldUI_InfinityJumpMovement()
                     local h = c:WaitForChild("Humanoid")
                     _ijConnectChar(c, h)
                 end)
- CreateCustomNotification("INFINITY JUMP", "ON -- salta infinito!", 3)
+ -- [notif removed]
             else
- CreateCustomNotification("INFINITY JUMP", "OFF", 2)
+ -- [notif removed]
             end
         end, ijState.enabled)
 
@@ -30701,9 +30973,9 @@ function CreateWorldUI_SendToChat()
                     task.wait(_autoSendInterval)
                 end
             end)
- CreateCustomNotification("AUTO SEND", "ON - cada " .. tostring(_autoSendInterval) .. "s", 3)
+ -- [notif removed]
         else
- CreateCustomNotification("AUTO SEND", "OFF", 2)
+ -- [notif removed]
         end
     end, false)
 
@@ -30883,10 +31155,10 @@ function CreateWorldUI_StretchScreen()
                     if math.abs(_Camera.FieldOfView - t) > 0.5 then _Camera.FieldOfView = t end
                 end)
             end)
-            CreateCustomNotification("STRETCH", "ON -- ajusta con los sliders", 2)
+            -- [notif removed]
         else
             _removeStretch()
-            CreateCustomNotification("STRETCH", "OFF -- pantalla normal", 2)
+            -- [notif removed]
         end
     end, false)
 
@@ -31131,13 +31403,13 @@ function CreateWorldUI_GameUtilities()
  CreateAuroraToggle(leftColumn, "Auto Remove Coins", function(en)
         _slotStates[_currentSlot].coins = en
         _applySlot(_currentSlot)
- CreateCustomNotification("WORLD", "Slot ".. _currentSlot .." Remove Coins: " .. (en and "ON" or "OFF"), 1.5)
+ -- [notif removed]
     end, false)
 
  CreateAuroraToggle(leftColumn, "Auto Remove Corpses", function(en)
         _slotStates[_currentSlot].corpses = en
         _applySlot(_currentSlot)
- CreateCustomNotification("WORLD", "Slot ".. _currentSlot .." Remove Corpses: " .. (en and "ON" or "OFF"), 1.5)
+ -- [notif removed]
     end, false)
 
     -- -- Auto Remove Pets -----------------------------------------------
@@ -31558,7 +31830,7 @@ function CreateWorldUI_GameUtilities()
  CreateAuroraToggle(leftColumn, "Mute Coin Sound", function(en)
         _slotStates[_currentSlot].sound = en
         _applySlot(_currentSlot)
- CreateCustomNotification("WORLD", "Slot ".. _currentSlot .." Mute Sound: " .. (en and "ON" or "OFF"), 1.5)
+ -- [notif removed]
     end, false)
 
     -- -- DISABLE BANK SCANNER --------------------------------------
@@ -31910,8 +32182,19 @@ function CreateWorldUI_ShiftLock()
                 end)
             end
 
-            -- PC + MOBILE: onTap cubre click y touch sin triplicar conexiones
-            _slBtn:onTap(_onPress)
+            -- PC: click
+            pcall(function() _slBtn.Frame.MouseButton1Click:Connect(_onPress) end)
+            -- Mobile: touch
+            pcall(function()
+                _slBtn.Frame.TouchTap:Connect(_onPress)
+            end)
+            pcall(function()
+                _slBtn.Frame.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.Touch then
+                        _onPress()
+                    end
+                end)
+            end)
         end
     end, false)
 end
@@ -32053,9 +32336,9 @@ function CreateWorldUI_ClutchSection()
                     CreateCustomNotification("FIREFLIES CLUTCH", "Escape rapido del murder!", 2)
                 end
             end)
-            CreateCustomNotification("FIREFLIES CLUTCH", "ON -- escape automatico si murder se acerca", 2)
+            -- [notif removed]
         else
-            CreateCustomNotification("FIREFLIES CLUTCH", "OFF", 1.5)
+            -- [notif removed]
         end
     end)
 
@@ -32109,9 +32392,9 @@ function CreateWorldUI_ClutchSection()
                     CreateCustomNotification("FAKE BOMB CLUTCH", "FakeBomb lanzada al murder!", 2)
                 end
             end)
-            CreateCustomNotification("FAKE BOMB CLUTCH", "ON -- lanza bomba si murder se acerca", 2)
+            -- [notif removed]
         else
-            CreateCustomNotification("FAKE BOMB CLUTCH", "OFF", 1.5)
+            -- [notif removed]
         end
     end)
 
@@ -32781,7 +33064,7 @@ function CreateWorldUI_BombJump()
     -- distancia < 8 studs, bomba más cercana a mí que a cualquier otro jugador).
     CreateToggle(clutchSection, " Auto Teleport On Throw", function(enabled)
         _G._autoTeleportOnThrow = enabled
-        CreateCustomNotification("AUTO TP ON THROW", enabled and "ON — te teleportas al lanzar!" or "OFF", 2)
+        -- [notif removed]
         if _G._autoTPThrowConn then
             pcall(function() _G._autoTPThrowConn:Disconnect() end)
             _G._autoTPThrowConn = nil
@@ -32841,7 +33124,7 @@ function CreateWorldUI_BombJump()
                         hrp2.CFrame = CFrame.new(tpPos)
                         hrp2.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                     end)
-                    CreateCustomNotification("AUTO TP ON THROW", "¡Teleportado a la bomba!", 1)
+                    -- [notif removed]
                 end)
             end)
         else
@@ -32860,7 +33143,7 @@ function CreateWorldUI_BombJump()
     -- y hace el salto con Humanoid:ChangeState(Jumping) tras el TP (0.12s delay).
     CreateToggle(clutchSection, " Auto Jump When Teleported", function(enabled)
         _G._autoJumpAfterTP = enabled
-        CreateCustomNotification("AUTO JUMP AFTER TP", enabled and "ON — salta automático al ser teleportado!" or "OFF", 2)
+        -- [notif removed]
         if _G._autoJumpTPConn then
             pcall(function() _G._autoJumpTPConn:Disconnect() end)
             _G._autoJumpTPConn = nil
@@ -34587,10 +34870,10 @@ function CreatePremiumTab()
                         local _h0b = _c0b:FindFirstChildOfClass("Humanoid")
                         if _h0b then Settings.premium.speedGlitch.originalSpeed = _h0b.WalkSpeed end
                     end
-                    CreateCustomNotification("SPEED GLITCH", "ON - saltar + W para boost", 2)
+                    -- [notif removed]
                 else
                     _sgStop()
-                    CreateCustomNotification("SPEED GLITCH", "OFF", 1.5)
+                    -- [notif removed]
                 end
             end, 200, 200)
         end
@@ -34722,9 +35005,9 @@ function CreatePremiumTab()
                     end
                 end, 200, 200)
 
-                if not UserInputService.TouchEnabled then CreateCustomNotification("FAKE DIED", "Bindable ON -- boton flotante activo", 2) end
+                CreateCustomNotification("FAKE DIED", "Bindable ON -- boton flotante activo", 2)
             else
-                if not UserInputService.TouchEnabled then CreateCustomNotification("FAKE DIED", "Bindable OFF", 2) end
+                CreateCustomNotification("FAKE DIED", "Bindable OFF", 2)
             end
         end, _G._fdBind.enabled)
     end
@@ -35538,13 +35821,13 @@ function CreateExclusiveTab()
     CreateAuroraToggle(settSec, "Disable Keybinds", function(on)
         _hs().disableKeybinds = on
         _G._hubDisableKeybinds = on
-        if not UserInputService.TouchEnabled then CreateCustomNotification("SETTINGS", on and "Keybinds OFF" or "Keybinds ON", 1.5) end
+        CreateCustomNotification("SETTINGS", on and "Keybinds OFF" or "Keybinds ON", 1.5)
     end, HS.disableKeybinds)
 
     CreateAuroraToggle(settSec, "Undraggable Bindable Buttons", function(on)
         _hs().undraggableButtons = on
         _G._hubUndraggableButtons = on
-        if not UserInputService.TouchEnabled then CreateCustomNotification("SETTINGS", on and "Bindable buttons fijos" or "Bindable buttons arrastrables", 1.5) end
+        CreateCustomNotification("SETTINGS", on and "Bindable buttons fijos" or "Bindable buttons arrastrables", 1.5)
     end, HS.undraggableButtons)
 
     -- -- HUB DRAG --------------------------------------------------
@@ -38149,7 +38432,7 @@ function CreateCombatTab()
                 end
             end
             if not gun then
-                if not UserInputService.TouchEnabled then CreateCustomNotification("BINDABLE SA", "Sin gun", 1.5) end
+                CreateCustomNotification("BINDABLE SA", "Sin gun", 1.5)
                 return
             end
 
@@ -38164,7 +38447,7 @@ function CreateCombatTab()
             local target = findMurderer and findMurderer()
             if not target or not target.Character then
                 if handle then pcall(function() handle.Transparency = origTrans end) end
-                if not UserInputService.TouchEnabled then CreateCustomNotification("BINDABLE SA", "Sin target (murder)", 1) end
+                CreateCustomNotification("BINDABLE SA", "Sin target (murder)", 1)
                 return
             end
             local tHRP2 = target.Character:FindFirstChild("HumanoidRootPart")
@@ -38227,7 +38510,7 @@ function CreateCombatTab()
             _bsaState.enabled = enabled
             _destroyBSA()
             if not enabled then
-                if not UserInputService.TouchEnabled then CreateCustomNotification("BINDABLE SA", "Desactivado", 2) end
+                CreateCustomNotification("BINDABLE SA", "Desactivado", 2)
                 return
             end
 
@@ -38365,7 +38648,7 @@ function CreateCombatTab()
                 end
             end)
 
-            if not UserInputService.TouchEnabled then CreateCustomNotification("BINDABLE SA", "Activado — botón circular en pantalla", 2) end
+            CreateCustomNotification("BINDABLE SA", "Activado — botón circular en pantalla", 2)
         end, false)
     end
     CombatState.saButtonSize = CombatState.saButtonSize or 240
@@ -38518,7 +38801,7 @@ function CreateCombatTab()
                     end
                 end)
             end
-            CreateCustomNotification("SA AUTO HIDE", "ON  se oculta si sos Asesino", 2)
+            -- [notif removed]
         else
             if CombatState.silentAimGui then
                 pcall(function()
@@ -38540,7 +38823,7 @@ function CreateCombatTab()
                     end
                 end)
             end
-            CreateCustomNotification("SA AUTO HIDE", "OFF", 2)
+            -- [notif removed]
         end
     end, CombatState.saAutoHideMurderer)
 
@@ -39111,10 +39394,10 @@ function CreateCombatTab()
                 if CombatTabState.customTargetPlayer and CombatTabState.customTargetPlayer.Parent then
                     CreateCustomNotification("CUSTOM TARGET", "ON → " .. CombatTabState.customTargetPlayer.Name, 2)
                 else
-                    CreateCustomNotification("CUSTOM TARGET", "ON (sin target seleccionado, usa Murder)", 2)
+                    -- [notif removed]
                 end
             else
-                CreateCustomNotification("CUSTOM TARGET", "OFF → vuelve a apuntar al Murder", 2)
+                -- [notif removed]
             end
         end, CombatTabState.useCustomTarget)
 
@@ -39423,9 +39706,9 @@ function CreateCombatTab()
                     end
                 end
 
-                CreateCustomNotification("SHOOT PICK", "ON → disparará al Murder que agarre la gun", 2)
+                -- [notif removed]
             else
-                CreateCustomNotification("SHOOT PICK", "OFF", 2)
+                -- [notif removed]
             end
         end, false)
 
@@ -39504,9 +39787,9 @@ function CreateCombatTab()
                     _lastShot = now
                 end)
 
-                CreateCustomNotification("AUTO SHOOT MURDER", "ON dispara al Murder/Target", 2)
+                -- [notif removed]
             else
-                CreateCustomNotification("AUTO SHOOT MURDER", "OFF", 2)
+                -- [notif removed]
             end
         end, false)
 
@@ -41802,10 +42085,10 @@ function CreateCombatTab()
         CreateBorderedToggle(tkSilentSection, "Throwing Knife Silent Aim", function(en)
             if en then
                 _KHB_start()
-                CreateCustomNotification("KNIFE EXPAND", "ON — rango: " .. tkSA.range .. " studs", 3)
+                -- [notif removed]
             else
                 _KHB_stop()
-                CreateCustomNotification("KNIFE EXPAND", "OFF", 2)
+                -- [notif removed]
             end
         end, false)
 
@@ -41969,10 +42252,10 @@ function CreateCombatTab()
                 _it.enabled = en
                 if en then
                     _itStart()
-                    CreateCustomNotification("INSTANT THROW", "ON — lanzando knife automático (wall check + FOV)", 3)
+                    -- [notif removed]
                 else
                     _itStop()
-                    CreateCustomNotification("INSTANT THROW", "OFF", 2)
+                    -- [notif removed]
                 end
             end, false)
 
@@ -44237,7 +44520,7 @@ function CreateCombatTab()
                 for _, obj in ipairs(workspace:GetChildren()) do
                     _itOnTKAppear(obj)
                 end
-                CreateCustomNotification("INSTANT THROW", "ON -- knife sale disparado al instante", 2)
+                -- [notif removed]
             else
                 -- Matar hook de workspace
                 if _itWsConn then
@@ -44257,7 +44540,7 @@ function CreateCombatTab()
                     end
                     _origThrowChargeId = nil
                 end
-                CreateCustomNotification("INSTANT THROW", "OFF", 1.5)
+                -- [notif removed]
             end
         end, KnifeSAState.instantThrow)
 
@@ -44407,10 +44690,10 @@ function CreateCombatTab()
                 _as.enabled = en
                 if en then
                     _asStart()
-                    CreateCustomNotification("AUTO SLASH", "ON -- navajazo automatico en rango " .. _as.range .. " studs", 3)
+                    -- [notif removed]
                 else
                     _asStop()
-                    CreateCustomNotification("AUTO SLASH", "OFF", 2)
+                    -- [notif removed]
                 end
             end, false)
 
@@ -44436,9 +44719,9 @@ function CreateCombatTab()
             KnifeSAState.fastSlash = en
             if en then
                 KnifeSAState.fastSlashSpeed = KnifeSAState.fastSlashSpeed or 5
-                CreateCustomNotification("FAST SLASH", "ON  vel: " .. tostring(KnifeSAState.fastSlashSpeed), 1.5)
+                -- [notif removed]
             else
-                CreateCustomNotification("FAST SLASH", "OFF", 1.5)
+                -- [notif removed]
             end
         end, KnifeSAState.fastSlash)
 
@@ -44475,13 +44758,13 @@ function CreateCombatTab()
             KnifeSAState.fastThrow = en
             if en then
                 KnifeSAState.fastThrowSpeed = 5  -- velocidad al mximo
-                CreateCustomNotification("FAST THROW", "ON  velocidad mxima", 2)
+                -- [notif removed]
             else
                 pcall(function()
                     sethiddenproperty(LocalPlayer, "SimulationRadius",    100)
                     sethiddenproperty(LocalPlayer, "MaxSimulationRadius", 100)
                 end)
-                CreateCustomNotification("FAST THROW", "OFF", 1.5)
+                -- [notif removed]
             end
         end, KnifeSAState.fastThrow)
 
@@ -44950,7 +45233,7 @@ function CreateCombatTab()
             else
                 -- Restaurar conexiones originales
                 _ssRestoreOrig()
-                CreateCustomNotification("SHOOPER SHOT","OFF",2)
+                -- [notif removed]
             end
         end, false)
 
@@ -45131,11 +45414,11 @@ function CreateCombatTab()
                     local now=tick(); if now-_pLastShot<_pCooldown then return end; _pLastShot=now
                     _sp(function() _doPierce(false) end)
                 end)
-                CreateCustomNotification("PIERCE BULLET", "ON  LMB o boton SHOOT", 2)
+                -- [notif removed]
             else
                 if _pLmb then pcall(function() _pLmb:Disconnect() end); _pLmb=nil end
                 if _G._pGuiRef then pcall(function() _G._pGuiRef:Destroy() end); _G._pGuiRef=nil end
-                CreateCustomNotification("PIERCE BULLET", "OFF", 2)
+                -- [notif removed]
             end
         end, false)
 
@@ -45179,7 +45462,7 @@ function CreateCombatTab()
             if _scConn then pcall(function() _scConn:Disconnect() end); _scConn = nil end
 
             if not on then
-                CreateCustomNotification("SHOOT CAMUFLADO", "OFF", 2)
+                -- [notif removed]
                 return
             end
 
@@ -45291,7 +45574,7 @@ function CreateCombatTab()
                 end)
             end)
 
-            CreateCustomNotification("SHOOT CAMUFLADO", "ON -- LMB con cualquier cosa en mano dispara", 2)
+            -- [notif removed]
         end, false)
 
 
@@ -45410,9 +45693,9 @@ function CreateCombatTab()
                         end)
                     end
                 end)
-                CreateCustomNotification("AUTO PING", "ON  sliders se ajustan solos con tu ping", 3)
+                -- [notif removed]
             else
-                CreateCustomNotification("AUTO PING", "OFF  sliders en manual", 2)
+                -- [notif removed]
             end
         end, false)
 
@@ -45481,9 +45764,9 @@ function CreateCombatTab()
                     if gp or not _skbEnabled then return end
                     if inp.KeyCode == _skbKey then _sp(_skbFire) end
                 end)
-                if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "ON  tecla: " .. tostring(_skbKey).gsub(tostring(_skbKey), "Enum.KeyCode.", ""), 2) end
+                -- [notif removed]
             else
-                if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "OFF", 2) end
+                -- [notif removed]
             end
         end, false)
 
@@ -45539,7 +45822,7 @@ function CreateCombatTab()
                 kfBtn.Text = "..."
                 kfBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
                 kbStroke.Color = Color3.fromRGB(255, 210,   0)
-                if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "Presion la tecla que quers usar", 2) end
+                CreateCustomNotification("SHOOT KEYBIND", "Presion la tecla que quers usar", 2)
 
                 if _listenConn then pcall(function() _listenConn:Disconnect() end) end
                 _listenConn = UserInputService.InputBegan:Connect(function(inp, gp)
@@ -45561,7 +45844,7 @@ function CreateCombatTab()
                         kbStroke.Color = Color3.fromRGB(90, 120, 255)
                         _listening = false
                         pcall(function() _listenConn:Disconnect() end)
-                        if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "Tecla -> " .. keyName, 2) end
+                        CreateCustomNotification("SHOOT KEYBIND", "Tecla -> " .. keyName, 2)
                     end
                 end)
             end)
@@ -45760,10 +46043,10 @@ function CreateCombatTab()
             _scEnabled = on
             if on then
                 _startConditionLoop()
-                CreateCustomNotification("SHOOT CONDITION", "ON  " .. _scCondition, 2)
+                -- [notif removed]
             else
                 _stopAllWatchers()
-                CreateCustomNotification("SHOOT CONDITION", "OFF", 2)
+                -- [notif removed]
             end
         end, false)
 
@@ -46211,10 +46494,10 @@ function CreateCombatTab()
                 _G._tiancaPredStrength = _tp.strength / 100
                 -- Asegurarse de que saUsePrediction NO se active por Tianca
                 -- (el usuario puede activarlo por separado con los sliders del SA)
-                CreateCustomNotification("TIANCA PRED", "ON  " .. math.floor(_tp.strength) .. "%  solo tof-scale", 3)
+                -- [notif removed]
             else
                 _G._tiancaPredStrength = 0
-                CreateCustomNotification("TIANCA PRED", "OFF", 2)
+                -- [notif removed]
             end
         end, _tp.enabled, true)  -- fireOnInit=true: restaura _tiancaPredStrength al reabrir pestaa
     end
@@ -46483,10 +46766,10 @@ function CreateCombatTab()
             SD.enabled = enabled
             if enabled then
                 _sdStart()
-                CreateCustomNotification("SHOOT DISTANCE", "ON - Auto shoot when murder is close", 2)
+                -- [notif removed]
             else
                 _sdStop()
-                CreateCustomNotification("SHOOT DISTANCE", "OFF", 2)
+                -- [notif removed]
             end
         end, false)
 
@@ -47288,7 +47571,7 @@ function CreateCombatTab()
         -- -- Funcin de disparo (usa el mismo _csDoShoot / SA) --------------
         local function _skShoot()
             if not CombatTabState.silentAimEnabled then
-                if not UserInputService.TouchEnabled then CreateCustomNotification(" SHOOT KEYBIND", "Activ Silent Aim primero!", 2.5) end
+                CreateCustomNotification(" SHOOT KEYBIND", "Activ Silent Aim primero!", 2.5)
                 return
             end
             local fn = CombatTabState and CombatTabState.silentAimShootFn
@@ -47373,7 +47656,7 @@ function CreateCombatTab()
                     _skKeyBtn.Text = inp.KeyCode.Name
                     _skKeyBtn.BackgroundColor3 = ThemeColors.Background
                     _skKeyStroke.Color = ThemeColors.Primary
-                    if not UserInputService.TouchEnabled then CreateCustomNotification(" SHOOT KEYBIND", "Tecla asignada: " .. inp.KeyCode.Name, 2) end
+                    CreateCustomNotification(" SHOOT KEYBIND", "Tecla asignada: " .. inp.KeyCode.Name, 2)
                 end
                 return
             end
@@ -47397,7 +47680,7 @@ function CreateCombatTab()
                 _skKeyBtn.Text = "..."
                 _skKeyBtn.BackgroundColor3 = Color3.fromRGB(90, 35, 10)
                 _skKeyStroke.Color = Color3.fromRGB(255, 160, 60)
-                if not UserInputService.TouchEnabled then CreateCustomNotification(" SHOOT KEYBIND", "Presion una tecla para asignar", 2) end
+                CreateCustomNotification(" SHOOT KEYBIND", "Presion una tecla para asignar", 2)
             end
         end)
 
@@ -50488,18 +50771,6 @@ particles = {}
         mainFrame.Position = UDim2.new(0, absX, 0, absY)
     end
 
-    local function _deactivateDragEffect()
-        local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
-        if _hubCorner then
-            TweenService:Create(_hubCorner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 14)}):Play()
-        end
-        TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Thickness    = 1.6,
-            Transparency = 0.6,
-            Color        = Color3.fromRGB(220, 220, 220),
-        }):Play()
-    end
-
     do
         -- Drag via UserInputService global para evitar que hijos del header
         -- (ImageLabel, TextLabel, botones) intercepten el click
@@ -50536,6 +50807,18 @@ particles = {}
                 Thickness    = 6,
                 Transparency = 0.0,
                 Color        = Color3.fromRGB(0, 191, 255),
+            }):Play()
+        end
+
+        local function _deactivateDragEffect()
+            local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
+            if _hubCorner then
+                TweenService:Create(_hubCorner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 14)}):Play()
+            end
+            TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Thickness    = 1.6,
+                Transparency = 0.6,
+                Color        = Color3.fromRGB(220, 220, 220),
             }):Play()
         end
 
@@ -51515,13 +51798,6 @@ particles = {}
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
                 if _savedBg > 0 and _G._restoreBackground then
-                    -- FIX COLORES: restaurar tema real del usuario ANTES de aplicar el fondo,
-                    -- para que _applyBackground lo capture como currentThemeName y lo guarde
-                    -- como tema previo correcto. Sin esto, guarda el tema del fondo como previo.
-                    if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
-                        pcall(ApplyTheme, _G._hubBgPrevTheme)
-                        _G._hubBgPrevTheme = nil  -- limpiar para que _applyBackground lo recapture
-                    end
                     pcall(_G._restoreBackground, _savedBg)
                 end
             end)
@@ -51561,11 +51837,6 @@ particles = {}
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
                 if _savedBg > 0 and _G._restoreBackground then
-                    -- FIX COLORES: restaurar tema real antes de aplicar el fondo
-                    if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
-                        pcall(ApplyTheme, _G._hubBgPrevTheme)
-                        _G._hubBgPrevTheme = nil
-                    end
                     pcall(_G._restoreBackground, _savedBg)
                 end
             end)
@@ -51846,11 +52117,6 @@ particles = {}
             task.delay(0.5, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
                 if _savedBg and _savedBg > 0 and _G._restoreBackground then
-                    -- FIX COLORES: restaurar tema real antes de aplicar el fondo
-                    if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
-                        pcall(ApplyTheme, _G._hubBgPrevTheme)
-                        _G._hubBgPrevTheme = nil
-                    end
                     pcall(_G._restoreBackground, _savedBg)
                 end
             end)
@@ -51911,11 +52177,6 @@ particles = {}
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
                 if _savedBg > 0 and _G._restoreBackground then
-                    -- FIX COLORES: restaurar tema real antes de aplicar el fondo
-                    if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
-                        pcall(ApplyTheme, _G._hubBgPrevTheme)
-                        _G._hubBgPrevTheme = nil
-                    end
                     pcall(_G._restoreBackground, _savedBg)
                 end
             end)
@@ -53011,10 +53272,10 @@ function CreateUseTab()
     CreateAuroraToggle(whSec, "Wall Hop V2", function(on)
         if on then
             _wh_Start()
-            CreateCustomNotification("WALL HOP V2", "ON -- salta contra una pared", 3)
+            -- [notif removed]
         else
             _wh_Stop()
-            CreateCustomNotification("WALL HOP V2", "OFF", 2)
+            -- [notif removed]
         end
     end, false)
 
@@ -53151,8 +53412,8 @@ function CreateUseTab()
  CreateAuroraToggle(infoRolesSec, "Information Roles (avatar en tiempo real)", function(on)
         rolesPanel.Visible = on
         allPlayersFrame.Visible = on
- if on then startRolesUpdate(); CreateCustomNotification("INFO ROLES","ON",3)
- else if rolesConn then rolesConn:Disconnect(); rolesConn=nil end; CreateCustomNotification("INFO ROLES","OFF",2) end
+ if on then startRolesUpdate(); -- [notif removed]
+ else if rolesConn then rolesConn:Disconnect(); rolesConn=nil end; -- [notif removed] end
     end, false)
     rolesPanel.Visible = false
     allPlayersFrame.Visible = false
@@ -53229,8 +53490,8 @@ function CreateUseTab()
     end
  CreateAuroraToggle(infoDeadSec, "Information Dead (avatar + hora de muerte)", function(on)
         deadLogFrame.Visible = on
- if on then startDeadInfo(); CreateCustomNotification("INFO DEAD","ON",3)
- else stopDeadInfo(); CreateCustomNotification("INFO DEAD","OFF",2) end
+ if on then startDeadInfo(); -- [notif removed]
+ else stopDeadInfo(); -- [notif removed] end
     end, false)
     deadLogFrame.Visible = false
 
@@ -53377,8 +53638,8 @@ function CreateUseTab()
                 if _getBgPrevTheme() and not skipThemeRestore then
                     ApplyTheme(_getBgPrevTheme())
                     _setBgPrevTheme(nil)
-                elseif skipThemeRestore then
-                    _setBgPrevTheme(nil)  -- limpiar igual para que no quede stale
+                -- FIX FONDO REABRIR: cuando skipThemeRestore=true (cambio de fondo o restore),
+                -- NO limpiar _hubBgPrevTheme para que _applyBackground lo encuentre intacto
                 end
                 -- Restaurar transparencia de la capa de contenido
                 if _G._hubContentBg then
@@ -54306,7 +54567,7 @@ task.spawn(function()
     repeat task.wait(0.1) until _G._hubReady
     local _Players = game:GetService("Players")
     local _lp = _Players.LocalPlayer
-    local _hubGui = (game:GetService("CoreGui"):FindFirstChild("f") or _lp.PlayerGui:WaiForChild("f", 10))
+    local _hubGui = (game:GetService("CoreGui"):FindFirstChild("f") or _lp.PlayerGui:WaitForChild("f", 10))
     if not _hubGui then return end
     local _mainF = _hubGui:FindFirstChildOfClass("Frame")
     if not _mainF then return end
