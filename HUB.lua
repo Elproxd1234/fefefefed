@@ -54626,7 +54626,7 @@ task.spawn(function()
     if not _mainF then return end
 
     local function _fixLabel(obj)
-        if obj:IsA("TextLabel") then
+        if obj:IsA("TextLabel") the
             local p = obj.Parent
             while p and p ~= _mainF do
                 if p.Name and #p.Name >= 16 and p.Name:sub(1,16) == "AuroraToggleRow_" then
