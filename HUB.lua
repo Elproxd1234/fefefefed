@@ -655,6 +655,11 @@ local _neverRestoreToggles = {
     [" Bindable Secure Auto (boton pantalla)"] = true,
     ["Bindable Boton Booster"] = true,
     ["Show Bindable Button (Speed Glitch)"] = true,
+    -- Custom Crosshair: al auto-restaurar solo aparece la mira sola (sin rotacion activa)
+    ["Rotate Crosshair"] = true,
+    -- Cham Dead Only: sub-toggles no se auto-restauran (el principal Cham Dead Only si lo hace)
+    ["Tracer Dead Only"] = true,
+    ["Skeleton Dead Only"] = true,
 }
 
 -- Cargar configuracion guardada ANTES de crear la UI
