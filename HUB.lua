@@ -51837,6 +51837,10 @@ particles = {}
                             end
                         end)
                     end
+                else
+                    task.delay(4.5, function()
+                        if _G._restoreBackground then pcall(_G._restoreBackground, 1) end
+                    end)
                 end
             end)
             end)
@@ -52162,7 +52166,8 @@ particles = {}
         task.defer(function()
             _G._tabContentActive = true
             pcall(function() SetActiveTab(1) end)
-            -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
+            -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo.
+            -- Si no habia ninguno guardado, aplicar Glitch (index 1) por defecto.
             task.delay(0.5, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
                 -- FIX COLORES REABRIR: si _restoreBackground ya existe, usarlo.
@@ -52178,6 +52183,13 @@ particles = {}
                             end
                         end)
                     end
+                else
+                    -- Primera ejecucion: aplicar fondo Glitch (idx=1) por defecto
+                    task.delay(4.5, function()
+                        if _G._restoreBackground then
+                            pcall(_G._restoreBackground, 1)
+                        end
+                    end)
                 end
             end)
         end)
@@ -52249,6 +52261,10 @@ particles = {}
                             end
                         end)
                     end
+                else
+                    task.delay(4.5, function()
+                        if _G._restoreBackground then pcall(_G._restoreBackground, 1) end
+                    end)
                 end
             end)
             end)
@@ -52568,8 +52584,12 @@ function CreateUpdateTab()
                         "[+] Arcade font uses PressStart2P (retro pixel style).",
                         "[+] Font preference remembered per session.",
                         "[+] New background: Aurora — animated northern lights with color pulse.",
+                        "[+] New wallpaper: Glitcher — corrupted TV effect with cyan/red scanlines, glitch blocks and screen flashes.",
                         "[*] Background animations no longer bleed outside the image bounds.",
                         "[*] Fixed leftover colors when switching between Zerqon and Sunset backgrounds.",
+                        "[-] Removed unnecessary notifications that caused visual clutter.",
+                        "[*] Fixed notification delay — alerts now appear instantly with no lag.",
+                        "[*] Performance improvements: cleaner notification system with less overhead.",
                     }
                 },
                 {
@@ -52585,7 +52605,10 @@ function CreateUpdateTab()
                 "[+] Font Selector in Settings: Normal or Arcade (pixel) font for sidebar.",
                 "[+] Rock-solid tab loading - no more blank tabs on fast clicks.",
                 "[+] New Aurora background with northern lights animation.",
+                "[+] New Glitcher wallpaper — corrupted TV scanlines, cyan/red flashes.",
                 "[+] Custom Crosshairs now exclusive to Premium tab (13 unique designs).",
+                "[-] Removed unnecessary notifications — less visual noise.",
+                "[*] Fixed notification delay — no more lag between trigger and display.",
             }
         },
         {
@@ -53652,6 +53675,11 @@ function CreateUseTab()
 
         local _BG_LIST = {
             {
+                name    = "Glitch",
+                imageId = "rbxassetid://94896193223350",
+                overlay = nil,
+            },
+            {
                 name    = "Sunset",
                 imageId = "rbxassetid://114998696598741",
                 overlay = "rbxassetid://129978941552367",
@@ -54390,14 +54418,161 @@ function CreateUseTab()
             Aurora4         = Color3.fromRGB(20,  60,  100),  -- azul noche profundo
         }
 
+        -- GLITCH: cian electrico + rojo intenso + negro total (estilo TV corrupta)
+        Themes["_BG_Glitch"] = {
+            Primary         = Color3.fromRGB(0,   255, 240),  -- cian neón
+            Secondary       = Color3.fromRGB(200,   0,  30),  -- rojo intenso
+            Accent          = Color3.fromRGB(0,   220, 255),  -- cian brillante
+            Background      = Color3.fromRGB(0,     0,   0),  -- negro total
+            BackgroundLight = Color3.fromRGB(10,   10,  10),  -- negro casi puro
+            TextPrimary     = Color3.fromRGB(0,   255, 240),  -- cian neón
+            TextSecondary   = Color3.fromRGB(200,   0,  30),  -- rojo glitch
+            Aurora1         = Color3.fromRGB(0,   255, 240),  -- cian
+            Aurora2         = Color3.fromRGB(200,   0,  30),  -- rojo
+            Aurora3         = Color3.fromRGB(255, 255, 255),  -- blanco TV
+            Aurora4         = Color3.fromRGB(5,     5,   5),  -- negro profundo
+        }
+
         -- Mapa nombre de fondo -> clave de tema
         local _BG_THEME_KEY = {
+            ["Glitch"]       = "_BG_Glitch",
             ["Sunset"]       = "_BG_Sunset",
             ["Samurai"]      = "_BG_Samurai",
             ["Zerqon"]       = "_BG_Zerqon",
             ["The Creators"] = "_BG_TheCreators",
             ["Aurora"]       = "_BG_Aurora",
         }
+
+        -- GLITCH: scanlines, RGB shift, cortes horizontales y flashes de TV corrupta
+        local function _animGlitch(img, token)
+            -- === FADE-IN GLITCHADO RAPIDO: parpadeos ultra breves ===
+            task.spawn(function()
+                img.ImageColor3 = Color3.fromRGB(255, 255, 255)
+                for i = 1, 6 do
+                    if _bgAnimToken ~= token then return end
+                    img.ImageTransparency = math.random(10, 50) / 100
+                    task.wait(math.random(1, 3) / 100)
+                    img.ImageTransparency = 0.90
+                    task.wait(math.random(1, 2) / 100)
+                end
+                TweenService:Create(img, TweenInfo.new(0.12, Enum.EasingStyle.Linear), {ImageTransparency = 0.08}):Play()
+                task.wait(0.12)
+
+                -- === LOOP PRINCIPAL: shift de color hiper-rapido ===
+                local _glitchColors = {
+                    Color3.fromRGB(0,   255, 240),  -- cian
+                    Color3.fromRGB(200,   0,  30),  -- rojo
+                    Color3.fromRGB(255, 255, 255),  -- blanco TV
+                    Color3.fromRGB(0,   255, 240),  -- cian
+                    Color3.fromRGB(0,   180, 200),  -- cian oscuro
+                }
+                while img and img.Parent and _bgAnimToken == token do
+                    local col = _glitchColors[math.random(1, #_glitchColors)]
+                    local dur = math.random(2, 8) / 100   -- 2x-3x mas rapido
+                    img.ImageColor3 = col
+                    if math.random(1, 3) == 1 then
+                        img.ImageTransparency = math.random(10, 35) / 100
+                        task.wait(math.random(1, 2) / 100)
+                        img.ImageTransparency = 0.08
+                    end
+                    task.wait(dur)
+                end
+            end)
+
+            -- === SCANLINES HORIZONTALES ultra rapidas ===
+            task.spawn(function()
+                task.wait(0.1)
+                local _scanColors = {
+                    Color3.fromRGB(0,   255, 240),
+                    Color3.fromRGB(200,   0,  30),
+                    Color3.fromRGB(255, 255, 255),
+                }
+                while img and img.Parent and _bgAnimToken == token do
+                    if not mainFrame or not mainFrame.Parent or _bgAnimToken ~= token then break end
+                    local numLines = math.random(2, 6)   -- mas lineas por ciclo
+                    for _ = 1, numLines do
+                        if _bgAnimToken ~= token then break end
+                        local line = Instance.new("Frame", mainFrame)
+                        line.Name = "HubBgParticle"
+                        local lineH = math.random(1, 5)
+                        local posY  = math.random(0, 95) / 100
+                        line.Size = UDim2.new(1, 0, 0, lineH)
+                        line.Position = UDim2.new(0, 0, posY, 0)
+                        line.BackgroundColor3 = _scanColors[math.random(1, #_scanColors)]
+                        line.BackgroundTransparency = math.random(10, 45) / 100
+                        line.BorderSizePixel = 0
+                        line.ZIndex = 3
+                        local dur = math.random(1, 5) / 100   -- desaparecen mucho mas rapido
+                        task.delay(dur, function()
+                            pcall(function() if line and line.Parent then line:Destroy() end end)
+                        end)
+                    end
+                    task.wait(math.random(2, 8) / 100)   -- ciclo mucho mas frecuente
+                end
+            end)
+
+            -- === BLOQUES DE CORRUPCION rapidos y frecuentes ===
+            task.spawn(function()
+                task.wait(0.15)
+                local _blockColors = {
+                    Color3.fromRGB(0,   255, 240),
+                    Color3.fromRGB(200,   0,  30),
+                    Color3.fromRGB(0,     0,   0),
+                    Color3.fromRGB(255, 255, 255),
+                }
+                while img and img.Parent and _bgAnimToken == token do
+                    if not mainFrame or not mainFrame.Parent or _bgAnimToken ~= token then break end
+                    local count = math.random(2, 5)   -- mas bloques por ciclo
+                    for _ = 1, count do
+                        if _bgAnimToken ~= token then break end
+                        local block = Instance.new("Frame", mainFrame)
+                        block.Name = "HubBgParticle"
+                        local bW = math.random(5, 40) / 100
+                        local bH = math.random(1, 6) / 100
+                        local bX = math.random(0, 90) / 100
+                        local bY = math.random(0, 95) / 100
+                        block.Size     = UDim2.new(bW, 0, bH, 0)
+                        block.Position = UDim2.new(bX, 0, bY, 0)
+                        block.BackgroundColor3 = _blockColors[math.random(1, #_blockColors)]
+                        block.BackgroundTransparency = math.random(20, 55) / 100
+                        block.BorderSizePixel = 0
+                        block.ZIndex = 4
+                        local dur = math.random(1, 5) / 100   -- vida ultra corta
+                        task.delay(dur, function()
+                            pcall(function() if block and block.Parent then block:Destroy() end end)
+                        end)
+                    end
+                    task.wait(math.random(3, 10) / 100)   -- ciclo muy frecuente
+                end
+            end)
+
+            -- === FLASH DE TV: mas frecuente y agresivo ===
+            task.spawn(function()
+                task.wait(0.5)
+                while img and img.Parent and _bgAnimToken == token do
+                    task.wait(math.random(8, 25) / 10)   -- cada 0.8-2.5s (antes 3-8s)
+                    if not mainFrame or not mainFrame.Parent or _bgAnimToken ~= token then break end
+                    local flash = Instance.new("Frame", mainFrame)
+                    flash.Name = "HubBgFlash"
+                    flash.Size = UDim2.new(1, 0, 1, 0)
+                    flash.Position = UDim2.new(0, 0, 0, 0)
+                    flash.BackgroundColor3 = (math.random(1,2) == 1)
+                        and Color3.fromRGB(0, 255, 240)
+                        or  Color3.fromRGB(200, 0, 30)
+                    flash.BackgroundTransparency = 0.65
+                    flash.BorderSizePixel = 0
+                    flash.ZIndex = 5
+                    task.delay(math.random(1, 3) / 100, function()
+                        if flash and flash.Parent then
+                            TweenService:Create(flash, TweenInfo.new(0.04, Enum.EasingStyle.Linear), {BackgroundTransparency = 1}):Play()
+                            task.delay(0.05, function()
+                                pcall(function() if flash and flash.Parent then flash:Destroy() end end)
+                            end)
+                        end
+                    end)
+                end
+            end)
+        end
 
         local function _applyBackground(idx)
             _G._hubBackgrounds.current = idx
@@ -54471,7 +54646,9 @@ function CreateUseTab()
 
             -- Lanzar animacion especifica del fondo
             if img then
-                if bg.name == "Sunset" then
+                if bg.name == "Glitch" then
+                    _animGlitch(img, myToken)
+                elseif bg.name == "Sunset" then
                     _animSunset(img, myToken)
                 elseif bg.name == "Samurai" then
                     _animSamurai(img, ov, myToken)
