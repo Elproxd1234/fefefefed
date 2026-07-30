@@ -35809,7 +35809,82 @@ function CreateExclusiveTab()
         CreateCustomNotification("SETTINGS", "Configuraciones reseteadas", 2)
     end)
 
-    -- -- ANIMACIONES -----------------------------------------------
+    -- -- DESACTIVAR TODOS LOS TOGGLES ---------------------------------
+    local disableAllBtn = Instance.new("TextButton", settSec)
+    disableAllBtn.Size = UDim2.new(1, -8, 0, 34)
+    disableAllBtn.BackgroundColor3 = Color3.fromRGB(100, 15, 15)
+    disableAllBtn.BackgroundTransparency = 0.05
+    disableAllBtn.BorderSizePixel = 0
+    disableAllBtn.Text = "⛔  Auto Desactivar Todos los Toggles"
+    disableAllBtn.TextColor3 = Color3.fromRGB(255, 160, 160)
+    disableAllBtn.FontFace = Font.fromEnum(Enum.Font.Code)
+    disableAllBtn.TextSize = 11
+    disableAllBtn.AutoButtonColor = false
+    disableAllBtn.ZIndex = 13
+    Instance.new("UICorner", disableAllBtn).CornerRadius = UDim.new(0, 6)
+    local daStroke = Instance.new("UIStroke", disableAllBtn)
+    daStroke.Color = Color3.fromRGB(200, 50, 50); daStroke.Thickness = 1
+    daStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    disableAllBtn.MouseEnter:Connect(function()
+        TweenService:Create(disableAllBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0}):Play()
+    end)
+    disableAllBtn.MouseLeave:Connect(function()
+        TweenService:Create(disableAllBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.05}):Play()
+    end)
+    disableAllBtn.Activated:Connect(function()
+        -- Contar cuantos toggles estaban activos antes de apagarlos
+        local _count = 0
+        local _ts = _G._toggleStates or {}
+        local _tc = _G._toggleCallbacks or {}
+
+        -- 1) Iterar todos los toggles registrados y apagarlos
+        for nombre, estado in pairs(_ts) do
+            if estado == true then
+                _count = _count + 1
+                -- Marcar como OFF en el estado global
+                _G._toggleStates[nombre] = false
+                -- Ejecutar callback con false para detener la logica del feature
+                if _tc[nombre] then
+                    pcall(_tc[nombre], false)
+                end
+                -- Actualizar visual del knob si el toggle esta visible en el hub
+                pcall(function()
+                    local lp = game:GetService("Players").LocalPlayer
+                    local pg = lp and lp:FindFirstChild("PlayerGui")
+                    local hg = (game:GetService("CoreGui"):FindFirstChild("f"))
+                          or (pg and pg:FindFirstChild("f"))
+                    if not hg then return end
+                    local row = hg:FindFirstChild("AuroraToggleRow_" .. nombre, true)
+                    if not row then return end
+                    local knob = row:FindFirstChildWhichIsA("Frame")
+                    if not knob then return end
+                    -- Buscar el indicador (boton circular del toggle)
+                    for _, c in ipairs(row:GetDescendants()) do
+                        if c:IsA("Frame") and c.Name ~= "AuroraToggleRow_" .. nombre
+                        and c.BackgroundColor3 == Color3.fromRGB(0, 200, 80) then
+                            TweenService:Create(c,
+                                TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                {BackgroundColor3 = Color3.fromRGB(255, 0, 0),
+                                 Position = UDim2.new(0, 4, 0.5, 0)}):Play()
+                            break
+                        end
+                    end
+                end)
+            end
+        end
+
+        -- 2) Guardar estado limpio en disco
+        pcall(_saveConfig)
+
+        -- 3) Forzar refresh de visuals (ESP, chams, etc.)
+        _G._forceInstanceTick = true
+        if _vcRefreshAll then task.defer(_vcRefreshAll) end
+
+        local msg = _count > 0
+            and ("⛔ " .. _count .. " toggle" .. (_count == 1 and "" or "s") .. " desactivado" .. (_count == 1 and "" or "s"))
+            or  "No habia toggles activos"
+        CreateCustomNotification("SETTINGS", msg, 3)
+    end)
     CreateAuroraToggle(settSec, "No Tab Animations", function(on)
         _hs().noTabAnimations = on
         _G._hubDisableAnimations = on
@@ -52585,6 +52660,7 @@ function CreateUpdateTab()
                         "[+] Font preference remembered per session.",
                         "[+] New background: Aurora — animated northern lights with color pulse.",
                         "[+] New wallpaper: Glitcher — corrupted TV effect with cyan/red scanlines, glitch blocks and screen flashes.",
+                        "[+] Settings: new 'Auto Desactivar Todos los Toggles' button — stops all active features in one click.",
                         "[*] Background animations no longer bleed outside the image bounds.",
                         "[*] Fixed leftover colors when switching between Zerqon and Sunset backgrounds.",
                         "[-] Removed unnecessary notifications that caused visual clutter.",
@@ -52606,6 +52682,7 @@ function CreateUpdateTab()
                 "[+] Rock-solid tab loading - no more blank tabs on fast clicks.",
                 "[+] New Aurora background with northern lights animation.",
                 "[+] New Glitcher wallpaper — corrupted TV scanlines, cyan/red flashes.",
+                "[+] Settings: one-click button to disable ALL active toggles instantly.",
                 "[+] Custom Crosshairs now exclusive to Premium tab (13 unique designs).",
                 "[-] Removed unnecessary notifications — less visual noise.",
                 "[*] Fixed notification delay — no more lag between trigger and display.",
