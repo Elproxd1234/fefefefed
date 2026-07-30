@@ -635,8 +635,8 @@ local _neverRestoreToggles = {
     ["Auto Remove Traps"] = true,
     ["Auto Remove Chroma"] = true,
     -- Dual / skins
-    ["Dual Knife"] = true,
-    ["Dual Gun"] = true,
+    -- ["Dual Knife"] = true,  -- FIX AUTO SAFE: se permite guardar/restaurar
+    -- ["Dual Gun"] = true,    -- FIX AUTO SAFE: se permite guardar/restaurar
     -- Visual activo (puede afectar rendimiento/detectabilidad)
     ["Invisible"] = true,
     ["Invisible (Bindable)"] = true,
@@ -721,7 +721,7 @@ do
         "Auto Grab Gun (cualquier rol)", "Auto Equip Gun (Murder en rango)",
         "Coin Aura (Risky)", "Auto Remove Coins", "Auto Remove Corpses",
         "Auto Remove Pets", "Auto Remove Traps", "Auto Remove Chroma",
-        "Dual Knife", "Dual Gun",
+        -- "Dual Knife", "Dual Gun",  -- FIX AUTO SAFE: se restauran desde config
         "Invisible", "Invisible (Bindable)", "XRay", "Second Life",
         "Orbit Player", "Skip Death Animation", "Trap Immune",
         "Bug Tramp (no te atrapa)", " Auto Esquivar al Murder",
@@ -43402,6 +43402,20 @@ function CreateCombatTab()
         end
         _dualEnsureFields(_G._dualKnifeState)
         _dualEnsureFields(_G._dualGunState)
+
+        -- FIX AUTO SAFE: sincronizar .enabled desde _toggleStates guardado en disco.
+        -- Sin esto, aunque _toggleStates["Dual Knife"] sea true tras cargar config,
+        -- el task.defer de reconstrucción no re-activa porque ks.enabled sigue nil.
+        do
+            local _ts = _G._toggleStates or {}
+            if _ts["Dual Knife"] == true then
+                _G._dualKnifeState.enabled = true
+                _G._dualKnifeEnabled       = true
+            end
+            if _ts["Dual Gun"] == true then
+                _G._dualGunState.enabled = true
+            end
+        end
 
         -- -- LGICA COMPARTIDA: pose brazo + clon handle -------------------
         local function _dualStartArm(state, keywordList)
