@@ -3030,7 +3030,7 @@ Settings      = nil
 CombatState   = nil
 scopeNames    = nil  -- definido en CreatePremiumTab, usado en Visuals tambien
 -- Pre-inicializar scopeNames con las miras disponibles (mismo orden que CursorScopes en UpdateCustomCursor)
-scopeNames = {"Dot", "Cross", "Circle", "Diamond", "T-Shape", "X-Cross", "Square", "Star"}
+scopeNames = {"CRUZ HOLOGRAFICA","FUEGO ARDIENTE","DIAMANTE DUAL","RAYO ELECTRICO","LUNA OSCURA","PUNTO ROJO","VORTICE MORTAL","OJO VIGILANTE","OBJETIVO PRECISO","EXPLOSION TACTICA","ESTRELLA NEON","DIAMANTE AZUL","PRISMA LETAL"}
 CombatTabState = nil
 _GUN_NAMES    = nil
 _findGunIn    = nil
@@ -11499,14 +11499,19 @@ function UpdateCustomCursor()
     end
 
     local CursorScopes = {
-        { Name = "Dot",         ID = "3637568548"  },
-        { Name = "Cross",       ID = "3637560612"  },
-        { Name = "Circle",      ID = "3637556408"  },
-        { Name = "Diamond",     ID = "3637566150"  },
-        { Name = "T-Shape",     ID = "3637563742"  },
-        { Name = "X-Cross",     ID = "3637558612"  },
-        { Name = "Square",      ID = "3637570290"  },
-        { Name = "Star",        ID = "3637572022"  },
+        {Name = "CRUZ HOLOGRAFICA",  ID = "1827745860"},
+        {Name = "FUEGO ARDIENTE",    ID = "4048495248"},
+        {Name = "DIAMANTE DUAL",     ID = "1827745860"},
+        {Name = "RAYO ELECTRICO",    ID = "10891594349"},
+        {Name = "LUNA OSCURA",       ID = "5998624778"},
+        {Name = "PUNTO ROJO",        ID = "311756276"},
+        {Name = "VORTICE MORTAL",    ID = "5689419548"},
+        {Name = "OJO VIGILANTE",     ID = "2207556771"},
+        {Name = "OBJETIVO PRECISO",  ID = "11754490323"},
+        {Name = "EXPLOSION TACTICA", ID = "11351620343"},
+        {Name = "ESTRELLA NEON",     ID = "11722368307"},
+        {Name = "DIAMANTE AZUL",     ID = "11719595104"},
+        {Name = "PRISMA LETAL",      ID = "10868459539"},
     }
     -- Poblar scopeNames globalmente para que el selector UI los tenga
     scopeNames = {}
@@ -35456,6 +35461,54 @@ function CreatePremiumTab()
         end  -- cierra do skin changer
     -- -- FIN SKIN CHANGER ------------------------------------------
 
+    -- ════════════════════════════════════════════════════════════════════
+    -- 🎯 CUSTOM MIRAS (CROSSHAIRS) - PREMIUM
+    -- ════════════════════════════════════════════════════════════════════
+    do
+        local ccInner = CreateVisualCard(leftColumn, "", "CUSTOM CROSSHAIR", ThemeColors.Aurora1)
+
+        CreateAuroraToggle(ccInner, "Custom Crosshair", function(enabled)
+            Settings.cursor.enabled = enabled
+            UpdateCustomCursor()
+        end, Settings.cursor.enabled)
+
+        -- Selector de miras
+        CreateNebulaSelector(ccInner, "Select The Crosshair", scopeNames or {
+            "CRUZ HOLOGRAFICA","FUEGO ARDIENTE","DIAMANTE DUAL","RAYO ELECTRICO",
+            "LUNA OSCURA","PUNTO ROJO","VORTICE MORTAL","OJO VIGILANTE",
+            "OBJETIVO PRECISO","EXPLOSION TACTICA","ESTRELLA NEON","DIAMANTE AZUL","PRISMA LETAL",
+        }, (scopeNames and scopeNames[Settings.cursor.currentScopeIndex or 1]) or "CRUZ HOLOGRAFICA", function(selectedName)
+            local names = scopeNames or {}
+            for i, name in ipairs(names) do
+                if name == selectedName then
+                    Settings.cursor.currentScopeIndex = i
+                    Settings.cursor.customMiraId = ""
+                    if Settings.cursor.enabled then UpdateCustomCursor() end
+                    break
+                end
+            end
+        end)
+
+        CreateSlider(ccInner, "Speed Crosshair Rotation", 1, 20, Settings.cursor.rotation.speed or 2, function(value)
+            Settings.cursor.rotation.speed = value
+        end)
+
+        CreateSlider(ccInner, "Crosshair Size", 10, 200, Settings.cursor.size and Settings.cursor.size.x or 50, function(value)
+            Settings.cursor.size = Settings.cursor.size or {x=50, y=50}
+            Settings.cursor.size.x = value
+            Settings.cursor.size.y = value
+            if Settings.cursor.image then
+                Settings.cursor.image.Size = UDim2.new(0, value, 0, value)
+            end
+        end)
+
+        CreateAuroraToggle(ccInner, "Rotate Crosshair", function(enabled)
+            Settings.cursor.rotation.enabled = enabled
+            if Settings.cursor.enabled then UpdateCustomCursor() end
+        end, Settings.cursor.rotation and Settings.cursor.rotation.enabled or false)
+    end
+    -- -- FIN CUSTOM MIRAS ------------------------------------------
+
 end  -- cierra CreatePremiumTab
 
 
@@ -52224,6 +52277,7 @@ function CreateUpdateTab()
                     lines = {
                         "[+] Fixed all-tabs-blank bug when clicking during hub load.",
                         "[+] Tab build system serialized with mutex (no more race conditions).",
+                        "[+] Custom Crosshairs (Miras) added to Premium tab — 13 designs, mouse-tracking.",
                     }
                 },
             },
@@ -52231,6 +52285,7 @@ function CreateUpdateTab()
                 "[+] Font Selector in Settings: Normal or Arcade (pixel) font for sidebar.",
                 "[+] Rock-solid tab loading - no more blank tabs on fast clicks.",
                 "[+] New Aurora background with northern lights animation.",
+                "[+] Custom Crosshairs now exclusive to Premium tab (13 unique designs).",
             }
         },
         {
