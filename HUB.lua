@@ -52190,7 +52190,7 @@ function CreateUseTab()
     _makeTwoColumns()
     local col = leftColumn
 
- local bangSec = CreateBorderedSectionGlobal(col, " BANG")
+    local bangSec = CreateBorderedSectionGlobal(col, " BANG")
 
     local _bang = {
         animSpeed      = 1.0,
@@ -52463,7 +52463,7 @@ function CreateUseTab()
         end
     end, false)
 
- local infoRolesSec = CreateBorderedSectionGlobal(col, " INFORMATION ROLES")
+    local infoRolesSec = CreateBorderedSectionGlobal(leftColumn, " INFORMATION ROLES")
 
     local rolesPanel = Instance.new("Frame", infoRolesSec)
     rolesPanel.Size = UDim2.new(1,0,0,108)
@@ -52602,7 +52602,7 @@ function CreateUseTab()
     rolesPanel.Visible = false
     allPlayersFrame.Visible = false
 
- local infoDeadSec = CreateBorderedSectionGlobal(col, " INFORMATION DEAD")
+    local infoDeadSec = CreateBorderedSectionGlobal(rightColumn, " INFORMATION DEAD")
     local deadLogFrame = Instance.new("ScrollingFrame", infoDeadSec)
     deadLogFrame.Size = UDim2.new(1,0,0,140)
     deadLogFrame.BackgroundColor3 = Color3.fromRGB(35, 40, 110); deadLogFrame.BackgroundTransparency = 0.85; deadLogFrame.BorderSizePixel = 0
