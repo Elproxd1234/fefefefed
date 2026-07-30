@@ -504,6 +504,10 @@ local function _saveConfig()
     if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
         toSave["__bgPrevTheme"] = _G._hubBgPrevTheme
     end
+    -- FIX COLORES REABRIR: guardar el tema activo actual (incluyendo temas de fondo)
+    if currentThemeName and currentThemeName ~= "" then
+        toSave["__currentTheme"] = currentThemeName
+    end
     local ok, json = pcall(function() return HttpService:JSONEncode(toSave) end)
     if ok and json then
         pcall(writefile, _CONFIG_FILE, json)
@@ -535,6 +539,11 @@ local function _loadConfig()
             -- FIX FONDOS: restaurar tema previo para que al quitar el fondo vuelvan los colores correctos
             if type(v) == "string" and v ~= "" then
                 _G._hubBgPrevTheme = v
+            end
+        elseif k == "__currentTheme" then
+            -- FIX COLORES REABRIR: guardar el tema activo para aplicarlo al reabrir
+            if type(v) == "string" and v ~= "" then
+                _G._hubSavedTheme = v
             end
         elseif not (_neverRestoreToggles and _neverRestoreToggles[k]) then
             _G._toggleStates[k] = v
@@ -43774,6 +43783,13 @@ function CreateCombatTab()
                         w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
                         w.C1 = grip.C1
                     end
+                    -- FIX DUAL INVISIBLE: mantener el clon visible aunque el handle cambie de transparencia
+                    pcall(function() existing.Transparency = 0; existing.LocalTransparencyModifier = 0 end)
+                    for _, desc in ipairs(existing:GetDescendants()) do
+                        if desc:IsA("BasePart") then
+                            pcall(function() desc.Transparency = 0; desc.LocalTransparencyModifier = 0 end)
+                        end
+                    end
                     return
                 end
                 handle.Archivable = true
@@ -43785,10 +43801,20 @@ function CreateCombatTab()
                 clon.CanCollide = false
                 clon.Massless   = true
                 clon.Anchored   = false
+                -- FIX DUAL INVISIBLE: forzar visibilidad del clon sin importar la
+                -- transparencia del handle original (puede estar en 1 por SA flash u otros sistemas)
+                clon.Transparency = 0
+                pcall(function() clon.LocalTransparencyModifier = 0 end)
                 -- Limpiar hijos que no sean visuales (solo mantener mesh y partes)
                 for _, child in pairs(clon:GetChildren()) do
                     if not child:IsA("BasePart") and not child:IsA("SpecialMesh") and not child:IsA("MeshPart") then
                         child:Destroy()
+                    end
+                end
+                -- Asegurar que sub-partes del clon tambien sean visibles
+                for _, desc in ipairs(clon:GetDescendants()) do
+                    if desc:IsA("BasePart") then
+                        pcall(function() desc.Transparency = 0; desc.LocalTransparencyModifier = 0 end)
                     end
                 end
                 clon.Parent = char
@@ -51796,8 +51822,19 @@ particles = {}
             -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
+                -- FIX COLORES REABRIR: si _restoreBackground ya existe, usarlo.
+                -- Si no existe (tab Use aun no buildeado), aplicar tema guardado directamente.
                 if _savedBg > 0 and _G._restoreBackground then
                     pcall(_G._restoreBackground, _savedBg)
+                elseif _G._hubSavedTheme and _G._hubSavedTheme ~= "" then
+                    pcall(ApplyTheme, _G._hubSavedTheme)
+                    if _savedBg > 0 then
+                        task.delay(4.0, function()
+                            if _G._restoreBackground then
+                                pcall(_G._restoreBackground, _savedBg)
+                            end
+                        end)
+                    end
                 end
             end)
             end)
@@ -51835,8 +51872,19 @@ particles = {}
             -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
+                -- FIX COLORES REABRIR: si _restoreBackground ya existe, usarlo.
+                -- Si no existe (tab Use aun no buildeado), aplicar tema guardado directamente.
                 if _savedBg > 0 and _G._restoreBackground then
                     pcall(_G._restoreBackground, _savedBg)
+                elseif _G._hubSavedTheme and _G._hubSavedTheme ~= "" then
+                    pcall(ApplyTheme, _G._hubSavedTheme)
+                    if _savedBg > 0 then
+                        task.delay(4.0, function()
+                            if _G._restoreBackground then
+                                pcall(_G._restoreBackground, _savedBg)
+                            end
+                        end)
+                    end
                 end
             end)
             end)
@@ -52115,8 +52163,19 @@ particles = {}
             -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
             task.delay(0.5, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
+                -- FIX COLORES REABRIR: si _restoreBackground ya existe, usarlo.
+                -- Si no existe (tab Use aun no buildeado), aplicar tema guardado directamente.
                 if _savedBg and _savedBg > 0 and _G._restoreBackground then
                     pcall(_G._restoreBackground, _savedBg)
+                elseif _G._hubSavedTheme and _G._hubSavedTheme ~= "" then
+                    pcall(ApplyTheme, _G._hubSavedTheme)
+                    if _savedBg and _savedBg > 0 then
+                        task.delay(4.0, function()
+                            if _G._restoreBackground then
+                                pcall(_G._restoreBackground, _savedBg)
+                            end
+                        end)
+                    end
                 end
             end)
         end)
@@ -52175,8 +52234,19 @@ particles = {}
             -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
+                -- FIX COLORES REABRIR: si _restoreBackground ya existe, usarlo.
+                -- Si no existe (tab Use aun no buildeado), aplicar tema guardado directamente.
                 if _savedBg > 0 and _G._restoreBackground then
                     pcall(_G._restoreBackground, _savedBg)
+                elseif _G._hubSavedTheme and _G._hubSavedTheme ~= "" then
+                    pcall(ApplyTheme, _G._hubSavedTheme)
+                    if _savedBg > 0 then
+                        task.delay(4.0, function()
+                            if _G._restoreBackground then
+                                pcall(_G._restoreBackground, _savedBg)
+                            end
+                        end)
+                    end
                 end
             end)
             end)
