@@ -52720,6 +52720,14 @@ function CreateUpdateTab()
                         "[+] Fixed all-tabs-blank bug when clicking during hub load.",
                         "[+] Tab build system serialized with mutex (no more race conditions).",
                         "[+] Custom Crosshairs (Miras) added to Premium tab — 13 designs, mouse-tracking.",
+                        "[+] Safe Escape (World tab): TP corto en direccion opuesta al murderer.",
+                        "[+] Safe Escape: slider de distancia configurable (3-30 studs, default 8).",
+                        "[+] Safe Escape: boton flotante bindable + keybind E.",
+                        "[+] Murderer Tracker HUD (World tab): panel flotante arrastrable en tiempo real.",
+                        "[+] Murderer Tracker HUD: muestra nombre del murderer y distancia en studs.",
+                        "[+] Murderer Tracker HUD: indicador de direccion con flecha (acercandose/alejandose).",
+                        "[+] Murderer Tracker HUD: color de distancia — rojo <=20 / naranja <=50 / verde +50.",
+                        "[+] Murderer Tracker HUD: persiste entre tabs, se destruye al apagar el toggle.",
                     }
                 },
             },
@@ -52728,6 +52736,8 @@ function CreateUpdateTab()
                 "[+] Rock-solid tab loading - no more blank tabs on fast clicks.",
                 "[+] New Aurora background with northern lights animation.",
                 "[+] Custom Crosshairs now exclusive to Premium tab (13 unique designs).",
+                "[+] Safe Escape: escapada rapida en direccion opuesta al murderer (World tab).",
+                "[+] Murderer Tracker HUD: panel flotante con nombre, distancia y flecha en tiempo real.",
             }
         },
         {
