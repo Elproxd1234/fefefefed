@@ -27126,7 +27126,13 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         and (not _wasUserSet or (savedState == true and not _isTabRebuild))
     if _shouldAutoActivate then
         local lower = nombre:lower()
-        local isPhysical = lower:find("swim fly") or lower:find("fly %+") or lower:find("fly+")
+
+        -- isPhysical: toggles que NO se deben auto-activar al CAMBIAR de pestaña
+        -- (tab rebuild). Al re-ejecutar el hub desde cero (_isTabRebuild=false)
+        -- se activan TODOS porque nada está corriendo.
+        -- Solo se bloquean en tab-rebuild para no duplicar loops ya activos.
+        local isPhysical = _isTabRebuild and (
+            lower:find("swim fly") or lower:find("fly %+") or lower:find("fly+")
             or (lower:find("fly") and not lower:find("firefly"))
             or lower:find("noclip") or lower:find("no%-clip")
             or lower:find("swim") or lower:find("float")
@@ -27144,13 +27150,11 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
             or lower:find("bang random") or lower:find("bang innocent")
             or lower:find("goto murder") or lower:find("goto sheriff")
             or lower:find("goto innocent") or lower:find("goto selected")
-            -- World toggles: nunca auto-activar al cargar
             or lower:find("instant interact") or lower:find("interactions distance")
             or lower:find("tp to am") or lower:find("tp to void")
             or lower:find("tp to lobby") or lower:find("tp to vm")
             or lower:find("bindable button")
             or lower:find("expose murderer") or lower:find("expose roles")
-            -- == TODOS LOS TOGGLES FUNCIONALES: nunca auto-activar al cargar ==
             or lower:find("auto shoot") or lower:find("shoot murder")
             or lower:find("shoot pick") or lower:find("wall check")
             or lower:find("silent aim") or lower:find("aimlock")
@@ -27182,6 +27186,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
             or lower:find("own ping") or lower:find("ping mode")
             or lower:find("spoof method") or lower:find("shoot condition")
             or lower:find("spoof") or lower:find("secure tp")
+        )
+
         if not isPhysical then
             task.defer(function()
                 local _orig = CreateCustomNotification
@@ -27190,8 +27196,6 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
                 CreateCustomNotification = _orig
                 -- FIX VISUALS AUTO-RESTORE: si es un toggle visual (ESP/Cham/Outline/Box/Skeleton/Tracer),
                 -- forzar tick inmediato del instanceLoop para que el ESP se pinte sin esperar el intervalo de 2s.
-                -- Sin este fix, al cargar con ESP guardado ON el loop corria a 2s porque
-                -- _anyVisual era false en ese momento (VisualState aun no habia sido seteado).
                 local _ln = nombre:lower()
                 local _isVisualToggle = _ln:find("^esp ") or _ln:find("^cham ") or _ln:find("^box esp")
                     or _ln:find("^outline ") or _ln:find("^skeleton ") or _ln:find("^tracer ")
@@ -27200,7 +27204,6 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
                     or _ln:find("coin.*esp") or _ln:find("esp.*coin")
                 if _isVisualToggle then
                     _G._forceInstanceTick = true
-                    -- Refrescar chams/outlines/boxes que dependen de _vcRefreshAll
                     task.defer(function()
                         task.wait(0.12)
                         if _vcRefreshAll then pcall(_vcRefreshAll) end
@@ -27545,6 +27548,72 @@ function CreateWorldUI_FakeBombCustomization()
     end)
 end
 -- CreateWorldUI_Tilt removida -- causaba bug de camara giratoria (CFrame acumulativo en RenderStepped)
+
+local function _makeTPButton(label, callback, forcedParent)
+    local actualParent = forcedParent or _currentMainSectionFrame or leftColumn
+
+    local C_BG       = ThemeColors.Background
+    local C_BG_TR    = 0.05   -- transparencia normal (casi solido, igual referencia)
+    local C_BG_HOV   = 0.05   -- transparencia hover
+    local C_BG_CLK   = 0.05   -- transparencia click
+    local C_STROKE   = ThemeColors.Primary
+    local C_STROKE_CLK = ThemeColors.Accent
+    local C_TEXT     = ThemeColors.TextPrimary
+    local TWEEN_T    = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local TWEEN_FAST = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+    local container = Instance.new("Frame", actualParent)
+    container.Name                   = "TPBtn_" .. label
+    container.Size                   = UDim2.new(1, 0, 0, 56)
+    container.BackgroundTransparency = 1
+    container.BorderSizePixel        = 0
+    container.ZIndex                 = 20
+
+    local btn = Instance.new("TextButton", container)
+    btn.Name                    = "TPBtnInner_" .. label
+    btn.Size                    = UDim2.new(1, -16, 0, 38)
+    btn.Position                = UDim2.new(0, 8, 0.5, -19)
+    btn.BackgroundColor3        = C_BG
+    btn.BackgroundTransparency  = C_BG_TR
+    btn.BorderSizePixel         = 0
+    btn.Text                    = label
+    btn.TextColor3              = C_TEXT
+    btn.FontFace                = Font.fromEnum(Enum.Font.GothamBold)
+    btn.TextSize                = 14
+    btn.TextXAlignment          = Enum.TextXAlignment.Center
+    btn.TextYAlignment          = Enum.TextYAlignment.Center
+    btn.AutoButtonColor         = false
+    btn.ZIndex                  = 21
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)  -- esquinas ligeramente redondeadas como referencia
+
+    local stroke = Instance.new("UIStroke", btn)
+    stroke.Color           = C_STROKE
+    stroke.Thickness       = 1.5
+    stroke.Transparency    = 0.10
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- Hover: fondo mas solido
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TWEEN_T, {BackgroundColor3 = ThemeColors.Secondary, BackgroundTransparency = C_BG_HOV}):Play()
+        TweenService:Create(stroke, TWEEN_T, {Transparency = 0, Thickness = 2}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TWEEN_T, {BackgroundColor3 = C_BG, BackgroundTransparency = C_BG_TR}):Play()
+        TweenService:Create(stroke, TWEEN_T, {Transparency = 0.10, Thickness = 1.5}):Play()
+    end)
+
+    -- Click: flash rapido
+    btn.Activated:Connect(function()
+        TweenService:Create(btn,    TWEEN_FAST, {BackgroundColor3 = ThemeColors.Accent, BackgroundTransparency = C_BG_CLK}):Play()
+        TweenService:Create(stroke, TWEEN_FAST, {Color = C_STROKE_CLK, Thickness = 2.5}):Play()
+        task.wait(0.12)
+        TweenService:Create(btn,    TWEEN_T, {BackgroundColor3 = C_BG, BackgroundTransparency = C_BG_TR}):Play()
+        TweenService:Create(stroke, TWEEN_T, {Color = C_STROKE, Thickness = 1.5}):Play()
+        if callback then callback() end
+    end)
+
+    return container
+end
 
 function CreateWorldUI_Emotes()
     local EMOTES = {
@@ -30423,71 +30492,6 @@ function CreateWorldUI_Spectate()
         end, false)
 end
 
-local function _makeTPButton(label, callback, forcedParent)
-    local actualParent = forcedParent or _currentMainSectionFrame or leftColumn
-
-    local C_BG       = ThemeColors.Background
-    local C_BG_TR    = 0.05   -- transparencia normal (casi solido, igual referencia)
-    local C_BG_HOV   = 0.05   -- transparencia hover
-    local C_BG_CLK   = 0.05   -- transparencia click
-    local C_STROKE   = ThemeColors.Primary
-    local C_STROKE_CLK = ThemeColors.Accent
-    local C_TEXT     = ThemeColors.TextPrimary
-    local TWEEN_T    = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local TWEEN_FAST = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-    local container = Instance.new("Frame", actualParent)
-    container.Name                   = "TPBtn_" .. label
-    container.Size                   = UDim2.new(1, 0, 0, 56)
-    container.BackgroundTransparency = 1
-    container.BorderSizePixel        = 0
-    container.ZIndex                 = 20
-
-    local btn = Instance.new("TextButton", container)
-    btn.Name                    = "TPBtnInner_" .. label
-    btn.Size                    = UDim2.new(1, -16, 0, 38)
-    btn.Position                = UDim2.new(0, 8, 0.5, -19)
-    btn.BackgroundColor3        = C_BG
-    btn.BackgroundTransparency  = C_BG_TR
-    btn.BorderSizePixel         = 0
-    btn.Text                    = label
-    btn.TextColor3              = C_TEXT
-    btn.FontFace                = Font.fromEnum(Enum.Font.GothamBold)
-    btn.TextSize                = 14
-    btn.TextXAlignment          = Enum.TextXAlignment.Center
-    btn.TextYAlignment          = Enum.TextYAlignment.Center
-    btn.AutoButtonColor         = false
-    btn.ZIndex                  = 21
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)  -- esquinas ligeramente redondeadas como referencia
-
-    local stroke = Instance.new("UIStroke", btn)
-    stroke.Color           = C_STROKE
-    stroke.Thickness       = 1.5
-    stroke.Transparency    = 0.10
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-    -- Hover: fondo mas solido
-    btn.MouseEnter:Connect(function()
-        TweenService:Create(btn, TWEEN_T, {BackgroundColor3 = ThemeColors.Secondary, BackgroundTransparency = C_BG_HOV}):Play()
-        TweenService:Create(stroke, TWEEN_T, {Transparency = 0, Thickness = 2}):Play()
-    end)
-    btn.MouseLeave:Connect(function()
-        TweenService:Create(btn, TWEEN_T, {BackgroundColor3 = C_BG, BackgroundTransparency = C_BG_TR}):Play()
-        TweenService:Create(stroke, TWEEN_T, {Transparency = 0.10, Thickness = 1.5}):Play()
-    end)
-
-    -- Click: flash rapido
-    btn.Activated:Connect(function()
-        TweenService:Create(btn,    TWEEN_FAST, {BackgroundColor3 = ThemeColors.Accent, BackgroundTransparency = C_BG_CLK}):Play()
-        TweenService:Create(stroke, TWEEN_FAST, {Color = C_STROKE_CLK, Thickness = 2.5}):Play()
-        task.wait(0.12)
-        TweenService:Create(btn,    TWEEN_T, {BackgroundColor3 = C_BG, BackgroundTransparency = C_BG_TR}):Play()
-        TweenService:Create(stroke, TWEEN_T, {Color = C_STROKE, Thickness = 1.5}):Play()
-        if callback then callback() end
-    end)
-
-    return container
-end
 
 function CreateWorldUI_Performance()
     local sec = CreateSection(rightColumn, "", "! PERFORMANCE", ThemeColors.Aurora3)
