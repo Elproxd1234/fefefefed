@@ -52852,7 +52852,8 @@ function CreateUseTab()
         -- SAMURAI: niebla pulsante en overlay + leve desplazamiento horizontal del fondo
         local function _animSamurai(img, ov, token)
             -- ================================================================
-            -- ANIMACION SAMURAI v2: niebla + sakura cayendo + tint + ken burns
+            -- ANIMACION SAMURAI v3: niebla + sakura + tint + ken burns
+            --                       + lluvia japonesa + slash de katana
             -- ================================================================
             task.spawn(function()
                 -- --- 1. FADE-IN CINEMATICO --------------------------------
@@ -52880,19 +52881,19 @@ function CreateUseTab()
                     petal.BackgroundColor3 = _sakuraColors[math.random(1, #_sakuraColors)]
                     petal.BackgroundTransparency = 0.25
                     petal.BorderSizePixel = 0
-                    petal.ZIndex = 5  -- encima de _contentBg(4) pero los contenidos lo tapan
+                    petal.ZIndex = 5
                     petal.Rotation = math.random(0, 45)
                     Instance.new("UICorner", petal).CornerRadius = UDim.new(0.5, 0)
 
-                    local fallDur   = math.random(35, 65) / 10   -- 3.5 a 6.5 segundos
-                    local driftX    = math.random(-8, 8) / 100   -- deriva horizontal suave
-                    local endX      = startX + driftX
-                    local endRot    = petal.Rotation + math.random(-30, 30)
+                    local fallDur = math.random(35, 65) / 10
+                    local driftX  = math.random(-8, 8) / 100
+                    local endX    = startX + driftX
+                    local endRot  = petal.Rotation + math.random(-30, 30)
 
                     local ti_fall = TweenInfo.new(fallDur, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
                     TweenService:Create(petal, ti_fall, {
-                        Position            = UDim2.new(endX, 0, 1.05, 0),
-                        Rotation            = endRot,
+                        Position               = UDim2.new(endX, 0, 1.05, 0),
+                        Rotation               = endRot,
                         BackgroundTransparency = 0.9,
                     }):Play()
                     task.delay(fallDur, function()
@@ -52908,7 +52909,102 @@ function CreateUseTab()
                     end
                 end)
 
-                -- --- 3. LOOP PRINCIPAL: niebla + tint rojo/azul + ken burns --
+                -- --- 3. LLUVIA JAPONESA FINA (gotas verticales azul/blanco) --
+                local function _spawnRainDrop()
+                    if not mainFrame or not mainFrame.Parent then return end
+                    if _bgAnimToken ~= token then return end
+                    local drop = Instance.new("Frame", mainFrame)
+                    drop.Name = "HubBgParticle"
+                    local startX = math.random(0, 100) / 100
+                    local h      = math.random(8, 22)     -- altura de la gota en px
+                    local w      = math.random(1, 2)      -- ancho fino
+                    drop.Size                   = UDim2.new(0, w, 0, h)
+                    drop.Position               = UDim2.new(startX, 0, -0.04, 0)
+                    drop.BackgroundColor3       = Color3.fromRGB(180, 210, 255)  -- azul hielo
+                    drop.BackgroundTransparency = math.random(35, 60) / 100
+                    drop.BorderSizePixel        = 0
+                    drop.ZIndex                 = 4   -- justo debajo de los petalos
+                    drop.Rotation               = math.random(-8, 8)  -- leve inclinacion
+                    Instance.new("UICorner", drop).CornerRadius = UDim.new(0.5, 0)
+
+                    local fallDur = math.random(8, 18) / 10   -- rapida: 0.8-1.8s
+                    local driftX  = math.random(-3, 3) / 100
+                    local ti_rain = TweenInfo.new(fallDur, Enum.EasingStyle.Linear)
+                    TweenService:Create(drop, ti_rain, {
+                        Position               = UDim2.new(startX + driftX, 0, 1.02, 0),
+                        BackgroundTransparency = 0.92,
+                    }):Play()
+                    task.delay(fallDur, function()
+                        pcall(function() if drop and drop.Parent then drop:Destroy() end end)
+                    end)
+                end
+
+                -- Loop lluvia: 3-6 gotas cada 0.1s para efecto denso pero suave
+                task.spawn(function()
+                    while img and img.Parent and _bgAnimToken == token do
+                        for _ = 1, math.random(3, 6) do
+                            pcall(_spawnRainDrop)
+                        end
+                        task.wait(0.10)
+                    end
+                end)
+
+                -- --- 4. SLASH DE KATANA (linea diagonal que cruza el frame) --
+                local function _spawnSlash()
+                    if not mainFrame or not mainFrame.Parent then return end
+                    if _bgAnimToken ~= token then return end
+
+                    -- Linea diagonal fina estilo corte de katana
+                    local slash = Instance.new("Frame", mainFrame)
+                    slash.Name             = "HubBgParticle"
+                    slash.BackgroundColor3 = Color3.fromRGB(255, 240, 220)  -- blanco calido / acero
+                    slash.BackgroundTransparency = 1
+                    slash.BorderSizePixel  = 0
+                    slash.ZIndex           = 6   -- encima de todo el fondo
+
+                    -- Posicion aleatoria: empieza fuera de la pantalla a la derecha
+                    local startY = math.random(5, 60) / 100
+                    slash.Size     = UDim2.new(0, math.random(80, 160), 0, math.random(1, 2))
+                    slash.Position = UDim2.new(1.05, 0, startY, 0)
+                    slash.Rotation = math.random(-35, -20)  -- angulo diagonal de katana
+
+                    -- Fase 1: aparece instantaneamente (flash de entrada)
+                    local ti_appear = TweenInfo.new(0.06, Enum.EasingStyle.Linear)
+                    TweenService:Create(slash, ti_appear, {BackgroundTransparency = 0.10}):Play()
+
+                    -- Fase 2: atraviesa el frame de derecha a izquierda
+                    task.delay(0.06, function()
+                        if not slash or not slash.Parent or _bgAnimToken ~= token then
+                            pcall(function() if slash and slash.Parent then slash:Destroy() end end)
+                            return
+                        end
+                        local sweepDur = math.random(12, 20) / 100   -- 0.12-0.20s muy rapido
+                        local ti_sweep = TweenInfo.new(sweepDur, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+                        TweenService:Create(slash, ti_sweep, {
+                            Position               = UDim2.new(-0.25, 0, startY + 0.08, 0),
+                            BackgroundTransparency = 0.85,
+                        }):Play()
+                        task.delay(sweepDur, function()
+                            pcall(function() if slash and slash.Parent then slash:Destroy() end end)
+                        end)
+                    end)
+                end
+
+                -- Loop de slashes: aparece 1 cada 4-9 segundos (efecto raro e impactante)
+                task.spawn(function()
+                    task.wait(math.random(20, 40) / 10)   -- delay inicial
+                    while img and img.Parent and _bgAnimToken == token do
+                        pcall(_spawnSlash)
+                        -- Doble slash rapido el 30% de las veces
+                        if math.random(1, 10) <= 3 then
+                            task.wait(math.random(8, 18) / 100)
+                            if _bgAnimToken == token then pcall(_spawnSlash) end
+                        end
+                        task.wait(math.random(40, 90) / 10)
+                    end
+                end)
+
+                -- --- 5. LOOP PRINCIPAL: niebla + tint rojo/azul + ken burns --
                 local fogIn   = true
                 local tintIdx = 0
                 local _tints  = {
@@ -52923,8 +53019,8 @@ function CreateUseTab()
                     if not img or not img.Parent or _bgAnimToken ~= token then return end
                     kbZoomed = not kbZoomed
                     local newSize = kbZoomed
-                        and UDim2.new(1.04, 0, 1.04, 0)   -- muy leve zoom in
-                        or  UDim2.new(1.00, 0, 1.00, 0)   -- volver a normal
+                        and UDim2.new(1.04, 0, 1.04, 0)
+                        or  UDim2.new(1.00, 0, 1.00, 0)
                     local newPos  = kbZoomed
                         and UDim2.new(-0.02, 0, -0.02, 0)
                         or  UDim2.new(0,     0, 0,     0)
@@ -52936,9 +53032,9 @@ function CreateUseTab()
 
                 while img and img.Parent and _bgAnimToken == token do
                     tintIdx = (tintIdx % #_tints) + 1
-                    local fogAlpha  = fogIn and 0.08 or 0.50
-                    local imgAlpha  = fogIn and 0.04 or 0.22
-                    local dur       = fogIn and 4.0 or 4.8
+                    local fogAlpha = fogIn and 0.08 or 0.50
+                    local imgAlpha = fogIn and 0.04 or 0.22
+                    local dur      = fogIn and 4.0 or 4.8
                     local ti = TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 
                     -- Overlay (niebla): pulso de opacidad
