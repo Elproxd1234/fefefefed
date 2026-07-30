@@ -54306,7 +54306,7 @@ task.spawn(function()
     repeat task.wait(0.1) until _G._hubReady
     local _Players = game:GetService("Players")
     local _lp = _Players.LocalPlayer
-    local _hubGui = (game:GetService("CoreGui"):FindFirstChild("f") or _lp.PlayerGui:WaitForChild("f", 10))
+    local _hubGui = (game:GetService("CoreGui"):FindFirstChild("f") or _lp.PlayerGui:WaiForChild("f", 10))
     if not _hubGui then return end
     local _mainF = _hubGui:FindFirstChildOfClass("Frame")
     if not _mainF then return end
