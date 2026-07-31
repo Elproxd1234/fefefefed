@@ -35033,6 +35033,16 @@ function StealGunLoop()
             -- Refrescar cache en cada iteracion para detectar cambios de sheriff
             _refreshRoleCache()
             local target = _roleCache and _roleCache.sheriff
+            -- FIX: si no hay sheriff en cache pero hay hero con la gun, promoverlo
+            if not target and _roleCache and _roleCache.hero then
+                local heroPlayer = _roleCache.hero
+                local hHum = heroPlayer.Character and heroPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if hHum and hHum.Health > 0 then
+                    target = heroPlayer
+                    _roleCache.sheriff = heroPlayer
+                    _roleCache.hero    = nil
+                end
+            end
             StealGunSystem.sheriffOriginalFound = target
 
             if target and target.Character and target.Parent then
@@ -35099,8 +35109,12 @@ function StealGunLoop()
                     -- Sheriff muerto o invalido: limpiar estado y buscar nuevo sheriff
                     CreateCustomNotification("STEAL GUN", target.Name .. " murio, buscando nuevo sheriff...", 3)
                     local deadUserId = target.UserId
-                    -- Limpiar estado del sheriff muerto
+                    -- Limpiar estado del sheriff muerto — incluyendo cualquier referencia
+                    -- al jugador muerto que pudiera haber quedado en hero
                     _roleCache.sheriff    = nil
+                    if _roleCache.hero and _roleCache.hero.UserId == deadUserId then
+                        _roleCache.hero = nil
+                    end
                     _roleCache.lastUpdate = 0  -- forzar refresh inmediato en siguiente llamada
                     StealGunSystem.sheriffOriginalFound = nil
                     StealGunSystem.sheriffDeadDetected  = false
@@ -35128,16 +35142,26 @@ function StealGunLoop()
                         _roleCache.lastUpdate = 0
                         _refreshRoleCache()
 
+                        -- Limpiar cualquier referencia residual al sheriff muerto
+                        if _roleCache.sheriff and _roleCache.sheriff.UserId == deadUserId then
+                            _roleCache.sheriff = nil
+                        end
+                        if _roleCache.hero and _roleCache.hero.UserId == deadUserId then
+                            _roleCache.hero = nil
+                        end
+
                         local newSheriff = _roleCache.sheriff
 
-                        -- Prioridad 2: hero (quien recogió la gun del sheriff muerto)
-                        -- FIX: cuando el sheriff muere y alguien la levanta se vuelve Hero,
-                        -- no un nuevo Sheriff -> buscar en _roleCache.hero antes del scan visual
+                        -- Prioridad: hero (quien recogió la gun del sheriff muerto).
+                        -- FIX: limpiar _roleCache.hero una vez que lo promovemos a sheriff,
+                        -- para que el loop principal no siga evaluando la rama equivocada.
                         if (not newSheriff or newSheriff.UserId == deadUserId) and _roleCache.hero then
-                            local hHum = _roleCache.hero.Character and _roleCache.hero.Character:FindFirstChildOfClass("Humanoid")
-                            if hHum and hHum.Health > 0 and _roleCache.hero.UserId ~= deadUserId then
-                                newSheriff = _roleCache.hero
-                                _roleCache.sheriff = _roleCache.hero  -- tratar el hero como nuevo sheriff
+                            local heroPlayer = _roleCache.hero
+                            local hHum = heroPlayer.Character and heroPlayer.Character:FindFirstChildOfClass("Humanoid")
+                            if hHum and hHum.Health > 0 and heroPlayer.UserId ~= deadUserId then
+                                newSheriff = heroPlayer
+                                _roleCache.sheriff = heroPlayer  -- promover hero a sheriff
+                                _roleCache.hero    = nil         -- limpiar rol hero para evitar confusion
                             end
                         end
 
@@ -35153,6 +35177,7 @@ function StealGunLoop()
                                     if hasGun then
                                         newSheriff = p
                                         _roleCache.sheriff    = p
+                                        _roleCache.hero       = nil  -- limpiar hero si era este jugador
                                         _roleCache.lastUpdate = 0
                                         break
                                     end
@@ -35169,9 +35194,8 @@ function StealGunLoop()
                             StealGunSystem.gunInBackpackMode    = false
                             -- Re-hookear muerte del nuevo sheriff
                             task.defer(function() pcall(_hookSheriffDeath, newSheriff) end)
-                            CreateCustomNotification("STEAL GUN", "Nuevo sheriff: " .. newSheriff.Name .. " flingeando!", 2.5)
-                            -- FIX FLING NUEVO SHERIFF: flingear inmediatamente sin esperar
-                            -- la proxima iteracion del loop (evita el task.wait(0.8) de abajo)
+                            CreateCustomNotification("STEAL GUN", "Nuevo portador: " .. newSheriff.Name .. " flingeando!", 2.5)
+                            -- Flingear inmediatamente sin esperar la proxima iteracion del loop
                             _flingActive    = false
                             _flingReturning = false
                             task.spawn(function()
@@ -44256,6 +44280,7 @@ function CreateCombatTab()
         do
             local _hbSizeKey = "HitboxSize"
             if not _G._sliderVals then _G._sliderVals = {} end
+            -- FIX: no pisar con 0 si ya hay un valor guardado (incluso si vale 0 es valido)
             if _G._sliderVals[_hbSizeKey] == nil then _G._sliderVals[_hbSizeKey] = 0 end
             _reachSize = _G._sliderVals[_hbSizeKey]
 
@@ -44373,6 +44398,8 @@ function CreateCombatTab()
                 local pct = math.clamp((inp.Position.X - absPos) / absSize, 0, 1)
                 _hbSizeSetVal(pct * 15)
             end)
+            -- FIX: restaurar posicion visual del thumb al reconstruir el tab
+            task.defer(function() _hbSizeSetVal(_reachSize) end)
         end
 
         -- ── Hitbox Transparency slider (0 – 1, default 0.70) ─────────────────
@@ -44485,6 +44512,8 @@ function CreateCombatTab()
                 local pct = math.clamp((inp.Position.X - absPos) / absSize, 0, 1)
                 _hbTranspSetVal(pct)
             end)
+            -- FIX: restaurar posicion visual del thumb al reconstruir el tab
+            task.defer(function() _hbTranspSetVal(_hbTranspVal) end)
         end
 
         -- ── Hitbox Surface Transparency slider (0 – 1, default 1.0) ──────────
@@ -44598,6 +44627,8 @@ function CreateCombatTab()
                 local pct = math.clamp((inp.Position.X - absPos) / absSize, 0, 1)
                 _hbSurfSetVal(pct)
             end)
+            -- FIX: restaurar posicion visual del thumb al reconstruir el tab
+            task.defer(function() _hbSurfSetVal(_hbSurfVal) end)
         end
 
         -- Botn Reparar Cuchillo
@@ -45174,6 +45205,15 @@ function CreateCombatTab()
                 _G._dualKnifeEnabled = false
                 _dkStopAll()
                 _dualStopArm(state)
+                -- Limpiar los hooks de deteccion de equip
+                if _G._dualKnifeBpConn then
+                    pcall(function() _G._dualKnifeBpConn:Disconnect() end)
+                    _G._dualKnifeBpConn = nil
+                end
+                if _G._dualKnifeCharPickupConn then
+                    pcall(function() _G._dualKnifeCharPickupConn:Disconnect() end)
+                    _G._dualKnifeCharPickupConn = nil
+                end
                 CreateCustomNotification("DUAL KNIFE", "X Desactivado", 2)
             end
         end, false)
@@ -45273,7 +45313,7 @@ function CreateCombatTab()
         -- Cuando hay transicin de mapa, el Character se destruye y recrea.
         -- El DK_Clone y los brazos quedan invlidos -> re-arrancar automticamente.
         if _G._dualCharConn then pcall(function() _G._dualCharConn:Disconnect() end) end
-        _G._dualCharConn = LocalPlayer.CharacterAdded:Connect(function()
+        _G._dualCharConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
             _w(0.6)  -- esperar que el char y sus joints estn listos
             -- Re-iniciar Dual Knife si estaba activo
             local ks = _G._dualKnifeState
@@ -45306,7 +45346,7 @@ function CreateCombatTab()
                     end
                     if not (ks and ks.enabled) then return end
 
-                    -- Hook backpack: si el knife llega despues (pick-up), re-armar
+                    -- Hook backpack: si el knife llega despues (pick-up desde el suelo), re-armar
                     if _G._dualKnifeBpConn then pcall(function() _G._dualKnifeBpConn:Disconnect() end) end
                     _G._dualKnifeBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
                         if not (ks and ks.enabled) then return end
@@ -45320,6 +45360,25 @@ function CreateCombatTab()
                         if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
                         _sp(_dkPreloadTracks)
                     end)
+                    -- FIX NUEVA RONDA: hookear Character.ChildAdded para detectar cuando el
+                    -- jugador EQUIPA el knife (Backpack->Character). Ese evento NO dispara
+                    -- Backpack.ChildAdded, por eso el dual no se activaba en rondas siguientes.
+                    if _G._dualKnifeCharPickupConn then pcall(function() _G._dualKnifeCharPickupConn:Disconnect() end) end
+                    local _curChar = newChar or LocalPlayer.Character
+                    if _curChar then
+                        _G._dualKnifeCharPickupConn = _curChar.ChildAdded:Connect(function(tool)
+                            if not (ks and ks.enabled) then return end
+                            if not tool:IsA("Tool") or not _dualMatchKeywords(tool, _dualKnifeKeywords) then return end
+                            task.wait(0.1)
+                            if ks.steppedConn then pcall(function() ks.steppedConn:Disconnect() end); ks.steppedConn = nil end
+                            if ks.renderConn  then pcall(function() ks.renderConn:Disconnect()  end); ks.renderConn  = nil end
+                            if ks.inputConn   then pcall(function() ks.inputConn:Disconnect()   end); ks.inputConn   = nil end
+                            _dkAnimTracks = {}
+                            _dualStartArm(ks, _dualKnifeKeywords)
+                            if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
+                            _sp(_dkPreloadTracks)
+                        end)
+                    end
 
                     -- Invalidar cache de tracks (el Animator cambio tras respawn)
                     _dkAnimTracks = {}
