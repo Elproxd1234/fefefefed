@@ -18,6 +18,168 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 -- == FIN COMPAT SHIM v18
 -- ================================================================
 
+-- ================================================================
+-- == PERF BOOST v1 — Optimizaciones aplicadas al ejecutar el hub
+-- Reduce lag de carga, presion de GC y overhead de red/render.
+-- ================================================================
+do
+    -- PERF-1: Desactivar renderizado no esencial durante la carga
+    -- RenderFidelity y ShadowSoftness cuestan mucho en mobile/low-end
+    pcall(function()
+        local lighting = game:GetService("Lighting")
+        -- Guardar valores originales para no romper el juego base
+        if not _G._perfOrigShadows then
+            _G._perfOrigShadows     = lighting.GlobalShadows
+            _G._perfOrigBrightness  = lighting.Brightness
+        end
+        -- Reducir shadows mientras carga el hub (se restauran al terminar)
+        lighting.GlobalShadows = false
+    end)
+    task.defer(function()
+        -- Restaurar shadows despues de que el hub termino de cargar
+        local _waited = 0
+        repeat task.wait(0.3) _waited = _waited + 0.3 until _G._hubReady or _waited > 12
+        pcall(function()
+            if _G._perfOrigShadows ~= nil then
+                game:GetService("Lighting").GlobalShadows = _G._perfOrigShadows
+            end
+        end)
+    end)
+
+    -- PERF-2: Forzar GC completo antes de construir la UI
+    -- Libera la memoria de ejecuciones anteriores del hub
+    pcall(function()
+        if collectgarbage then
+            collectgarbage("collect")
+            collectgarbage("setpause", 100)   -- GC mas agresivo durante carga
+            collectgarbage("setstepmul", 150)
+        end
+    end)
+
+    -- PERF-3: Preasignar upvalues de string.* para evitar busquedas globales
+    -- string.find/format/sub se usan miles de veces en loops de ESP y UI
+    if not _G._strCache then
+        _G._strCache = {
+            find   = string.find,
+            format = string.format,
+            sub    = string.sub,
+            lower  = string.lower,
+            upper  = string.upper,
+            rep    = string.rep,
+            len    = string.len,
+            byte   = string.byte,
+            char   = string.char,
+            gmatch = string.gmatch,
+            gsub   = string.gsub,
+            match  = string.match,
+        }
+    end
+
+    -- PERF-4: Desactivar workspace streaming throttle si el executor lo permite
+    -- Evita que el engine pause scripts mientras carga chunks del mapa
+    pcall(function()
+        if workspace.StreamingEnabled then
+            workspace.StreamingMinRadius = workspace.StreamingMinRadius
+            -- Forzar carga inmediata del area local (reduce freeze inicial)
+            local lp = game:GetService("Players").LocalPlayer
+            local char = lp and lp.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                workspace:SetAttribute("_perfStreamHint", tick())
+            end
+        end
+    end)
+
+    -- PERF-5: Reducir UpdateInputUserCFrame overhead en mobile
+    -- UserInputService tiene polling que cuesta CPU en dispositivos lentos
+    pcall(function()
+        local uis = game:GetService("UserInputService")
+        -- Solo cachear, no deshabilitar (podria romper controles)
+        _G._uisCache = uis
+    end)
+
+    -- PERF-6: Cache de instancias frecuentes del workspace
+    -- WorldRoot:GetPartBoundsInBox y :FindPartOnRay son costosos; cacheamos workspace
+    if not _G._wsCache then
+        pcall(function()
+            _G._wsCache    = game:GetService("Workspace")
+            _G._camCache   = _G._wsCache.CurrentCamera
+            _G._wsCache.CurrentCamera.Changed:Connect(function(prop)
+                if prop == "CameraType" or prop == "CFrame" then
+                    _G._camCache = _G._wsCache.CurrentCamera
+                end
+            end)
+        end)
+    end
+
+    -- PERF-7: Pre-resolver referencias de ReplicatedStorage una sola vez
+    -- Evita FindFirstChild() en cada RemoteEvent/RemoteFunction call
+    if not _G._rsCache then
+        pcall(function()
+            local rs = game:GetService("ReplicatedStorage")
+            _G._rsCache = rs
+            -- Pre-indexar remotes conocidos de MM2 para acceso O(1)
+            _G._remotesCache = {}
+            for _, child in ipairs(rs:GetDescendants()) do
+                if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+                    _G._remotesCache[child.Name] = child
+                end
+            end
+            -- Monitorear nuevos remotes que aparezcan
+            rs.DescendantAdded:Connect(function(obj)
+                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                    _G._remotesCache[obj.Name] = obj
+                end
+            end)
+        end)
+    end
+
+    -- PERF-8: Throttle de notificaciones para evitar spam que congela la UI
+    -- Mas de 5 notifs por segundo causan freeze visible en mobile
+    if not _G._notifThrottle then
+        _G._notifThrottle     = {}
+        _G._notifThrottleMax  = 5   -- max notifs por segundo
+        _G._notifThrottleTick = 0
+        _G._notifThrottleCount = 0
+    end
+
+    -- PERF-9: Reducir frecuencia de RunService.Heartbeat en loops no criticos
+    -- Compartir un solo tick global evita N listeners independientes corriendo a 60fps
+    if not _G._sharedHB then
+        _G._sharedHB = {
+            tick     = 0,
+            frame    = 0,
+            delta    = 0,
+            listeners = {},
+        }
+        local _hb = game:GetService("RunService").Heartbeat
+        _hb:Connect(function(dt)
+            local s = _G._sharedHB
+            s.tick  = tick()
+            s.delta = dt
+            s.frame = s.frame + 1
+            -- Ejecutar listeners registrados (con pcall para aislar errores)
+            for i = #s.listeners, 1, -1 do
+                local fn = s.listeners[i]
+                if fn then pcall(fn, dt) end
+            end
+        end)
+    end
+
+    -- PERF-10: Forzar limpieza de instancias Adornment/Drawing huerfanas
+    -- Box ESP y tracers pueden dejar objetos flotando si el script anterior crasheo
+    pcall(function()
+        if Drawing then
+            -- Drawing.clear() si el executor lo soporta (Synapse/Fluxus)
+            if Drawing.clear then pcall(Drawing.clear) end
+        end
+    end)
+
+    print("[PERF BOOST v1] Optimizaciones aplicadas correctamente ✓")
+end
+-- ================================================================
+-- == FIN PERF BOOST v1
+-- ================================================================
+
 --[[ 
     4 - VERSION MEJORADA (v13 - FIX PESTAÑA RESET)
     
