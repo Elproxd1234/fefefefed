@@ -52916,6 +52916,8 @@ function CreateEmotesTab()
         loopActive   = false,
         currentTrack = nil,
         loopSpeed    = 1.0,
+        moveConn     = nil,
+        stateConn    = nil,
     }
     local ES = _G._emoteState
 
@@ -52943,6 +52945,14 @@ function CreateEmotesTab()
         if ES.loopConn then
             pcall(function() ES.loopConn:Disconnect() end)
             ES.loopConn = nil
+        end
+        if ES.moveConn then
+            pcall(function() ES.moveConn:Disconnect() end)
+            ES.moveConn = nil
+        end
+        if ES.stateConn then
+            pcall(function() ES.stateConn:Disconnect() end)
+            ES.stateConn = nil
         end
         ES.loopActive = false
         if ES.currentTrack then
@@ -52976,6 +52986,45 @@ function CreateEmotesTab()
                     task.defer(function()
                         if ES.loopActive then _playEmote(animId, true) end
                     end)
+                end
+            end)
+        end
+
+        -- Detener emote al caminar, saltar o caer
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            -- Detener al saltar o morir
+            ES.stateConn = hum.StateChanged:Connect(function(_, newState)
+                if newState == Enum.HumanoidStateType.Jumping
+                or newState == Enum.HumanoidStateType.Freefall
+                or newState == Enum.HumanoidStateType.Dead then
+                    _stopEmote()
+                end
+            end)
+            -- Detener al moverse (Heartbeat cada 3 frames)
+            local _hbTick = 0
+            ES.moveConn = RunService.Heartbeat:Connect(function()
+                _hbTick = _hbTick + 1
+                if _hbTick < 3 then return end
+                _hbTick = 0
+                local c = LocalPlayer.Character
+                if not c then _stopEmote(); return end
+                local hrp = c:FindFirstChild("HumanoidRootPart")
+                local h   = c:FindFirstChildOfClass("Humanoid")
+                if not hrp or not h then _stopEmote(); return end
+                -- Parar si camina (velocidad horizontal)
+                local vel = hrp.AssemblyLinearVelocity
+                if vel and (vel.X * vel.X + vel.Z * vel.Z) > 1.5 then
+                    _stopEmote(); return
+                end
+                -- Parar si MoveDirection activo
+                if h.MoveDirection.Magnitude > 0.05 then
+                    _stopEmote(); return
+                end
+                -- Parar si esta en el aire
+                if h.FloorMaterial == Enum.Material.Air then
+                    _stopEmote(); return
                 end
             end)
         end
