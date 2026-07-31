@@ -13021,7 +13021,7 @@ function CreateBombJumpButton()
 
     local frame = MakeCapyBindableFrame(BombJumpSystem.gui, "BOMB JUMP", function()
         if not BombJumpSystem.enabled then
- CreateCustomNotification("BOMB JUMP", "Activa Double Jump primero!", 2)
+ CreateCustomNotification("BOMB JUMP", "Enable Double Jump first!", 2)
             return
         end
         SimpleBombJump()
@@ -13716,7 +13716,7 @@ function CreateMainUI_Fly()
 
     -- Bindable Fly
     local _flyBindGui = nil
-    CreateToggle(leftColumn, "Mostrar Boton Bindable", function(on)
+    CreateToggle(leftColumn, "Show Bindable Button", function(on)
         if on then
             if _flyBindGui then pcall(function() _flyBindGui:Destroy() end) end
             local sg = Instance.new("ScreenGui")
@@ -13738,9 +13738,9 @@ function CreateMainUI_Fly()
     end, false)
 
     -- -- Sliders de Fly --
-    CreateSlider(leftColumn, "Velocidad horizontal", 5, 500, flyNoclipSpeed, function(v) flyNoclipSpeed = v end)
-    CreateSlider(leftColumn, "Velocidad subir (Space)", 5, 500, flyNoclipUpSpeed, function(v) flyNoclipUpSpeed = v end)
-    CreateSlider(leftColumn, "Velocidad bajar (Ctrl/Q)", 5, 500, flyNoclipDownSpeed, function(v) flyNoclipDownSpeed = v end)
+    CreateSlider(leftColumn, "Horizontal Speed", 5, 500, flyNoclipSpeed, function(v) flyNoclipSpeed = v end)
+    CreateSlider(leftColumn, "Ascend Speed (Space)", 5, 500, flyNoclipUpSpeed, function(v) flyNoclipUpSpeed = v end)
+    CreateSlider(leftColumn, "Descend Speed (Ctrl/Q)", 5, 500, flyNoclipDownSpeed, function(v) flyNoclipDownSpeed = v end)
     CreateSlider(leftColumn, "Multiplicador Boost (Shift)", 1, 20, flyNoclipBoost, function(v) flyNoclipBoost = v end)
     CreateSlider(leftColumn, "Suavizado de movimiento", 1, 30, flyNoclipSmoothness, function(v) flyNoclipSmoothness = v end)
     CreateSlider(leftColumn, "Altura maxima (studs)", 50, 9999, flyNoclipMaxHeight, function(v) flyNoclipMaxHeight = v end)
@@ -14724,17 +14724,17 @@ function CreateMainUI_SwimFlyGithub()
     end
 
     -- Boton: mostrar Murder ahora
-    CreateButton(rightColumn, "Mostrar quien es el Murder", ThemeColors.Primary, function()
+    CreateButton(rightColumn, "Show who is the Murder", ThemeColors.Primary, function()
         notifyMurder()
     end)
 
     -- Boton: mostrar Sheriff ahora
-    CreateButton(rightColumn, "Mostrar quien es el Sheriff", ThemeColors.Aurora2, function()
+    CreateButton(rightColumn, "Show who is the Sheriff", ThemeColors.Aurora2, function()
         notifySheriff()
     end)
 
     -- Boton: mostrar ambos
-    CreateButton(rightColumn, "Mostrar Murder y Sheriff", ThemeColors.Accent, function()
+    CreateButton(rightColumn, "Show Murder and Sheriff", ThemeColors.Accent, function()
         notifyMurder()
         _w(0.3)
         notifySheriff()
@@ -15136,7 +15136,7 @@ function CreateMainUI_Other()
         end, false)
 
         -- Bindable button para esquivar
- CreateToggle(rightColumn, "Mostrar Boton Bindable Esquivar", function(on)
+ CreateToggle(rightColumn, "Show Bindable Dodge Button", function(on)
             local function sweep(p)
                 if not p then return end
                 for _, g in ipairs(p:GetChildren()) do
@@ -16263,7 +16263,7 @@ function CreateMainUI_LogoSelector()
 
  CreateSection(leftColumn, "", "HAND FLUTTER", ThemeColors.Aurora2)
 
- CreateSlider(leftColumn, "Velocidad de oscilacion", 1, 60, 20, function(v) _hfSpeed = v end)
+ CreateSlider(leftColumn, "Oscillation Speed", 1, 60, 20, function(v) _hfSpeed = v end)
  CreateSlider(leftColumn, "Rango ( deg)", 5, 90, 40, function(v) _hfRange = v end)
 
         -- Animacion: ShakeAnimation del Bell2025 toy
@@ -19556,7 +19556,7 @@ function CreateMainTab()
                 _ncMobileTip.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
                 _ncMobileTip.BackgroundTransparency = 0.5
                 _ncMobileTip.BorderSizePixel = 0
-                _ncMobileTip.Text = "📱 Movil: usa el boton 'Noclip (Button)' de abajo"
+                _ncMobileTip.Text = "📱 Mobile: use the 'Noclip (Button)' below"
                 _ncMobileTip.TextColor3 = Color3.fromRGB(100, 255, 100)
                 _ncMobileTip.FontFace = Font.fromEnum(Enum.Font.Montserrat)
                 _ncMobileTip.TextSize = 10
@@ -19702,7 +19702,7 @@ function CreateMainTab()
         end)
 
         -- Activar FOV -- aplica el FOV y lo mantiene contra resets del juego
-        CreateAuroraToggle(_camSection, "Activar FOV", function(on)
+        CreateAuroraToggle(_camSection, "Enable FOV", function(on)
             _cs.fovActive = on
             if _cs.fovConn then pcall(function() _cs.fovConn:Disconnect() end); _cs.fovConn = nil end
             if on then
@@ -29668,7 +29668,7 @@ function CreateWorldUI_AutoGrabGun()
     end, GrabState.bindable)
 
     -- SLIDER: Tamaño X del boton
-    CreateSlider(rightColumn, "Tamaño X del Boton", 20, 200, GrabState.sizeX, function(val)
+    CreateSlider(rightColumn, "Button Width (X)", 20, 200, GrabState.sizeX, function(val)
         GrabState.sizeX = val
         if GrabState.btnFrame then
             GrabState.btnFrame.Size = UDim2.new(0, GrabState.sizeX, 0, GrabState.sizeY)
@@ -29676,7 +29676,7 @@ function CreateWorldUI_AutoGrabGun()
     end)
 
     -- SLIDER: Tamaño Y del boton
-    CreateSlider(rightColumn, "Tamaño Y del Boton", 20, 200, GrabState.sizeY, function(val)
+    CreateSlider(rightColumn, "Button Height (Y)", 20, 200, GrabState.sizeY, function(val)
         GrabState.sizeY = val
         if GrabState.btnFrame then
             GrabState.btnFrame.Size = UDim2.new(0, GrabState.sizeX, 0, GrabState.sizeY)
@@ -30360,7 +30360,7 @@ function CreateWorldUI_InfinityJumpMovement()
     end, false)
 
     -- Slider de velocidad
-    CreateSlider(rightColumn, "Velocidad Camara", 5, 200, 32, function(v)
+    CreateSlider(rightColumn, "Camera Speed", 5, 200, 32, function(v)
         _camNC_speed = v
     end)
 
@@ -32332,7 +32332,7 @@ function CreateWorldUI_ShiftLock()
     end
 
     -- Toggle principal: activa shift lock directamente
-    CreateAuroraToggle(sec, "Activar Shift Lock", function(on)
+    CreateAuroraToggle(sec, "Enable Shift Lock", function(on)
         if on then
             _activateShiftLock()
         else
@@ -32341,7 +32341,7 @@ function CreateWorldUI_ShiftLock()
     end, false)
 
     -- Toggle bindable: muestra un boton en pantalla que al tocarse activa/desactiva shift lock
-    CreateAuroraToggle(sec, "Activar Shift Lock Bindable", function(on)
+    CreateAuroraToggle(sec, "Enable Shift Lock Bindable", function(on)
         SL.bindEnabled = on
         -- Limpiar bindable anterior
         pcall(function() destroyBindableButton("SHIFT LOCK") end)
@@ -33608,8 +33608,8 @@ function CreateWorldTab()
     if _G._toggleStates then
         _G._toggleStates["Spin"] = false
         _G._toggleStates["Enable Spin Bindable Button"] = false
-        _G._toggleStates["Activar Shift Lock"] = false
-        _G._toggleStates["Activar Shift Lock Bindable"] = false
+        _G._toggleStates["Enable Shift Lock"] = false
+        _G._toggleStates["Enable Shift Lock Bindable"] = false
     end
     ClearContent()
     _makeTwoColumns()  -- FIX: llamar ANTES de las funciones CreateWorldUI_
@@ -34492,7 +34492,7 @@ function CreatePremiumTab()
         subLbl.Size = UDim2.new(1, -24, 0, 36)
         subLbl.Position = UDim2.new(0, 12, 0, 54)
         subLbl.BackgroundTransparency = 1
-        subLbl.Text = "Copiá el link e iniciá sesión con\ntu cuenta de Discord para acceder"
+        subLbl.Text = "Copy the link and log in with\nyour Discord account to get access"
         subLbl.TextSize = 11
         subLbl.Font = Enum.Font.Gotham
         subLbl.TextWrapped = true
@@ -34504,7 +34504,7 @@ function CreatePremiumTab()
         copyBtn.Size = UDim2.new(1, -40, 0, 38)
         copyBtn.Position = UDim2.new(0, 20, 0, 100)
         copyBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 75)
-        copyBtn.Text = "📋  Copiar link de login"
+        copyBtn.Text = "📋  Copy login link"
         copyBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
         copyBtn.Font = Enum.Font.GothamBold
         copyBtn.TextSize = 13
@@ -34533,7 +34533,7 @@ function CreatePremiumTab()
             copyBtn.Text = "✅  Link copiado!"
             copyBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 100)
             task.wait(2)
-            copyBtn.Text = "📋  Copiar link de login"
+            copyBtn.Text = "📋  Copy login link"
             copyBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 75)
         end)
 
@@ -36124,7 +36124,7 @@ function CreateExclusiveTab()
         local layoutDesc = Instance.new("TextLabel", layoutSec)
         layoutDesc.Size = UDim2.new(1, -12, 0, 22)
         layoutDesc.BackgroundTransparency = 1
-        layoutDesc.Text = "Elegí cómo se organizan las pestañas del hub"
+        layoutDesc.Text = "Choose how the hub tabs are organized"
         layoutDesc.TextColor3 = Color3.fromRGB(140, 175, 210)
         layoutDesc.FontFace = Font.fromEnum(Enum.Font.Gotham)
         layoutDesc.TextSize = 11
@@ -36481,7 +36481,7 @@ function CreateExclusiveTab()
             local badgeLbl = Instance.new("TextLabel", badge)
             badgeLbl.Size = UDim2.new(1, 0, 1, 0)
             badgeLbl.BackgroundTransparency = 1
-            badgeLbl.Text = "✓ ACTIVO"
+            badgeLbl.Text = "✓ ACTIVE"
             badgeLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
             badgeLbl.FontFace = Font.fromEnum(Enum.Font.GothamBold)
             badgeLbl.TextSize = 7
@@ -37238,7 +37238,7 @@ function CreateExclusiveTab()
         purgeBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 80)
         purgeBtn.BackgroundTransparency = 0.2
         purgeBtn.BorderSizePixel = 0
-        purgeBtn.Text = "  Purgar Partículas Ahora"
+        purgeBtn.Text = "  Purge Particles Now"
         purgeBtn.TextColor3 = Color3.fromRGB(200, 160, 255)
         purgeBtn.FontFace = Font.fromEnum(Enum.Font.GothamSemibold)
         purgeBtn.TextSize = 11
@@ -38196,106 +38196,11 @@ function CreateCombatTab()
     -- el disparo original pasa sin modificar. Más difícil de detectar
     -- server-side porque el argumento visible del cliente no cambia.
     -- =====================================================================
-    -- FIX TOGGLE PRINCIPAL: SILENT AIM ON/OFF (con soporte touch mobile)
-    -- Este toggle habilita/deshabilita el hook de namecall del Silent Aim.
-    -- Funciona con click de mouse Y con un solo toque en pantalla táctil.
-    -- =====================================================================
-    do
-        local _saMainRow = Instance.new("Frame", silentAimSection)
-        _saMainRow.Size = UDim2.new(1, -8, 0, 50)
-        _saMainRow.BackgroundColor3 = Color3.fromRGB(0, 80, 30)
-        _saMainRow.BackgroundTransparency = 0.55
-        _saMainRow.BorderSizePixel = 0
-        _saMainRow.ZIndex = 12
-        _saMainRow.LayoutOrder = -100  -- va primero
-        Instance.new("UICorner", _saMainRow).CornerRadius = UDim.new(0, 8)
-        local _saMainStroke = Instance.new("UIStroke", _saMainRow)
-        _saMainStroke.Color = Color3.fromRGB(0, 220, 80)
-        _saMainStroke.Thickness = 1.8
-        _saMainStroke.Transparency = 0.2
-
-        local _saMainLbl = Instance.new("TextLabel", _saMainRow)
-        _saMainLbl.Size = UDim2.new(0.65, 0, 1, 0)
-        _saMainLbl.Position = UDim2.new(0, 10, 0, 0)
-        _saMainLbl.BackgroundTransparency = 1
-        _saMainLbl.Text = "⚡ Silent Aim"
-        _saMainLbl.TextColor3 = Color3.fromRGB(180, 255, 200)
-        _saMainLbl.Font = Enum.Font.GothamBold
-        _saMainLbl.TextSize = 15
-        _saMainLbl.TextXAlignment = Enum.TextXAlignment.Left
-        _saMainLbl.ZIndex = 13
-
-        -- Indicador verde/rojo
-        local _saInd = Instance.new("Frame", _saMainRow)
-        _saInd.Size = UDim2.new(0, 24, 0, 24)
-        _saInd.AnchorPoint = Vector2.new(1, 0.5)
-        _saInd.Position = UDim2.new(1, -12, 0.5, 0)
-        _saInd.BackgroundColor3 = CombatTabState.silentAimEnabled and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(220, 50, 50)
-        _saInd.BorderSizePixel = 0
-        _saInd.ZIndex = 14
-        Instance.new("UICorner", _saInd).CornerRadius = UDim.new(0, 6)
-
-        local _saStatusLbl = Instance.new("TextLabel", _saMainRow)
-        _saStatusLbl.Size = UDim2.new(0.3, -20, 0, 20)
-        _saStatusLbl.AnchorPoint = Vector2.new(1, 0.5)
-        _saStatusLbl.Position = UDim2.new(1, -42, 0.5, 0)
-        _saStatusLbl.BackgroundTransparency = 1
-        _saStatusLbl.Text = CombatTabState.silentAimEnabled and "ON" or "OFF"
-        _saStatusLbl.TextColor3 = CombatTabState.silentAimEnabled and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 80, 80)
-        _saStatusLbl.Font = Enum.Font.GothamBold
-        _saStatusLbl.TextSize = 13
-        _saStatusLbl.TextXAlignment = Enum.TextXAlignment.Right
-        _saStatusLbl.ZIndex = 13
-
-        local _saMainBtn = Instance.new("TextButton", _saMainRow)
-        _saMainBtn.Size = UDim2.new(1, 0, 1, 0)
-        _saMainBtn.BackgroundTransparency = 1
-        _saMainBtn.Text = ""
-        _saMainBtn.ZIndex = 20
-        _saMainBtn.AutoButtonColor = false
-
-        local function _saMainApplyVisual(on)
-            local c = on and Color3.fromRGB(0, 200, 80) or Color3.fromRGB(220, 50, 50)
-            TweenService:Create(_saInd, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {BackgroundColor3 = c}):Play()
-            _saStatusLbl.Text = on and "ON" or "OFF"
-            _saStatusLbl.TextColor3 = on and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 80, 80)
-            _saMainStroke.Color = on and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(0, 220, 80)
-        end
-
-        -- FIX TOUCH: usar Activated (funciona con UN solo toque en móvil Y con click en PC)
-        local _saMainLastTap = 0
-        _saMainBtn.Activated:Connect(function()
-            local now = tick()
-            if now - _saMainLastTap < 0.25 then return end  -- anti-doble tap
-            _saMainLastTap = now
-            CombatTabState.silentAimEnabled = not CombatTabState.silentAimEnabled
-            _G._toggleStates["Silent Aim"] = CombatTabState.silentAimEnabled
-            _saMainApplyVisual(CombatTabState.silentAimEnabled)
-            pcall(_saveConfig)
-            if CombatTabState.silentAimEnabled then
-                if not CombatTabState._saHookActive then _saApplyHook() end
-                if not _G._saInputConn then _saHookInput() end
-                CreateCustomNotification("SILENT AIM", "Silent Aim ON ✓", 2)
-            else
-                _saRemoveHook()
-                if _G._saInputConn then
-                    pcall(function() _G._saInputConn:Disconnect() end)
-                    _G._saInputConn = nil
-                end
-                CreateCustomNotification("SILENT AIM", "Silent Aim OFF", 1.5)
-            end
-        end)
-
-        _saMainApplyVisual(CombatTabState.silentAimEnabled)
-    end
-    -- =====================================================================
-    -- FIN TOGGLE PRINCIPAL SILENT AIM
-    -- =====================================================================
 
     CreatePremiumToggle(silentAimSection, "Spoof Method", function(enabled)
         CombatTabState.saUseSpoofMethod = enabled
         if enabled then
-            CreateCustomNotification("SILENT AIM", "Spoof Method ON — FireServer falso al target", 3)
+            CreateCustomNotification("SILENT AIM", "Spoof Method ON — Fake FireServer to target", 3)
         else
             CreateCustomNotification("SILENT AIM", "Spoof Method OFF — modo hook normal", 2)
         end
@@ -38535,7 +38440,7 @@ function CreateCombatTab()
             subLbl.Size                 = UDim2.new(1, -30, 0, 18)
             subLbl.Position             = UDim2.new(0, 26, 0, 48)
             subLbl.BackgroundTransparency = 1
-            subLbl.Text                 = "Silent Aim activo"
+            subLbl.Text                 = "Silent Aim active"
             subLbl.FontFace             = Font.fromEnum(Enum.Font.Montserrat)
             subLbl.TextSize             = 13
             subLbl.TextColor3           = Color3.fromRGB(160, 160, 170)
@@ -40062,7 +39967,7 @@ function CreateCombatTab()
         _spDesc.Size = UDim2.new(1, -8, 0, 0)
         _spDesc.AutomaticSize = Enum.AutomaticSize.Y
         _spDesc.BackgroundTransparency = 1
-        _spDesc.Text = "Shoot Pick: dispara al Murder en cuanto agarra el GunDrop (con wall check). Auto Shoot Murder: dispara automáticamente al Murder/Custom Target mientras tengas la gun equipada."
+        _spDesc.Text = "Shoot Pick: shoots the Murder as soon as they grab the GunDrop (with wall check). Auto Shoot Murder: automatically shoots the Murder/Custom Target while you have the gun equipped."
         _spDesc.TextColor3 = Color3.fromRGB(130, 170, 220)
         _spDesc.Font = Enum.Font.Montserrat
         _spDesc.TextSize = 10
@@ -42351,7 +42256,7 @@ function CreateCombatTab()
         end, false)
 
         -- Range slider — controla cuántos studs mata y el tamaño del expand
- CreateSlider(tkSilentSection, "Rango máximo (studs)", 0, 100, tkSA.range, function(v)
+ CreateSlider(tkSilentSection, "Max Range (studs)", 0, 100, tkSA.range, function(v)
             tkSA.range    = v
             _G._TK_RANGE  = v  -- sincronizar con sistema TK global
         end)
@@ -45006,7 +44911,7 @@ function CreateCombatTab()
                 KnifeSAState.fastSlashSpeed, function(v)
                 KnifeSAState.fastSlashSpeed = v
                 if KnifeSAState.fastSlash then
-                    CreateCustomNotification("FAST SLASH", "Velocidad: " .. tostring(v), 1)
+                    CreateCustomNotification("FAST SLASH", "Speed: " .. tostring(v), 1)
                 end
             end)
         end
@@ -47189,7 +47094,7 @@ function CreateCombatTab()
                 local d = Instance.new("TextLabel", _gunUtilSection)
                 d.Size = UDim2.new(1, -8, 0, 0); d.AutomaticSize = Enum.AutomaticSize.Y
                 d.BackgroundTransparency = 1
-                d.Text = "Dibuja una línea roja en tiempo real desde tu arma hasta el Murder. Siempre visible mientras tenés la gun equipada."
+                d.Text = "Draws a red line in real time from your weapon to the Murder. Always visible while you have the gun equipped."
                 d.TextColor3 = Color3.fromRGB(255, 100, 100)
                 d.Font = Enum.Font.Montserrat; d.TextSize = 10
                 d.TextWrapped = true; d.TextXAlignment = Enum.TextXAlignment.Left; d.ZIndex = 13
@@ -47307,7 +47212,7 @@ function CreateCombatTab()
                 local d = Instance.new("TextLabel", _gunUtilSection)
                 d.Size = UDim2.new(1, -8, 0, 0); d.AutomaticSize = Enum.AutomaticSize.Y
                 d.BackgroundTransparency = 1
-                d.Text = "Muestra en pantalla: distancia, velocidad del target, tiempo de vuelo estimado y ángulo cámara→target."
+                d.Text = "Displays on screen: distance, target speed, estimated flight time and camera→target angle."
                 d.TextColor3 = Color3.fromRGB(130, 170, 220)
                 d.Font = Enum.Font.Montserrat; d.TextSize = 10
                 d.TextWrapped = true; d.TextXAlignment = Enum.TextXAlignment.Left; d.ZIndex = 13
@@ -47407,7 +47312,7 @@ function CreateCombatTab()
                 local d = Instance.new("TextLabel", _gunUtilSection)
                 d.Size = UDim2.new(1, -8, 0, 0); d.AutomaticSize = Enum.AutomaticSize.Y
                 d.BackgroundTransparency = 1
-                d.Text = "Equipa la gun automáticamente cuando el Murder entra al rango configurado. Requiere gun en el backpack."
+                d.Text = "Automatically equips the gun when the Murder enters the configured range. Requires gun in backpack."
                 d.TextColor3 = Color3.fromRGB(130, 170, 220)
                 d.Font = Enum.Font.Montserrat; d.TextSize = 10
                 d.TextWrapped = true; d.TextXAlignment = Enum.TextXAlignment.Left; d.ZIndex = 13
@@ -50049,90 +49954,6 @@ function abrirHub()
     -- == SPLASH SCREEN - Pantalla de bienvenida con imagen y boton
     -- Solo se muestra la primera vez; al reabrir el hub se saltea.
     -- ================================================================
-    do if not _G._hubAlreadyBuilt then
-        local _splashPlayers = game:GetService("Players")
-        local _splashPg      = _splashPlayers.LocalPlayer:WaitForChild("PlayerGui")
-
-        -- Destruir splash anterior si existe (re-ejecucion del script)
-        local _oldSplash = _splashPg:FindFirstChild("ZerqonSplash")
-        if _oldSplash then _oldSplash:Destroy() end
-
-        local _splashSG = Instance.new("ScreenGui")
-        _splashSG.Name           = "ZerqonSplash"
-        _splashSG.ResetOnSpawn   = false
-        _splashSG.IgnoreGuiInset = true
-        _splashSG.DisplayOrder   = 9999
-        _splashSG.ZIndexBehavior = Enum.ZIndexBehavior.Global
-        _splashSG.Parent         = _splashPg
-
-        -- Fondo: imagen Glitch del hub (misma que la pestana Use > Glitch)
-        local _bg = Instance.new("ImageLabel", _splashSG)
-        _bg.Size                   = UDim2.new(1, 0, 1, 0)
-        _bg.Position               = UDim2.new(0, 0, 0, 0)
-        _bg.BackgroundTransparency = 1
-        _bg.Image                  = "rbxassetid://94896193223350"
-        _bg.ImageTransparency      = 0
-        _bg.ScaleType              = Enum.ScaleType.Crop
-        _bg.BorderSizePixel        = 0
-        _bg.ZIndex                 = 1
-
-        -- Imagen principal centrada (rbxassetid://135253670455066)
-        -- Ajuste responsivo: en movil usar porcentaje de pantalla en vez de pixeles fijos
-        local _vp = workspace.CurrentCamera.ViewportSize
-        local _isMobileSplash = _vp.X < 600 or _vp.Y < 700
-        local _imgW = _isMobileSplash and math.floor(_vp.X * 0.92) or 540
-        local _imgH = _isMobileSplash and math.floor(_vp.Y * 0.75) or 700
-
-        local _img = Instance.new("ImageLabel", _splashSG)
-        _img.Image                  = "rbxassetid://135253670455066"
-        _img.Size                   = UDim2.new(0, _imgW, 0, _imgH)
-        _img.AnchorPoint            = Vector2.new(0.5, 0.5)
-        _img.Position               = UDim2.new(0.5, 0, 0.5, _isMobileSplash and -20 or -30)
-        _img.BackgroundTransparency = 1
-        _img.ScaleType              = Enum.ScaleType.Fit
-        _img.ZIndex                 = 2
-
-        -- Boton CONTINUAR
-        local _btn = Instance.new("TextButton", _splashSG)
-        _btn.Size                   = UDim2.new(0, _isMobileSplash and 200 or 220, 0, _isMobileSplash and 44 or 50)
-        _btn.AnchorPoint            = Vector2.new(0.5, 0.5)
-        -- En movil el offset vertical se calcula en base al alto de pantalla
-        local _btnOffsetY = _isMobileSplash and math.floor(_vp.Y * 0.42) or 380
-        _btn.Position               = UDim2.new(0.5, 0, 0.5, _btnOffsetY)
-        _btn.BackgroundColor3       = Color3.fromRGB(20, 20, 20)
-        _btn.BorderSizePixel        = 0
-        _btn.Text                   = "CONTINUAR"
-        _btn.TextColor3             = Color3.fromRGB(255, 255, 255)
-        _btn.TextSize               = 18
-        _btn.Font                   = Enum.Font.GothamBold
-        _btn.ZIndex                 = 3
-        Instance.new("UICorner", _btn).CornerRadius = UDim.new(0, 8)
-        local _btnStroke = Instance.new("UIStroke", _btn)
-        _btnStroke.Color     = Color3.fromRGB(180, 180, 180)
-        _btnStroke.Thickness = 1.5
-
-        -- Bloquear la ejecucion hasta que el usuario presione CONTINUAR
-        local _continued = false
-        local function _onContinuar()
-            if _continued then return end
-            _continued = true
-            local _ts = game:GetService("TweenService")
-            local _fade    = _ts:Create(_bg,  TweenInfo.new(0.3), {ImageTransparency = 1})
-            local _fadeImg = _ts:Create(_img, TweenInfo.new(0.3), {ImageTransparency = 1})
-            local _fadeBtn = _ts:Create(_btn, TweenInfo.new(0.3), {BackgroundTransparency = 1, TextTransparency = 1})
-            _fade:Play(); _fadeImg:Play(); _fadeBtn:Play()
-            task.delay(0.35, function()
-                pcall(function() _splashSG:Destroy() end)
-            end)
-        end
-        -- PC: click del mouse
-        _btn.Activated:Connect(_onContinuar)
-        -- Movil: toque tactil (Activated funciona en ambos dispositivos)
-        _btn.Activated:Connect(_onContinuar)
-
-        -- Esperar hasta que se presione CONTINUAR
-        repeat task.wait(0.05) until _continued
-    end end  -- cierra el if not _hubAlreadyBuilt y el do
     -- ================================================================
     -- == FIN SPLASH SCREEN
     -- ================================================================
@@ -52180,7 +52001,7 @@ particles = {}
                     end
                 else
                     task.delay(4.5, function()
-                        if _G._restoreBackground then pcall(_G._restoreBackground, 1) end
+                        -- (auto glitch bg removed)
                     end)
                 end
             end)
@@ -52523,7 +52344,7 @@ particles = {}
                     -- Primera ejecucion: aplicar fondo Glitch (idx=1) por defecto
                     task.delay(4.5, function()
                         if _G._restoreBackground then
-                            pcall(_G._restoreBackground, 1)
+                            -- (auto glitch bg removed)
                         end
                     end)
                 end
@@ -52599,7 +52420,7 @@ particles = {}
                     end
                 else
                     task.delay(4.5, function()
-                        if _G._restoreBackground then pcall(_G._restoreBackground, 1) end
+                        -- (auto glitch bg removed)
                     end)
                 end
             end)
@@ -53255,7 +53076,7 @@ function CreateEmotesTab()
         speedLbl.Size = UDim2.new(0.58, 0, 1, 0)
         speedLbl.Position = UDim2.new(0, 6, 0, 0)
         speedLbl.BackgroundTransparency = 1
-        speedLbl.Text = "Velocidad: 1.0x"
+        speedLbl.Text = "Speed: 1.0x"
         speedLbl.TextColor3 = Color3.fromRGB(200, 200, 220)
         speedLbl.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
         speedLbl.TextSize = 11
@@ -53267,7 +53088,7 @@ function CreateEmotesTab()
 
         local function _applySpeed()
             ES.loopSpeed = speeds[speedIdx]
-            speedLbl.Text = "Velocidad: " .. tostring(speeds[speedIdx]) .. "x"
+            speedLbl.Text = "Speed: " .. tostring(speeds[speedIdx]) .. "x"
             if ES.currentTrack and ES.currentTrack.IsPlaying then
                 pcall(function() ES.currentTrack:AdjustSpeed(ES.loopSpeed) end)
             end
@@ -53587,7 +53408,7 @@ function CreateUseTab()
         if _bang.animTrack  then pcall(function() _bang.animTrack:Stop(0.15)       end); _bang.animTrack  = nil end
     end
 
- CreateSlider(bangSec, "Velocidad Animacion (x10)", 1, 30, 10, function(v)
+ CreateSlider(bangSec, "Animation Speed (x10)", 1, 30, 10, function(v)
         _bang.animSpeed = v / 10
         if _bang.animTrack and _bang.animTrack.IsPlaying then
             pcall(function() _bang.animTrack:AdjustSpeed(_bang.animSpeed) end)
