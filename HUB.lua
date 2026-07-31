@@ -35117,13 +35117,12 @@ function CreatePremiumTab()
                             hum.Jump = true
                         end
                     end)
-                    -- Registrar la conexion para que se limpie junto con _sgConn
-                    local _origDisc = _sgConn.Disconnect
+                    -- Nota: la conexion jc se gestiona dentro del task.spawn
                 end
             end)
         end
 
-        char0 = LocalPlayer.Character
+        local char0 = LocalPlayer.Character
         if char0 then
             local hum0 = char0:FindFirstChildOfClass("Humanoid")
             if hum0 then Settings.premium.speedGlitch.originalSpeed = hum0.WalkSpeed end
@@ -35251,7 +35250,7 @@ function CreatePremiumTab()
             if _fdTrack then pcall(function() _fdTrack:Stop() end); _fdTrack = nil end
         end
 
-        CreateToggle(leftColumn, "Fake Died", function(en)
+        CreateToggle(rightColumn, "Fake Died", function(en)
             _stopFdTrack()
             if en then
                 task.spawn(function()
@@ -35334,7 +35333,7 @@ function CreatePremiumTab()
             CreateCustomNotification("FAKE DIED", "Desactivado", 2)
         end
 
-        CreateAuroraToggle(leftColumn, "Fake Died Bindable", function(on)
+        CreateAuroraToggle(rightColumn, "Fake Died Bindable", function(on)
             _G._fdBind.enabled = on
             -- Destruir bindable anterior siempre
             DestroyCapyBind("FAKE DIED")
@@ -39700,7 +39699,18 @@ function CreateCombatTab()
                 end)
             end
 
-        -- ── FIN SHOOT SPAM JUMPER ────────────────────────────────────────────────
+        -- Toggle: Shoot Spam Jumper
+            CreateBorderedToggle(silentAimSection, "Shoot Spam Jumper", function(enabled)
+                _ssjState.enabled = enabled
+                if enabled then
+                    _ssjStart()
+                    CreateCustomNotification("SPAM JUMPER", "Activo -- detectando saltos del Murder", 2.5)
+                else
+                    _ssjStop()
+                    CreateCustomNotification("SPAM JUMPER", "Desactivado", 2)
+                end
+            end, false)
+        end -- fin do Shoot Spam Jumper
 
     end  -- cierre bloque silentAimSection
 
