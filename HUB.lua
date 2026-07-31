@@ -32881,49 +32881,87 @@ function CreateWorldUI_SpinSection()
     -- Solo preservar fontSize y sizeX (preferencias de UI, no estado funcional).
     local _prevFontSize = _G._spinState and _G._spinState.fontSize or 10
     local _prevSizeX    = _G._spinState and _G._spinState.sizeX    or 38
-    -- Desconectar loops anteriores antes de recrear la UI
+    -- Desconectar loops anteriores y destruir bindable anterior antes de recrear la UI
     if _G._spinState then
         if _G._spinState.conn then pcall(function() _G._spinState.conn:Disconnect() end) end
     end
+    -- Destruir boton bindable previo si quedó flotando
+    pcall(function() DestroyCapyBind("SPIN") end)
     _G._spinState = { enabled=false, bindEnabled=false, conn=nil, fontSize=_prevFontSize, sizeX=_prevSizeX }
     local SS = _G._spinState
 
     local spinConn = nil
+
+    -- Helper local: inicia el loop de spin
+    local function _startSpin()
+        if spinConn then spinConn:Disconnect() spinConn = nil end
+        local RS = RunService
+        local _spinHB = 0
+        spinConn = RS.Heartbeat:Connect(function()
+            _spinHB = _spinHB + 1; if _spinHB < 3 then return end; _spinHB = 0
+            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(24), 0) end
+        end)
+    end
+
+    -- Helper local: detiene el loop de spin
+    local function _stopSpin()
+        if spinConn then spinConn:Disconnect() spinConn = nil end
+    end
+
     -- FIX: pasar initialValue=false explicito para que CreateToggle nunca restaure
     -- un estado guardado de "Spin" como true (el toggle se limpia al abrir el tab)
     CreateAuroraToggle(sec, "Spin", function(on)
         SS.enabled = on
-        if spinConn then spinConn:Disconnect() spinConn = nil end
-        if on then
-            local RS = RunService
-            local _spinHB = 0
-            spinConn = RS.Heartbeat:Connect(function()
-                _spinHB = _spinHB + 1; if _spinHB < 3 then return end; _spinHB = 0
-                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(24), 0) end
-            end)
-        end
+        if on then _startSpin() else _stopSpin() end
     end, false)  -- false = nunca auto-activar
 
     CreateAuroraToggle(sec, "Enable Spin Bindable Button", function(on)
         SS.bindEnabled = on
+        -- Limpiar keybind anterior
         if SS.conn then pcall(function() SS.conn:Disconnect() end) SS.conn = nil end
         if on then
+            -- Crear ScreenGui para el boton bindable
+            local _spinBindSg = Instance.new("ScreenGui")
+            _spinBindSg.Name            = "CapyBindSg_SPIN_holder"
+            _spinBindSg.ResetOnSpawn    = false
+            _spinBindSg.DisplayOrder    = 9997
+            _spinBindSg.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
+            _spinBindSg.IgnoreGuiInset  = true
+            pcall(function() _spinBindSg.Parent = game:GetService("CoreGui") end)
+            if not _spinBindSg.Parent then
+                _spinBindSg.Parent = LocalPlayer:WaitForChild("PlayerGui")
+            end
+            SS._spinBindSg = _spinBindSg
+
+            -- Crear el boton visual en pantalla
+            MakeCapyBindableFrame(_spinBindSg, "SPIN", function()
+                SS.enabled = not SS.enabled
+                if SS.enabled then
+                    _startSpin()
+                else
+                    _stopSpin()
+                end
+            end)
+
+            -- Tambien mantener keybind por tecla R (complementario al boton)
             SS.conn = UserInputService.InputBegan:Connect(function(inp, gpe)
                 if gpe then return end
                 if inp.KeyCode == Enum.KeyCode.R then
                     SS.enabled = not SS.enabled
-                    if SS.enabled then
-                        local RS = RunService
-                        spinConn = RS.Heartbeat:Connect(function()
-                            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                            if hrp then hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(8), 0) end
-                        end)
-                    else
-                        if spinConn then spinConn:Disconnect() spinConn = nil end
-                    end
+                    if SS.enabled then _startSpin() else _stopSpin() end
                 end
             end)
+        else
+            -- Destruir el boton bindable visual
+            pcall(function() DestroyCapyBind("SPIN") end)
+            if SS._spinBindSg then
+                pcall(function() SS._spinBindSg:Destroy() end)
+                SS._spinBindSg = nil
+            end
+            -- Asegurarse que el spin se detiene si estaba activo por el bind
+            _stopSpin()
+            SS.enabled = false
         end
     end, false)  -- false = nunca auto-activar
 
