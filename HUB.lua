@@ -1,29 +1,15 @@
 -- ================================================================
--- == COMPAT SHIM v18 - FIX "attempt to call a nil value" (Line 1)
+-- == COMPAT SHIM v17 - FIX "attempt to call a nil value" (Line 1)
 -- Algunos executors mobiles (Delta, Arceus X, Fluxus) no exponen
 -- 'task' o tienen 'game' no disponible inmediatamente al cargar.
 -- Este bloque garantiza compatibilidad antes de cualquier otro codigo.
 -- ================================================================
 if not task then
-    -- FIX: usar coroutines como fallback seguro cuando wait/spawn/delay son nil
-    local _unpack = table.unpack or unpack
-    local _safeWait = (type(wait) == "function") and wait or function(t)
-        local t0 = os.clock()
-        local target = t0 + (t or 0)
-        repeat until os.clock() >= target
-    end
-    local _safeSpawn = (type(spawn) == "function") and spawn or function(f)
-        local co = coroutine.create(f)
-        coroutine.resume(co)
-    end
-    local _safeDelay = (type(delay) == "function") and delay or function(t, f)
-        task.spawn(function() _safeWait(t) f() end)
-    end
     task = {
-        wait  = function(t) return _safeWait(t or 0) end,
-        spawn = function(f, ...) local a = {...}; _safeSpawn(function() f(_unpack(a)) end) end,
-        defer = function(f, ...) local a = {...}; _safeSpawn(function() _safeWait(0) f(_unpack(a)) end) end,
-        delay = function(t, f, ...) local a = {...}; _safeDelay(t or 0, function() f(_unpack(a)) end) end,
+        wait  = function(t) return wait(t or 0) end,
+        spawn = function(f, ...) local a = {...}; spawn(function() f(table.unpack and table.unpack(a) or unpack(a)) end) end,
+        defer = function(f, ...) local a = {...}; spawn(function() wait() f(table.unpack and table.unpack(a) or unpack(a)) end) end,
+        delay = function(t, f, ...) local a = {...}; delay(t or 0, function() f(table.unpack and table.unpack(a) or unpack(a)) end) end,
     }
 end
 -- Esperar a que el juego este listo antes de acceder a servicios
@@ -9661,7 +9647,7 @@ local function _startEspBoxLoop()
     if _G._espBoxConn then return end
     _G._espBoxConn = task.spawn(function()
         while _G._espBoxEnabled do
-            task.wait(0.5)
+            wait(0.5)
             local myChar = game.Players.LocalPlayer.Character
             for _, box in ipairs(workspace:GetDescendants()) do
                 if box:FindFirstChild("Humanoid") and box ~= myChar then
@@ -48967,6 +48953,8 @@ function CreateCombatTab()
             end)
         end)
     end
+
+end  -- close CreateCombatTab
 
 
 -- =============================================
