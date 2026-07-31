@@ -53459,6 +53459,68 @@ particles = {}
         local _OVAL_W = 0.65
         local _OVAL_H = 0.58
 
+        -- ── AURORA ANIMATION: bandas dentro del rectangulo ──
+        -- Parent = _oval con ClipsDescendants=true para que queden recortadas al borde.
+        _oval.ClipsDescendants = true
+        local _auroraConns = {}
+        local _auroraBands = {}
+        local _AURORA_COLORS = {
+            Color3.fromRGB(50,  130, 255),  -- azul brillante
+            Color3.fromRGB(110,  50, 220),  -- violeta
+            Color3.fromRGB(40,  210, 150),  -- verde-cian
+            Color3.fromRGB(90,  80,  230),  -- azul-violeta
+            Color3.fromRGB(30,  180, 200),  -- cian
+            Color3.fromRGB(130, 60,  200),  -- violeta-rosa
+        }
+        local _AURORA_COUNT = 6
+        for i = 1, _AURORA_COUNT do
+            local band = Instance.new("Frame", _oval)  -- hijo del oval = recortado por ClipsDescendants
+            band.AnchorPoint = Vector2.new(0, 0.5)
+            band.BackgroundColor3 = _AURORA_COLORS[i]
+            band.BackgroundTransparency = 0.72
+            band.BorderSizePixel = 0
+            -- Ancho mayor al 100% para cubrir el borde diagonal sin huecos
+            band.Size = UDim2.new(1.8, 0, 0, math.random(24, 50))
+            local startY = ((i - 1) / _AURORA_COUNT) + math.random(-8, 8) / 100
+            band.Position = UDim2.new(-0.4, 0, startY, 0)
+            band.Rotation = -18
+            band.ZIndex = 6  -- encima del fondo del oval pero debajo del logo/barra
+            -- Gradiente: desvanece los dos bordes de la banda
+            local bg = Instance.new("UIGradient", band)
+            local c1 = _AURORA_COLORS[i]
+            local c2 = _AURORA_COLORS[(i % _AURORA_COUNT) + 1]
+            bg.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0,    Color3.fromRGB(0,0,0)),
+                ColorSequenceKeypoint.new(0.18, c1),
+                ColorSequenceKeypoint.new(0.50, c2),
+                ColorSequenceKeypoint.new(0.82, c1),
+                ColorSequenceKeypoint.new(1,    Color3.fromRGB(0,0,0)),
+            })
+            bg.Rotation = 90
+            local speed      = 0.045 + (i * 0.012)
+            local phase      = (i - 1) / _AURORA_COUNT
+            local elapsed    = 0
+            local pulseSpeed = 0.28 + (i * 0.065)
+            local pulsePhase = i * 0.85
+            table.insert(_auroraBands, band)
+            local conn
+            conn = RunService.Heartbeat:Connect(function(dt)
+                if not band or not band.Parent then conn:Disconnect(); return end
+                elapsed = elapsed + dt
+                local yPos = ((phase + elapsed * speed) % 1.0)
+                band.Position = UDim2.new(-0.4, 0, yPos - 0.05, 0)
+                local pulse = 0.72 + math.sin(elapsed * pulseSpeed + pulsePhase) * 0.08
+                band.BackgroundTransparency = 1 - (1 - pulse)
+                bg.Rotation = 90 + math.sin(elapsed * 0.18 + phase * math.pi) * 10
+            end)
+            table.insert(_auroraConns, conn)
+        end
+
+        local function _stopAurora()
+            for _, c in ipairs(_auroraConns) do pcall(function() c:Disconnect() end) end
+            _auroraConns = {}
+        end
+
         TweenService:Create(_oval, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
             Size = UDim2.new(_OVAL_W, 0, _OVAL_H, 0)
         }):Play()
@@ -53638,8 +53700,15 @@ particles = {}
         task.wait(0.5)
 
         -- Fade out
-        -- Detener animacion del gradiente de la barra
+        -- Detener animacion del gradiente de la barra y aurora
         if _barGradConn then pcall(function() _barGradConn:Disconnect() end) end
+        _stopAurora()
+        -- Fade out aurora bands
+        for _, band in ipairs(_auroraBands) do
+            pcall(function()
+                TweenService:Create(band, TweenInfo.new(0.35), {BackgroundTransparency = 1}):Play()
+            end)
+        end
         local _ft = 0.4
         TweenService:Create(_bg,           TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
         TweenService:Create(_oval,         TweenInfo.new(_ft), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
