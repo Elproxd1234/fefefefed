@@ -1,4 +1,4 @@
--- ================================================================
+-- ================================================================
 -- == COMPAT SHIM v18 - FIX "attempt to call a nil value" (Line 1)
 -- Algunos executors mobiles (Delta, Arceus X, Fluxus) no exponen
 -- 'task' o tienen 'game' no disponible inmediatamente al cargar.
@@ -17118,6 +17118,20 @@ function CreateMainUI_InvisibleGhost()
     end)
 
     -- Toggle principal
+    -- FIX: tabla para guardar las transparencias originales de cada parte
+    local _invOrigTrans = {}
+
+    -- FIX: funcion auxiliar para destruir TODAS las sillas invisibles (por si hay duplicadas)
+    local function _destroyInvisChairs()
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj.Name == "invischair" then pcall(function() obj:Destroy() end) end
+        end
+        -- busqueda profunda por si la silla quedo anidada en otro objeto
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "invischair" then pcall(function() obj:Destroy() end) end
+        end
+    end
+
     CreateAuroraToggle(rightColumn, "Invisible", function(on)
         if on then
             -- Anti Fling inline
@@ -17152,28 +17166,31 @@ function CreateMainUI_InvisibleGhost()
             task.wait()
             pcall(function() Seat.CFrame = savedpos end)
 
-            -- Hacer semi-transparente al jugador
+            -- FIX: guardar transparencia original ANTES de modificar
+            _invOrigTrans = {}
             for _, part in pairs(char:GetDescendants()) do
                 if part:IsA("BasePart") or part:IsA("Decal") then
+                    _invOrigTrans[part] = part.Transparency
                     pcall(function() part.Transparency = 0.5 end)
                 end
             end
 
             CreateCustomNotification("INVIS ON", "Invisible activo", 3)
         else
-            -- Destruir silla
-            local invisChair = workspace:FindFirstChild("invischair")
-            if invisChair then pcall(function() invisChair:Destroy() end) end
+            -- FIX: destruir TODAS las sillas invisibles (no solo la primera encontrada)
+            _destroyInvisChairs()
 
-            -- Restaurar transparencia
+            -- FIX: restaurar transparencia original guardada; si no hay registro usar 0
             local char = LocalPlayer.Character
             if char then
                 for _, part in pairs(char:GetDescendants()) do
                     if part:IsA("BasePart") or part:IsA("Decal") then
-                        pcall(function() part.Transparency = 0 end)
+                        local orig = _invOrigTrans[part]
+                        pcall(function() part.Transparency = orig ~= nil and orig or 0 end)
                     end
                 end
             end
+            _invOrigTrans = {}
 
             CreateCustomNotification("INVIS OFF", "Visible", 2)
         end
@@ -17218,8 +17235,11 @@ function CreateMainUI_InvisibleGhost()
                                 Weld.Part1 = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
                                 task.wait()
                                 pcall(function() Seat.CFrame = savedpos end)
+                                -- FIX: guardar originales y aplicar transparencia
+                                _invOrigTrans = {}
                                 for _, part in pairs(char:GetDescendants()) do
                                     if part:IsA("BasePart") or part:IsA("Decal") then
+                                        _invOrigTrans[part] = part.Transparency
                                         pcall(function() part.Transparency = 0.5 end)
                                     end
                                 end
@@ -17227,15 +17247,17 @@ function CreateMainUI_InvisibleGhost()
                             end
                         end
                     else
-                        local chair = workspace:FindFirstChild("invischair")
-                        if chair then pcall(function() chair:Destroy() end) end
+                        -- FIX: destruir TODAS las sillas y restaurar originales
+                        _destroyInvisChairs()
                         if char then
                             for _, part in pairs(char:GetDescendants()) do
                                 if part:IsA("BasePart") or part:IsA("Decal") then
-                                    pcall(function() part.Transparency = 0 end)
+                                    local orig = _invOrigTrans[part]
+                                    pcall(function() part.Transparency = orig ~= nil and orig or 0 end)
                                 end
                             end
                         end
+                        _invOrigTrans = {}
                         CreateCustomNotification("INVIS OFF", "Visible", 2)
                     end
                 end, 20, 320)
@@ -25172,7 +25194,10 @@ function startBodyPartLoop()
     local _bpTick=0
     BodyPartState.connection = RunService.Heartbeat:Connect(function()
         _bpTick=_bpTick+1; if _bpTick<6 then return end; _bpTick=0  -- OPT: 10Hz para body parts
-        if not (BodyPartState and BodyPartState.enabled) then return end
+        -- FIX: BodyPartState no tiene campo .enabled; verificar anyActive directamente
+        local _anyActive = BodyPartState.hideHead or BodyPartState.hideTorso
+            or BodyPartState.hideArms or BodyPartState.hideLegs or BodyPartState.hideAccessories
+        if not _anyActive then return end
         pcall(applyBodyParts)
     end)
 end
