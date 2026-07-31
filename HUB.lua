@@ -13348,10 +13348,18 @@ function CreateInfoPanel()
         MainSystem.state.infoGui = InfoPanelSystem.gui
     end
 
+    -- Detectar móvil para ajustar tamaño y posición del panel
+    local _isMobileInfo = pcall(function() return game:GetService("UserInputService").TouchEnabled end)
+        and game:GetService("UserInputService").TouchEnabled
+    local _vp        = workspace.CurrentCamera.ViewportSize
+    local _panelW    = _isMobileInfo and math.min(220, _vp.X - 16) or 380
+    local _initPosX  = _isMobileInfo and math.max(0, _vp.X - _panelW - 8) or (_vp.X - _panelW - 20)
+    local _initPosY  = _isMobileInfo and 60 or 20
+
     local mainPanel = Instance.new("Frame", InfoPanelSystem.gui)
     mainPanel.Name = "MainPanel"
-    mainPanel.Size = UDim2.new(0, 380, 0, 50)
-    mainPanel.Position = UDim2.new(1, -400, 0, 20)
+    mainPanel.Size = UDim2.new(0, _panelW, 0, 50)
+    mainPanel.Position = UDim2.fromOffset(_initPosX, _initPosY)
     mainPanel.BackgroundColor3 = ThemeColors.Background
     mainPanel.BackgroundTransparency = 0.85
     mainPanel.BorderSizePixel = 0
@@ -13410,32 +13418,44 @@ function CreateInfoPanel()
             dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
             dd.Dragged:Connect(function()
                 local vp = workspace.CurrentCamera.ViewportSize
+                local pw = mainPanel.AbsoluteSize.X
+                local ph = mainPanel.AbsoluteSize.Y
                 mainPanel.Position = UDim2.fromOffset(
-                    math.clamp(mainPanel.Position.X.Offset, 0, vp.X - mainPanel.AbsoluteSize.X),
-                    math.clamp(mainPanel.Position.Y.Offset, 0, vp.Y - mainPanel.AbsoluteSize.Y))
+                    math.clamp(mainPanel.Position.X.Offset, 0, math.max(0, vp.X - pw)),
+                    math.clamp(mainPanel.Position.Y.Offset, 0, math.max(0, vp.Y - ph)))
             end)
         end) then
             header.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1
                 or input.UserInputType == Enum.UserInputType.Touch then
-                    _dragging2 = true; _dragStart2 = input.Position; _startPos2 = mainPanel.Position
+                    _dragging2 = true
+                    _dragStart2 = input.Position
+                    _startPos2  = mainPanel.Position
                 end
             end)
             header.InputEnded:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1
                 or input.UserInputType == Enum.UserInputType.Touch then
                     _dragging2 = false
+                    _dragStart2 = nil
                 end
             end)
             _UIS2.InputChanged:Connect(function(input)
-                if not _dragging2 then return end
+                if not _dragging2 or not _dragStart2 then return end
                 if input.UserInputType ~= Enum.UserInputType.MouseMovement
                 and input.UserInputType ~= Enum.UserInputType.Touch then return end
                 local delta = input.Position - _dragStart2
                 local vp    = workspace.CurrentCamera.ViewportSize
-                mainPanel.Position = UDim2.fromOffset(
-                    math.clamp(_startPos2.X.Offset + delta.X, 0, vp.X - mainPanel.AbsoluteSize.X),
-                    math.clamp(_startPos2.Y.Offset + delta.Y, 0, vp.Y - mainPanel.AbsoluteSize.Y))
+                local pw    = mainPanel.AbsoluteSize.X
+                local ph    = mainPanel.AbsoluteSize.Y
+                local newX  = math.clamp(_startPos2.X.Offset + delta.X, 0, vp.X - pw)
+                local newY  = math.clamp(_startPos2.Y.Offset + delta.Y, 0, vp.Y - ph)
+                mainPanel.Position = UDim2.fromOffset(newX, newY)
+                -- En touch: actualizar la referencia en cada frame para evitar acumulación de delta
+                if input.UserInputType == Enum.UserInputType.Touch then
+                    _dragStart2 = input.Position
+                    _startPos2  = mainPanel.Position
+                end
             end)
         end
     end
@@ -13456,26 +13476,32 @@ function CreateInfoPanel()
     scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
     scrollLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
+    local _lblTxtSz = _isMobileInfo and 10 or 11
+    local _sepTxtSz = _isMobileInfo and 10 or 12
+    local _lblH     = _isMobileInfo and 16 or 18
+    local _sepH     = _isMobileInfo and 17 or 20
+
     function makeLabel(text, color)
         local lbl = Instance.new("TextLabel", scroll)
-        lbl.Size = UDim2.new(1, -4, 0, 18)
+        lbl.Size = UDim2.new(1, -4, 0, _lblH)
         lbl.BackgroundTransparency = 1
- lbl.Text = convertirFuenteCursor(text)
+        lbl.Text = convertirFuenteCursor(text)
         lbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        lbl.TextSize = 11
+        lbl.TextSize = _lblTxtSz
         lbl.TextColor3 = color or ThemeColors.TextPrimary
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         lbl.TextWrapped = true
+        lbl.TextScaled = false
         return lbl
     end
 
     function makeSep(text, color)
         local lbl = Instance.new("TextLabel", scroll)
-        lbl.Size = UDim2.new(1, -4, 0, 20)
+        lbl.Size = UDim2.new(1, -4, 0, _sepH)
         lbl.BackgroundTransparency = 1
- lbl.Text = convertirFuenteCursor(text)
+        lbl.Text = convertirFuenteCursor(text)
         lbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-        lbl.TextSize = 12
+        lbl.TextSize = _sepTxtSz
         lbl.TextColor3 = color or ThemeColors.TextPrimary
         lbl.TextXAlignment = Enum.TextXAlignment.Left
         return lbl
@@ -13616,9 +13642,10 @@ function CreateInfoPanel()
                 return
             end
 
-            local totalH = math.clamp(lineCount * 20 + 55, 60, 540)
+            local _maxH  = _isMobileInfo and math.min(320, _vp.Y - _initPosY - 20) or 540
+            local totalH = math.clamp(lineCount * 20 + 55, 60, _maxH)
             TweenService:Create(mainPanel, TweenInfo.new(0.25), {
-                Size = UDim2.new(0, 380, 0, totalH)
+                Size = UDim2.new(0, _panelW, 0, totalH)
             }):Play()
 
             task.wait(0.5)
@@ -36872,13 +36899,11 @@ function CreateExclusiveTab()
         local _ts = _G._toggleStates or {}
         local _tc = _G._toggleCallbacks or {}
 
-        -- 1) Iterar todos los toggles registrados y apagarlos
+        -- 1) Iterar todos los toggles registrados y apagarlos via callback
         for nombre, estado in pairs(_ts) do
             if estado == true then
                 _count = _count + 1
-                -- Marcar como OFF en el estado global
                 _G._toggleStates[nombre] = false
-                -- Ejecutar callback con false para detener la logica del feature
                 if _tc[nombre] then
                     pcall(_tc[nombre], false)
                 end
@@ -36891,9 +36916,6 @@ function CreateExclusiveTab()
                     if not hg then return end
                     local row = hg:FindFirstChild("AuroraToggleRow_" .. nombre, true)
                     if not row then return end
-                    local knob = row:FindFirstChildWhichIsA("Frame")
-                    if not knob then return end
-                    -- Buscar el indicador (boton circular del toggle)
                     for _, c in ipairs(row:GetDescendants()) do
                         if c:IsA("Frame") and c.Name ~= "AuroraToggleRow_" .. nombre
                         and c.BackgroundColor3 == Color3.fromRGB(0, 200, 80) then
@@ -36908,16 +36930,141 @@ function CreateExclusiveTab()
             end
         end
 
-        -- 2) Guardar estado limpio en disco
+        -- ══════════════════════════════════════════════════════════════
+        -- 2) KILL DIRECTO de todas las conexiones / loops en tiempo real
+        --    Los callbacks de toggle a veces no alcanzan a desconectar
+        --    todo (e.g. estados internos, bindables, loops anidados).
+        -- ══════════════════════════════════════════════════════════════
+        local function _safeDisc(conn)
+            if conn and type(conn) == "userdata" then
+                pcall(function() conn:Disconnect() end)
+            end
+        end
+
+        -- Combat: auto shoot, reload, gun monitor, camera tracking
+        if CombatState then
+            _safeDisc(CombatState.autoShootConnection);   CombatState.autoShootConnection  = nil
+            _safeDisc(CombatState.autoReloadConnection);  CombatState.autoReloadConnection = nil
+            _safeDisc(CombatState.gunConnection);         CombatState.gunConnection        = nil
+            _safeDisc(CombatState.gunConnectionChild);    CombatState.gunConnectionChild   = nil
+            _safeDisc(CombatState.trackingConnection);    CombatState.trackingConnection   = nil
+            CombatState.autoShootEnabled    = false
+            CombatState.autoReloadEnabled   = false
+            CombatState.autoEquipEnabled    = false
+            CombatState.knifeShootEnabled   = false
+            CombatState.shootPickEnabled    = false
+            CombatState.autoShootMurderEnabled = false
+        end
+
+        -- CombatTabState: shoot pick, auto shoot murder, instant throw, knife shoot
+        if CombatTabState then
+            _safeDisc(CombatTabState.shootPickConn);       CombatTabState.shootPickConn       = nil
+            _safeDisc(CombatTabState.autoShootMurderConn); CombatTabState.autoShootMurderConn = nil
+            _safeDisc(CombatTabState.knifeShootConn);      CombatTabState.knifeShootConn      = nil
+            if CombatTabState.instantThrow then
+                _safeDisc(CombatTabState.instantThrow.conn)
+                CombatTabState.instantThrow.conn    = nil
+                CombatTabState.instantThrow.enabled = false
+            end
+            CombatTabState.shootPickEnabled     = false
+            CombatTabState.autoShootMurderEnabled = false
+            CombatTabState.knifeShootEnabled    = false
+            CombatTabState.silentAimEnabled     = false
+        end
+
+        -- Aimlock
+        if AimlockState then
+            _safeDisc(AimlockState.conn); AimlockState.conn = nil
+            AimlockState.enabled = false
+        end
+
+        -- Knife Silent Aim
+        if KnifeSAState then
+            pcall(_KnifeSA_deactivate)
+            KnifeSAState.enabled = false
+        end
+
+        -- Throwing Knife
+        pcall(_TK_stopAll)
+
+        -- Knife Aura + Auto Click
+        if Settings and Settings.premium and Settings.premium.knifeAura then
+            _safeDisc(Settings.premium.knifeAura.connection);    Settings.premium.knifeAura.connection    = nil
+            _safeDisc(Settings.premium.knifeAura.autoClickConn); Settings.premium.knifeAura.autoClickConn = nil
+            Settings.premium.knifeAura.enabled   = false
+            Settings.premium.knifeAura.autoClick  = false
+        end
+
+        -- Kill All Murder (Farm tab)
+        pcall(StopKillAllMurder)
+        _safeDisc(_killAllConn); _killAllConn = nil
+
+        -- Auto Farm y variantes
+        pcall(StopAutoFarm)
+        pcall(StopShootSheriff)
+        pcall(StopShootMurder)
+        pcall(StopKillAtKnife)
+        pcall(StopFarmXPSheriff)
+        pcall(StopAFKFarmLobby)
+        pcall(StopAFKXPLobby)
+
+        -- FarmToggles: marcar todos como inactivos
+        if FarmToggles then
+            for k, _ in pairs(FarmToggles) do
+                if type(FarmToggles[k]) == "boolean" then
+                    FarmToggles[k] = false
+                end
+            end
+        end
+
+        -- Fly
+        pcall(StopFlying)
+        if Settings and Settings.connections then
+            _safeDisc(Settings.connections.fly);      Settings.connections.fly = nil
+            _safeDisc(Settings.connections.noclip);   Settings.connections.noclip = nil
+            _safeDisc(Settings.connections.noclipCharConn); Settings.connections.noclipCharConn = nil
+        end
+
+        -- Noclip
+        pcall(DisableNoclip)
+
+        -- Fling
+        pcall(StopFlingSystem)
+        pcall(_stopFlingPosTracking)
+        pcall(_flingStopLoop)
+
+        -- WallHop
+        pcall(WallHop_Stop)
+
+        -- Bang (todas las variantes)
+        if _bang and _bang.conns then
+            for role, conn in pairs(_bang.conns) do
+                _safeDisc(conn); _bang.conns[role] = nil
+            end
+            if _bang.animTrack then pcall(function() _bang.animTrack:Stop(0.05) end); _bang.animTrack = nil end
+            for k, _ in pairs(_bang.enabled or {}) do _bang.enabled[k] = false end
+        end
+
+        -- _G._toggleApplyStates: usar las funciones ApplyState registradas para
+        -- actualizar visualmente todos los knobs que pudieran estar fuera de la tab activa
+        if _G._toggleApplyStates then
+            for nombre, applyFn in pairs(_G._toggleApplyStates) do
+                if _G._toggleStates[nombre] == false then
+                    pcall(applyFn, false, false)
+                end
+            end
+        end
+
+        -- 3) Guardar estado limpio en disco
         pcall(_saveConfig)
 
-        -- 3) Forzar refresh de visuals (ESP, chams, etc.)
+        -- 4) Forzar refresh de visuals (ESP, chams, etc.)
         _G._forceInstanceTick = true
         if _vcRefreshAll then task.defer(_vcRefreshAll) end
 
         local msg = _count > 0
-            and ("⛔ " .. _count .. " toggle" .. (_count == 1 and "" or "s") .. " desactivado" .. (_count == 1 and "" or "s"))
-            or  "No habia toggles activos"
+            and ("⛔ " .. _count .. " toggle" .. (_count == 1 and "" or "s") .. " desactivado" .. (_count == 1 and "" or "s") .. " + conexiones cortadas")
+            or  "⛔ Conexiones y loops detenidos"
         CreateCustomNotification("SETTINGS", msg, 3)
     end)
     CreateAuroraToggle(settSec, "No Tab Animations", function(on)
