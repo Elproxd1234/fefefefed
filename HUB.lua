@@ -10863,20 +10863,54 @@ function _makeTwoColumns()
         end
     end)
 
-    -- == COLUMNA IZQUIERDA =======================================
+    -- == COLUMNAS ===============================================
     local COL_TOP = SEARCH_H + 8
     local GAP = 4
+    -- Leer preferencia de doble columna
+    local _useDoubleCol = _G._hubSettings and _G._hubSettings.doubleColumn or false
 
     local lCol = Instance.new("ScrollingFrame", wrapper)
     lCol.Name = "LeftColumn"
-    lCol.Size = UDim2.new(1, 0, 1, -COL_TOP)
-    lCol.Position = UDim2.new(0, 0, 0, COL_TOP)
     lCol.BackgroundTransparency = 1
     lCol.BorderSizePixel = 0
     lCol.ScrollBarThickness = 3
     lCol.ScrollBarImageColor3 = ThemeColors.Primary
     lCol.CanvasSize = UDim2.new(0,0,0,0)
     lCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+    local rCol
+    if _useDoubleCol then
+        -- == DOBLE COLUMNA REAL ==
+        lCol.Size = UDim2.new(0.5, -GAP, 1, -COL_TOP)
+        lCol.Position = UDim2.new(0, 0, 0, COL_TOP)
+
+        rCol = Instance.new("ScrollingFrame", wrapper)
+        rCol.Name = "RightColumn"
+        rCol.Size = UDim2.new(0.5, -GAP, 1, -COL_TOP)
+        rCol.Position = UDim2.new(0.5, GAP, 0, COL_TOP)
+        rCol.BackgroundTransparency = 1
+        rCol.BorderSizePixel = 0
+        rCol.ScrollBarThickness = 3
+        rCol.ScrollBarImageColor3 = ThemeColors.Primary
+        rCol.CanvasSize = UDim2.new(0,0,0,0)
+        rCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        local rlayout = Instance.new("UIListLayout", rCol)
+        rlayout.Padding = UDim.new(0, 0)
+        rlayout.FillDirection = Enum.FillDirection.Vertical
+        rlayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        rlayout.SortOrder = Enum.SortOrder.LayoutOrder
+        local rpad = Instance.new("UIPadding", rCol)
+        rpad.PaddingRight = UDim.new(0, 4)
+        rpad.PaddingLeft  = UDim.new(0, 4)
+        rpad.PaddingTop   = UDim.new(0, 0)
+        rpad.PaddingBottom = UDim.new(0, 0)
+    else
+        -- == COLUMNA UNICA (comportamiento original) ==
+        lCol.Size = UDim2.new(1, 0, 1, -COL_TOP)
+        lCol.Position = UDim2.new(0, 0, 0, COL_TOP)
+        rCol = lCol
+    end
+
     local llayout = Instance.new("UIListLayout", lCol)
     llayout.Padding = UDim.new(0, 0)
     llayout.FillDirection = Enum.FillDirection.Vertical
@@ -10888,11 +10922,7 @@ function _makeTwoColumns()
     lpad.PaddingTop   = UDim.new(0, 0)
     lpad.PaddingBottom = UDim.new(0, 0)
 
-    -- == COLUMNA DERECHA (desactivada: una sola columna) ===========
-    -- rCol apunta a lCol para que todo se agregue en la misma columna
-    local rCol = lCol
-
-    -- "Not found" label para busqueda (solo una, columna unica)
+    -- "Not found" label para busqueda
     local notFoundL = Instance.new("TextLabel", lCol)
     notFoundL.Name = "SearchNotFound"
     notFoundL.Size = UDim2.new(1, 0, 0, 40)
@@ -10905,20 +10935,24 @@ function _makeTwoColumns()
     notFoundL.ZIndex = 5
     notFoundL.LayoutOrder = 99999
 
-    -- Logica de busqueda limpia (columna unica)
-    local _originalLayoutOrders = {}  -- cache del orden original de cada hijo
+    -- Logica de busqueda (busca en ambas columnas si hay doble columna)
+    local _originalLayoutOrders = {}
     local function _doSearch2(query)
         query = query:lower():gsub("^%s+", ""):gsub("%s+$", "")
         clearBtn2.Visible = query ~= ""
 
+        -- Columnas a inspeccionar
+        local _searchCols = _useDoubleCol and {lCol, rCol} or {lCol}
+
         if query == "" then
-            for _, child in ipairs(lCol:GetChildren()) do
-                if not child:IsA("UIListLayout") and not child:IsA("UIPadding")
-                    and child.Name ~= "SearchNotFound" then
-                    child.Visible = true
-                    -- Restaurar orden original
-                    if _originalLayoutOrders[child] ~= nil then
-                        child.LayoutOrder = _originalLayoutOrders[child]
+            for _, col in ipairs(_searchCols) do
+                for _, child in ipairs(col:GetChildren()) do
+                    if not child:IsA("UIListLayout") and not child:IsA("UIPadding")
+                        and child.Name ~= "SearchNotFound" then
+                        child.Visible = true
+                        if _originalLayoutOrders[child] ~= nil then
+                            child.LayoutOrder = _originalLayoutOrders[child]
+                        end
                     end
                 end
             end
@@ -10926,17 +10960,17 @@ function _makeTwoColumns()
             return
         end
 
-        -- Guardar orden original la primera vez que se busca
-        for _, child in ipairs(lCol:GetChildren()) do
-            if not child:IsA("UIListLayout") and not child:IsA("UIPadding")
-                and child.Name ~= "SearchNotFound" then
-                if _originalLayoutOrders[child] == nil then
-                    _originalLayoutOrders[child] = child.LayoutOrder
+        for _, col in ipairs(_searchCols) do
+            for _, child in ipairs(col:GetChildren()) do
+                if not child:IsA("UIListLayout") and not child:IsA("UIPadding")
+                    and child.Name ~= "SearchNotFound" then
+                    if _originalLayoutOrders[child] == nil then
+                        _originalLayoutOrders[child] = child.LayoutOrder
+                    end
                 end
             end
         end
 
-        -- Recolectar texto de cada hijo
         local function _getChildText(child)
             local childText = (child.Name or ""):lower()
             for _, desc in ipairs(child:GetChildren()) do
@@ -10952,20 +10986,11 @@ function _makeTwoColumns()
             return childText
         end
 
-        -- Calcular score de prefijo: cuantos caracteres iniciales del texto coinciden con la query
-        -- Score 0 = no match, 1 = contiene en algun lado, 2+ = empieza con N chars de la query
         local function _prefixScore(text, q)
-            -- Primero verificar match basico
             if not text:find(q, 1, true) then return 0 end
-
-            -- Buscar el mejor score de prefijo entre todas las "palabras" del texto
-            -- (separadas por espacios o inicio de string)
-            local bestScore = 1  -- contiene la query en algun lado = score minimo positivo
-
-            -- Iterar sobre cada palabra y subcadena del texto
+            local bestScore = 1
             local pos = 1
             while pos <= #text do
-                -- Calcular cuantos chars de 'q' coinciden desde esta posicion
                 local matchLen = 0
                 for i = 1, #q do
                     if pos + i - 1 <= #text and text:sub(pos + i - 1, pos + i - 1) == q:sub(i, i) then
@@ -10977,27 +11002,24 @@ function _makeTwoColumns()
                 if matchLen > bestScore then
                     bestScore = matchLen
                 end
-                -- Avanzar al siguiente espacio o caracter
                 pos = pos + 1
             end
             return bestScore
         end
 
         local found = 0
-        for _, child in ipairs(lCol:GetChildren()) do
-            if child:IsA("UIListLayout") or child:IsA("UIPadding")
-                or child.Name == "SearchNotFound" then continue end
-
-            local childText = _getChildText(child)
-            local score = _prefixScore(childText, query)
-            local match = score > 0
-            child.Visible = match
-            if match then
-                found = found + 1
-                -- Ordenar: mayor score = mas arriba. Invertimos con negativo para que UIListLayout ordene bien
-                -- Score maximo posible = #query (empieza exactamente con toda la query)
-                -- Usamos 10000 - score para que el mayor score quede con LayoutOrder mas bajo (arriba)
-                child.LayoutOrder = 10000 - score
+        for _, col in ipairs(_searchCols) do
+            for _, child in ipairs(col:GetChildren()) do
+                if child:IsA("UIListLayout") or child:IsA("UIPadding")
+                    or child.Name == "SearchNotFound" then continue end
+                local childText = _getChildText(child)
+                local score = _prefixScore(childText, query)
+                local match = score > 0
+                child.Visible = match
+                if match then
+                    found = found + 1
+                    child.LayoutOrder = 10000 - score
+                end
             end
         end
         notFoundL.Visible = (found == 0)
@@ -11018,11 +11040,15 @@ function _makeTwoColumns()
     end)
 
     -- Animacion de entrada
-    lCol.Position = UDim2.new(0, 0, 0, COL_TOP + 14)
+    lCol.Position = UDim2.new(lCol.Position.X.Scale, lCol.Position.X.Offset, 0, COL_TOP + 14)
     task.spawn(function()
         task.wait(0.03)
         local ti = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        TweenService:Create(lCol, ti, {Position = UDim2.new(0, 0, 0, COL_TOP)}):Play()
+        TweenService:Create(lCol, ti, {Position = UDim2.new(lCol.Position.X.Scale, lCol.Position.X.Offset, 0, COL_TOP)}):Play()
+        if _useDoubleCol and rCol ~= lCol then
+            rCol.Position = UDim2.new(rCol.Position.X.Scale, rCol.Position.X.Offset, 0, COL_TOP + 14)
+            TweenService:Create(rCol, ti, {Position = UDim2.new(rCol.Position.X.Scale, rCol.Position.X.Offset, 0, COL_TOP)}):Play()
+        end
     end)
 
     leftColumn  = lCol
@@ -36576,6 +36602,7 @@ function CreateExclusiveTab()
         crosshairHidden    = false,
         hudHidden          = false,
         lowRenderQuality   = false,
+        doubleColumn       = false, -- doble columna en la vista de Settings
     }
     local HS = _G._hubSettings
     local function _hs() return _G._hubSettings end
@@ -36738,6 +36765,8 @@ function CreateExclusiveTab()
         _hsr.noPostFX           = false
         _hsr.renderDistance     = 0
         _hsr.noBillboards       = false
+        _hsr.doubleColumn       = false
+        _G._hubDoubleColumn       = false
         _G._hubDisableKeybinds    = false
         _G._hubUndraggableButtons = false
         _G._hubDisableAnimations  = false
@@ -36889,6 +36918,20 @@ function CreateExclusiveTab()
             CreateCustomNotification("SETTINGS", "Auto Save OFF — los toggles no se recordaran", 2)
         end
     end, _G._autoSaveEnabled)
+
+    -- -- DOUBLE COLUMN (distribucion en 2 columnas) ----------------
+    CreateAuroraToggle(settSec, "Double Column", function(on)
+        _hs().doubleColumn = on
+        _G._hubDoubleColumn = on
+        -- Recargar el tab actual para aplicar el nuevo layout
+        pcall(function()
+            if _switchTab then
+                local _curTab = _G._currentTabIndex or 1
+                _switchTab(_curTab)
+            end
+        end)
+        CreateCustomNotification("SETTINGS", on and "Doble columna ON" or "Doble columna OFF", 1.5)
+    end, HS.doubleColumn)
 
     -- ============================================================
     -- COLUMNA DERECHA
