@@ -29654,24 +29654,59 @@ function CreateWorldUI_QuickFlingButtons()
         end)
 
         -- Actualizar lista automaticamente cuando entra/sale un jugador
-        _safeConnect(Players.PlayerAdded,   function() task.defer(_rebuildPlayerList) end)
-        _safeConnect(Players.PlayerRemoving, function(p)
+        -- FIX: guardar conexiones y desconectarlas cuando el frame sea destruido
+        -- para evitar "attempt to call a nil value" si la pestaña se reconstruye
+        local _selConnPA, _selConnPR
+        local function _selIsAlive() return selSec and selSec.Parent end
+
+        _selConnPA = Players.PlayerAdded:Connect(function()
+            if not _selIsAlive() then
+                if _selConnPA then pcall(function() _selConnPA:Disconnect() end); _selConnPA = nil end
+                return
+            end
+            task.defer(function() if _selIsAlive() then _rebuildPlayerList() end end)
+        end)
+
+        _selConnPR = Players.PlayerRemoving:Connect(function(p)
+            if not _selIsAlive() then
+                if _selConnPR then pcall(function() _selConnPR:Disconnect() end); _selConnPR = nil end
+                return
+            end
             if _selTarget == p then
                 _selTarget = nil
-                selLbl.Text = "Ninguno seleccionado"
+                pcall(function() selLbl.Text = "Ninguno seleccionado" end)
             end
-            task.defer(_rebuildPlayerList)
+            task.defer(function() if _selIsAlive() then _rebuildPlayerList() end end)
         end)
+
+        selSec.AncestorRemoving:Connect(function()
+            if _selConnPA then pcall(function() _selConnPA:Disconnect() end); _selConnPA = nil end
+            if _selConnPR then pcall(function() _selConnPR:Disconnect() end); _selConnPR = nil end
+        end)
+
+        local function _selSetBtnIdle()
+            pcall(function()
+                execBtn.Text = "⚡ FLING AL SELECCIONADO"
+                execBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
+                execBtn.TextColor3 = Color3.fromRGB(80, 255, 140)
+                execStroke.Color = Color3.fromRGB(50, 200, 100)
+            end)
+        end
+        local function _selSetBtnCancel()
+            pcall(function()
+                execBtn.Text = "⏹ CANCELAR FLING"
+                execBtn.BackgroundColor3 = Color3.fromRGB(80, 20, 20)
+                execBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+                execStroke.Color = Color3.fromRGB(200, 60, 60)
+            end)
+        end
 
         -- BOTON EJECUTAR FLING
         execBtn.Activated:Connect(function()
             if _selFlingActive then
                 _selFlingActive = false
                 _qfStopAll()
-                execBtn.Text = "⚡ FLING AL SELECCIONADO"
-                execBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
-                execBtn.TextColor3 = Color3.fromRGB(80, 255, 140)
-                execStroke.Color = Color3.fromRGB(50, 200, 100)
+                _selSetBtnIdle()
                 CreateCustomNotification("FLING SELECTOR", "Cancelado", 2)
                 return
             end
@@ -29695,10 +29730,7 @@ function CreateWorldUI_QuickFlingButtons()
 
             _qfStopAll()
             _selFlingActive = true
-            execBtn.Text = "⏹ CANCELAR FLING"
-            execBtn.BackgroundColor3 = Color3.fromRGB(80, 20, 20)
-            execBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-            execStroke.Color = Color3.fromRGB(200, 60, 60)
+            _selSetBtnCancel()
 
             local _targetName = _selTarget.Name
             CreateCustomNotification("FLING SELECTOR", "Flingeando a " .. _targetName .. "...", 3)
@@ -29766,11 +29798,7 @@ function CreateWorldUI_QuickFlingButtons()
                 _flingActive    = false
                 _flingReturning = false
 
-                execBtn.Text = "⚡ FLING AL SELECCIONADO"
-                execBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
-                execBtn.TextColor3 = Color3.fromRGB(80, 255, 140)
-                execStroke.Color = Color3.fromRGB(50, 200, 100)
-
+                _selSetBtnIdle()
                 CreateCustomNotification("FLING SELECTOR", "Fling a " .. _targetName .. " terminado — volviendo...", 2)
                 task.wait(0.2)
                 TeleportToMap()
