@@ -36923,14 +36923,42 @@ function CreateExclusiveTab()
     CreateAuroraToggle(settSec, "Double Column", function(on)
         _hs().doubleColumn = on
         _G._hubDoubleColumn = on
-        -- Recargar el tab actual para aplicar el nuevo layout
+        -- Invalidar cache de TODOS los tabs para que se reconstruyan con el nuevo layout.
+        -- Solo se preserva el tab Settings (idx=5) para no romper la sesion actual.
         pcall(function()
-            if _switchTab then
-                local _curTab = _G._currentTabIndex or 1
-                _switchTab(_curTab)
+            local _SETTINGS_IDX = 5
+            if _G._tabCache then
+                for idx, tabFrame in pairs(_G._tabCache) do
+                    if idx ~= _SETTINGS_IDX then
+                        pcall(function() tabFrame:Destroy() end)
+                        _G._tabCache[idx] = nil
+                    end
+                end
+            end
+            if _G._tabBuilt then
+                for idx in pairs(_G._tabBuilt) do
+                    if idx ~= _SETTINGS_IDX then
+                        _G._tabBuilt[idx] = nil
+                    end
+                end
+            end
+            if _G._tabScrollFrames then
+                for idx in pairs(_G._tabScrollFrames) do
+                    if idx ~= _SETTINGS_IDX then
+                        _G._tabScrollFrames[idx] = nil
+                    end
+                end
             end
         end)
-        CreateCustomNotification("SETTINGS", on and "Doble columna ON" or "Doble columna OFF", 1.5)
+        -- Si el tab actual no es Settings, reconstruirlo inmediatamente.
+        -- Si es Settings, el usuario lo vera aplicado la proxima vez que cambie de tab.
+        pcall(function()
+            local _curTab = _G._currentTabIndex or 1
+            if _curTab ~= 5 and _G._reloadActiveTab then
+                _G._reloadActiveTab()
+            end
+        end)
+        CreateCustomNotification("SETTINGS", on and "Doble columna ON — cambia de tab para aplicar" or "Doble columna OFF — cambia de tab para aplicar", 2)
     end, HS.doubleColumn)
 
     -- ============================================================
