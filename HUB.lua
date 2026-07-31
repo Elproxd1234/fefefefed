@@ -29336,58 +29336,6 @@ function CreateWorldUI_QuickFlingButtons()
         end
     end)
 
-    -- BINDABLE: FLING MURDER
-    do
-        local _fmBind = { gui = nil, frame = nil, conn = nil, fontSize = 10, sizeX = 44, sizeY = 30 }
-        CreateToggle(leftColumn, "Fling Murder Bindable Button", false, function(on)
-            if _fmBind.conn  then pcall(function() _fmBind.conn:Disconnect()  end) _fmBind.conn  = nil end
-            if _fmBind.gui   then pcall(function() _fmBind.gui:Destroy()      end) _fmBind.gui   = nil end
-            _fmBind.frame = nil
-            if on then
-                local sg = Instance.new("ScreenGui")
-                sg.Name = "FlingMurderBindable"; sg.ResetOnSpawn = false
-                pcall(function() sg.Parent = game:GetService("CoreGui") end)
-                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
-                _fmBind.gui = sg
-                -- FIX: capturar el frame retornado para poder llamar SetActiveState
-                local _fmFrame = MakeCapyBindableFrame(sg, "FLING\nMURDER", function()
-                    _refreshRoleCache()
-                    local murder = _roleCache and _roleCache.murderer
-                    if not murder then
-                        CreateCustomNotification("FLING MURDER", "Murderer no detectado", 3)
-                        return
-                    end
-                    if _qfState.flingMurderActive then
-                        -- Desactivar
-                        _qfState.flingMurderActive = false
-                        FlingSystem.flingMurder = false
-                        _flingActive = false; _flingReturning = false
-                        StopFlingSystem()
-                        -- FIX VISUAL: reflejar estado inactivo en el boton
-                        pcall(function() if _fmBind.frame then _fmBind.frame:SetActiveState(false) end end)
-                        CreateCustomNotification("FLING MURDER", "Desactivado", 2)
-                    else
-                        -- Activar
-                        _qfStopAll()
-                        _flingActive    = false
-                        _flingReturning = false
-                        _qfState.flingMurderActive = true
-                        FlingSystem.flingMurder    = true
-                        FlingSystem.flingAll       = false
-                        FlingSystem.flingSheriff   = false
-                        FlingSystem.flingInnocent  = false
-                        FlingSystem.specificTarget = nil
-                        _flingStartLoop()
-                        -- FIX VISUAL: reflejar estado activo en el boton
-                        pcall(function() if _fmBind.frame then _fmBind.frame:SetActiveState(true) end end)
-                        CreateCustomNotification("FLING MURDER", "Flingeando a " .. murder.Name, 3)
-                    end
-                end)
-                _fmBind.frame = _fmFrame
-            end
-        end)
-    end
-
     -- BINDABLE: STEAL GUN
     do
         local _sgBind = { gui = nil, frame = nil }
@@ -29472,52 +29420,6 @@ function CreateWorldUI_QuickFlingButtons()
                 _sgBind.frame = _sgFrame
                 -- FIX: exponer al global para que StealGunLoop pueda resetear el visual
                 _G._sgBindRef = _sgBind
-            end
-        end)
-    end
-
-    -- BINDABLE: FLING ALL
-    do
-        local _faBind = { gui = nil, frame = nil }
-        CreateToggle(leftColumn, "Fling All Bindable Button", false, function(on)
-            if _faBind.gui then pcall(function() _faBind.gui:Destroy() end) _faBind.gui = nil end
-            _faBind.frame = nil
-            if on then
-                local sg = Instance.new("ScreenGui")
-                sg.Name = "FlingAllBindable"; sg.ResetOnSpawn = false
-                pcall(function() sg.Parent = game:GetService("CoreGui") end)
-                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
-                _faBind.gui = sg
-                -- FIX: capturar frame para SetActiveState
-                local _faFrame = MakeCapyBindableFrame(sg, "FLING\nALL", function()
-                    if _qfState.flingAllActive then
-                        -- Desactivar
-                        _qfState.flingAllActive = false
-                        FlingSystem.flingAll = false
-                        StopFlingSystem()
-                        -- FIX VISUAL: reflejar estado inactivo
-                        pcall(function() if _faBind.frame then _faBind.frame:SetActiveState(false) end end)
-                        CreateCustomNotification("FLING A TODOS", "Desactivado", 2)
-                    else
-                        -- Activar
-                        _qfStopAll()
-                        -- FIX: forzar reset del loop para garantizar re-arranque
-                        StopFlingSystem()
-                        FlingSystem.active = false
-                        FlingSystem._loopThread = nil
-                        _qfState.flingAllActive   = true
-                        FlingSystem.flingAll      = true
-                        FlingSystem.flingMurder   = false
-                        FlingSystem.flingSheriff  = false
-                        FlingSystem.flingInnocent = false
-                        FlingSystem.specificTarget = nil
-                        task.spawn(StartFlingSystem)
-                        -- FIX VISUAL: reflejar estado activo
-                        pcall(function() if _faBind.frame then _faBind.frame:SetActiveState(true) end end)
-                        CreateCustomNotification("FLING A TODOS", "Activo - lanzando a todos", 3)
-                    end
-                end)
-                _faBind.frame = _faFrame
             end
         end)
     end
@@ -37041,47 +36943,7 @@ function CreateExclusiveTab()
         end
     end, _G._autoSaveEnabled)
 
-    -- -- DOUBLE COLUMN (distribucion en 2 columnas) ----------------
-    CreateAuroraToggle(settSec, "Double Column", function(on)
-        _hs().doubleColumn = on
-        _G._hubDoubleColumn = on
-        -- Invalidar cache de TODOS los tabs para que se reconstruyan con el nuevo layout.
-        -- Solo se preserva el tab Settings (idx=5) para no romper la sesion actual.
-        pcall(function()
-            local _SETTINGS_IDX = 5
-            if _G._tabCache then
-                for idx, tabFrame in pairs(_G._tabCache) do
-                    if idx ~= _SETTINGS_IDX then
-                        pcall(function() tabFrame:Destroy() end)
-                        _G._tabCache[idx] = nil
-                    end
-                end
-            end
-            if _G._tabBuilt then
-                for idx in pairs(_G._tabBuilt) do
-                    if idx ~= _SETTINGS_IDX then
-                        _G._tabBuilt[idx] = nil
-                    end
-                end
-            end
-            if _G._tabScrollFrames then
-                for idx in pairs(_G._tabScrollFrames) do
-                    if idx ~= _SETTINGS_IDX then
-                        _G._tabScrollFrames[idx] = nil
-                    end
-                end
-            end
-        end)
-        -- Si el tab actual no es Settings, reconstruirlo inmediatamente.
-        -- Si es Settings, el usuario lo vera aplicado la proxima vez que cambie de tab.
-        pcall(function()
-            local _curTab = _G._currentTabIndex or 1
-            if _curTab ~= 5 and _G._reloadActiveTab then
-                _G._reloadActiveTab()
-            end
-        end)
-        CreateCustomNotification("SETTINGS", on and "Doble columna ON ✓" or "Doble columna OFF ✓", 2)
-    end, HS.doubleColumn)
+
 
     -- ============================================================
     -- COLUMNA DERECHA
@@ -53768,7 +53630,7 @@ function CreateUpdateTab()
                         "[+] New background: Aurora — animated northern lights with color pulse.",
                         "[+] New wallpaper: Glitcher — corrupted TV effect with cyan/red scanlines, glitch blocks and screen flashes.",
                         "[+] Settings: new 'Auto Desactivar Todos los Toggles' button — stops all active features in one click.",
-                        "[+] Settings: Double Column toggle — split the tab content into two side-by-side columns for a wider layout.",
+                        "[-] Settings: removed Double Column toggle — caused layout bugs.",
                         "[*] Background animations no longer bleed outside the image bounds.",
                         "[*] Fixed leftover colors when switching between Zerqon and Sunset backgrounds.",
                         "[-] Removed unnecessary notifications that caused visual clutter.",
@@ -53785,9 +53647,7 @@ function CreateUpdateTab()
                         "[-] World tab: removed TP Vote Pad section and its bindable button.",
                         "[-] World tab: removed Send To Chat section (SEND TO CHAT, MENSAJES PERSONALIZADOS, AUTO SEND, Auto Announce Murder).",
                         "[+] World tab: added Fling Player selector — pick any player from a live list and fling them instantly.",
-                        "[+] Quick Fling: added Fling Murder bindable button.",
-                        "[+] Quick Fling: added Steal Gun bindable button.",
-                        "[+] Quick Fling: added Fling All bindable button.",
+                        "[-] Quick Fling: removed Fling Murder and Fling All bindable buttons — not working correctly.",
                     }
                 },
             },
@@ -53797,14 +53657,14 @@ function CreateUpdateTab()
                 "[+] New Aurora background with northern lights animation.",
                 "[+] New Glitcher wallpaper — corrupted TV scanlines, cyan/red flashes.",
                 "[+] Settings: one-click button to disable ALL active toggles instantly.",
-                "[+] Settings: Double Column toggle — splits tab into two columns for a wider layout.",
+                "[-] Settings: removed Double Column toggle — caused layout bugs.",
                 "[+] Custom Crosshairs now exclusive to Premium tab (13 unique designs).",
                 "[-] Removed unnecessary notifications — less visual noise.",
                 "[*] Fixed notification delay — no more lag between trigger and display.",
                 "[-] World tab: removed TP Vote Pad section and its bindable.",
                 "[-] World tab: removed Send To Chat section entirely.",
                 "[+] World tab: new Fling Player selector — pick target from player list and fling them.",
-                "[+] Quick Fling: added Fling Murder, Steal Gun and Fling All bindable buttons.",
+                "[-] Quick Fling: removed Fling Murder and Fling All bindable buttons — not working correctly.",
             }
         },
         {
@@ -56087,11 +55947,16 @@ task.spawn(function()
     end
 
     -- Fijar los que se agreguen al cambiar de tab
+    local _fixBusy = false
     _mainF.DescendantAdded:Connect(function(obj)
-        task.defer(function()
+        if _fixBusy then return end
+        _fixBusy = true
+        task.spawn(function()
+            task.wait()  -- diferir un frame sin usar task.defer (evita re-entrancy)
             if obj and obj.Parent then
                 pcall(_fixLabel, obj)
             end
+            _fixBusy = false
         end)
     end)
 end)
