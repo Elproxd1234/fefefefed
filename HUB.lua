@@ -29354,6 +29354,429 @@ function CreateWorldUI_QuickFlingButtons()
             end)
         end)
     end)
+
+    -- =====================================================================
+    -- BOTON: FLING MURDER + FLING TODOS
+    -- Primero flingea al murder, luego activa fling a todos los demas
+    -- =====================================================================
+    local _fmftActive = false
+    CreateButton(leftColumn, ">> FLING MURDER + TODOS", ThemeColors.Primary, function()
+        if _fmftActive then
+            _fmftActive = false
+            _qfStopAll()
+            CreateCustomNotification("FLING M+TODOS", "Cancelado", 2)
+            return
+        end
+        _refreshRoleCache()
+        local murder = _roleCache and _roleCache.murderer
+        if not murder then
+            CreateCustomNotification("FLING M+TODOS", "Murderer no detectado — usa en ronda activa", 3)
+            return
+        end
+        _qfStopAll()
+        _fmftActive = true
+        task.spawn(function()
+            -- FASE 1: fling al murder (copia exacta del boton Fling Murder)
+            local tChar = murder.Character
+            local tHRP  = tChar and tChar:FindFirstChild("HumanoidRootPart")
+            if not tHRP then
+                _fmftActive = false
+                CreateCustomNotification("FLING M+TODOS", "Murder sin character", 2)
+                return
+            end
+            local myChar = LocalPlayer.Character
+            local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
+            if not myHRP or not myHum then _fmftActive = false; return end
+
+            local _fmSafePos = myHRP.CFrame
+            _G.OldPos = _fmSafePos; _flingLastSafePos = _fmSafePos
+
+            CreateCustomNotification("FLING M+TODOS", "FASE 1: Flingeando a " .. murder.Name .. "...", 3)
+
+            local _RS = game:GetService("RunService")
+            local _launched = false
+            local _conn
+            local _t0 = tick()
+
+            local function _zero()
+                for _ = 1, 3 do pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                    myHRP.Velocity = Vector3.zero; myHRP.RotVelocity = Vector3.zero
+                end) end
+            end
+
+            pcall(function() myHum.PlatformStand = true end)
+            _conn = _RS.Heartbeat:Connect(function()
+                if not tHRP or not tHRP.Parent then
+                    _launched = true; _zero()
+                    if _conn then _conn:Disconnect(); _conn = nil end; return
+                end
+                if tHRP.AssemblyLinearVelocity.Magnitude > 120 or tick()-_t0 >= 5 or not _fmftActive then
+                    _launched = true; _zero()
+                    pcall(function() myHum.PlatformStand = false end)
+                    if _conn then _conn:Disconnect(); _conn = nil end; return
+                end
+                pcall(function() myHRP.CFrame = tHRP.CFrame; myChar:SetPrimaryPartCFrame(tHRP.CFrame) end)
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
+                    myHRP.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
+                end)
+            end)
+
+            local _w2 = 0
+            repeat task.wait(0.05); _w2 = _w2 + 0.05 until _launched or _w2 > 6
+            if _conn then _conn:Disconnect(); _conn = nil end
+            pcall(function()
+                myHRP.AssemblyLinearVelocity  = Vector3.zero
+                myHRP.AssemblyAngularVelocity = Vector3.zero
+                myHRP.Velocity = Vector3.zero; myHRP.RotVelocity = Vector3.zero
+                myHum.PlatformStand = false
+            end)
+            task.wait(0.1)
+
+            if not _fmftActive then return end
+
+            -- FASE 2: TP al mapa y activar fling a todos
+            CreateCustomNotification("FLING M+TODOS", "FASE 2: Activando Fling A TODOS...", 3)
+            TeleportToMap()
+            task.wait(0.3)
+
+            _qfState.flingAllActive   = true
+            FlingSystem.flingAll      = true
+            FlingSystem.flingMurder   = false
+            FlingSystem.flingSheriff  = false
+            FlingSystem.flingInnocent = false
+            FlingSystem.specificTarget = nil
+            _flingStartLoop()
+            CreateCustomNotification("FLING M+TODOS", "Murder flingeado — ahora lanzando a TODOS", 3)
+            _fmftActive = false
+        end)
+    end)
+
+    -- =====================================================================
+    -- SELECTOR DE JUGADOR + BOTON FLING
+    -- Lista de todos los jugadores en la ronda, selecciona uno y lo flinga
+    -- =====================================================================
+    do
+        local _selTarget = nil   -- Player seleccionado actualmente
+        local _selBtns   = {}   -- referencias a los botones de jugadores
+        local _selFlingActive = false
+
+        -- Contenedor de la seccion
+        local selSec = Instance.new("Frame", leftColumn)
+        selSec.Size = UDim2.new(1, -8, 0, 0)
+        selSec.AutomaticSize = Enum.AutomaticSize.Y
+        selSec.BackgroundColor3 = Color3.fromRGB(15, 22, 60)
+        selSec.BackgroundTransparency = 0.3
+        selSec.BorderSizePixel = 0
+        selSec.LayoutOrder = 999
+        Instance.new("UICorner", selSec).CornerRadius = UDim.new(0, 8)
+        local selStroke = Instance.new("UIStroke", selSec)
+        selStroke.Color = Color3.fromRGB(100, 80, 215)
+        selStroke.Thickness = 1.5
+        selStroke.Transparency = 0.3
+        local selList = Instance.new("UIListLayout", selSec)
+        selList.Padding = UDim.new(0, 3)
+        selList.SortOrder = Enum.SortOrder.LayoutOrder
+        local selPad = Instance.new("UIPadding", selSec)
+        selPad.PaddingTop    = UDim.new(0, 6)
+        selPad.PaddingBottom = UDim.new(0, 6)
+        selPad.PaddingLeft   = UDim.new(0, 6)
+        selPad.PaddingRight  = UDim.new(0, 6)
+
+        -- Titulo de seccion
+        local selTitle = Instance.new("TextLabel", selSec)
+        selTitle.Size = UDim2.new(1, 0, 0, 20)
+        selTitle.BackgroundTransparency = 1
+        selTitle.Text = "🎯  FLING SELECTOR"
+        selTitle.TextColor3 = Color3.fromRGB(200, 180, 255)
+        selTitle.Font = Enum.Font.GothamBold
+        selTitle.TextSize = 11
+        selTitle.TextXAlignment = Enum.TextXAlignment.Center
+        selTitle.LayoutOrder = 0
+
+        -- Label de quien esta seleccionado
+        local selLbl = Instance.new("TextLabel", selSec)
+        selLbl.Size = UDim2.new(1, 0, 0, 16)
+        selLbl.BackgroundTransparency = 1
+        selLbl.Text = "Ninguno seleccionado"
+        selLbl.TextColor3 = Color3.fromRGB(160, 200, 255)
+        selLbl.Font = Enum.Font.Gotham
+        selLbl.TextSize = 10
+        selLbl.TextXAlignment = Enum.TextXAlignment.Center
+        selLbl.LayoutOrder = 1
+
+        -- Contenedor scrolleable de botones de jugadores
+        local playerListFrame = Instance.new("ScrollingFrame", selSec)
+        playerListFrame.Size = UDim2.new(1, 0, 0, 0)
+        playerListFrame.AutomaticSize = Enum.AutomaticSize.Y
+        playerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        playerListFrame.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
+        playerListFrame.ScrollBarThickness = 3
+        playerListFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 80, 215)
+        playerListFrame.BackgroundTransparency = 1
+        playerListFrame.BorderSizePixel = 0
+        playerListFrame.LayoutOrder = 2
+        local pllayout = Instance.new("UIListLayout", playerListFrame)
+        pllayout.Padding = UDim.new(0, 3)
+        pllayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        -- Boton EJECUTAR FLING (grande, verde, siempre visible)
+        local execBtn = Instance.new("TextButton", selSec)
+        execBtn.Size = UDim2.new(1, 0, 0, 28)
+        execBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
+        execBtn.BackgroundTransparency = 0.1
+        execBtn.BorderSizePixel = 0
+        execBtn.Text = "⚡ FLING AL SELECCIONADO"
+        execBtn.TextColor3 = Color3.fromRGB(80, 255, 140)
+        execBtn.Font = Enum.Font.GothamBold
+        execBtn.TextSize = 11
+        execBtn.AutoButtonColor = false
+        execBtn.ZIndex = 12
+        execBtn.LayoutOrder = 3
+        Instance.new("UICorner", execBtn).CornerRadius = UDim.new(0, 7)
+        local execStroke = Instance.new("UIStroke", execBtn)
+        execStroke.Color = Color3.fromRGB(50, 200, 100)
+        execStroke.Thickness = 1.5
+        execStroke.Transparency = 0.2
+
+        -- Boton REFRESH lista de jugadores
+        local refBtn = Instance.new("TextButton", selSec)
+        refBtn.Size = UDim2.new(1, 0, 0, 22)
+        refBtn.BackgroundColor3 = Color3.fromRGB(20, 30, 80)
+        refBtn.BackgroundTransparency = 0.2
+        refBtn.BorderSizePixel = 0
+        refBtn.Text = "🔄 Actualizar jugadores"
+        refBtn.TextColor3 = Color3.fromRGB(160, 200, 255)
+        refBtn.Font = Enum.Font.Gotham
+        refBtn.TextSize = 10
+        refBtn.AutoButtonColor = false
+        refBtn.ZIndex = 12
+        refBtn.LayoutOrder = 4
+        Instance.new("UICorner", refBtn).CornerRadius = UDim.new(0, 6)
+        local refStroke = Instance.new("UIStroke", refBtn)
+        refStroke.Color = Color3.fromRGB(80, 90, 210)
+        refStroke.Thickness = 1
+        refStroke.Transparency = 0.4
+
+        -- Funcion para reconstruir la lista de botones de jugadores
+        local function _rebuildPlayerList()
+            -- Limpiar botones anteriores
+            for _, ref in ipairs(_selBtns) do
+                pcall(function() ref.btn:Destroy() end)
+            end
+            _selBtns = {}
+
+            -- Si el target seleccionado ya no existe, limpiar
+            if _selTarget and not _selTarget.Parent then
+                _selTarget = nil
+                selLbl.Text = "Ninguno seleccionado"
+            end
+
+            local allPlayers = Players:GetPlayers()
+            local i = 0
+            for _, p in ipairs(allPlayers) do
+                if p ~= LocalPlayer then
+                    i = i + 1
+                    local isSelected = (_selTarget == p)
+
+                    local pBtn = Instance.new("TextButton", playerListFrame)
+                    pBtn.Size = UDim2.new(1, 0, 0, 24)
+                    pBtn.BackgroundColor3 = isSelected
+                        and Color3.fromRGB(80, 40, 180)
+                        or  Color3.fromRGB(25, 35, 90)
+                    pBtn.BackgroundTransparency = isSelected and 0.1 or 0.5
+                    pBtn.BorderSizePixel = 0
+                    pBtn.AutoButtonColor = false
+                    pBtn.ZIndex = 12
+                    pBtn.LayoutOrder = i
+                    Instance.new("UICorner", pBtn).CornerRadius = UDim.new(0, 6)
+
+                    local pStroke = Instance.new("UIStroke", pBtn)
+                    pStroke.Color = isSelected
+                        and Color3.fromRGB(180, 140, 255)
+                        or  Color3.fromRGB(60, 70, 160)
+                    pStroke.Thickness = isSelected and 1.5 or 1
+                    pStroke.Transparency = isSelected and 0.1 or 0.6
+
+                    -- Detectar rol para icono
+                    local _icon = "👤"
+                    if _roleCache then
+                        if _roleCache.murderer == p then _icon = "🔪"
+                        elseif _roleCache.sheriff == p or _roleCache.hero == p then _icon = "🔫"
+                        end
+                    end
+
+                    local pLbl = Instance.new("TextLabel", pBtn)
+                    pLbl.Size = UDim2.new(1, -8, 1, 0)
+                    pLbl.Position = UDim2.new(0, 4, 0, 0)
+                    pLbl.BackgroundTransparency = 1
+                    pLbl.Text = _icon .. " " .. p.Name .. (isSelected and " ✓" or "")
+                    pLbl.TextColor3 = isSelected
+                        and Color3.fromRGB(220, 200, 255)
+                        or  Color3.fromRGB(200, 215, 255)
+                    pLbl.Font = isSelected and Enum.Font.GothamBold or Enum.Font.Gotham
+                    pLbl.TextSize = 10
+                    pLbl.TextXAlignment = Enum.TextXAlignment.Left
+                    pLbl.ZIndex = 13
+
+                    local _captureP = p
+                    pBtn.Activated:Connect(function()
+                        _selTarget = _captureP
+                        selLbl.Text = "Seleccionado: " .. _captureP.Name
+                        _rebuildPlayerList()  -- refresh visual
+                    end)
+
+                    table.insert(_selBtns, { btn = pBtn, player = p })
+                end
+            end
+
+            if i == 0 then
+                local emptyLbl = Instance.new("TextLabel", playerListFrame)
+                emptyLbl.Size = UDim2.new(1, 0, 0, 20)
+                emptyLbl.BackgroundTransparency = 1
+                emptyLbl.Text = "No hay otros jugadores"
+                emptyLbl.TextColor3 = Color3.fromRGB(130, 130, 160)
+                emptyLbl.Font = Enum.Font.Gotham
+                emptyLbl.TextSize = 10
+                emptyLbl.TextXAlignment = Enum.TextXAlignment.Center
+                table.insert(_selBtns, { btn = emptyLbl, player = nil })
+            end
+        end
+
+        _rebuildPlayerList()
+
+        refBtn.Activated:Connect(function()
+            _rebuildPlayerList()
+            CreateCustomNotification("FLING SELECTOR", "Lista actualizada", 1.5)
+        end)
+
+        -- Actualizar lista automaticamente cuando entra/sale un jugador
+        _safeConnect(Players.PlayerAdded,   function() task.defer(_rebuildPlayerList) end)
+        _safeConnect(Players.PlayerRemoving, function(p)
+            if _selTarget == p then
+                _selTarget = nil
+                selLbl.Text = "Ninguno seleccionado"
+            end
+            task.defer(_rebuildPlayerList)
+        end)
+
+        -- BOTON EJECUTAR FLING
+        execBtn.Activated:Connect(function()
+            if _selFlingActive then
+                _selFlingActive = false
+                _qfStopAll()
+                execBtn.Text = "⚡ FLING AL SELECCIONADO"
+                execBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
+                execBtn.TextColor3 = Color3.fromRGB(80, 255, 140)
+                execStroke.Color = Color3.fromRGB(50, 200, 100)
+                CreateCustomNotification("FLING SELECTOR", "Cancelado", 2)
+                return
+            end
+
+            if not _selTarget then
+                CreateCustomNotification("FLING SELECTOR", "Selecciona un jugador primero", 3)
+                return
+            end
+
+            local tChar = _selTarget.Character
+            local tHRP  = tChar and tChar:FindFirstChild("HumanoidRootPart")
+            if not tHRP then
+                CreateCustomNotification("FLING SELECTOR", _selTarget.Name .. " no tiene character", 2)
+                return
+            end
+
+            local myChar = LocalPlayer.Character
+            local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
+            if not myHRP or not myHum then return end
+
+            _qfStopAll()
+            _selFlingActive = true
+            execBtn.Text = "⏹ CANCELAR FLING"
+            execBtn.BackgroundColor3 = Color3.fromRGB(80, 20, 20)
+            execBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+            execStroke.Color = Color3.fromRGB(200, 60, 60)
+
+            local _targetName = _selTarget.Name
+            CreateCustomNotification("FLING SELECTOR", "Flingeando a " .. _targetName .. "...", 3)
+
+            task.spawn(function()
+                -- Guardar posicion segura
+                local _ry = myHRP.Position.Y
+                if _ry > 2 and _ry < 800 then
+                    _G.OldPos = myHRP.CFrame
+                    _flingLastSafePos = myHRP.CFrame
+                end
+
+                local _RS = game:GetService("RunService")
+                local _launched = false
+                local _conn
+                local _t0 = tick()
+
+                local function _zero()
+                    for _ = 1, 3 do pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.zero
+                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        myHRP.Velocity = Vector3.zero; myHRP.RotVelocity = Vector3.zero
+                    end) end
+                end
+
+                pcall(function() myHum.PlatformStand = true end)
+
+                _conn = _RS.Heartbeat:Connect(function()
+                    if not tHRP or not tHRP.Parent then
+                        _launched = true; _zero()
+                        if _conn then _conn:Disconnect(); _conn = nil end; return
+                    end
+                    if tHRP.AssemblyLinearVelocity.Magnitude > 120 or tick()-_t0 >= 5 or not _selFlingActive then
+                        _launched = true; _zero()
+                        pcall(function() myHum.PlatformStand = false end)
+                        if _conn then _conn:Disconnect(); _conn = nil end; return
+                    end
+                    pcall(function()
+                        myHRP.CFrame = tHRP.CFrame
+                        myChar:SetPrimaryPartCFrame(tHRP.CFrame)
+                    end)
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
+                        myHRP.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
+                    end)
+                end)
+
+                local _wt = 0
+                repeat task.wait(0.05); _wt = _wt + 0.05 until _launched or _wt > 6
+                if _conn then _conn:Disconnect(); _conn = nil end
+
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                    myHRP.Velocity = Vector3.zero; myHRP.RotVelocity = Vector3.zero
+                    myHum.PlatformStand = false
+                end)
+                task.wait(0.05)
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                end)
+
+                _selFlingActive = false
+                _flingActive    = false
+                _flingReturning = false
+
+                execBtn.Text = "⚡ FLING AL SELECCIONADO"
+                execBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
+                execBtn.TextColor3 = Color3.fromRGB(80, 255, 140)
+                execStroke.Color = Color3.fromRGB(50, 200, 100)
+
+                CreateCustomNotification("FLING SELECTOR", "Fling a " .. _targetName .. " terminado — volviendo...", 2)
+                task.wait(0.2)
+                TeleportToMap()
+            end)
+        end)
+    end  -- fin selector
 end
 -- FIN QUICK FLING BUTTONS
 
@@ -43059,45 +43482,81 @@ function CreateCombatTab()
 
     function _FireKnifeCombat(targetHrp)
         local char = LocalPlayer.Character; if not char then return end
-        -- Buscar knife en personaje o backpack
-        local knife = char:FindFirstChildWhichIsA("Tool")
-        if not knife or not knife.Name:lower():find("knife") then
-            knife = nil
-            for _, t in pairs(LocalPlayer.Backpack:GetChildren()) do
-                if t:IsA("Tool") and t.Name:lower():find("knife") then knife=t; break end
-            end
-            if knife then
-                pcall(function()
-                    local hum2 = char:FindFirstChildOfClass("Humanoid")
-                    if hum2 then hum2:EquipTool(knife)
-                    else knife.Parent = char end
-                end)
-                _w(0.05)
-                knife = char:FindFirstChildWhichIsA("Tool")
-                _showBackpackUI()
+        local bp   = LocalPlayer:FindFirstChild("Backpack")
+
+        -- FIX: buscar knife por nombre exacto "Knife" (igual que el resto del hub)
+        local knife = char:FindFirstChild("Knife")
+                   or (bp and bp:FindFirstChild("Knife"))
+
+        -- Fallback: buscar cualquier Tool cuyo nombre contenga "knife"
+        if not knife then
+            for _, t in ipairs(char:GetChildren()) do
+                if t:IsA("Tool") and t.Name:lower():find("knife") then knife = t; break end
             end
         end
+        if not knife and bp then
+            for _, t in ipairs(bp:GetChildren()) do
+                if t:IsA("Tool") and t.Name:lower():find("knife") then knife = t; break end
+            end
+        end
+
+        -- Equipar el knife si está en el backpack
+        if knife and knife.Parent ~= char then
+            pcall(function()
+                local hum2 = char:FindFirstChildOfClass("Humanoid")
+                if hum2 then hum2:EquipTool(knife)
+                else knife.Parent = char end
+            end)
+            _w(0.05)
+            knife = char:FindFirstChild("Knife") or char:FindFirstChildWhichIsA("Tool")
+            _showBackpackUI()
+        end
         if not knife then return end
-        -- Metodo 1: KnifeStabbed / KnifeThrown del tool (el mas efectivo en MM2)
-        pcall(function()
-            local ev = knife:FindFirstChild("Events")
-            if ev then
+
+        -- FIX: calcular bladeCF apuntando al target (firma correcta de MM2)
+        local myHrp = char:FindFirstChild("HumanoidRootPart")
+        local kPos  = myHrp and myHrp.Position or (knife:FindFirstChild("Handle") and knife.Handle.Position) or targetHrp.Position
+        local tPos  = targetHrp.Position
+        local dir   = tPos - kPos
+        local bladeCF  = dir.Magnitude > 0.01 and CFrame.new(kPos, tPos) or CFrame.new(kPos)
+        local targetCF = CFrame.new(tPos, tPos + (dir.Magnitude > 0.01 and dir.Unit or Vector3.new(0,0,1)))
+
+        local ev     = knife:FindFirstChild("Events")
+        local handle = knife:FindFirstChild("Handle")
+
+        -- Metodo 1: KnifeThrown con firma correcta (bladeCF -> targetCF)
+        if ev then
+            pcall(function()
+                local thrown = ev:FindFirstChild("KnifeThrown")
+                if thrown then thrown:FireServer(bladeCF, targetCF) end
+            end)
+            -- HandleTouched: simula colision con el target
+            pcall(function()
+                local touched = ev:FindFirstChild("HandleTouched")
+                if touched then touched:FireServer(targetHrp) end
+            end)
+            -- KnifeStabbed
+            pcall(function()
                 local stab = ev:FindFirstChild("KnifeStabbed")
                 if stab then stab:FireServer() end
-                local thrown = ev:FindFirstChild("KnifeThrown")
-                local handle = knife:FindFirstChild("Handle")
-                if thrown and handle then thrown:FireServer(handle.CFrame, targetHrp.CFrame) end
-            end
-        end)
-        -- Metodo 2: RemoteEvents dentro del tool
-        pcall(function()
-            for _, child in pairs(knife:GetDescendants()) do
-                if child:IsA("RemoteEvent") then pcall(function() child:FireServer(targetHrp) end) end
-            end
-        end)
+            end)
+        end
+
+        -- Metodo 2: Handle/Kill — el remote que registra la muerte en el servidor
+        if handle then
+            pcall(function()
+                local kill = handle:FindFirstChild("Kill")
+                if kill then
+                    kill:FireServer(targetHrp)
+                    kill:FireServer(targetHrp.Parent)
+                    kill:FireServer()
+                end
+            end)
+        end
+
         -- Metodo 3: Activar el tool directamente
         pcall(function()
-            local hum = char:FindFirstChildOfClass("Humanoid")  -- FIX: variable local, no global
+            local hum = char:FindFirstChildOfClass("Humanoid")
             if hum then hum:EquipTool(knife) end
             knife:Activate()
         end)
@@ -52940,6 +53399,21 @@ function CreateUpdateTab()
                         "[+] Fixed all-tabs-blank bug when clicking during hub load.",
                         "[+] Tab build system serialized with mutex (no more race conditions).",
                         "[+] Custom Crosshairs (Miras) added to Premium tab — 13 designs, mouse-tracking.",
+                        "[*] Knife Aura (_FireKnifeCombat) completamente reescrito:",
+                        "    > Busca el knife por nombre exacto 'Knife' (no agarra la Gun por error).",
+                        "    > KnifeThrown usa bladeCF apuntando al target (firma correcta de MM2).",
+                        "    > Agregado Handle/Kill: el remote que registra la muerte en el servidor.",
+                        "    > HandleTouched incluido para simular la colision con el target.",
+                        "[+] World tab — nuevo boton 'FLING MURDER + TODOS':",
+                        "    > Fase 1: flingea al murderer por hasta 5 segundos.",
+                        "    > Fase 2: teleporta al mapa y activa Fling A Todos automaticamente.",
+                        "[+] World tab — nuevo 'FLING SELECTOR' con lista clickeable de jugadores:",
+                        "    > Muestra todos los jugadores con icono de rol (murder/sheriff/inocente).",
+                        "    > Clic en un nombre lo selecciona (resaltado visual con marca de check).",
+                        "    > Boton FLING AL SELECCIONADO ejecuta sticky fling y vuelve al mapa.",
+                        "    > Boton cambia a CANCELAR FLING mientras esta activo.",
+                        "    > Lista se refresca automaticamente al entrar o salir jugadores.",
+                        "    > Boton manual para actualizar la lista en cualquier momento.",
                     }
                 },
             },
@@ -52952,6 +53426,9 @@ function CreateUpdateTab()
                 "[+] Custom Crosshairs now exclusive to Premium tab (13 unique designs).",
                 "[-] Removed unnecessary notifications — less visual noise.",
                 "[*] Fixed notification delay — no more lag between trigger and display.",
+                "[*] Knife Aura arreglado — ahora registra kills correctamente en el servidor.",
+                "[+] Fling Murder + Todos: 1 boton para flinguear al murder y luego a todos.",
+                "[+] Fling Selector: elegis a quien flinguear desde una lista clickeable.",
             }
         },
         {
