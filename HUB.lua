@@ -33436,10 +33436,8 @@ function CreateWorldUI_TeleportLobby()
     CreateToggle(sec, "Enable TP To Lobby Bindable Button", false, function(on)
         L.enabled = on
         if L.conn then pcall(function() L.conn:Disconnect() end) L.conn = nil end
-        -- Destruir GUI bindable anterior
-        local _oldGui = _G._BindableGuiRegistry and _G._BindableGuiRegistry["TP LOBBY_CapyBtn"]
-        if _oldGui then pcall(function() _oldGui:Destroy() end) end
-        _destroyNamedBindableGui("TP LOBBY_CapyBtn")
+        -- Destruir boton flotante anterior
+        pcall(function() DestroyCapyBind("TP LOBBY") end)
         if on then
             -- Crear boton flotante bindable
             local _sg = Instance.new("ScreenGui")
@@ -33461,8 +33459,25 @@ function CreateWorldUI_TeleportLobby()
             end)
         end
     end)
-    CreateSlider(sec, "Teleport To Lobby Bind Text Size", 6, 24, L.fontSize, function(v) L.fontSize = v end)
-    CreateSlider(sec, "Teleport To Lobby Bind Size X",    20, 120, L.sizeX,   function(v) L.sizeX   = v end)
+    CreateSlider(sec, "Teleport To Lobby Bind Text Size", 6, 24, L.fontSize, function(v)
+        L.fontSize = v
+        local sg = _G._capyBindRegistry and _G._capyBindRegistry["TP LOBBY"]
+        if sg then
+            local bf = sg:FindFirstChild("CapyBindBtn")
+            if bf then
+                local lbl = bf:FindFirstChildOfClass("TextLabel")
+                if lbl then lbl.TextSize = v end
+            end
+        end
+    end)
+    CreateSlider(sec, "Teleport To Lobby Bind Size X",    20, 120, L.sizeX,   function(v)
+        L.sizeX = v
+        local sg = _G._capyBindRegistry and _G._capyBindRegistry["TP LOBBY"]
+        if sg then
+            local bf = sg:FindFirstChild("CapyBindBtn")
+            if bf then bf.Size = UDim2.fromOffset(v, v) end
+        end
+    end)
 end
 
 -- ==============================================================
@@ -33489,10 +33504,8 @@ function CreateWorldUI_TeleportToMap()
     CreateToggle(sec, "Enable TP To Map Bindable Button", M.enabled, function(on)
         M.enabled = on
         if M.conn then pcall(function() M.conn:Disconnect() end) M.conn = nil end
-        -- Destruir GUI bindable anterior
-        local _oldGui = _G._BindableGuiRegistry and _G._BindableGuiRegistry["TP MAP_CapyBtn"]
-        if _oldGui then pcall(function() _oldGui:Destroy() end) end
-        _destroyNamedBindableGui("TP MAP_CapyBtn")
+        -- Destruir boton flotante anterior
+        pcall(function() DestroyCapyBind("TP MAP") end)
         if on then
             -- Crear boton flotante bindable
             local _sg = Instance.new("ScreenGui")
@@ -33516,9 +33529,9 @@ function CreateWorldUI_TeleportToMap()
     end)
     CreateSlider(sec, "Teleport To Map Bind Text Size", 6, 24, M.fontSize, function(v)
         M.fontSize = v
-        local g = _G._BindableGuiRegistry and _G._BindableGuiRegistry["TP MAP_CapyBtn"]
-        if g then
-            local bf = g:FindFirstChildOfClass("Frame") or g:FindFirstChildOfClass("TextButton")
+        local sg = _G._capyBindRegistry and _G._capyBindRegistry["TP MAP"]
+        if sg then
+            local bf = sg:FindFirstChild("CapyBindBtn")
             if bf then
                 local lbl = bf:FindFirstChildOfClass("TextLabel")
                 if lbl then lbl.TextSize = v end
@@ -33527,10 +33540,10 @@ function CreateWorldUI_TeleportToMap()
     end)
     CreateSlider(sec, "Teleport To Map Bind Size X",    20, 120, M.sizeX,   function(v)
         M.sizeX = v
-        local g = _G._BindableGuiRegistry and _G._BindableGuiRegistry["TP MAP_CapyBtn"]
-        if g then
-            local bf = g:FindFirstChildOfClass("Frame") or g:FindFirstChildOfClass("TextButton")
-            if bf then bf.Size = UDim2.new(0, v, 0, v) end
+        local sg = _G._capyBindRegistry and _G._capyBindRegistry["TP MAP"]
+        if sg then
+            local bf = sg:FindFirstChild("CapyBindBtn")
+            if bf then bf.Size = UDim2.fromOffset(v, v) end
         end
     end)
 end
