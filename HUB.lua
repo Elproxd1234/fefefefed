@@ -473,8 +473,8 @@ end
 
 -- == FLAG DE CARGA -- sistemas pesados esperan a que el hub termine de dibujar ==
 _G._hubReady = false
--- FIX ANIMACION: si ya se construyo el hub una vez, no volver a mostrar animacion
-_G._hubAlreadyBuilt = _G._hubAlreadyBuilt or false
+-- FIX: resetear siempre al re-ejecutar para que la animacion de carga (con Aurora) siempre aparezca
+_G._hubAlreadyBuilt = false
 -- AUTORESTORE: al inicio siempre es una ejecucion limpia del hub (no un rebuild de pestaña)
 -- _isTabRebuild se pone en true SOLO durante _reloadActiveTab() para evitar re-ejecutar callbacks
 _G._isTabRebuild = false
@@ -51381,14 +51381,132 @@ _mainGrad.Rotation = 135
 mainFrame.Size = UDim2.new(0, 920, 0, 490)
 
 -- ==============================================================
--- FONDO AZUL SLIDO  sin aurora animada, sin pulse dot
+-- FONDO AURORA - imagen rbxassetid://139776066876209 animada
 -- ==============================================================
 
--- Stub: referencias globales que el resto del cdigo puede usar
-_G._hubBgMainImageRef = nil
+-- Imagen de fondo Aurora principal (dentro del rectangulo del hub)
+local _auroraMainBg = Instance.new("ImageLabel", mainFrame)
+_auroraMainBg.Name                   = "AuroraBgMain"
+_auroraMainBg.Size                   = UDim2.new(1, 0, 1, 0)
+_auroraMainBg.Position               = UDim2.new(0, 0, 0, 0)
+_auroraMainBg.BackgroundTransparency = 1
+_auroraMainBg.Image                  = "rbxassetid://139776066876209"
+_auroraMainBg.ScaleType              = Enum.ScaleType.Crop
+_auroraMainBg.ImageTransparency      = 0.18
+_auroraMainBg.ZIndex                 = 1
+_auroraMainBg.BorderSizePixel        = 0
+Instance.new("UICorner", _auroraMainBg).CornerRadius = UDim.new(0, 14)
+
+-- Referencias globales de compatibilidad
+_G._hubBgMainImageRef = _auroraMainBg
 _G._applyHubBackground = function(id)
-    -- imagen de fondo desactivada
+    if _auroraMainBg and _auroraMainBg.Parent then
+        _auroraMainBg.Image = id or "rbxassetid://139776066876209"
+    end
 end
+
+-- ── ANIMACION AURORA SOBRE EL FONDO DEL HUB ──
+-- Bandas de colores animadas encima de la imagen, iguales a la pantalla de carga
+-- ClipsDescendants ya esta en true en mainFrame, asi que quedan recortadas
+local _hubAuroraContainer = Instance.new("Frame", mainFrame)
+_hubAuroraContainer.Name                   = "HubAuroraOverlay"
+_hubAuroraContainer.Size                   = UDim2.new(1, 0, 1, 0)
+_hubAuroraContainer.Position               = UDim2.new(0, 0, 0, 0)
+_hubAuroraContainer.BackgroundTransparency = 1
+_hubAuroraContainer.BorderSizePixel        = 0
+_hubAuroraContainer.ZIndex                 = 2
+_hubAuroraContainer.ClipsDescendants       = true
+
+local _HUB_AURORA_COLORS = {
+    Color3.fromRGB(50,  130, 255),   -- azul brillante
+    Color3.fromRGB(110,  50, 220),   -- violeta
+    Color3.fromRGB(40,  210, 150),   -- verde-cian
+    Color3.fromRGB(90,  80,  230),   -- azul-violeta
+    Color3.fromRGB(30,  180, 200),   -- cian
+    Color3.fromRGB(130,  60, 200),   -- violeta-rosa
+}
+local _HUB_BAND_COUNT = 7
+
+task.spawn(function()
+    -- Esperar a que el hub este listo antes de iniciar las bandas
+    repeat task.wait(0.1) until _G._hubReady
+
+    local _hubBandConns = {}
+
+    for i = 1, _HUB_BAND_COUNT do
+        local band = Instance.new("Frame", _hubAuroraContainer)
+        band.AnchorPoint        = Vector2.new(0, 0.5)
+        band.BackgroundColor3   = _HUB_AURORA_COLORS[i % #_HUB_AURORA_COLORS + 1]
+        band.BackgroundTransparency = 0.78
+        band.BorderSizePixel    = 0
+        band.Size               = UDim2.new(1.9, 0, 0, math.random(18, 44))
+        local startY = ((i - 1) / _HUB_BAND_COUNT) + math.random(-6, 6) / 100
+        band.Position           = UDim2.new(-0.45, 0, startY, 0)
+        band.Rotation           = -15
+        band.ZIndex             = 3
+
+        local bg = Instance.new("UIGradient", band)
+        local c1 = _HUB_AURORA_COLORS[((i - 1) % #_HUB_AURORA_COLORS) + 1]
+        local c2 = _HUB_AURORA_COLORS[(i % #_HUB_AURORA_COLORS) + 1]
+        bg.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(0, 0, 0)),
+            ColorSequenceKeypoint.new(0.18, c1),
+            ColorSequenceKeypoint.new(0.50, c2),
+            ColorSequenceKeypoint.new(0.82, c1),
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(0, 0, 0)),
+        })
+        bg.Rotation = 90
+
+        local speed      = 0.030 + (i * 0.008)   -- mas lento que la pantalla de carga
+        local phase      = (i - 1) / _HUB_BAND_COUNT
+        local elapsed    = 0
+        local pulseSpeed = 0.22 + (i * 0.05)
+        local pulsePhase = i * 0.9
+        local colorSpeed = 0.08 + (i * 0.03)
+        local colorPhase = (i - 1) / _HUB_BAND_COUNT
+
+        local conn
+        conn = RunService.Heartbeat:Connect(function(dt)
+            if not band or not band.Parent then conn:Disconnect(); return end
+            elapsed = elapsed + dt
+
+            -- Movimiento vertical lento
+            local yPos = ((phase + elapsed * speed) % 1.0)
+            band.Position = UDim2.new(-0.45, 0, yPos - 0.05, 0)
+
+            -- Pulso de transparencia
+            local pulse = 0.78 + math.sin(elapsed * pulseSpeed + pulsePhase) * 0.07
+            band.BackgroundTransparency = pulse
+
+            -- Rotacion suave del gradiente
+            bg.Rotation = 90 + math.sin(elapsed * 0.14 + phase * math.pi) * 8
+
+            -- Ciclo de colores
+            local t = (elapsed * colorSpeed + colorPhase) % 1.0
+            local colorCount = #_HUB_AURORA_COLORS
+            local fIdx = t * colorCount
+            local idxA = math.floor(fIdx) % colorCount + 1
+            local idxB = (idxA % colorCount) + 1
+            local idxC = (idxB % colorCount) + 1
+            local frac = fIdx - math.floor(fIdx)
+            local function lerpC(a, b, f)
+                return Color3.new(a.R+(b.R-a.R)*f, a.G+(b.G-a.G)*f, a.B+(b.B-a.B)*f)
+            end
+            local newC1 = lerpC(_HUB_AURORA_COLORS[idxA], _HUB_AURORA_COLORS[idxB], frac)
+            local newC2 = lerpC(_HUB_AURORA_COLORS[idxB], _HUB_AURORA_COLORS[idxC], frac)
+            pcall(function()
+                bg.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0,    Color3.fromRGB(0, 0, 0)),
+                    ColorSequenceKeypoint.new(0.18, newC1),
+                    ColorSequenceKeypoint.new(0.50, newC2),
+                    ColorSequenceKeypoint.new(0.82, newC1),
+                    ColorSequenceKeypoint.new(1,    Color3.fromRGB(0, 0, 0)),
+                })
+            end)
+        end)
+        table.insert(_hubBandConns, conn)
+    end
+end)
 
 -- Borde azul nen estilo OverdriveInterface
 glowBorder = Instance.new("UIStroke", mainFrame)
@@ -51952,6 +52070,19 @@ do
     _mainGrad.Transparency = NumberSequence.new(0)
 
     -- [PARTICULAS CELESTES ELIMINADAS]
+
+    -- Animacion lenta: rotar el gradiente aurora de fondo continuamente
+    task.spawn(function()
+        local _rot = 120
+        local _dir = 1
+        while _mainGrad and _mainGrad.Parent do
+            _rot = _rot + _dir * 0.15  -- velocidad muy lenta
+            if _rot >= 200 then _dir = -1 end
+            if _rot <= 40  then _dir =  1 end
+            _mainGrad.Rotation = _rot
+            task.wait(0.05)
+        end
+    end)
 end
 -- +======================================================+
 
@@ -52095,28 +52226,46 @@ particles = {}
     _hdrLine.BorderSizePixel = 0
     _hdrLine.ZIndex = 11
 
-    -- Título del hub a la izquierda
+    -- Título del hub a la izquierda — "Zerqon Hub" más grande y legible
     local _hdLabel = Instance.new("TextLabel", header)
-    _hdLabel.Size = UDim2.new(1, -80, 1, 0)
-    _hdLabel.Position = UDim2.new(0, 14, 0, 0)
+    _hdLabel.Size = UDim2.new(0, 220, 1, 0)
+    _hdLabel.Position = UDim2.new(0, 10, 0, 0)
     _hdLabel.BackgroundTransparency = 1
-    _hdLabel.Text = "Murderer Mystery 2"
-    _hdLabel.TextColor3 = ThemeColors.TextPrimary
+    _hdLabel.Text = "✦ ZERQON HUB"
+    _hdLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     _hdLabel.FontFace = Font.fromEnum(Enum.Font.GothamBold)
-    _hdLabel.TextSize = 15
+    _hdLabel.TextSize = 17
     _hdLabel.TextXAlignment = Enum.TextXAlignment.Left
     _hdLabel.TextYAlignment = Enum.TextYAlignment.Center
+    _hdLabel.TextStrokeTransparency = 0.4
+    _hdLabel.TextStrokeColor3 = Color3.fromRGB(0, 220, 255)
     _hdLabel.ZIndex = 12
 
-    -- Subtítulo "by copypasteScripts" al lado
+    -- Animacion lenta de brillo del titulo (pulso de stroke)
+    task.spawn(function()
+        while _hdLabel and _hdLabel.Parent do
+            TweenService:Create(_hdLabel, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                TextStrokeTransparency = 0.0,
+                TextColor3 = Color3.fromRGB(180, 240, 255),
+            }):Play()
+            task.wait(2.2)
+            TweenService:Create(_hdLabel, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                TextStrokeTransparency = 0.6,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+            }):Play()
+            task.wait(2.2)
+        end
+    end)
+
+    -- Subtítulo "by zerqon" al lado
     local _hdSub = Instance.new("TextLabel", header)
-    _hdSub.Size = UDim2.new(0, 200, 1, 0)
-    _hdSub.Position = UDim2.new(0, 200, 0, 0)
+    _hdSub.Size = UDim2.new(0, 160, 1, 0)
+    _hdSub.Position = UDim2.new(0, 234, 0, 0)
     _hdSub.BackgroundTransparency = 1
     _hdSub.Text = "by zerqon"
-    _hdSub.TextColor3 = ThemeColors.TextSecondary
+    _hdSub.TextColor3 = Color3.fromRGB(140, 210, 255)
     _hdSub.FontFace = Font.fromEnum(Enum.Font.Gotham)
-    _hdSub.TextSize = 12
+    _hdSub.TextSize = 11
     _hdSub.TextXAlignment = Enum.TextXAlignment.Left
     _hdSub.TextYAlignment = Enum.TextYAlignment.Center
     _hdSub.ZIndex = 12
@@ -53335,7 +53484,15 @@ particles = {}
         if _G._hubAlreadyBuilt then
             -- Reaper sin animacion: mostrar directo con pop-in suave
             mainFrame.Visible = true
-            mainFrame.BackgroundTransparency = 1
+            mainFrame.BackgroundTransparency = 1  -- fondo real lo da AuroraBgMain (ImageLabel)
+            -- FIX: asegurar que la imagen Aurora sea visible al reabrir
+            pcall(function()
+                local _auroraBg = mainFrame:FindFirstChild("AuroraBgMain")
+                if _auroraBg then
+                    _auroraBg.ImageTransparency = 0.18
+                    _auroraBg.Visible = true
+                end
+            end)
             local _uiSR = mainFrame:FindFirstChildOfClass("UIScale")
             if _uiSR then _uiSR.Scale = 0 end
             if _uiSR then
@@ -53462,6 +53619,32 @@ particles = {}
         -- ── AURORA ANIMATION: bandas dentro del rectangulo ──
         -- Parent = _oval con ClipsDescendants=true para que queden recortadas al borde.
         _oval.ClipsDescendants = true
+
+        -- ── IMAGEN AURORA DE FONDO dentro del rectangulo de carga ──
+        local _loadAuroraBg = Instance.new("ImageLabel", _oval)
+        _loadAuroraBg.Name                   = "LoadAuroraBg"
+        _loadAuroraBg.Size                   = UDim2.new(1, 0, 1, 0)
+        _loadAuroraBg.Position               = UDim2.new(0, 0, 0, 0)
+        _loadAuroraBg.BackgroundTransparency = 1
+        _loadAuroraBg.Image                  = "rbxassetid://139776066876209"
+        _loadAuroraBg.ScaleType              = Enum.ScaleType.Crop
+        _loadAuroraBg.ImageTransparency      = 0.25
+        _loadAuroraBg.ZIndex                 = 5  -- debajo de las bandas (ZIndex 6)
+        _loadAuroraBg.BorderSizePixel        = 0
+
+        -- Pulso lento de la imagen aurora durante la carga
+        task.spawn(function()
+            while _loadAuroraBg and _loadAuroraBg.Parent do
+                TweenService:Create(_loadAuroraBg, TweenInfo.new(3.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                    ImageTransparency = 0.08
+                }):Play()
+                task.wait(3.0)
+                TweenService:Create(_loadAuroraBg, TweenInfo.new(3.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                    ImageTransparency = 0.35
+                }):Play()
+                task.wait(3.0)
+            end
+        end)
         local _auroraConns = {}
         local _auroraBands = {}
         local _AURORA_COLORS = {
@@ -53502,6 +53685,9 @@ particles = {}
             local elapsed    = 0
             local pulseSpeed = 0.28 + (i * 0.065)
             local pulsePhase = i * 0.85
+            -- Velocidad de ciclo de color: cada banda a ritmo diferente (lento)
+            local colorSpeed = 0.12 + (i * 0.04)
+            local colorPhase = (i - 1) / _AURORA_COUNT
             table.insert(_auroraBands, band)
             local conn
             conn = RunService.Heartbeat:Connect(function(dt)
@@ -53512,6 +53698,41 @@ particles = {}
                 local pulse = 0.72 + math.sin(elapsed * pulseSpeed + pulsePhase) * 0.08
                 band.BackgroundTransparency = 1 - (1 - pulse)
                 bg.Rotation = 90 + math.sin(elapsed * 0.18 + phase * math.pi) * 10
+
+                -- ── ANIMACION DE COLOR: cicla suavemente entre colores aurora ──
+                -- t va de 0 a 1 continuamente, se usa para interpolar entre colores
+                local t = (elapsed * colorSpeed + colorPhase) % 1.0
+                -- Indice flotante dentro del arreglo de colores
+                local colorCount = #_AURORA_COLORS
+                local fIdx = (t * colorCount)
+                local idxA = math.floor(fIdx) % colorCount + 1
+                local idxB = (idxA % colorCount) + 1
+                local frac = fIdx - math.floor(fIdx)
+                -- Interpolar entre color A y color B
+                local function lerpC(a, b, f)
+                    return Color3.new(
+                        a.R + (b.R - a.R) * f,
+                        a.G + (b.G - a.G) * f,
+                        a.B + (b.B - a.B) * f
+                    )
+                end
+                local cA = _AURORA_COLORS[idxA]
+                local cB = _AURORA_COLORS[idxB]
+                -- Segundo color: siguiente en el ciclo con offset
+                local idxC = (idxB % colorCount) + 1
+                local cC = _AURORA_COLORS[idxC]
+                local newC1 = lerpC(cA, cB, frac)
+                local newC2 = lerpC(cB, cC, frac)
+                -- Actualizar gradiente de la banda: solo los colores centrales, negro en los bordes
+                pcall(function()
+                    bg.Color = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0,    Color3.fromRGB(0, 0, 0)),
+                        ColorSequenceKeypoint.new(0.18, newC1),
+                        ColorSequenceKeypoint.new(0.50, newC2),
+                        ColorSequenceKeypoint.new(0.82, newC1),
+                        ColorSequenceKeypoint.new(1,    Color3.fromRGB(0, 0, 0)),
+                    })
+                end)
             end)
             table.insert(_auroraConns, conn)
         end
@@ -55950,20 +56171,21 @@ function CreateUseTab()
                 task.wait(0.8)
                 if _bgAnimToken ~= token then return end
 
-                -- Paleta boreal: verde predominante con transiciones a cyan y violeta
+                -- Paleta que refleja los colores REALES de la imagen Aurora
+                -- (violeta dominante, magenta, verde boreal, azul noche)
                 local _cols = {
-                    Color3.fromRGB(60,  255, 140),  -- verde boreal vivo
-                    Color3.fromRGB(40,  230, 200),  -- verde-cyan glacial
-                    Color3.fromRGB(80,  255, 110),  -- verde electrico
-                    Color3.fromRGB(50,  200, 255),  -- cyan polar
-                    Color3.fromRGB(110, 255, 170),  -- lima boreal
-                    Color3.fromRGB(40,  255, 220),  -- turquesa polar
-                    Color3.fromRGB(130,  90, 255),  -- violeta aurora (acento)
-                    Color3.fromRGB(60,  240, 180),  -- menta boreal
+                    Color3.fromRGB(160,  50, 255),  -- violeta brillante (dominante)
+                    Color3.fromRGB(50,  220, 130),  -- verde boreal neon
+                    Color3.fromRGB(190,  40, 230),  -- magenta violeta
+                    Color3.fromRGB(70,  255, 160),  -- verde boreal vivo
+                    Color3.fromRGB(130,  30, 210),  -- violeta medio
+                    Color3.fromRGB(40,  200, 110),  -- verde esmeralda
+                    Color3.fromRGB(200,  80, 255),  -- lila brillante
+                    Color3.fromRGB(60,  240, 150),  -- verde brillante
                 }
 
-                -- Alphas con mayor contraste: cicla entre muy brillante y mas apagado
-                local _alphas = {0.02, 0.20, 0.03, 0.22, 0.01, 0.18, 0.04, 0.16}
+                -- Alphas: mayormente visible para que se note el tinte sobre la imagen
+                local _alphas = {0.05, 0.18, 0.04, 0.20, 0.06, 0.16, 0.03, 0.15}
 
                 local phase = 0
                 while img and img.Parent and _bgAnimToken == token do
@@ -56057,17 +56279,17 @@ function CreateUseTab()
 
         -- AURORA: verdes boreales, cyan glacial, violeta nocturno
         Themes["_BG_Aurora"] = {
-            Primary         = Color3.fromRGB(60,  220, 170),  -- verde boreal brillante
-            Secondary       = Color3.fromRGB(30,  80,  120),  -- azul glacial oscuro
-            Accent          = Color3.fromRGB(140, 255, 210),  -- turquesa neon
-            Background      = Color3.fromRGB(4,   12,  25),   -- negro polar profundo
-            BackgroundLight = Color3.fromRGB(10,  28,  50),   -- azul noche
-            TextPrimary     = Color3.fromRGB(200, 255, 235),  -- blanco verdoso
-            TextSecondary   = Color3.fromRGB(130, 210, 195),  -- cyan apagado
-            Aurora1         = Color3.fromRGB(70,  240, 180),  -- verde boreal
-            Aurora2         = Color3.fromRGB(50,  150, 255),  -- azul hielo
-            Aurora3         = Color3.fromRGB(160, 100, 255),  -- violeta aurora
-            Aurora4         = Color3.fromRGB(20,  60,  100),  -- azul noche profundo
+            Primary         = Color3.fromRGB(160,  50, 255),  -- violeta brillante (color dominante imagen)
+            Secondary       = Color3.fromRGB(90,   20, 180),  -- violeta oscuro
+            Accent          = Color3.fromRGB(60,  255, 140),  -- verde boreal neon (contraste)
+            Background      = Color3.fromRGB(6,    4,  22),   -- negro violeta profundo
+            BackgroundLight = Color3.fromRGB(18,  10,  48),   -- violeta muy oscuro
+            TextPrimary     = Color3.fromRGB(235, 210, 255),  -- blanco violaceo
+            TextSecondary   = Color3.fromRGB(170, 130, 230),  -- lavanda suave
+            Aurora1         = Color3.fromRGB(180,  60, 255),  -- magenta violeta
+            Aurora2         = Color3.fromRGB(50,  220, 130),  -- verde boreal
+            Aurora3         = Color3.fromRGB(130,  40, 220),  -- violeta medio
+            Aurora4         = Color3.fromRGB(10,    6,  30),  -- negro violeta
         }
 
         -- GLITCH: cian electrico + rojo intenso + negro total (estilo TV corrupta)
