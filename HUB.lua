@@ -26,6 +26,9 @@ end
 -- == FIN COMPAT SHIM v18
 -- ================================================================
 
+-- Mensaje de bienvenida en consola con color azul
+print("[34m" .. "Welcome to Zerqon Hub" .. "[0m")
+
 -- ================================================================
 -- == PERF BOOST v1 — Optimizaciones aplicadas al ejecutar el hub
 -- Reduce lag de carga, presion de GC y overhead de red/render.
@@ -1982,7 +1985,16 @@ task.spawn(function()
         pcall(function() _G._knifeKillConn:Disconnect() end)
         _G._knifeKillConn = nil
     end
-    _G._knifeKillConn = _kkRemote.OnClientEvent:Connect(function(killedPlayer)
+    -- FIX: KnifeKill puede ser RemoteEvent o BindableEvent segun el servidor.
+    -- RemoteEvent usa OnClientEvent, BindableEvent usa Event.
+    local _kkSignal = nil
+    if _kkRemote:IsA("RemoteEvent") then
+        _kkSignal = _kkRemote.OnClientEvent
+    elseif _kkRemote:IsA("BindableEvent") then
+        _kkSignal = _kkRemote.Event
+    end
+    if not _kkSignal then return end
+    _G._knifeKillConn = _kkSignal:Connect(function(killedPlayer)
         local sheriff = _roleCache and _roleCache.sheriff
         if not sheriff or killedPlayer ~= sheriff then return end
         local _roundToken = _G._sgRoundToken or 0
@@ -44320,6 +44332,7 @@ function CreateCombatTab()
             end
         end
 
+        local _hbOriginalSizes = {}   -- [player] = Vector3 tamaño original
         -- Loop de mantenimiento del reach (el juego resetea el handle cada frame)
         local function _startReachLoop()
             if _reachConn then pcall(function() _reachConn:Disconnect() end) end
@@ -44363,7 +44376,6 @@ function CreateCombatTab()
 
         -- ── AUTO-RESTORE: restaurar HRP original en pantalla negra o reset ───
         -- Guarda el tamaño original del HRP de cada jugador antes de expandirlo
-        local _hbOriginalSizes = {}   -- [player] = Vector3 tamaño original
 
         local function _saveAndExpandHRP(player)
             if player == LocalPlayer then return end
@@ -45475,6 +45487,53 @@ function CreateCombatTab()
                     end
                 end)
 
+                -- FIX NUEVA RONDA DUAL KNIFE: hookear Backpack.ChildAdded para cuando el knife
+                -- llega al inventario (pick-up desde suelo o inicio de ronda como Murderer).
+                if _G._dualKnifeBpConn then
+                    pcall(function() _G._dualKnifeBpConn:Disconnect() end)
+                    _G._dualKnifeBpConn = nil
+                end
+                _G._dualKnifeBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
+                    if not (state and state.enabled) then return end
+                    if not tool:IsA("Tool") then return end
+                    if _dualMatchKeywords(tool, _dualKnifeKeywords) then
+                        task.wait(0.1)
+                        if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
+                        if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
+                        if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
+                        _dkAnimTracks = {}
+                        _dualStartArm(state, _dualKnifeKeywords)
+                        if state.inputConn then pcall(function() state.inputConn:Disconnect() end); state.inputConn = nil end
+                        _sp(_dkPreloadTracks)
+                    end
+                end)
+
+                -- FIX NUEVA RONDA DUAL KNIFE: hookear Character.ChildAdded para detectar cuando
+                -- el jugador EQUIPA el knife (Backpack->Character). Ese evento NO dispara
+                -- Backpack.ChildAdded, por eso el clon no aparecia al equipar el knife en rondas
+                -- siguientes sin desactivar y reactivar el toggle manualmente.
+                if _G._dualKnifeCharPickupConn then
+                    pcall(function() _G._dualKnifeCharPickupConn:Disconnect() end)
+                    _G._dualKnifeCharPickupConn = nil
+                end
+                local _dkChar = LocalPlayer.Character
+                if _dkChar then
+                    _G._dualKnifeCharPickupConn = _dkChar.ChildAdded:Connect(function(tool)
+                        if not (state and state.enabled) then return end
+                        if not tool:IsA("Tool") then return end
+                        if _dualMatchKeywords(tool, _dualKnifeKeywords) then
+                            task.wait(0.1)
+                            if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
+                            if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
+                            if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
+                            _dkAnimTracks = {}
+                            _dualStartArm(state, _dualKnifeKeywords)
+                            if state.inputConn then pcall(function() state.inputConn:Disconnect() end); state.inputConn = nil end
+                            _sp(_dkPreloadTracks)
+                        end
+                    end)
+                end
+
                 CreateCustomNotification("DUAL KNIFE", "OK Activado  LMB: slash  |  RMB: throw", 3)
             else
                 _G._dualKnifeEnabled = false
@@ -45488,6 +45547,13 @@ function CreateCombatTab()
                 if _G._dualKnifeCharPickupConn then
                     pcall(function() _G._dualKnifeCharPickupConn:Disconnect() end)
                     _G._dualKnifeCharPickupConn = nil
+                end
+                -- FIX: limpiar tambien el DK_Clone del char si quedo colgado
+                local _ch = LocalPlayer.Character
+                if _ch then
+                    for _, obj in pairs(_ch:GetChildren()) do
+                        if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
+                    end
                 end
                 CreateCustomNotification("DUAL KNIFE", "X Desactivado", 2)
             end
@@ -45553,6 +45619,13 @@ function CreateCombatTab()
                 if _G._dualGunCharPickupConn then
                     pcall(function() _G._dualGunCharPickupConn:Disconnect() end)
                     _G._dualGunCharPickupConn = nil
+                end
+                -- FIX: limpiar tambien el DK_Clone del char si quedo colgado
+                local _ch = LocalPlayer.Character
+                if _ch then
+                    for _, obj in pairs(_ch:GetChildren()) do
+                        if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
+                    end
                 end
                 CreateCustomNotification("DUAL GUN", "X Desactivado", 2)
             end
@@ -45743,7 +45816,7 @@ function CreateCombatTab()
                     if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
                     _dualStartArm(gs, _dualGunKeywords)
 
-                    -- Tambien hookear el backpack: si la gun aparece mas tarde (pick-up), re-armar
+                    -- Hookear el backpack: si la gun aparece mas tarde (pick-up desde suelo), re-armar
                     if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end) end
                     _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
                         if not (gs and gs.enabled) then return end
@@ -45756,6 +45829,26 @@ function CreateCombatTab()
                             _dualStartArm(gs, _dualGunKeywords)
                         end
                     end)
+
+                    -- FIX NUEVA RONDA DUAL GUN: hookear Character.ChildAdded para detectar cuando
+                    -- el jugador EQUIPA la gun (Backpack->Character). Ese evento NO dispara
+                    -- Backpack.ChildAdded, por eso el clon del dual no aparecia en rondas siguientes
+                    -- sin desactivar y reactivar el toggle manualmente.
+                    if _G._dualGunCharPickupConn then pcall(function() _G._dualGunCharPickupConn:Disconnect() end) end
+                    local _dgNewChar = newChar or LocalPlayer.Character
+                    if _dgNewChar then
+                        _G._dualGunCharPickupConn = _dgNewChar.ChildAdded:Connect(function(tool)
+                            if not (gs and gs.enabled) then return end
+                            if not tool:IsA("Tool") then return end
+                            if _dualGunKeywords[tool.Name] then
+                                task.wait(0.1)
+                                if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
+                                if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
+                                if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
+                                _dualStartArm(gs, _dualGunKeywords)
+                            end
+                        end)
+                    end
                 end)
             end
         end)
@@ -45935,12 +46028,11 @@ function CreateCombatTab()
 
             local function _asGetKnife()
                 local char = LocalPlayer.Character
-                local bp   = LocalPlayer:FindFirstChild("Backpack")
+                -- FIX: solo retornar el knife si esta equipado en el Character.
+                -- Si esta en el Backpack (no equipado), no se ejecuta el slash.
+                -- Esto evita que Auto Slash mate cuando el jugador no tiene el knife en mano.
                 if char then
-                    local k = char:FindFirstChild("Knife"); if k then return k, true end
-                end
-                if bp then
-                    local k = bp:FindFirstChild("Knife"); if k then return k, false end
+                    local k = char:FindFirstChild("Knife"); if k and k:IsA("Tool") then return k, true end
                 end
                 return nil, false
             end
