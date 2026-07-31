@@ -513,7 +513,7 @@ _G._camChangedConn = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect
 end)
 
 -- ## COMPAT SHIM v3 - funciones renombradas para evitar conflicto con built-ins ##
-local function _w(t) if t and t>0 then task.wait(t) else task.wait() end end
+local function _w(t) if t and t>0 then return task.wait(t) or t else return task.wait() or 0 end end
 local function _sp(f,...) local a={...}; return task.spawn(function() f(table.unpack and table.unpack(a) or unpack(a)) end) end
 local function _dl(t,f) task.spawn(function() _w(t); f() end) end
 -- ####################################################################
@@ -45898,7 +45898,7 @@ function CreateCombatTab()
             local bS=Instance.new("UIStroke",btn); bS.Thickness=2; bS.ApplyStrokeMode=Enum.ApplyStrokeMode.Border
             local bG=Instance.new("UIGradient",bS); bG.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(90, 120, 255)),ColorSequenceKeypoint.new(0.5,Color3.fromRGB(0,120,255)),ColorSequenceKeypoint.new(1,Color3.fromRGB(90, 120, 255))})
             local bgG=Instance.new("UIGradient",btn); bgG.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(160, 20, 35)),ColorSequenceKeypoint.new(1,Color3.fromRGB(0,60,200))}); bgG.Rotation=90
-            _sp(function() local t=0; while btn and btn.Parent do t=t+_w(0.03); bG.Rotation=(t*60)%360; bS.Thickness=1.8+math.sin(t*2)*0.5 end end)
+            _sp(function() local t=0; while btn and btn.Parent do t=t+(_w(0.03) or 0.03); bG.Rotation=(t*60)%360; bS.Thickness=1.8+math.sin(t*2)*0.5 end end)
             btn.MouseEnter:Connect(function() TweenService:Create(btn,TweenInfo.new(0.15),{BackgroundTransparency=0.05}):Play() end)
             btn.MouseLeave:Connect(function() TweenService:Create(btn,TweenInfo.new(0.15),{BackgroundTransparency=0.25}):Play() end)
             local dr,ds,sp=false,nil,nil
