@@ -25423,9 +25423,9 @@ do
                             end)
                         end
                     end
-                    -- CAMBIO 2: hook instantaneo cuando un inocente agarra la gun.
+                    -- CAMBIO 2: hook instantaneo cuando un inocente agarra la gun (GunDrop).
                     -- ChildAdded en el Character detecta Tool nuevo -> si es gun y el
-                    -- jugador no es Murder/Sheriff/Hero -> pintarlo amarillo al instante.
+                    -- jugador no es Murderer -> promoverlo a nuevo Sheriff (azul) o Hero (amarillo).
                     if not _G._gunHookDone then _G._gunHookDone = {} end
                     if not _G._gunHookDone[player] then
                         _G._gunHookDone[player] = true
@@ -25437,40 +25437,63 @@ do
                                        or n:find("pistol") or n:find("sheriff")
                                        or n:find("weapon")
                             if not isGun then return end
-                            -- Solo pintar si es inocente (no Murder/Sheriff/Hero)
-                            local isSpecial = (_roleCache.murderer == player)
-                                          or (_roleCache.sheriff  == player)
-                                          or (_roleCache.hero     == player)
-                            if isSpecial then return end
-                            -- Solo pintar si cham esta activo para este jugador
+                            -- Ignorar si es el murderer
+                            if _roleCache.murderer == player then return end
+                            -- Si ya es sheriff o hero conocido, no reprocesar
+                            if _roleCache.sheriff == player or _roleCache.hero == player then return end
+
+                            -- Cualquier cham activo alcanza para pintar
                             local _vcdG = VisualState and VisualState.cham
                             local chamG = _vcdG and (
-                                _vcdG.everyone or _vcdG.survivor or _vcdG.assassin
+                                _vcdG.everyone or _vcdG.sheriff or _vcdG.hero
+                                or _vcdG.survivor or _vcdG.assassin
                             )
                             if not chamG then return end
+
                             local pc = player.Character
                             if not pc then return end
-                            local YELLOW = Color3.fromRGB(255, 210,   0)
+
+                            -- Promover a nuevo Sheriff en roleCache y pintar AMARILLO
+                            _roleCache.sheriff    = player
+                            _roleCache.lastUpdate = 0
+                            if player == LocalPlayer then
+                                _roleCache.localRole = "Sheriff"
+                            end
+
+                            local YELLOW = Color3.fromRGB(255, 210, 0)
+                            if _hl_remove then pcall(_hl_remove, pc) end
                             pcall(function() _aplicarPieceChams(pc, YELLOW) end)
                             chamHighlight[player] = pc
-                            -- Cuando suelte la gun, volver a verde inmediatamente
+
+                            -- Hook muerte del nuevo sheriff via KnifeKill (ya está en el listener global)
+                            -- Actualizar SheriffDeadBlock para compatibilidad
+                            if SheriffDeadBlock then
+                                SheriffDeadBlock.isDeadSheriffID = player.UserId
+                                SheriffDeadBlock.deadSheriffName = player.Name
+                            end
+
+                            -- Cuando suelte la gun, volver a verde (inocente)
                             tool.AncestryChanged:Connect(function()
                                 if tool.Parent == player.Character then return end
-                                -- la gun salio del character -> volver a Innocent (verde)
                                 local pc2 = player.Character
                                 if not pc2 then return end
                                 local ph = pc2:FindFirstChildOfClass("Humanoid")
                                 if not ph or ph.Health <= 0 then return end
-                                local isSpecial2 = (_roleCache.murderer == player)
-                                               or (_roleCache.sheriff  == player)
-                                               or (_roleCache.hero     == player)
-                                if isSpecial2 then return end
+                                -- Solo limpiar si sigue siendo el sheriff que registramos
+                                if _roleCache.sheriff ~= player then return end
+                                _roleCache.sheriff    = nil
+                                _roleCache.lastUpdate = 0
+                                if player == LocalPlayer then
+                                    _roleCache.localRole = "Innocent"
+                                end
                                 local _vcdG2 = VisualState and VisualState.cham
                                 local chamG2 = _vcdG2 and (
-                                    _vcdG2.everyone or _vcdG2.survivor or _vcdG2.assassin
+                                    _vcdG2.everyone or _vcdG2.sheriff or _vcdG2.hero
+                                    or _vcdG2.survivor or _vcdG2.assassin
                                 )
                                 if not chamG2 then return end
-                                local GREEN2 = Color3.fromRGB(  0, 255, 160)
+                                local GREEN2 = Color3.fromRGB(0, 255, 160)
+                                if _hl_remove then pcall(_hl_remove, pc2) end
                                 pcall(function() _aplicarPieceChams(pc2, GREEN2) end)
                                 chamHighlight[player] = pc2
                             end)
@@ -44300,14 +44323,36 @@ function CreateCombatTab()
         -- Loop de mantenimiento del reach (el juego resetea el handle cada frame)
         local function _startReachLoop()
             if _reachConn then pcall(function() _reachConn:Disconnect() end) end
-            local _reachT = 0
+            local _reachT  = 0
+            local _hrpT    = 0   -- contador separado para el chequeo de HRPs (~2Hz)
             _reachConn = _safeConnect(RunService.Heartbeat, function()
                 _reachT = _reachT + 1; if _reachT < 2 then return end; _reachT = 0  -- ~30Hz
                 if not _reachEnabled then return end
                 if _G._visualRoundOver then return end
+                -- Mantener knife reach
                 local knife = _cachedKnife
                 if knife and knife.Parent then
                     pcall(_applyReach, knife)
+                end
+                -- ~2Hz: verificar que todos los jugadores siguen expandidos
+                -- Cubre casos donde el servidor restablece el HRP sin CharacterAdded
+                _hrpT = _hrpT + 1
+                if _hrpT < 15 then return end
+                _hrpT = 0
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer then
+                        local char = p.Character
+                        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            local curSize = hrp.Size
+                            -- Si el HRP volvió a su tamaño original (o no fue expandido aún), re-expandir
+                            local orig = _hbOriginalSizes[p]
+                            local targetSize = _reachSize
+                            if not orig or curSize.X < targetSize - 0.5 then
+                                pcall(_saveAndExpandHRP, p)
+                            end
+                        end
+                    end
                 end
             end)
         end
@@ -44362,18 +44407,75 @@ function CreateCombatTab()
             end
         end
 
-        -- Detectar pantalla negra (FadeToBlack / entre rondas) via Lighting
-        local _blackScreenConn = nil
-        local function _startBlackScreenDetector()
-            if _blackScreenConn then pcall(function() _blackScreenConn:Disconnect() end) end
-            _blackScreenConn = game:GetService("Lighting"):GetPropertyChangedSignal("Brightness"):Connect(function()
-                -- La pantalla se vuelve negra cuando Brightness baja drasticamente
-                local br = game:GetService("Lighting").Brightness
-                if br < 0.01 then
-                    -- Restaurar todos los HRP inmediatamente
-                    _restoreAllHRPs()
+        -- ── AUTO-RESTORE: pantalla negra + reset de personaje ───────────────
+        -- Usa RoundEnd / RoundStart de RS en lugar de Lighting.Brightness
+        -- (MM2 no siempre baja Brightness al negro; usa ColorCorrection/BlurEffect)
+        local _blackScreenConn  = nil
+        local _roundStartConn   = nil
+        local _hbPlayerAddedConn2 = nil  -- para capturar jugadores que entren mid-round
+
+        local function _reexpandAll()
+            -- Re-expandir todos los jugadores activos cuando la ronda reanuda
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then
+                    _hbOriginalSizes[p] = nil  -- forzar re-guardado del tamaño fresco
+                    _saveAndExpandHRP(p)
+                    if _reachEnabled then _createBoxForPlayer(p) end
                 end
+            end
+        end
+
+        local function _startBlackScreenDetector()
+            -- Desconectar conns anteriores
+            if _blackScreenConn then pcall(function() _blackScreenConn:Disconnect() end); _blackScreenConn = nil end
+            if _roundStartConn  then pcall(function() _roundStartConn:Disconnect()  end); _roundStartConn  = nil end
+
+            -- RoundEnd -> pantalla negra: restaurar todos los HRPs inmediatamente
+            task.spawn(function()
+                local ok, reEv = pcall(function()
+                    return game:GetService("ReplicatedStorage")
+                        :WaitForChild("Remotes", 10)
+                        :WaitForChild("Gameplay", 10)
+                        :WaitForChild("RoundEnd", 10)
+                end)
+                if not ok or not reEv then return end
+                _blackScreenConn = reEv.OnClientEvent:Connect(function()
+                    if not _reachEnabled then return end
+                    _restoreAllHRPs()
+                end)
             end)
+
+            -- RoundStart -> pantalla vuelve: re-expandir todos
+            task.spawn(function()
+                local ok2, rsEv = pcall(function()
+                    return game:GetService("ReplicatedStorage")
+                        :WaitForChild("Remotes", 10)
+                        :WaitForChild("Gameplay", 10)
+                        :WaitForChild("RoundStart", 10)
+                end)
+                if not ok2 or not rsEv then return end
+                _roundStartConn = rsEv.OnClientEvent:Connect(function()
+                    if not _reachEnabled then return end
+                    -- Dar un frame para que los personajes estén listos
+                    task.wait(0.3)
+                    if _reachEnabled then _reexpandAll() end
+                end)
+            end)
+
+            -- Jugadores que entren DESPUÉS de activar el hitbox también reciben expansión
+            if not _hbPlayerAddedConn2 then
+                _hbPlayerAddedConn2 = Players.PlayerAdded:Connect(function(p)
+                    if not _reachEnabled then return end
+                    p.CharacterAdded:Connect(function()
+                        task.wait(0.25)
+                        if _reachEnabled then
+                            _hbOriginalSizes[p] = nil
+                            _saveAndExpandHRP(p)
+                            _createBoxForPlayer(p)
+                        end
+                    end)
+                end)
+            end
         end
 
         -- Hook CharacterAdded de cada jugador para restaurar y re-expandir tras reset
@@ -44382,18 +44484,14 @@ function CreateCombatTab()
             if _hbResetConns[player] then
                 pcall(function() _hbResetConns[player]:Disconnect() end)
             end
-            _hbResetConns[player] = player.CharacterAdded:Connect(function(newChar)
-                -- El jugador se reseteo: el HRP viejo ya desapareció, limpiar cache
+            _hbResetConns[player] = player.CharacterAdded:Connect(function()
+                -- El jugador se reseteo: limpiar tamaño cacheado y re-expandir
                 _hbOriginalSizes[player] = nil
-                -- Esperar que el nuevo personaje cargue, luego re-expandir si sigue activo
-                task.wait(0.2)
-                if _reachEnabled and _reachSize > 0 then
-                    _saveAndExpandHRP(player)
-                end
-                -- Re-crear SelectionBox
+                task.wait(0.25)
                 if _reachEnabled then
+                    _saveAndExpandHRP(player)
                     task.spawn(function()
-                        task.wait(0.15)
+                        task.wait(0.1)
                         if _reachEnabled then _createBoxForPlayer(player) end
                     end)
                 end
@@ -44401,9 +44499,11 @@ function CreateCombatTab()
         end
 
         local function _startResetDetectors()
-            for _, p in ipairs(_cachedPlayers) do
-                _hookPlayerReset(p)
+            -- Hookear CharacterAdded de todos los jugadores actuales
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then _hookPlayerReset(p) end
             end
+            -- Hookear jugadores que entren después
             _startBlackScreenDetector()
         end
 
@@ -44412,10 +44512,9 @@ function CreateCombatTab()
                 pcall(function() c:Disconnect() end)
                 _hbResetConns[p] = nil
             end
-            if _blackScreenConn then
-                pcall(function() _blackScreenConn:Disconnect() end)
-                _blackScreenConn = nil
-            end
+            if _blackScreenConn then pcall(function() _blackScreenConn:Disconnect() end); _blackScreenConn = nil end
+            if _roundStartConn  then pcall(function() _roundStartConn:Disconnect()  end); _roundStartConn  = nil end
+            if _hbPlayerAddedConn2 then pcall(function() _hbPlayerAddedConn2:Disconnect() end); _hbPlayerAddedConn2 = nil end
         end
         -- ── fin AUTO-RESTORE ────────────────────────────────────────────────
 
@@ -44430,9 +44529,9 @@ function CreateCombatTab()
                 local knife = _getKnife()
                 if knife then _applyReach(knife) end
                 _startReachLoop()
-                -- 2. Expandir HRP de todos los jugadores y guardar originales
-                for _, p in ipairs(_cachedPlayers) do
-                    _saveAndExpandHRP(p)
+                -- 2. Expandir HRP de todos los jugadores actuales (Players:GetPlayers() siempre fresco)
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer then _saveAndExpandHRP(p) end
                 end
                 -- 3. Mostrar SelectionBox en todos los jugadores
                 _startHitboxVisuals()
