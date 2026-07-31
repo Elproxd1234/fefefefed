@@ -8250,6 +8250,7 @@ function createBindableButton(name, color)
 
     -- -- FEEDBACK DE CLICK -----------------------------------------
     fill.Activated:Connect(function()
+        if _moved then return end  -- FIX: no disparar click-feedback si se arrastró
         TweenService:Create(_bgScale, TweenInfo.new(0.08), {Scale = 0.88}):Play()
         TweenService:Create(circle, TweenInfo.new(0.08), {BackgroundTransparency = 0}):Play()
         TweenService:Create(glow, TweenInfo.new(0.08), {ImageTransparency = 0.38}):Play()
@@ -8261,13 +8262,15 @@ function createBindableButton(name, color)
     end)
 
     -- -- DRAG ------------------------------------------------------
-    local _moved = false
-    pcall(function()
+    -- FIX: _moved debe declararse ANTES del bloque de drag (era local aquí antes)
+    local _moved    = false
+    local _dragConn = nil
+
+    if pcall(function()
         local dd = Instance.new("UIDragDetector", bg)
         dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
         dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
         dd.Dragged:Connect(function()
-            -- Respetar flag Undraggable Bindable Buttons
             if _G._hubUndraggableButtons then return end
             _moved = true
             local vpN = workspace.CurrentCamera.ViewportSize
@@ -8278,7 +8281,47 @@ function createBindableButton(name, color)
             _G._bindablePosSave[_posKey] = {x = bg.Position.X.Offset, y = bg.Position.Y.Offset}
         end)
         dd.DragEnd:Connect(function() task.defer(function() _moved = false end) end)
-    end)
+    end) then
+        -- UIDragDetector OK
+    else
+        -- FIX: fallback manual para cuando UIDragDetector no funciona
+        -- (o cuando fill bloquea el input al bg)
+        local _dragging  = false
+        local _dragStart = nil
+        local _startPos  = nil
+        fill.InputBegan:Connect(function(input)
+            if _G._hubUndraggableButtons then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                _dragging  = true
+                _moved     = false
+                _dragStart = input.Position
+                _startPos  = bg.Position
+            end
+        end)
+        _dragConn = UserInputService.InputChanged:Connect(function(input)
+            if not _dragging then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement
+            and input.UserInputType ~= Enum.UserInputType.Touch then return end
+            local delta = input.Position - _dragStart
+            if delta.Magnitude > 4 then _moved = true end
+            local vpN = workspace.CurrentCamera.ViewportSize
+            bg.Position = UDim2.fromOffset(
+                math.clamp(_startPos.X.Offset + delta.X, 0, vpN.X - BTN_SIZE),
+                math.clamp(_startPos.Y.Offset + delta.Y, 0, vpN.Y - BTN_SIZE))
+        end)
+        fill.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+                _dragging = false
+                if _moved then
+                    _G._bindablePosSave = _G._bindablePosSave or {}
+                    _G._bindablePosSave[_posKey] = {x = bg.Position.X.Offset, y = bg.Position.Y.Offset}
+                end
+                task.defer(function() _moved = false end)
+            end
+        end)
+    end
 
     _BindableButtons[name] = gui
     _registerBindableGui(name .. "_CapyBtn", gui)
@@ -11765,49 +11808,10 @@ MainSystem = {
 
         Instance.new("UICorner", mainPanel).CornerRadius = UDim.new(0, 12)
 
-        -- DRAG MANUAL (reemplaza Draggable legacy)
-        do
-            local _dragging, _dragStart, _startPos = false, nil, nil
-            local UIS = game:GetService("UserInputService")
-            local _dragConn
-            local ok = pcall(function()
-                local dd = Instance.new("UIDragDetector", mainPanel)
-                dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
-                dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
-                dd.Dragged:Connect(function()
-                    local vp = workspace.CurrentCamera.ViewportSize
-                    mainPanel.Position = UDim2.fromOffset(
-                        math.clamp(mainPanel.Position.X.Offset, 0, vp.X - mainPanel.AbsoluteSize.X),
-                        math.clamp(mainPanel.Position.Y.Offset, 0, vp.Y - mainPanel.AbsoluteSize.Y))
-                end)
-            end)
-            if not ok then
-                mainPanel.InputBegan:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1
-                    or input.UserInputType == Enum.UserInputType.Touch then
-                        _dragging  = true
-                        _dragStart = input.Position
-                        _startPos  = mainPanel.Position
-                    end
-                end)
-                mainPanel.InputEnded:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1
-                    or input.UserInputType == Enum.UserInputType.Touch then
-                        _dragging = false
-                    end
-                end)
-                _dragConn = UIS.InputChanged:Connect(function(input)
-                    if not _dragging then return end
-                    if input.UserInputType ~= Enum.UserInputType.MouseMovement
-                    and input.UserInputType ~= Enum.UserInputType.Touch then return end
-                    local delta = input.Position - _dragStart
-                    local vp    = workspace.CurrentCamera.ViewportSize
-                    mainPanel.Position = UDim2.fromOffset(
-                        math.clamp(_startPos.X.Offset + delta.X, 0, vp.X - mainPanel.AbsoluteSize.X),
-                        math.clamp(_startPos.Y.Offset + delta.Y, 0, vp.Y - mainPanel.AbsoluteSize.Y))
-                end)
-            end
-        end
+        -- FIX SCROLL+DRAG: drag movido al headerBar (ver abajo), no al mainPanel completo
+        -- Asi el scroll del mouse sobre el contenido NO arrastra el panel
+        local _dragStart1, _startPos1, _dragging1 = nil, nil, false
+        local _UIS1 = game:GetService("UserInputService")
 
         local mainStroke = Instance.new("UIStroke", mainPanel)
         mainStroke.Color = ThemeColors.Primary
@@ -11846,6 +11850,46 @@ MainSystem = {
         dragIcon.FontFace = Font.fromEnum(Enum.Font.Arimo)
         dragIcon.TextSize = 18
         dragIcon.TextColor3 = ThemeColors.Aurora2
+
+        -- FIX SCROLL+DRAG: drag conectado al headerBar (barra de titulo)
+        -- Solo arrastra cuando el usuario hace click+drag en el header, no al scrollear
+        do
+            if not pcall(function()
+                local dd = Instance.new("UIDragDetector", headerBar)
+                dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
+                dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
+                dd.Dragged:Connect(function()
+                    local vp = workspace.CurrentCamera.ViewportSize
+                    mainPanel.Position = UDim2.fromOffset(
+                        math.clamp(mainPanel.Position.X.Offset, 0, vp.X - mainPanel.AbsoluteSize.X),
+                        math.clamp(mainPanel.Position.Y.Offset, 0, vp.Y - mainPanel.AbsoluteSize.Y))
+                end)
+            end) then
+                -- Fallback UIS: drag solo desde el header
+                headerBar.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1
+                    or input.UserInputType == Enum.UserInputType.Touch then
+                        _dragging1 = true; _dragStart1 = input.Position; _startPos1 = mainPanel.Position
+                    end
+                end)
+                headerBar.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1
+                    or input.UserInputType == Enum.UserInputType.Touch then
+                        _dragging1 = false
+                    end
+                end)
+                _UIS1.InputChanged:Connect(function(input)
+                    if not _dragging1 then return end
+                    if input.UserInputType ~= Enum.UserInputType.MouseMovement
+                    and input.UserInputType ~= Enum.UserInputType.Touch then return end
+                    local delta = input.Position - _dragStart1
+                    local vp    = workspace.CurrentCamera.ViewportSize
+                    mainPanel.Position = UDim2.fromOffset(
+                        math.clamp(_startPos1.X.Offset + delta.X, 0, vp.X - mainPanel.AbsoluteSize.X),
+                        math.clamp(_startPos1.Y.Offset + delta.Y, 0, vp.Y - mainPanel.AbsoluteSize.Y))
+                end)
+            end
+        end
 
         local scrollFrame = Instance.new("ScrollingFrame", mainPanel)
         scrollFrame.Size = UDim2.new(1, -20, 1, -48)
@@ -13051,49 +13095,10 @@ function CreateInfoPanel()
     mainPanel.Active = true
     Instance.new("UICorner", mainPanel).CornerRadius = UDim.new(0, 12)
 
-    -- DRAG MANUAL (reemplaza Draggable legacy)
-    do
-        local _dragging, _dragStart, _startPos = false, nil, nil
-        local UIS = game:GetService("UserInputService")
-        local _dragConn
-        local ok = pcall(function()
-            local dd = Instance.new("UIDragDetector", mainPanel)
-            dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
-            dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
-            dd.Dragged:Connect(function()
-                local vp = workspace.CurrentCamera.ViewportSize
-                mainPanel.Position = UDim2.fromOffset(
-                    math.clamp(mainPanel.Position.X.Offset, 0, vp.X - mainPanel.AbsoluteSize.X),
-                    math.clamp(mainPanel.Position.Y.Offset, 0, vp.Y - mainPanel.AbsoluteSize.Y))
-            end)
-        end)
-        if not ok then
-            mainPanel.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                    _dragging  = true
-                    _dragStart = input.Position
-                    _startPos  = mainPanel.Position
-                end
-            end)
-            mainPanel.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-                    _dragging = false
-                end
-            end)
-            _dragConn = UIS.InputChanged:Connect(function(input)
-                if not _dragging then return end
-                if input.UserInputType ~= Enum.UserInputType.MouseMovement
-                and input.UserInputType ~= Enum.UserInputType.Touch then return end
-                local delta = input.Position - _dragStart
-                local vp    = workspace.CurrentCamera.ViewportSize
-                mainPanel.Position = UDim2.fromOffset(
-                    math.clamp(_startPos.X.Offset + delta.X, 0, vp.X - mainPanel.AbsoluteSize.X),
-                    math.clamp(_startPos.Y.Offset + delta.Y, 0, vp.Y - mainPanel.AbsoluteSize.Y))
-            end)
-        end
-    end
+    -- FIX SCROLL+DRAG: drag movido al header (ver abajo), no al mainPanel completo
+    -- Asi el scroll del mouse sobre el contenido NO arrastra el panel
+    local _dragStart2, _startPos2, _dragging2 = nil, nil, false
+    local _UIS2 = game:GetService("UserInputService")
 
     local mainStroke = Instance.new("UIStroke", mainPanel)
     mainStroke.Color = ThemeColors.Primary
@@ -13132,6 +13137,44 @@ function CreateInfoPanel()
     titleLbl.TextSize = 14
     titleLbl.TextColor3 = ThemeColors.TextPrimary
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- FIX SCROLL+DRAG: drag conectado al header (barra de titulo)
+    do
+        if not pcall(function()
+            local dd = Instance.new("UIDragDetector", header)
+            dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
+            dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
+            dd.Dragged:Connect(function()
+                local vp = workspace.CurrentCamera.ViewportSize
+                mainPanel.Position = UDim2.fromOffset(
+                    math.clamp(mainPanel.Position.X.Offset, 0, vp.X - mainPanel.AbsoluteSize.X),
+                    math.clamp(mainPanel.Position.Y.Offset, 0, vp.Y - mainPanel.AbsoluteSize.Y))
+            end)
+        end) then
+            header.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                    _dragging2 = true; _dragStart2 = input.Position; _startPos2 = mainPanel.Position
+                end
+            end)
+            header.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                    _dragging2 = false
+                end
+            end)
+            _UIS2.InputChanged:Connect(function(input)
+                if not _dragging2 then return end
+                if input.UserInputType ~= Enum.UserInputType.MouseMovement
+                and input.UserInputType ~= Enum.UserInputType.Touch then return end
+                local delta = input.Position - _dragStart2
+                local vp    = workspace.CurrentCamera.ViewportSize
+                mainPanel.Position = UDim2.fromOffset(
+                    math.clamp(_startPos2.X.Offset + delta.X, 0, vp.X - mainPanel.AbsoluteSize.X),
+                    math.clamp(_startPos2.Y.Offset + delta.Y, 0, vp.Y - mainPanel.AbsoluteSize.Y))
+            end)
+        end
+    end
 
     local scroll = Instance.new("ScrollingFrame", mainPanel)
     scroll.Name = "InfoScroll"
@@ -13790,7 +13833,7 @@ function CreateFakeBombCircleButton(key, labelText, posY, onClick)
     frame.BackgroundTransparency = 0.85
     frame.BorderSizePixel  = 0
     frame.Active           = true
-    frame.Draggable        = true
+    -- FIX: Draggable legacy removido; UIDragDetector + fallback UIS se agrega abajo
     frame.ZIndex           = 110
     Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)  -- cuadrado redondeado como los toggles
 
@@ -13819,6 +13862,44 @@ function CreateFakeBombCircleButton(key, labelText, posY, onClick)
             task.wait(1.2)
         end
     end)
+
+    -- FIX: drag con UIDragDetector + fallback UserInputService (sin Draggable legacy)
+    do
+        local _dragging, _dragStart, _startPos = false, nil, nil
+        if not pcall(function()
+            local dd = Instance.new("UIDragDetector", frame)
+            dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
+            dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
+            dd.Dragged:Connect(function()
+                local vp = workspace.CurrentCamera.ViewportSize
+                frame.Position = UDim2.fromOffset(
+                    math.clamp(frame.Position.X.Offset, 0, vp.X - frame.AbsoluteSize.X),
+                    math.clamp(frame.Position.Y.Offset, 0, vp.Y - frame.AbsoluteSize.Y))
+            end)
+        end) then
+            local UIS2 = game:GetService("UserInputService")
+            frame.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                or inp.UserInputType == Enum.UserInputType.Touch then
+                    _dragging = true; _dragStart = inp.Position; _startPos = frame.Position
+                end
+            end)
+            frame.InputEnded:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                or inp.UserInputType == Enum.UserInputType.Touch then _dragging = false end
+            end)
+            UIS2.InputChanged:Connect(function(inp)
+                if not _dragging then return end
+                if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+                and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+                local delta = inp.Position - _dragStart
+                local vp = workspace.CurrentCamera.ViewportSize
+                frame.Position = UDim2.fromOffset(
+                    math.clamp(_startPos.X.Offset + delta.X, 0, vp.X - frame.AbsoluteSize.X),
+                    math.clamp(_startPos.Y.Offset + delta.Y, 0, vp.Y - frame.AbsoluteSize.Y))
+            end)
+        end
+    end
 
     frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -13867,7 +13948,7 @@ function CreateFakeBombBindlePanel()
     panel.BackgroundTransparency = 0.85
     panel.BorderSizePixel   = 0
     panel.Active            = true
-    panel.Draggable         = true
+    -- FIX: Draggable legacy removido; UIDragDetector + fallback UIS se agrega abajo
     panel.ZIndex            = 120
     Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 16)
     local panelStroke = Instance.new("UIStroke", panel)
@@ -13885,6 +13966,44 @@ function CreateFakeBombBindlePanel()
             task.wait(1.4)
         end
     end)
+
+    -- FIX: drag con UIDragDetector + fallback UserInputService (sin Draggable legacy)
+    do
+        local _dragging2, _dragStart2, _startPos2 = false, nil, nil
+        if not pcall(function()
+            local dd2 = Instance.new("UIDragDetector", panel)
+            dd2.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
+            dd2.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
+            dd2.Dragged:Connect(function()
+                local vp = workspace.CurrentCamera.ViewportSize
+                panel.Position = UDim2.fromOffset(
+                    math.clamp(panel.Position.X.Offset, 0, vp.X - panel.AbsoluteSize.X),
+                    math.clamp(panel.Position.Y.Offset, 0, vp.Y - panel.AbsoluteSize.Y))
+            end)
+        end) then
+            local UIS2 = game:GetService("UserInputService")
+            panel.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                or inp.UserInputType == Enum.UserInputType.Touch then
+                    _dragging2 = true; _dragStart2 = inp.Position; _startPos2 = panel.Position
+                end
+            end)
+            panel.InputEnded:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                or inp.UserInputType == Enum.UserInputType.Touch then _dragging2 = false end
+            end)
+            UIS2.InputChanged:Connect(function(inp)
+                if not _dragging2 then return end
+                if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+                and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+                local delta = inp.Position - _dragStart2
+                local vp = workspace.CurrentCamera.ViewportSize
+                panel.Position = UDim2.fromOffset(
+                    math.clamp(_startPos2.X.Offset + delta.X, 0, vp.X - panel.AbsoluteSize.X),
+                    math.clamp(_startPos2.Y.Offset + delta.Y, 0, vp.Y - panel.AbsoluteSize.Y))
+            end)
+        end
+    end
 
     header = Instance.new("Frame", panel)
     header.Size             = UDim2.new(1, 0, 0, 32)
@@ -14223,7 +14342,8 @@ function CreateMainUI_SwimFlyGithub()
             frame.Position = UDim2.new(0, 80, 0.5, -35)
             frame.BackgroundColor3 = Color3.fromRGB(35, 35, 95)
             frame.BackgroundTransparency = 0.75; frame.BorderSizePixel = 0
-            frame.Active = true; frame.Draggable = true; frame.ZIndex = 200
+            frame.Active = true; frame.ZIndex = 200
+            -- FIX: Draggable legacy removido; UIDragDetector + fallback UIS se agrega abajo
             Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
             local fStroke = Instance.new("UIStroke", frame)
             fStroke.Color = ThemeColors.Accent; fStroke.Thickness = 2.5; fStroke.Transparency = 0.1
@@ -14235,6 +14355,43 @@ function CreateMainUI_SwimFlyGithub()
                     _w(1)
                 end
             end)
+            -- FIX: drag con UIDragDetector + fallback UserInputService (sin Draggable legacy)
+            do
+                local _dragAJ, _startAJ, _posAJ = false, nil, nil
+                if not pcall(function()
+                    local ddAJ = Instance.new("UIDragDetector", frame)
+                    ddAJ.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
+                    ddAJ.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
+                    ddAJ.Dragged:Connect(function()
+                        local vp = workspace.CurrentCamera.ViewportSize
+                        frame.Position = UDim2.fromOffset(
+                            math.clamp(frame.Position.X.Offset, 0, vp.X - frame.AbsoluteSize.X),
+                            math.clamp(frame.Position.Y.Offset, 0, vp.Y - frame.AbsoluteSize.Y))
+                    end)
+                end) then
+                    local UIS3 = game:GetService("UserInputService")
+                    frame.InputBegan:Connect(function(inp)
+                        if inp.UserInputType == Enum.UserInputType.MouseButton1
+                        or inp.UserInputType == Enum.UserInputType.Touch then
+                            _dragAJ = true; _startAJ = inp.Position; _posAJ = frame.Position
+                        end
+                    end)
+                    frame.InputEnded:Connect(function(inp)
+                        if inp.UserInputType == Enum.UserInputType.MouseButton1
+                        or inp.UserInputType == Enum.UserInputType.Touch then _dragAJ = false end
+                    end)
+                    UIS3.InputChanged:Connect(function(inp)
+                        if not _dragAJ then return end
+                        if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+                        and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+                        local delta = inp.Position - _startAJ
+                        local vp = workspace.CurrentCamera.ViewportSize
+                        frame.Position = UDim2.fromOffset(
+                            math.clamp(_posAJ.X.Offset + delta.X, 0, vp.X - frame.AbsoluteSize.X),
+                            math.clamp(_posAJ.Y.Offset + delta.Y, 0, vp.Y - frame.AbsoluteSize.Y))
+                    end)
+                end
+            end
             local icon = Instance.new("TextLabel", frame)
             icon.Size = UDim2.new(1, 0, 0.55, 0); icon.Position = UDim2.new(0, 0, 0, 6)
             icon.BackgroundTransparency = 1; icon.Text = "^"
@@ -23048,7 +23205,8 @@ function _aplicarPieceOutline(char, color)
     if not _outPartList[char] then
         local parts = {}
         for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Transparency < 1 then
+            -- FIX DISAPPEAR: mismo fix que _chamPartList, no filtrar por Transparency
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                 parts[#parts+1] = part
             end
         end
@@ -23133,7 +23291,9 @@ function _aplicarPieceChams(char, color)
     if not _chamPartList[char] then
         local parts = {}
         for _, part in ipairs(char:GetDescendants()) do  -- OPT: pairs->ipairs (array ordenado, más rápido)
-            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Transparency < 1 then
+            -- FIX DISAPPEAR: NO filtrar por Transparency -- una parte temp. en T=1
+            -- (xray, bodyparts, spawn) quedaria fuera del cache y causaria desaparicion
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                 parts[#parts+1] = part
             end
         end
@@ -36673,7 +36833,6 @@ function CreateExclusiveTab()
             local sg = game:GetService("StarterGui")
             sg:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, not on)
             sg:SetCoreGuiEnabled(Enum.CoreGuiType.Health, not on)
-            sg:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, not on)
         end)
         CreateCustomNotification("SETTINGS", on and "HUD oculto" or "HUD visible", 1.5)
     end, HS.hudHidden)
@@ -50885,6 +51044,8 @@ particles = {}
             mainFrame.AnchorPoint = Vector2.new(0, 0)
             mainFrame.Position = UDim2.new(0, resolved.X, 0, resolved.Y)
             _d = true
+            -- FIX SCROLL+DRAG: bloquear scroll de los toggles mientras se arrastra el hub
+            if leftColumn then pcall(function() leftColumn.ScrollingEnabled = false end) end
             _dStart = Vector3.new(mPos.X, mPos.Y, 0)
             _dFrameStart = resolved
         end
@@ -50913,6 +51074,8 @@ particles = {}
             if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
                 _d = false
+                -- FIX SCROLL+DRAG: restaurar scroll de toggles al soltar
+                if leftColumn then pcall(function() leftColumn.ScrollingEnabled = true end) end
             end
         end)
     end
@@ -51005,6 +51168,32 @@ particles = {}
             if _inputPos2D.X < fPos.X or _inputPos2D.X > fPos.X + fSiz.X then return end
             if _inputPos2D.Y < fPos.Y or _inputPos2D.Y > fPos.Y + fSiz.Y then return end
 
+            -- FIX: no iniciar drag si hay un ScrollingFrame bajo el cursor.
+            -- Evita que scrollear una pestana (o arrastrar la scrollbar) mueva el HUD.
+            -- NOTA: el return dentro del pcall closure NO sale del handler -> usar flag.
+            do
+                local _blockDrag = false
+                local _ok, _objs = pcall(function()
+                    return game:GetService("UserInputService"):GetGuiObjectsAtPosition(_inputPos2D.X, _inputPos2D.Y)
+                end)
+                if _ok and _objs then
+                    for _, _obj in ipairs(_objs) do
+                        if _obj:IsA("ScrollingFrame") then _blockDrag = true; break end
+                    end
+                end
+                -- Tambien bloquear si el click cae sobre la scrollbar del lCol
+                -- (franja derecha del hub donde esta la barrita de scroll de toggles)
+                if not _blockDrag and leftColumn and leftColumn.ScrollBarThickness > 0 then
+                    local _lcPos = leftColumn.AbsolutePosition
+                    local _lcSiz = leftColumn.AbsoluteSize
+                    local _sbW   = leftColumn.ScrollBarThickness + 6  -- margen extra touch
+                    local _inSBX = _inputPos2D.X >= (_lcPos.X + _lcSiz.X - _sbW)
+                    local _inSBY = _inputPos2D.Y >= _lcPos.Y and _inputPos2D.Y <= (_lcPos.Y + _lcSiz.Y)
+                    if _inSBX and _inSBY then _blockDrag = true end
+                end
+                if _blockDrag then return end
+            end
+
             -- Efecto: bordes se agrandan visualmente al sostener click en borde o header
             _activateDragEffect()
 
@@ -51030,6 +51219,8 @@ particles = {}
             mainFrame.Position    = UDim2.new(0, curX, 0, curY)
 
             dragging       = true
+            -- FIX SCROLL+DRAG: bloquear scroll de toggles mientras se arrastra el hub
+            if leftColumn then pcall(function() leftColumn.ScrollingEnabled = false end) end
             dragStartMouse = input.Position  -- Vector3: funciona igual para mouse y touch
             dragStartFrame = Vector2.new(curX, curY)
         end)
@@ -51053,6 +51244,8 @@ particles = {}
             if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = false
+                -- FIX SCROLL+DRAG: restaurar scroll de toggles al soltar
+                if leftColumn then pcall(function() leftColumn.ScrollingEnabled = true end) end
                 -- Esquinas vuelven a normal al soltar
                 _deactivateDragEffect()
             end
