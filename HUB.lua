@@ -8054,6 +8054,16 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
 
     -- -- CLICK --------------------------------------------
     local _capyIsActive = false
+    -- FIX MOBILE: Activated funciona en PC y Touch; MouseButton1Up solo en PC.
+    -- Debounce para evitar doble disparo si ambos eventos se activan juntos.
+    local _lastActivatedTick = 0
+    local function _doActivate()
+        if _moved then return end
+        local now = tick()
+        if now - _lastActivatedTick < 0.15 then return end
+        _lastActivatedTick = now
+        if callback then task.spawn(function() callback(_capyIsActive) end) end
+    end
     fill.MouseButton1Down:Connect(function()
         if _moved then return end
         TweenService:Create(fill, TweenInfo.new(0.07), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
@@ -8063,7 +8073,11 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
         if _moved then return end
         TweenService:Create(fill, TweenInfo.new(0.15), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
         TweenService:Create(fillStroke, TweenInfo.new(0.15), {Color=ThemeColors.Aurora3}):Play()
-        if callback then task.spawn(function() callback(_capyIsActive) end) end
+        _doActivate()
+    end)
+    -- FIX MOBILE TOUCH: Activated cubre TouchTap en dispositivos mobiles
+    fill.Activated:Connect(function()
+        _doActivate()
     end)
 
     -- -- SetActiveState ------------------------------------
@@ -29324,18 +29338,19 @@ function CreateWorldUI_QuickFlingButtons()
 
     -- BINDABLE: FLING MURDER
     do
-        local _fmBind = { gui = nil, conn = nil, fontSize = 10, sizeX = 44, sizeY = 30 }
+        local _fmBind = { gui = nil, frame = nil, conn = nil, fontSize = 10, sizeX = 44, sizeY = 30 }
         CreateToggle(leftColumn, "Fling Murder Bindable Button", false, function(on)
-            if _fmBind.conn then pcall(function() _fmBind.conn:Disconnect() end) _fmBind.conn = nil end
-            if _fmBind.gui  then pcall(function() _fmBind.gui:Destroy()     end) _fmBind.gui  = nil end
+            if _fmBind.conn  then pcall(function() _fmBind.conn:Disconnect()  end) _fmBind.conn  = nil end
+            if _fmBind.gui   then pcall(function() _fmBind.gui:Destroy()      end) _fmBind.gui   = nil end
+            _fmBind.frame = nil
             if on then
                 local sg = Instance.new("ScreenGui")
                 sg.Name = "FlingMurderBindable"; sg.ResetOnSpawn = false
                 pcall(function() sg.Parent = game:GetService("CoreGui") end)
                 if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
                 _fmBind.gui = sg
-                MakeCapyBindableFrame(sg, "FLING\nMURDER", function()
-                    -- Simular pulsar el boton FLING MURDER
+                -- FIX: capturar el frame retornado para poder llamar SetActiveState
+                local _fmFrame = MakeCapyBindableFrame(sg, "FLING\nMURDER", function()
                     _refreshRoleCache()
                     local murder = _roleCache and _roleCache.murderer
                     if not murder then
@@ -29343,12 +29358,16 @@ function CreateWorldUI_QuickFlingButtons()
                         return
                     end
                     if _qfState.flingMurderActive then
+                        -- Desactivar
                         _qfState.flingMurderActive = false
                         FlingSystem.flingMurder = false
                         _flingActive = false; _flingReturning = false
                         StopFlingSystem()
+                        -- FIX VISUAL: reflejar estado inactivo en el boton
+                        pcall(function() if _fmBind.frame then _fmBind.frame:SetActiveState(false) end end)
                         CreateCustomNotification("FLING MURDER", "Desactivado", 2)
                     else
+                        -- Activar
                         _qfStopAll()
                         _flingActive    = false
                         _flingReturning = false
@@ -29359,32 +29378,39 @@ function CreateWorldUI_QuickFlingButtons()
                         FlingSystem.flingInnocent  = false
                         FlingSystem.specificTarget = nil
                         _flingStartLoop()
+                        -- FIX VISUAL: reflejar estado activo en el boton
+                        pcall(function() if _fmBind.frame then _fmBind.frame:SetActiveState(true) end end)
                         CreateCustomNotification("FLING MURDER", "Flingeando a " .. murder.Name, 3)
                     end
                 end)
+                _fmBind.frame = _fmFrame
             end
         end)
     end
 
     -- BINDABLE: STEAL GUN
     do
-        local _sgBind = { gui = nil }
+        local _sgBind = { gui = nil, frame = nil }
         CreateToggle(leftColumn, "Steal Gun Bindable Button", false, function(on)
             if _sgBind.gui then pcall(function() _sgBind.gui:Destroy() end) _sgBind.gui = nil end
+            _sgBind.frame = nil
             if on then
                 local sg = Instance.new("ScreenGui")
                 sg.Name = "StealGunBindable"; sg.ResetOnSpawn = false
                 pcall(function() sg.Parent = game:GetService("CoreGui") end)
                 if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
                 _sgBind.gui = sg
-                MakeCapyBindableFrame(sg, "STEAL\nGUN", function()
-                    -- Activar/cancelar Steal Gun igual que el boton principal
+                -- FIX: capturar frame para SetActiveState
+                local _sgFrame = MakeCapyBindableFrame(sg, "STEAL\nGUN", function()
                     if _qfState.stealGunActive then
+                        -- Desactivar
                         _qfState.stealGunActive = false
                         StealGunSystem.enabled  = false
                         _flingActive = false; _flingReturning = false
                         if StealGunSystem._sgCacheConn  then pcall(function() StealGunSystem._sgCacheConn:Disconnect()  end) StealGunSystem._sgCacheConn  = nil end
                         if StealGunSystem._sgRemoveConn then pcall(function() StealGunSystem._sgRemoveConn:Disconnect() end) StealGunSystem._sgRemoveConn = nil end
+                        -- FIX VISUAL: reflejar estado inactivo
+                        pcall(function() if _sgBind.frame then _sgBind.frame:SetActiveState(false) end end)
                         CreateCustomNotification("STEAL GUN", "Desactivado", 2)
                     else
                         -- Detectar portador de gun
@@ -29413,32 +29439,43 @@ function CreateWorldUI_QuickFlingButtons()
                         _qfState.stealGunActive             = true
                         StealGunSystem.enabled              = true
                         StealGunSystem.sheriffOriginalFound = holder
+                        -- FIX VISUAL: reflejar estado activo
+                        pcall(function() if _sgBind.frame then _sgBind.frame:SetActiveState(true) end end)
                         CreateCustomNotification("STEAL GUN", "Flingeando a " .. holder.Name .. " por 5s...", 3)
                         task.spawn(StealGunLoop)
                     end
                 end)
+                _sgBind.frame = _sgFrame
+                -- FIX: exponer al global para que StealGunLoop pueda resetear el visual
+                _G._sgBindRef = _sgBind
             end
         end)
     end
 
     -- BINDABLE: FLING ALL
     do
-        local _faBind = { gui = nil }
+        local _faBind = { gui = nil, frame = nil }
         CreateToggle(leftColumn, "Fling All Bindable Button", false, function(on)
             if _faBind.gui then pcall(function() _faBind.gui:Destroy() end) _faBind.gui = nil end
+            _faBind.frame = nil
             if on then
                 local sg = Instance.new("ScreenGui")
                 sg.Name = "FlingAllBindable"; sg.ResetOnSpawn = false
                 pcall(function() sg.Parent = game:GetService("CoreGui") end)
                 if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
                 _faBind.gui = sg
-                MakeCapyBindableFrame(sg, "FLING\nALL", function()
+                -- FIX: capturar frame para SetActiveState
+                local _faFrame = MakeCapyBindableFrame(sg, "FLING\nALL", function()
                     if _qfState.flingAllActive then
+                        -- Desactivar
                         _qfState.flingAllActive = false
                         FlingSystem.flingAll = false
                         StopFlingSystem()
+                        -- FIX VISUAL: reflejar estado inactivo
+                        pcall(function() if _faBind.frame then _faBind.frame:SetActiveState(false) end end)
                         CreateCustomNotification("FLING A TODOS", "Desactivado", 2)
                     else
+                        -- Activar
                         _qfStopAll()
                         -- FIX: forzar reset del loop para garantizar re-arranque
                         StopFlingSystem()
@@ -29451,9 +29488,12 @@ function CreateWorldUI_QuickFlingButtons()
                         FlingSystem.flingInnocent = false
                         FlingSystem.specificTarget = nil
                         task.spawn(StartFlingSystem)
+                        -- FIX VISUAL: reflejar estado activo
+                        pcall(function() if _faBind.frame then _faBind.frame:SetActiveState(true) end end)
                         CreateCustomNotification("FLING A TODOS", "Activo - lanzando a todos", 3)
                     end
                 end)
+                _faBind.frame = _faFrame
             end
         end)
     end
@@ -34768,7 +34808,7 @@ local function _sgFlingPlayer(TargetPlayer)
     -- Si ya tenemos la gun, no hacer nada
     if _sgLocalHasGun() then
         StealGunSystem.enabled = false
-        if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end
+        if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end; pcall(function() if _G._sgBindRef and _G._sgBindRef.frame then _G._sgBindRef.frame:SetActiveState(false) end end)
         return
     end
 
@@ -34909,7 +34949,7 @@ local function _sgFlingPlayer(TargetPlayer)
     if grabbed then
         CreateCustomNotification("STEAL GUN", "Gun robada de " .. TargetPlayer.Name .. "!", 2.5)
         StealGunSystem.enabled = false
-        if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end
+        if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end; pcall(function() if _G._sgBindRef and _G._sgBindRef.frame then _G._sgBindRef.frame:SetActiveState(false) end end)
     else
         CreateCustomNotification("STEAL GUN", "No se pudo robar, esperando drop...", 2)
     end
@@ -35027,7 +35067,7 @@ function StealGunLoop()
             CreateCustomNotification("STEAL GUN", "Gun agarrada del suelo!", 2)
             StealGunSystem.enabled = false
             -- FIX v14: resetear boton Quick Fling
-            if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end
+            if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end; pcall(function() if _G._sgBindRef and _G._sgBindRef.frame then _G._sgBindRef.frame:SetActiveState(false) end end)
             if _dropConn then pcall(function() _dropConn:Disconnect() end); _dropConn = nil end
         end
     end
@@ -35047,7 +35087,7 @@ function StealGunLoop()
                 CreateCustomNotification("STEAL GUN", "Gun obtenida!", 2)
                 StealGunSystem.enabled = false
                 -- FIX v14: resetear boton Quick Fling
-                if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end
+                if _G._qfStateRef then _G._qfStateRef.stealGunActive = false end; pcall(function() if _G._sgBindRef and _G._sgBindRef.frame then _G._sgBindRef.frame:SetActiveState(false) end end)
                 break
             end
 
