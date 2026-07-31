@@ -27485,6 +27485,11 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         _G._toggleCallbacks = _G._toggleCallbacks or {}
         _G._toggleCallbacks[nombre] = callback
     end
+    -- REGISTRO DE APPLYSTATE: guardar la funcion visual del knob para que
+    -- el auto-restore del World Tab pueda actualizar el indicador a verde
+    -- sin depender de la closure local (inaccesible desde fuera de la funcion).
+    -- Se sobreescribe al re-crear el toggle (cambio de tab) con la nueva instancia.
+    _G._toggleApplyStates = _G._toggleApplyStates or {}
 
     local C_IND_ON  = Color3.fromRGB(0, 200, 80)   -- verde cuando activo
     local C_IND_OFF = Color3.fromRGB(255, 0, 0)     -- rojo cuando inactivo
@@ -27599,6 +27604,10 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
             indicator.Position = on and UDim2.new(1, _knobOffR, 0.5, 0) or UDim2.new(0, _knobOffL, 0.5, 0)
         end
     end
+    -- FIX AUTO-RESTORE VISUAL: exponer ApplyState globalmente para que el
+    -- bloque de restauracion del World Tab pueda actualizar el knob a ON/OFF
+    -- sin necesitar acceso a esta closure. Se sobreescribe si el toggle se re-crea.
+    _G._toggleApplyStates[nombre] = ApplyState
     ApplyState(estado, false)
 
     -- Sin hover (toggle transparente)
@@ -34399,6 +34408,35 @@ function CreateWorldUI_FlingPlayer()
     Players.PlayerRemoving:Connect(function() task.wait(0.1); _refreshPlayerList() end)
 end
 
+-- FIX FUNCIONES FALTANTES WORLD TAB: definir stubs vacios para las funciones que
+-- se llaman en CreateWorldTab pero no estan definidas en este archivo.
+-- Sin estos stubs, _safeCall las llama sobre nil y las ignora silenciosamente,
+-- impidiendo que los toggles y bindables correspondientes aparezcan.
+-- Si en el futuro se implementan, reemplazar el stub con la implementacion real.
+if not CreateWorldUI_InformationBindables then
+    function CreateWorldUI_InformationBindables()
+        -- Stub: funcion no implementada, se llama para re-crear bindables del World Tab.
+        -- Al restaurar toggles, updateBindables() en el bloque de auto-restore se encarga
+        -- de volver a mostrar los botones bindables en pantalla.
+        pcall(updateBindables)
+    end
+end
+if not CreateWorldUI_AutoPrestige then
+    function CreateWorldUI_AutoPrestige() end
+end
+if not CreateWorldUI_Teleports then
+    function CreateWorldUI_Teleports() end
+end
+if not CreateWorldUI_TeleportToVoid then
+    function CreateWorldUI_TeleportToVoid() end
+end
+if not CreateWorldUI_TeleportSheriffBindable then
+    function CreateWorldUI_TeleportSheriffBindable() end
+end
+if not CreateWorldUI_TeleportMurdererBindable then
+    function CreateWorldUI_TeleportMurdererBindable() end
+end
+
 function CreateWorldTab()
     if not contentContainer or not contentContainer.Parent then
         task.wait(0.15)
@@ -34638,8 +34676,21 @@ function CreateWorldTab()
                     -- y llama _startDetect() en Gold Bomb) sin necesitar el frame visual.
                     pcall(_G._toggleCallbacks[nombre], true)
                     CreateCustomNotification = _origNotif
+                    -- FIX VISUAL KNOB: actualizar el indicador a verde para que el toggle
+                    -- muestre ON visualmente, no solo en la logica interna.
+                    -- ApplyState es una closure local, pero la exponemos en _toggleApplyStates
+                    -- al crear cada toggle para poder llamarla desde aqui.
+                    if _G._toggleApplyStates and _G._toggleApplyStates[nombre] then
+                        pcall(_G._toggleApplyStates[nombre], true, false)
+                    end
                 end
             end
+
+            -- FIX BINDABLES WORLD TAB: despues de restaurar los toggles, re-crear
+            -- los botones bindables en pantalla para los toggles que los usan
+            -- (ej: TP Sheriff Bindable, TP Murderer Bindable, Shift Lock Bindable, etc.)
+            -- updateBindables() recrea solo los botones cuyo Settings.X.bindable == true.
+            pcall(updateBindables)
         end)
     end)
 end
