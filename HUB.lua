@@ -29301,6 +29301,7 @@ function CreateWorldUI_QuickFlingButtons()
                 _fmBind.gui = sg
                 MakeCapyBindableFrame(sg, "FLING\nMURDER", function()
                     -- Simular pulsar el boton FLING MURDER
+                    _refreshRoleCache()
                     local murder = _roleCache and _roleCache.murderer
                     if not murder then
                         CreateCustomNotification("FLING MURDER", "Murderer no detectado", 3)
@@ -29314,8 +29315,15 @@ function CreateWorldUI_QuickFlingButtons()
                         CreateCustomNotification("FLING MURDER", "Desactivado", 2)
                     else
                         _qfStopAll()
+                        _flingActive    = false
+                        _flingReturning = false
                         _qfState.flingMurderActive = true
                         FlingSystem.flingMurder    = true
+                        FlingSystem.flingAll       = false
+                        FlingSystem.flingSheriff   = false
+                        FlingSystem.flingInnocent  = false
+                        FlingSystem.specificTarget = nil
+                        _flingStartLoop()
                         CreateCustomNotification("FLING MURDER", "Flingeando a " .. murder.Name, 3)
                     end
                 end)
@@ -29371,6 +29379,7 @@ function CreateWorldUI_QuickFlingButtons()
                         StealGunSystem.enabled              = true
                         StealGunSystem.sheriffOriginalFound = holder
                         CreateCustomNotification("STEAL GUN", "Flingeando a " .. holder.Name .. " por 5s...", 3)
+                        task.spawn(StealGunLoop)
                     end
                 end)
             end
@@ -29396,13 +29405,17 @@ function CreateWorldUI_QuickFlingButtons()
                         CreateCustomNotification("FLING A TODOS", "Desactivado", 2)
                     else
                         _qfStopAll()
+                        -- FIX: forzar reset del loop para garantizar re-arranque
+                        StopFlingSystem()
+                        FlingSystem.active = false
+                        FlingSystem._loopThread = nil
                         _qfState.flingAllActive   = true
                         FlingSystem.flingAll      = true
                         FlingSystem.flingMurder   = false
                         FlingSystem.flingSheriff  = false
                         FlingSystem.flingInnocent = false
                         FlingSystem.specificTarget = nil
-                        _flingStartLoop()
+                        task.spawn(StartFlingSystem)
                         CreateCustomNotification("FLING A TODOS", "Activo - lanzando a todos", 3)
                     end
                 end)
