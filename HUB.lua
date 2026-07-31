@@ -33474,13 +33474,24 @@ function CreateWorldUI_TeleportLobby()
     CreateToggle(sec, "Enable TP To Lobby Bindable Button", false, function(on)
         L.enabled = on
         if L.conn then pcall(function() L.conn:Disconnect() end) L.conn = nil end
-        -- Destruir boton flotante anterior
+        -- Destruir boton flotante anterior (ScreenGui helper + CapyBind)
+        if L._sg then pcall(function() L._sg:Destroy() end) L._sg = nil end
         pcall(function() DestroyCapyBind("TP LOBBY") end)
+        -- Barrer cualquier remanente por nombre en PlayerGui
+        pcall(function()
+            local pg = LocalPlayer:FindFirstChild("PlayerGui")
+            if pg then
+                for _, g in ipairs(pg:GetChildren()) do
+                    if g.Name == "TpLobbyBindable" then g:Destroy() end
+                end
+            end
+        end)
         if on then
             -- Crear boton flotante bindable
             local _sg = Instance.new("ScreenGui")
             _sg.Name = "TpLobbyBindable"; _sg.ResetOnSpawn = false
             _sg.Parent = LocalPlayer.PlayerGui
+            L._sg = _sg  -- guardar referencia para destruir al desactivar
             local _bf = MakeCapyBindableFrame(_sg, "TP LOBBY", function()
                 pcall(TeleportToLobby)
             end)
@@ -33542,13 +33553,24 @@ function CreateWorldUI_TeleportToMap()
     CreateToggle(sec, "Enable TP To Map Bindable Button", M.enabled, function(on)
         M.enabled = on
         if M.conn then pcall(function() M.conn:Disconnect() end) M.conn = nil end
-        -- Destruir boton flotante anterior
+        -- Destruir boton flotante anterior (ScreenGui helper + CapyBind)
+        if M._sg then pcall(function() M._sg:Destroy() end) M._sg = nil end
         pcall(function() DestroyCapyBind("TP MAP") end)
+        -- Barrer cualquier remanente por nombre en PlayerGui
+        pcall(function()
+            local pg = LocalPlayer:FindFirstChild("PlayerGui")
+            if pg then
+                for _, g in ipairs(pg:GetChildren()) do
+                    if g.Name == "TpMapBindable" then g:Destroy() end
+                end
+            end
+        end)
         if on then
             -- Crear boton flotante bindable
             local _sg = Instance.new("ScreenGui")
             _sg.Name = "TpMapBindable"; _sg.ResetOnSpawn = false
             _sg.Parent = LocalPlayer.PlayerGui
+            M._sg = _sg  -- guardar referencia para destruir al desactivar
             local _bf = MakeCapyBindableFrame(_sg, "TP MAP", function()
                 pcall(TeleportToMap)
             end)
@@ -34480,7 +34502,15 @@ function CreateWorldTab()
         end
         if _G._tpLobby then
             if _G._tpLobby.conn then pcall(function() _G._tpLobby.conn:Disconnect() end) _G._tpLobby.conn = nil end
+            if _G._tpLobby._sg then pcall(function() _G._tpLobby._sg:Destroy() end) _G._tpLobby._sg = nil end
+            pcall(function() DestroyCapyBind("TP LOBBY") end)
             _G._tpLobby.enabled = false
+        end
+        if _G._tpToMap then
+            if _G._tpToMap.conn then pcall(function() _G._tpToMap.conn:Disconnect() end) _G._tpToMap.conn = nil end
+            if _G._tpToMap._sg then pcall(function() _G._tpToMap._sg:Destroy() end) _G._tpToMap._sg = nil end
+            pcall(function() DestroyCapyBind("TP MAP") end)
+            _G._tpToMap.enabled = false
         end
         -- ProximityPrompts -- resetear al estado default SOLO si los toggles estan apagados
         pcall(function()
