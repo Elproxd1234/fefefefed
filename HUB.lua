@@ -29402,9 +29402,15 @@ function CreateWorldUI_QuickFlingButtons()
                 _sgBind.gui = sg
                 -- FIX: capturar frame para SetActiveState
                 local _sgFrame = MakeCapyBindableFrame(sg, "STEAL\nGUN", function()
-                    if _qfState.stealGunActive then
+                    -- FIX BINDABLE: usar _G._qfStateRef en vez del _qfState local del closure
+                    -- El closure captura el _qfState de la instancia de CreateWorldUI_QuickFlingButtons
+                    -- que creo este toggle. Si el World tab se reconstruye, se crea un nuevo _qfState
+                    -- local pero el bindable (en CoreGui) todavia referencia el viejo. Usar el ref
+                    -- global garantiza que siempre apuntamos al _qfState activo.
+                    local _qs = _G._qfStateRef or _qfState
+                    if _qs.stealGunActive then
                         -- Desactivar
-                        _qfState.stealGunActive = false
+                        _qs.stealGunActive = false
                         StealGunSystem.enabled  = false
                         _flingActive = false; _flingReturning = false
                         if StealGunSystem._sgCacheConn  then pcall(function() StealGunSystem._sgCacheConn:Disconnect()  end) StealGunSystem._sgCacheConn  = nil end
@@ -29414,7 +29420,25 @@ function CreateWorldUI_QuickFlingButtons()
                         CreateCustomNotification("STEAL GUN", "Desactivado", 2)
                     else
                         -- Detectar portador de gun
-                        _qfStopAll()
+                        -- FIX: usar el _qfStopAll del ref global si el local ya no es valido
+                        if _G._qfStateRef then
+                            _G._qfStateRef.flingAllActive    = false
+                            _G._qfStateRef.flingMurderActive = false
+                            _G._qfStateRef.stealGunActive    = false
+                            FlingSystem.flingAll       = false
+                            FlingSystem.flingMurder    = false
+                            FlingSystem.flingSheriff   = false
+                            FlingSystem.flingInnocent  = false
+                            FlingSystem.specificTarget = nil
+                            _flingActive    = false
+                            _flingReturning = false
+                            if FlingSystem.active then
+                                pcall(StopFlingSystem)
+                                FlingSystem.active = false
+                            end
+                        else
+                            _qfStopAll()
+                        end
                         StealGunSystem.sheriffOriginalFound = nil
                         StealGunSystem.sheriffDeadDetected  = false
                         StealGunSystem.roleCheckDisabled    = false
@@ -29436,7 +29460,7 @@ function CreateWorldUI_QuickFlingButtons()
                             return
                         end
                         _flingActive = false; _flingReturning = false
-                        _qfState.stealGunActive             = true
+                        _qs.stealGunActive                  = true
                         StealGunSystem.enabled              = true
                         StealGunSystem.sheriffOriginalFound = holder
                         -- FIX VISUAL: reflejar estado activo
@@ -34519,6 +34543,12 @@ function CreateWorldTab()
             if _G._worldOrbitFling.noclip then _G._worldOrbitFling.noclip:Disconnect(); _G._worldOrbitFling.noclip = nil end
             _G._worldOrbitFling.active = false
         end
+        -- OrbitPlayer loops (Heartbeat + Stepped) -- FIX: faltaba en el cleanup
+        if _G._worldOrbitPlayer then
+            if _G._worldOrbitPlayer.conn      then pcall(function() _G._worldOrbitPlayer.conn:Disconnect()      end); _G._worldOrbitPlayer.conn      = nil end
+            if _G._worldOrbitPlayer.noclipConn then pcall(function() _G._worldOrbitPlayer.noclipConn:Disconnect() end); _G._worldOrbitPlayer.noclipConn = nil end
+            _G._worldOrbitPlayer.active = false
+        end
         -- GunAura loops (WorldSystem.gunAura)
         local ga = WorldSystem and WorldSystem.gunAura
         if ga then
@@ -34538,10 +34568,11 @@ function CreateWorldTab()
             _killAllWorldState.conn:Disconnect()
             _killAllWorldState.conn = nil
         end
-        -- InfinityJump conn (_G._ijState)
-        if _G._ijState and _G._ijState.conn then
-            pcall(function() _G._ijState.conn:Disconnect() end)
-            _G._ijState.conn = nil
+        -- InfinityJump conns (_G._ijState) -- FIX: limpiar stateConn y charConn tambien
+        if _G._ijState then
+            if _G._ijState.conn      then pcall(function() _G._ijState.conn:Disconnect()      end) _G._ijState.conn      = nil end
+            if _G._ijState.stateConn then pcall(function() _G._ijState.stateConn:Disconnect() end) _G._ijState.stateConn = nil end
+            if _G._ijState.charConn  then pcall(function() _G._ijState.charConn:Disconnect()  end) _G._ijState.charConn  = nil end
         end
         -- Auto Respawn conn
         if _G._autoRespawnConn then
@@ -50962,6 +50993,8 @@ function abrirHub()
         return
     end
     _G._hubReady = false  -- resetear al (re)abrir
+    -- FIX LAG: resetear el flag del loop homePanel para que el nuevo hub pueda iniciarlo
+    _G._homePanelLoopActive = false
 
     -- FIX Z-LOGO: destruir reopener GUIs antes de abrir el hub
     -- (si no se destruyen, quedan flotando visibles mientras el hub esta abierto)
@@ -52934,13 +52967,20 @@ particles = {}
     local function _updateHomePremiumStatus() end
     _updateHomePremiumStatus()
 
-    -- Mostrar/ocultar homePanel segn si hay tab activa
-    task.spawn(function()
-        while homePanel and homePanel.Parent do
-            homePanel.Visible = not _G._tabContentActive
-            task.wait(0.1)
-        end
-    end)
+    -- Mostrar/ocultar homePanel segun si hay tab activa
+    -- FIX LAG: solo un loop activo a la vez. Cada vez que abrirHub() reconstruye
+    -- el hub se spawneaba un loop nuevo sin matar el anterior, acumulando N loops
+    -- corriendo en paralelo (uno por cada vez que se abrio el hub).
+    if not _G._homePanelLoopActive then
+        _G._homePanelLoopActive = true
+        task.spawn(function()
+            while homePanel and homePanel.Parent do
+                homePanel.Visible = not _G._tabContentActive
+                task.wait(0.1)
+            end
+            _G._homePanelLoopActive = false
+        end)
+    end
 
     -- Hub inicia sin cargar ningn tab (contentContainer.Visible = false)
     -- El tab se carga solo cuando el usuario clickea un botn
