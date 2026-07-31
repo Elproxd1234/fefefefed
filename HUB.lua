@@ -9285,8 +9285,21 @@ end
 function ToggleXray(enabled)
     Settings.xray.enabled = enabled
     if enabled then
+        -- Construir set de personajes a excluir (todos los jugadores, no solo el local)
+        local _playerChars = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p.Character then _playerChars[p.Character] = true end
+        end
+        local function _isPlayerPart(part)
+            local par = part.Parent
+            while par and par ~= workspace do
+                if _playerChars[par] then return true end
+                par = par.Parent
+            end
+            return false
+        end
         for _, part in pairs(workspace:GetDescendants()) do
-            if part:IsA("BasePart") and not part:IsDescendantOf(LocalPlayer.Character or workspace) then
+            if part:IsA("BasePart") and not _isPlayerPart(part) then
                 if not Settings.xray.originalProps[part] then
                     Settings.xray.originalProps[part] = part.Transparency
                 end
@@ -26664,9 +26677,22 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(xrInner, "XRay", function(enabled)
             Settings.xray.enabled = enabled
             if enabled then
+                -- Excluir personajes de TODOS los jugadores (no solo el local)
+                local _xrChars = {}
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p.Character then _xrChars[p.Character] = true end
+                end
+                local function _isAnyPlayerPart(part)
+                    local par = part.Parent
+                    while par and par ~= workspace do
+                        if _xrChars[par] then return true end
+                        par = par.Parent
+                    end
+                    return false
+                end
                 for _, part in ipairs(workspace:GetDescendants()) do
                     pcall(function()
-                        if part:IsA("BasePart") and not part:IsDescendantOf(LocalPlayer.Character or Instance.new("Folder")) then
+                        if part:IsA("BasePart") and not _isAnyPlayerPart(part) then
                             if not Settings.xray.originalProps[part] then
                                 Settings.xray.originalProps[part] = part.Transparency
                             end
@@ -27535,6 +27561,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
                 CreateCustomNotification = function() end
                 pcall(callback, true)
                 CreateCustomNotification = _orig
+                -- FIX VISUAL TOGGLE ON RESTORE: actualizar knob a ON despues de activar la feature
+                pcall(function() ApplyState(true, true) end)
             end)
         elseif not isPhysical then
             task.defer(function()
@@ -27542,6 +27570,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
                 CreateCustomNotification = function() end
                 pcall(callback, true)
                 CreateCustomNotification = _orig
+                -- FIX VISUAL TOGGLE ON RESTORE: actualizar knob a ON despues de activar la feature
+                pcall(function() ApplyState(true, false) end)
                 -- FIX VISUALS AUTO-RESTORE: si es un toggle visual (ESP/Cham/Outline/Box/Skeleton/Tracer),
                 -- forzar tick inmediato del instanceLoop para que el ESP se pinte sin esperar el intervalo de 2s.
                 local _ln = nombre:lower()
