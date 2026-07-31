@@ -29287,6 +29287,129 @@ function CreateWorldUI_QuickFlingButtons()
         end
     end)
 
+    -- BINDABLE: FLING MURDER
+    do
+        local _fmBind = { gui = nil, conn = nil, fontSize = 10, sizeX = 44, sizeY = 30 }
+        CreateToggle(leftColumn, "Fling Murder Bindable Button", false, function(on)
+            if _fmBind.conn then pcall(function() _fmBind.conn:Disconnect() end) _fmBind.conn = nil end
+            if _fmBind.gui  then pcall(function() _fmBind.gui:Destroy()     end) _fmBind.gui  = nil end
+            if on then
+                local sg = Instance.new("ScreenGui")
+                sg.Name = "FlingMurderBindable"; sg.ResetOnSpawn = false
+                pcall(function() sg.Parent = game:GetService("CoreGui") end)
+                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
+                _fmBind.gui = sg
+                MakeCapyBindableFrame(sg, "FLING\nMURDER", function()
+                    -- Simular pulsar el boton FLING MURDER
+                    local murder = _roleCache and _roleCache.murderer
+                    if not murder then
+                        CreateCustomNotification("FLING MURDER", "Murderer no detectado", 3)
+                        return
+                    end
+                    if _qfState.flingMurderActive then
+                        _qfState.flingMurderActive = false
+                        FlingSystem.flingMurder = false
+                        _flingActive = false; _flingReturning = false
+                        StopFlingSystem()
+                        CreateCustomNotification("FLING MURDER", "Desactivado", 2)
+                    else
+                        _qfStopAll()
+                        _qfState.flingMurderActive = true
+                        FlingSystem.flingMurder    = true
+                        CreateCustomNotification("FLING MURDER", "Flingeando a " .. murder.Name, 3)
+                    end
+                end)
+            end
+        end)
+    end
+
+    -- BINDABLE: STEAL GUN
+    do
+        local _sgBind = { gui = nil }
+        CreateToggle(leftColumn, "Steal Gun Bindable Button", false, function(on)
+            if _sgBind.gui then pcall(function() _sgBind.gui:Destroy() end) _sgBind.gui = nil end
+            if on then
+                local sg = Instance.new("ScreenGui")
+                sg.Name = "StealGunBindable"; sg.ResetOnSpawn = false
+                pcall(function() sg.Parent = game:GetService("CoreGui") end)
+                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
+                _sgBind.gui = sg
+                MakeCapyBindableFrame(sg, "STEAL\nGUN", function()
+                    -- Activar/cancelar Steal Gun igual que el boton principal
+                    if _qfState.stealGunActive then
+                        _qfState.stealGunActive = false
+                        StealGunSystem.enabled  = false
+                        _flingActive = false; _flingReturning = false
+                        if StealGunSystem._sgCacheConn  then pcall(function() StealGunSystem._sgCacheConn:Disconnect()  end) StealGunSystem._sgCacheConn  = nil end
+                        if StealGunSystem._sgRemoveConn then pcall(function() StealGunSystem._sgRemoveConn:Disconnect() end) StealGunSystem._sgRemoveConn = nil end
+                        CreateCustomNotification("STEAL GUN", "Desactivado", 2)
+                    else
+                        -- Detectar portador de gun
+                        _qfStopAll()
+                        StealGunSystem.sheriffOriginalFound = nil
+                        StealGunSystem.sheriffDeadDetected  = false
+                        StealGunSystem.roleCheckDisabled    = false
+                        StealGunSystem.gunInBackpackMode    = false
+                        StealGunSystem._roundToken = (StealGunSystem._roundToken or 0) + 1
+                        _roleCache.lastUpdate = 0
+                        _refreshRoleCache()
+                        local holder = nil
+                        if _roleCache.sheriff and _roleCache.sheriff.Character then
+                            local sh = _roleCache.sheriff.Character:FindFirstChildOfClass("Humanoid")
+                            if sh and sh.Health > 0 then holder = _roleCache.sheriff end
+                        end
+                        if not holder and _roleCache.hero and _roleCache.hero.Character then
+                            local hh = _roleCache.hero.Character:FindFirstChildOfClass("Humanoid")
+                            if hh and hh.Health > 0 then holder = _roleCache.hero end
+                        end
+                        if not holder then
+                            CreateCustomNotification("STEAL GUN", "No se detecto portador de gun", 4)
+                            return
+                        end
+                        _flingActive = false; _flingReturning = false
+                        _qfState.stealGunActive             = true
+                        StealGunSystem.enabled              = true
+                        StealGunSystem.sheriffOriginalFound = holder
+                        CreateCustomNotification("STEAL GUN", "Flingeando a " .. holder.Name .. " por 5s...", 3)
+                    end
+                end)
+            end
+        end)
+    end
+
+    -- BINDABLE: FLING ALL
+    do
+        local _faBind = { gui = nil }
+        CreateToggle(leftColumn, "Fling All Bindable Button", false, function(on)
+            if _faBind.gui then pcall(function() _faBind.gui:Destroy() end) _faBind.gui = nil end
+            if on then
+                local sg = Instance.new("ScreenGui")
+                sg.Name = "FlingAllBindable"; sg.ResetOnSpawn = false
+                pcall(function() sg.Parent = game:GetService("CoreGui") end)
+                if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
+                _faBind.gui = sg
+                MakeCapyBindableFrame(sg, "FLING\nALL", function()
+                    if _qfState.flingAllActive then
+                        _qfState.flingAllActive = false
+                        FlingSystem.flingAll = false
+                        StopFlingSystem()
+                        CreateCustomNotification("FLING A TODOS", "Desactivado", 2)
+                    else
+                        _qfStopAll()
+                        _qfState.flingAllActive   = true
+                        FlingSystem.flingAll      = true
+                        FlingSystem.flingMurder   = false
+                        FlingSystem.flingSheriff  = false
+                        FlingSystem.flingInnocent = false
+                        FlingSystem.specificTarget = nil
+                        _flingStartLoop()
+                        CreateCustomNotification("FLING A TODOS", "Activo - lanzando a todos", 3)
+                    end
+                end)
+            end
+        end)
+    end
+
     -- BOTON: STEAL GUN (fling al sheriff/portador de gun por 5s, luego TP al mapa)
     CreateButton(leftColumn, ">> STEAL GUN", ThemeColors.Aurora4, function()
         if _qfState.stealGunActive then
@@ -33332,50 +33455,6 @@ end
 -- ==============================================================
 -- TELEPORT TO VOTING MAP
 -- ==============================================================
-function CreateWorldUI_TeleportVotingMap()
-    local sec = CreateSection(rightColumn, "", "VOTING MAP", ThemeColors.Primary)
-    _currentMainSectionFrame = sec
-
-    _G._tpVotingMap = _G._tpVotingMap or { enabled=false, conn=nil, fontSize=10, sizeX=38, sizeY=38 }
-    _G._tpVotingMap.enabled = false
-    local V = _G._tpVotingMap
-
-    _makeTPButton("Teleport To Voting Map", function()
-        pcall(TeleportToVotepad)
-    end, sec)
-    CreateToggle(sec, "Enable TP To VM Bindable Button", false, function(on)
-        V.enabled = on
-        if V.conn then pcall(function() V.conn:Disconnect() end) V.conn = nil end
-        -- Destruir GUI bindable anterior
-        local _oldGui = _G._BindableGuiRegistry and _G._BindableGuiRegistry["TP VM_CapyBtn"]
-        if _oldGui then pcall(function() _oldGui:Destroy() end) end
-        _destroyNamedBindableGui("TP VM_CapyBtn")
-        if on then
-            -- Crear boton flotante bindable
-            local _sg = Instance.new("ScreenGui")
-            _sg.Name = "TpVMBindable"; _sg.ResetOnSpawn = false
-            _sg.Parent = LocalPlayer.PlayerGui
-            local _bf = MakeCapyBindableFrame(_sg, "TP VM", function()
-                pcall(TeleportToVotepad)
-            end)
-            if _bf then
-                pcall(function()
-                    _bf.Size = UDim2.new(0, V.sizeX, 0, V.sizeY)
-                    local lbl = _bf:FindFirstChildOfClass("TextLabel")
-                    if lbl then lbl.TextSize = V.fontSize end
-                end)
-            end
-            V.conn = UserInputService.InputBegan:Connect(function(inp, gpe)
-                if gpe then return end
-                if inp.KeyCode == Enum.KeyCode.L then pcall(TeleportToVotepad) end
-            end)
-        end
-    end)
-    CreateSlider(sec, "Teleport To Voting Map Bind Text Size", 6, 24, V.fontSize, function(v) V.fontSize = v end)
-    CreateSlider(sec, "Teleport To Voting Map Bind Size X",    20, 120, V.sizeX,   function(v) V.sizeX   = v end)
-    CreateSlider(sec, "Teleport To Voting Map Bind Size Y",    20, 120, V.sizeY,   function(v) V.sizeY   = v end)
-end
-
 -- ==============================================================
 -- TELEPORT TO MAP (MM2/MMV)
 -- ==============================================================
@@ -34073,11 +34152,6 @@ function CreateWorldTab()
             if _G._tpLobby.conn then pcall(function() _G._tpLobby.conn:Disconnect() end) _G._tpLobby.conn = nil end
             _G._tpLobby.enabled = false
         end
-        if _G._tpVotingMap then
-            if _G._tpVotingMap.conn then pcall(function() _G._tpVotingMap.conn:Disconnect() end) _G._tpVotingMap.conn = nil end
-            _G._tpVotingMap.enabled = false
-        end
-
         -- ProximityPrompts -- resetear al estado default SOLO si los toggles estan apagados
         pcall(function()
             local _ps = _G._proxState
@@ -34134,7 +34208,6 @@ function CreateWorldTab()
     _safeCall(CreateWorldUI_VoidTeleport, "VoidTeleport")
     _safeCall(CreateWorldUI_ExposeRoles, "ExposeRoles")
     _safeCall(CreateWorldUI_TeleportLobby, "TeleportLobby")
-    _safeCall(CreateWorldUI_TeleportVotingMap, "TeleportVotingMap")
     _safeCall(CreateWorldUI_TeleportToMap, "TeleportToMap")
     _safeCall(CreateWorldUI_StretchScreen, "StretchScreen")
     _safeCall(CreateWorldUI_AutoGrabGun, "AutoGrabGun")
@@ -53131,6 +53204,10 @@ function CreateUpdateTab()
                         "[+] Fixed all-tabs-blank bug when clicking during hub load.",
                         "[+] Tab build system serialized with mutex (no more race conditions).",
                         "[+] Custom Crosshairs (Miras) added to Premium tab — 13 designs, mouse-tracking.",
+                        "[-] World tab: removed TP Vote Pad section and its bindable button.",
+                        "[+] Quick Fling: added Fling Murder bindable button.",
+                        "[+] Quick Fling: added Steal Gun bindable button.",
+                        "[+] Quick Fling: added Fling All bindable button.",
                     }
                 },
             },
@@ -53143,6 +53220,8 @@ function CreateUpdateTab()
                 "[+] Custom Crosshairs now exclusive to Premium tab (13 unique designs).",
                 "[-] Removed unnecessary notifications — less visual noise.",
                 "[*] Fixed notification delay — no more lag between trigger and display.",
+                "[-] World tab: removed TP Vote Pad section and its bindable.",
+                "[+] Quick Fling: added Fling Murder, Steal Gun and Fling All bindable buttons.",
             }
         },
         {
