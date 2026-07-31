@@ -34021,6 +34021,237 @@ function CreateWorldUI_AutoVote()
         end, false)
     end
 end
+
+-- ===================================================================
+-- WORLD: FLING PLAYER — selector de persona para fling
+-- ===================================================================
+function CreateWorldUI_FlingPlayer()
+    local _sec = CreateSection(leftColumn, "", "FLING PLAYER", Color3.fromRGB(255, 80, 80))
+
+    _G._flingPlayerState = _G._flingPlayerState or {
+        targetName = nil,
+        active     = false,
+        thread     = nil,
+    }
+    local _fps = _G._flingPlayerState
+
+    -- Lista de jugadores (label + boton de seleccion)
+    local _selectedLabel = Instance.new("TextLabel", _sec)
+    _selectedLabel.Size = UDim2.new(1, -8, 0, 22)
+    _selectedLabel.BackgroundTransparency = 1
+    _selectedLabel.Text = "Target: ninguno"
+    _selectedLabel.TextSize = 12
+    _selectedLabel.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+    _selectedLabel.TextColor3 = Color3.fromRGB(255, 120, 120)
+    _selectedLabel.TextXAlignment = Enum.TextXAlignment.Left
+    _selectedLabel.ZIndex = 15
+    local _selPad = Instance.new("UIPadding", _selectedLabel)
+    _selPad.PaddingLeft = UDim.new(0, 6)
+
+    -- ScrollingFrame para lista de jugadores
+    local listFrame = Instance.new("ScrollingFrame", _sec)
+    listFrame.Size = UDim2.new(1, -8, 0, 120)
+    listFrame.BackgroundColor3 = Color3.fromRGB(8, 18, 45)
+    listFrame.BackgroundTransparency = 0.3
+    listFrame.BorderSizePixel = 0
+    listFrame.ScrollBarThickness = 3
+    listFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 80, 215)
+    listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    listFrame.ZIndex = 15
+    Instance.new("UICorner", listFrame).CornerRadius = UDim.new(0, 8)
+    local _listStroke = Instance.new("UIStroke", listFrame)
+    _listStroke.Color = Color3.fromRGB(255, 80, 80)
+    _listStroke.Thickness = 1.2
+    _listStroke.Transparency = 0.4
+    local _listLayout = Instance.new("UIListLayout", listFrame)
+    _listLayout.Padding = UDim.new(0, 2)
+    _listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    local _listPad = Instance.new("UIPadding", listFrame)
+    _listPad.PaddingLeft  = UDim.new(0, 4)
+    _listPad.PaddingRight = UDim.new(0, 4)
+    _listPad.PaddingTop   = UDim.new(0, 4)
+
+    local _playerButtons = {}
+    local function _refreshPlayerList()
+        -- limpiar botones anteriores
+        for _, btn in ipairs(_playerButtons) do pcall(function() btn:Destroy() end) end
+        _playerButtons = {}
+        local Players = game:GetService("Players")
+        local lp = Players.LocalPlayer
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp then
+                local btn = Instance.new("TextButton", listFrame)
+                btn.Size = UDim2.new(1, -4, 0, 26)
+                btn.BackgroundColor3 = (_fps.targetName == p.Name)
+                    and Color3.fromRGB(140, 30, 30)
+                    or  Color3.fromRGB(15, 25, 60)
+                btn.BackgroundTransparency = 0.2
+                btn.BorderSizePixel = 0
+                btn.AutoButtonColor = false
+                btn.Text = "🎯  " .. p.Name
+                btn.TextSize = 11
+                btn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+                btn.TextColor3 = Color3.fromRGB(255, 220, 220)
+                btn.TextXAlignment = Enum.TextXAlignment.Left
+                btn.ZIndex = 16
+                Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+                local _btnPad = Instance.new("UIPadding", btn)
+                _btnPad.PaddingLeft = UDim.new(0, 8)
+                local _btnStroke = Instance.new("UIStroke", btn)
+                _btnStroke.Color = Color3.fromRGB(255, 80, 80)
+                _btnStroke.Thickness = 1
+                _btnStroke.Transparency = 0.55
+                btn.MouseEnter:Connect(function()
+                    TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(100, 20, 20)}):Play()
+                end)
+                btn.MouseLeave:Connect(function()
+                    local isSelected = (_fps.targetName == p.Name)
+                    TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = isSelected and Color3.fromRGB(140, 30, 30) or Color3.fromRGB(15, 25, 60)}):Play()
+                end)
+                local _pname = p.Name
+                btn.Activated:Connect(function()
+                    _fps.targetName = _pname
+                    _selectedLabel.Text = "Target: " .. _pname
+                    CreateCustomNotification("FLING PLAYER", "Target: " .. _pname, 2)
+                    _refreshPlayerList()
+                end)
+                table.insert(_playerButtons, btn)
+            end
+        end
+    end
+
+    -- Boton refresh lista
+    local refreshBtn = Instance.new("TextButton", _sec)
+    refreshBtn.Size = UDim2.new(1, -8, 0, 26)
+    refreshBtn.BackgroundColor3 = Color3.fromRGB(20, 30, 70)
+    refreshBtn.BackgroundTransparency = 0.1
+    refreshBtn.BorderSizePixel = 0
+    refreshBtn.AutoButtonColor = false
+    refreshBtn.Text = "🔄  Refresh lista de jugadores"
+    refreshBtn.TextSize = 11
+    refreshBtn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+    refreshBtn.TextColor3 = Color3.fromRGB(200, 200, 255)
+    refreshBtn.ZIndex = 15
+    Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 7)
+    local _rfStroke = Instance.new("UIStroke", refreshBtn)
+    _rfStroke.Color = Color3.fromRGB(100, 80, 215)
+    _rfStroke.Thickness = 1
+    _rfStroke.Transparency = 0.4
+    refreshBtn.Activated:Connect(function()
+        _refreshPlayerList()
+        CreateCustomNotification("FLING PLAYER", "Lista actualizada", 1.5)
+    end)
+
+    -- Funcion de fling hacia el target seleccionado (usando mismo metodo que FlingOrbit)
+    local function _doFlingPlayer()
+        local Players = game:GetService("Players")
+        local lp = Players.LocalPlayer
+        if not _fps.targetName then
+            CreateCustomNotification("FLING PLAYER", "Selecciona un target primero", 2)
+            return
+        end
+        local target = Players:FindFirstChild(_fps.targetName)
+        if not target then
+            CreateCustomNotification("FLING PLAYER", "Jugador no encontrado: " .. tostring(_fps.targetName), 2)
+            return
+        end
+        local targetChar = target.Character
+        local targetHRP  = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+        if not targetHRP then
+            CreateCustomNotification("FLING PLAYER", "Personaje no disponible", 2)
+            return
+        end
+        local char = lp.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not hum then
+            CreateCustomNotification("FLING PLAYER", "Tu personaje no está disponible", 2)
+            return
+        end
+
+        -- Usar el mismo metodo que FlingOrbit: orbit extremo sobre el target
+        _fps.active = true
+        CreateCustomNotification("FLING PLAYER", "Flingeando a " .. _fps.targetName .. "...", 2)
+
+        local _conn = nil
+        local _startT = tick()
+        local _maxT = 3.5  -- duracion maxima del fling
+
+        _conn = game:GetService("RunService").PostSimulation:Connect(function()
+            if not _fps.active or (tick() - _startT) > _maxT then
+                _fps.active = false
+                if _conn then _conn:Disconnect(); _conn = nil end
+                return
+            end
+            local tHRP = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+            if not tHRP then
+                _fps.active = false
+                if _conn then _conn:Disconnect(); _conn = nil end
+                return
+            end
+            local myHRP = char and char:FindFirstChild("HumanoidRootPart")
+            if not myHRP then
+                _fps.active = false
+                if _conn then _conn:Disconnect(); _conn = nil end
+                return
+            end
+            -- Orbitar sobre el target con velocidad extrema (metodo FlingOrbit)
+            local angle = tick() * 500
+            local radius = 0.3
+            local ox = math.cos(angle) * radius
+            local oz = math.sin(angle) * radius
+            local oy = math.sin(tick() * 800) * 0.4
+            pcall(function()
+                myHRP.CFrame = tHRP.CFrame * CFrame.new(ox, oy, oz)
+                myHRP.AssemblyLinearVelocity = Vector3.new(
+                    math.cos(angle + math.pi/2) * 350,
+                    math.sin(tick() * 800) * 350,
+                    math.sin(angle + math.pi/2) * 350
+                )
+            end)
+        end)
+    end
+
+    -- Boton Fling ahora
+    local flingBtn = Instance.new("TextButton", _sec)
+    flingBtn.Size = UDim2.new(1, -8, 0, 32)
+    flingBtn.BackgroundColor3 = Color3.fromRGB(140, 20, 20)
+    flingBtn.BackgroundTransparency = 0.05
+    flingBtn.BorderSizePixel = 0
+    flingBtn.AutoButtonColor = false
+    flingBtn.Text = "⚡  FLING TARGET"
+    flingBtn.TextSize = 13
+    flingBtn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+    flingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    flingBtn.ZIndex = 15
+    Instance.new("UICorner", flingBtn).CornerRadius = UDim.new(0, 8)
+    local _flBtnStroke = Instance.new("UIStroke", flingBtn)
+    _flBtnStroke.Color = Color3.fromRGB(255, 60, 60)
+    _flBtnStroke.Thickness = 1.5
+    _flBtnStroke.Transparency = 0.2
+    flingBtn.MouseEnter:Connect(function()
+        TweenService:Create(flingBtn, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(180, 30, 30)}):Play()
+    end)
+    flingBtn.MouseLeave:Connect(function()
+        TweenService:Create(flingBtn, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(140, 20, 20)}):Play()
+    end)
+    flingBtn.Activated:Connect(function()
+        TweenService:Create(flingBtn, TweenInfo.new(0.08), {BackgroundColor3 = Color3.fromRGB(255, 50, 50)}):Play()
+        task.wait(0.12)
+        TweenService:Create(flingBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(140, 20, 20)}):Play()
+        task.spawn(_doFlingPlayer)
+    end)
+
+    -- Poblar lista al crear la seccion
+    _refreshPlayerList()
+
+    -- Auto-refresh al entrar un jugador nuevo
+    local Players = game:GetService("Players")
+    Players.PlayerAdded:Connect(function()   task.wait(0.5); _refreshPlayerList() end)
+    Players.PlayerRemoving:Connect(function() task.wait(0.1); _refreshPlayerList() end)
+end
+
 function CreateWorldTab()
     if not contentContainer or not contentContainer.Parent then
         task.wait(0.15)
@@ -34214,7 +34445,7 @@ function CreateWorldTab()
     _safeCall(CreateWorldUI_Performance, "Performance")
     CreateWorldUI_InformationBindables()
     _safeCall(CreateWorldUI_RompGun,                   "RompGun")
-    _safeCall(CreateWorldUI_SendToChat,                "SendToChat")
+    _safeCall(CreateWorldUI_FlingPlayer,               "FlingPlayer")
     _safeCall(CreateWorldUI_AutoPrestige,              "AutoPrestige")
     _safeCall(CreateWorldUI_Teleports,                 "Teleports")
     _safeCall(CreateWorldUI_TeleportToVoid,            "TeleportToVoid")
@@ -53205,6 +53436,8 @@ function CreateUpdateTab()
                         "[+] Tab build system serialized with mutex (no more race conditions).",
                         "[+] Custom Crosshairs (Miras) added to Premium tab — 13 designs, mouse-tracking.",
                         "[-] World tab: removed TP Vote Pad section and its bindable button.",
+                        "[-] World tab: removed Send To Chat section (SEND TO CHAT, MENSAJES PERSONALIZADOS, AUTO SEND, Auto Announce Murder).",
+                        "[+] World tab: added Fling Player selector — pick any player from a live list and fling them instantly.",
                         "[+] Quick Fling: added Fling Murder bindable button.",
                         "[+] Quick Fling: added Steal Gun bindable button.",
                         "[+] Quick Fling: added Fling All bindable button.",
@@ -53221,6 +53454,8 @@ function CreateUpdateTab()
                 "[-] Removed unnecessary notifications — less visual noise.",
                 "[*] Fixed notification delay — no more lag between trigger and display.",
                 "[-] World tab: removed TP Vote Pad section and its bindable.",
+                "[-] World tab: removed Send To Chat section entirely.",
+                "[+] World tab: new Fling Player selector — pick target from player list and fling them.",
                 "[+] Quick Fling: added Fling Murder, Steal Gun and Fling All bindable buttons.",
             }
         },
