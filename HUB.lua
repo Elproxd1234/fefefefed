@@ -36958,7 +36958,7 @@ function CreateExclusiveTab()
                 _G._reloadActiveTab()
             end
         end)
-        CreateCustomNotification("SETTINGS", on and "Doble columna ON — cambia de tab para aplicar" or "Doble columna OFF — cambia de tab para aplicar", 2)
+        CreateCustomNotification("SETTINGS", on and "Doble columna ON ✓" or "Doble columna OFF ✓", 2)
     end, HS.doubleColumn)
 
     -- ============================================================
@@ -52380,6 +52380,18 @@ particles = {}
                 if si then si.Text = "" end
                 -- OPT: TweenInfo compartido, sin task.spawn extra
                 TweenService:Create(_tc, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+                -- FIX DOUBLE COLUMN INVISIBLE: forzar refresh de columnas tras hacerse visible
+                -- Evita que Main aparezca en blanco cuando Double Column esta ON al iniciar
+                task.defer(function()
+                    if not _tc or not _tc.Parent then return end
+                    local wrapper = _tc:FindFirstChild("TwoColumnWrapper")
+                    if wrapper then
+                        local lc = wrapper:FindFirstChild("LeftColumn")
+                        local rc = wrapper:FindFirstChild("RightColumn")
+                        if lc then lc.Visible = false; lc.Visible = true end
+                        if rc then rc.Visible = false; rc.Visible = true end
+                    end
+                end)
             end
         end
         _buildTabCached(idx, _showTab)
@@ -52936,7 +52948,8 @@ particles = {}
             end)
             end)
             -- FIX AUTO SAVE: pre-buildear Settings en background (path _hubAlreadyBuilt)
-            task.delay(0.5, function()
+            -- FIX DOUBLE COLUMN: delay aumentado a 1.2s para que SetActiveTab(1) tome el mutex primero
+            task.delay(1.2, function()
                 pcall(function() _buildTabCached(5) end)
             end)
             -- AUTO-BUILD TODOS LOS TABS: para que toggles guardados de cualquier pestaña
@@ -53233,7 +53246,8 @@ particles = {}
         -- para que CreateAuroraToggle("Auto Save Config") se ejecute y el toggle
         -- se auto-active si estaba ON en disco. Sin esto, el toggle solo se crea
         -- cuando el usuario navega a Settings manualmente.
-        task.delay(0.5, function()
+        -- FIX DOUBLE COLUMN: delay aumentado a 1.2s para que SetActiveTab(1) tome el mutex primero
+        task.delay(1.2, function()
             pcall(function() _buildTabCached(5) end)
         end)
         -- AUTO-BUILD TODOS LOS TABS: para que toggles guardados de cualquier pestaña
@@ -53305,7 +53319,8 @@ particles = {}
             end)
             end)
             -- FIX AUTO SAVE: pre-buildear Settings en background (path fallback animacion)
-            task.delay(0.5, function()
+            -- FIX DOUBLE COLUMN: delay aumentado a 1.2s para que SetActiveTab(1) tome el mutex primero
+            task.delay(1.2, function()
                 pcall(function() _buildTabCached(5) end)
             end)
             -- AUTO-BUILD TODOS LOS TABS: para que toggles guardados de cualquier pestaña
