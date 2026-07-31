@@ -1,15 +1,20 @@
--- ================================================================
+-- ================================================================
 -- == COMPAT SHIM v18 - FIX "attempt to call a nil value" (Line 1)
 -- Algunos executors mobiles (Delta, Arceus X, Fluxus) no exponen
 -- 'task' o tienen 'game' no disponible inmediatamente al cargar.
 -- Este bloque garantiza compatibilidad antes de cualquier otro codigo.
 -- ================================================================
 if not task then
+    -- Algunos executors no tienen ni 'wait' ni 'spawn' legacy; usar coroutines como fallback final
+    local _legacyWait  = (type(wait)  == "function") and wait  or function(t) local t0 = os.clock() + (t or 0) repeat until os.clock() >= t0 end
+    local _legacySpawn = (type(spawn) == "function") and spawn or function(f, ...) local co = coroutine.wrap(f) co(...) end
+    local _legacyDelay = (type(delay) == "function") and delay or function(t, f, ...) local a = {...}; _legacySpawn(function() _legacyWait(t or 0); f(table.unpack and table.unpack(a) or unpack(a)) end) end
+    local _unpack = table.unpack or unpack
     task = {
-        wait  = function(t) return wait(t or 0) end,
-        spawn = function(f, ...) local a = {...}; spawn(function() f(table.unpack and table.unpack(a) or unpack(a)) end) end,
-        defer = function(f, ...) local a = {...}; spawn(function() wait() f(table.unpack and table.unpack(a) or unpack(a)) end) end,
-        delay = function(t, f, ...) local a = {...}; delay(t or 0, function() f(table.unpack and table.unpack(a) or unpack(a)) end) end,
+        wait  = function(t) return _legacyWait(t or 0) end,
+        spawn = function(f, ...) local a = {...}; _legacySpawn(function() f(_unpack(a)) end) end,
+        defer = function(f, ...) local a = {...}; _legacySpawn(function() _legacyWait(0); f(_unpack(a)) end) end,
+        delay = function(t, f, ...) local a = {...}; _legacyDelay(t or 0, function() f(_unpack(a)) end) end,
     }
 end
 -- Esperar a que el juego este listo antes de acceder a servicios
