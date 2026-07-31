@@ -23764,7 +23764,7 @@ end
 
 -- =============================================================
 -- HIGHLIGHT ESP -- Highlight de Roblox: solo BORDES del cuerpo
--- FillTransparency=1 (sin relleno), OutlineTransparency=0 (borde visible)
+-- FillColor = color del rol, FillTransparency por rol, OutlineTransparency=0 (bordes visibles)
 -- =============================================================
 hlObjects = {}  -- [player] = Highlight instance
 
@@ -23811,7 +23811,7 @@ function updateHighlight(player)
     if     role == "Murderer" then col = Color3.fromRGB(255,   0,  40)
     elseif role == "Sheriff"  then col = Color3.fromRGB(  0, 140, 255)
     elseif role == "Hero"     then col = Color3.fromRGB(255, 200,   0)
-    else                           col = Color3.fromRGB(200, 200, 200)
+    else                           col = Color3.fromRGB(  0, 255, 160)  -- verde Innocent
     end
 
     local hl = hlObjects[player]
@@ -23823,13 +23823,21 @@ function updateHighlight(player)
         hl = nil; hlObjects[player] = nil
     end
 
+    -- Fill transparency por rol: Murder/Sheriff/Hero mas solido, Innocent sutil
+    local fillTransp
+    if     role == "Murderer" then fillTransp = 0.30
+    elseif role == "Sheriff"  then fillTransp = 0.35
+    elseif role == "Hero"     then fillTransp = 0.35
+    else                           fillTransp = 0.55   -- Innocent: muy sutil
+    end
+
     if not hl then
         hl = Instance.new("Highlight")
         hl.Name                = "PlayerHL"
         hl.FillColor           = col
-        hl.FillTransparency    = 1              -- sin relleno
+        hl.FillTransparency    = fillTransp        -- relleno con color de rol
         hl.OutlineColor        = col
-        hl.OutlineTransparency = 0              -- solo bordes
+        hl.OutlineTransparency = 0                 -- bordes bien visibles
         hl.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
         hl.Adornee             = char
         hl.Parent              = char
@@ -23838,8 +23846,8 @@ function updateHighlight(player)
         if not _color3Equals(hl.OutlineColor, col) then
             pcall(function() hl.OutlineColor = col; hl.FillColor = col end)
         end
-        if hl.FillTransparency ~= 1 then
-            pcall(function() hl.FillTransparency = 1 end)
+        if hl.FillTransparency ~= fillTransp then
+            pcall(function() hl.FillTransparency = fillTransp end)
         end
     end
 end
