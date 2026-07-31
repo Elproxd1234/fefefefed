@@ -36090,10 +36090,11 @@ function CreatePremiumTab()
         CreateSection(rightColumn, "", " SKIN CHANGER", ThemeColors.Primary)
 
         local _skinState = _G._skinChangerState or {
-            enabled    = false,
-            mode       = "gun",
-            skinIdx    = 1,
-            origData   = {},
+            enabled        = false,
+            mode           = "gun",
+            skinIdx        = 1,
+            origData       = {},
+            _equippedConns = {},  -- FIX MOBILE v2: listeners de Equipped por tool
         }
         _G._skinChangerState = _skinState
 
@@ -36240,18 +36241,40 @@ function CreatePremiumTab()
                 end
             end
             table.clear(_skinState.origData)
+            -- FIX MOBILE v2: desconectar listeners de Equipped al resetear
+            if _skinState._equippedConns then
+                for _, conn in pairs(_skinState._equippedConns) do
+                    pcall(function() conn:Disconnect() end)
+                end
+                _skinState._equippedConns = {}
+            end
         end
 
-        local function _scApply(tool, skin, bypass)
-            if not tool or not skin then return end
-            if not bypass then
-                if _skinState.mode == "gun"   and not _scEsGun(tool)   then return end
-                if _skinState.mode == "knife" and not _scEsKnife(tool) then return end
-            end
+        -- FIX MOBILE v2: aplicar mesh+grip con espera de descendants
+        -- En mobile los SpecialMesh/MeshPart pueden llegar despues del Tool.
+        -- Esperamos hasta 2s a que haya al menos un SpecialMesh o MeshPart,
+        -- y aplicamos el grip tanto ahora como en Equipped (Roblox lo puede pisar en celu).
+        local function _scApplyInner(tool, skin)
+            -- Guardar origData si es la primera vez
             if not _skinState.origData[tool] then
                 _skinState.origData[tool] = { Grip = tool.Grip, Elements = {} }
             end
+            -- GRIP: aplicar ahora
             pcall(function() tool.Grip = skin.grip end)
+            -- Re-aplicar grip en Equipped para que no se pierda al animar en mobile
+            if not _skinState._equippedConns then _skinState._equippedConns = {} end
+            if not _skinState._equippedConns[tool] then
+                _skinState._equippedConns[tool] = tool.Equipped:Connect(function()
+                    task.wait(0.05)
+                    if _skinState.enabled and _skinState._equippedConns[tool] then
+                        pcall(function() tool.Grip = skin.grip end)
+                        -- re-verificar un frame despues (animacion puede pisar el grip)
+                        task.wait(0.1)
+                        pcall(function() tool.Grip = skin.grip end)
+                    end
+                end)
+            end
+            -- MESH + TEXTURE
             for _, obj in pairs(tool:GetDescendants()) do
                 if obj:IsA("SpecialMesh") then
                     if not _skinState.origData[tool].Elements[obj] then
@@ -36273,7 +36296,6 @@ function CreatePremiumTab()
             end
             -- FIX GRIP: NO tocar rg.C1 del Motor6D — Roblox lo maneja solo al equipar.
             -- Pisar C1 manualmente corrompía el agarre al mezclar dos sistemas.
-            -- -- FIN HOOK SONIDO (desactivado) ----------------------------
 
             -- HOOK DUAL GUN: sincronizar skin al DK_Clone si dual gun esta activo
             if skin and _skinState.mode == "gun" then
@@ -36293,6 +36315,42 @@ function CreatePremiumTab()
                     end
                 end
             end
+        end
+
+        local function _scApply(tool, skin, bypass)
+            if not tool or not skin then return end
+            if not bypass then
+                if _skinState.mode == "gun"   and not _scEsGun(tool)   then return end
+                if _skinState.mode == "knife" and not _scEsKnife(tool) then return end
+            end
+            -- FIX MOBILE SKIN: si el tool no tiene SpecialMesh/MeshPart todavia
+            -- (pasa en mobile donde los descendants llegan con delay),
+            -- esperar hasta 2s a que aparezca al menos uno antes de aplicar.
+            local _hasMesh = false
+            for _, obj in pairs(tool:GetDescendants()) do
+                if obj:IsA("SpecialMesh") or obj:IsA("MeshPart") then
+                    _hasMesh = true; break
+                end
+            end
+            if not _hasMesh then
+                -- Esperar a que llegue el primer mesh (timeout 2s)
+                task.spawn(function()
+                    local _t = 0
+                    repeat
+                        task.wait(0.1); _t = _t + 0.1
+                        for _, obj in pairs(tool:GetDescendants()) do
+                            if obj:IsA("SpecialMesh") or obj:IsA("MeshPart") then
+                                _hasMesh = true; break
+                            end
+                        end
+                    until _hasMesh or _t >= 2 or not tool.Parent
+                    if tool.Parent and _skinState.enabled then
+                        _scApplyInner(tool, skin)
+                    end
+                end)
+                return
+            end
+            _scApplyInner(tool, skin)
         end
 
         -- Oyente automatico
@@ -36365,6 +36423,13 @@ function CreatePremiumTab()
             _skinState._charConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
                 -- Re-aplicar al respawnear (importante en mobile donde el char se recarga lento)
                 _skinState.origData = {}  -- limpiar origData del char anterior
+                -- FIX MOBILE v2: limpiar Equipped listeners del char anterior
+                if _skinState._equippedConns then
+                    for _, conn in pairs(_skinState._equippedConns) do
+                        pcall(function() conn:Disconnect() end)
+                    end
+                    _skinState._equippedConns = {}
+                end
                 _scSetupListener(newChar)
             end)
         end
