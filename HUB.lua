@@ -894,6 +894,7 @@ do
         "Enable TP To AM Bindable Button", "Enable TP To Void Bindable Button",
         "Enable TP To Lobby Bindable Button", "Enable TP To VM Bindable Button",
         "Auto Expose Murderer's Perk", "Auto Expose Roles",
+        "Enable Fling Murder Bindable", "Enable Steal Gun Bindable", "Enable Fling Murder+All Bindable",
 
         -- Los toggles de _autoRestoreOnReexec YA NO se fuerzan a false aqui:
         -- se cargan del JSON y se restauran al re-ejecutar.
@@ -10237,17 +10238,31 @@ function TeleportToMap()
     local hum  = char and char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return false end
 
-    -- TP seguro: anula velocidad, teletransporta 2 veces para evitar rebote
+    -- TP seguro: anula velocidad, ancla brevemente, teletransporta multiples veces
     local function doTP(pos, label)
         -- Asegurarse de que Y no sea nulo/negativo
         local safePos = Vector3.new(pos.X, math.max(pos.Y, 2), pos.Z)
-        -- Primer TP
+        -- Zerear velocidad antes del TP
+        pcall(function()
+            hrp.AssemblyLinearVelocity  = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+            hrp.Velocity    = Vector3.zero
+            hrp.RotVelocity = Vector3.zero
+        end)
+        -- Anclar brevemente para que el servidor no aplique gravedad durante el TP
+        local _wasAnchored = false
+        pcall(function() _wasAnchored = hrp.Anchored; hrp.Anchored = true end)
+        -- Primer TP (con ancla activa: no puede caer)
         pcall(function()
             hrp.AssemblyLinearVelocity  = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
             hrp.CFrame = CFrame.new(safePos)
+            if hum and hum.Parent then
+                hum.PlatformStand = false
+                pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+            end
         end)
-        -- Segundo TP 1 frame despues para confirmar posicion
+        -- Segundo TP 1 frame despues para confirmar posicion (aun anclado)
         task.defer(function()
             local c2 = LocalPlayer.Character
             local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
@@ -10257,13 +10272,24 @@ function TeleportToMap()
                 h2.CFrame = CFrame.new(safePos)
             end
         end)
-        -- Tercer TP 0.15s despues por si hay lag de red
-        task.delay(0.15, function()
+        -- Desanclar despues de 2 frames (el personaje ya esta en posicion solida)
+        task.delay(0.08, function()
+            local c2 = LocalPlayer.Character
+            local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+            if h2 then
+                h2.AssemblyLinearVelocity  = Vector3.zero
+                h2.AssemblyAngularVelocity = Vector3.zero
+                h2.CFrame = CFrame.new(safePos)
+                pcall(function() h2.Anchored = _wasAnchored end)
+            end
+        end)
+        -- Tercer zereo 0.2s despues por si hay lag de red
+        task.delay(0.2, function()
             local c3 = LocalPlayer.Character
             local h3 = c3 and c3:FindFirstChild("HumanoidRootPart")
             if h3 then
                 h3.AssemblyLinearVelocity  = Vector3.zero
-                h3.CFrame = CFrame.new(safePos)
+                h3.AssemblyAngularVelocity = Vector3.zero
             end
         end)
  CreateCustomNotification("TP MAP", "-> " .. label, 2)
@@ -29107,15 +29133,86 @@ function CreateWorldUI_QuickFlingButtons()
                 _flingActive               = false
                 _flingReturning            = false
 
-                -- TP al mapa usando la deteccion de World tab
+                -- TP al mapa con zereo agresivo para evitar caida
                 CreateCustomNotification("FLING MURDER", "Fling terminado - volviendo al mapa...", 2)
-                task.wait(0.2)
-                TeleportToMap()
+                for _ = 1, 5 do
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.zero
+                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        myHRP.Velocity    = Vector3.zero
+                        myHRP.RotVelocity = Vector3.zero
+                        myHum.PlatformStand = false
+                    end)
+                    task.wait(0.03)
+                end
+                local _wasAnch = false
+                pcall(function() _wasAnch = myHRP.Anchored; myHRP.Anchored = true end)
+                task.wait(0.1)
+                pcall(TeleportToMap)
+                task.wait(0.05)
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                end)
+                pcall(function() myHRP.Anchored = _wasAnch end)
+                task.wait(0.1)
+                pcall(function()
+                    local c2 = LocalPlayer.Character
+                    local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+                    if h2 then
+                        h2.AssemblyLinearVelocity  = Vector3.zero
+                        h2.AssemblyAngularVelocity = Vector3.zero
+                    end
+                end)
             end)
         end
     end)
 
-    -- BOTON: STEAL GUN (fling al sheriff/portador de gun por 5s, luego TP al mapa)
+    -- BOTON: STEAL GUN
+
+    -- BINDABLE: FLING MURDER
+    do
+        local _fmBind = _G._fmBind or { enabled = false }
+        _G._fmBind = _fmBind
+
+        CreateAuroraToggle(leftColumn, "Enable Fling Murder Bindable", function(on)
+            _fmBind.enabled = on
+            DestroyCapyBind("FLING MURDER")
+            if on then
+                local sg = Instance.new("ScreenGui")
+                sg.Name = "FlingMurderBind"; sg.ResetOnSpawn = false
+                sg.IgnoreGuiInset = true; sg.DisplayOrder = 9850
+                pcall(function() sg.Parent = game:GetService("CoreGui") end)
+                if not sg.Parent then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+                _fmBind.gui = sg
+                MakeCapyBindableFrame(sg, "FLING MURDER", function()
+                    -- Toggle fling murder state
+                    if _qfState.flingMurderActive then
+                        _qfState.flingMurderActive = false
+                        FlingSystem.flingMurder = false
+                        StopFlingSystem()
+                        CreateCustomNotification("FLING MURDER", "Cancelled", 2)
+                    else
+                        local murder = _roleCache and _roleCache.murderer
+                        if not murder or not murder.Character then
+                            CreateCustomNotification("FLING MURDER", "Murderer not detected", 3)
+                            return
+                        end
+                        _qfStopAll()
+                        _qfState.flingMurderActive = true
+                        FlingSystem.flingMurder    = true
+                        StartFlingSystem()
+                        CreateCustomNotification("FLING MURDER", "Flinging " .. murder.Name .. "...", 3)
+                    end
+                end)
+                CreateCustomNotification("FLING MURDER BIND", "Bindable ON", 2)
+            else
+                CreateCustomNotification("FLING MURDER BIND", "Bindable OFF", 2)
+            end
+        end, _fmBind.enabled)
+    end
+
+ (fling al sheriff/portador de gun por 5s, luego TP al mapa)
     CreateButton(leftColumn, ">> STEAL GUN", ThemeColors.Aurora4, function()
         if _qfState.stealGunActive then
             -- Cancelar activo
@@ -29315,10 +29412,57 @@ function CreateWorldUI_QuickFlingButtons()
             _flingActive            = false
             _flingReturning         = false
 
-            -- TP al mapa inmediatamente (en spawn separado para que nunca quede bloqueado)
+            -- TP al mapa con zereo agresivo para evitar que el personaje caiga al volver
             task.spawn(function()
-                task.wait(0.15)
-                TeleportToMap()
+                -- Paso 1: zerear velocidad varias veces seguidas para cancelar inercia del fling
+                for _ = 1, 5 do
+                    pcall(function()
+                        myHRP.AssemblyLinearVelocity  = Vector3.zero
+                        myHRP.AssemblyAngularVelocity = Vector3.zero
+                        myHRP.Velocity    = Vector3.zero
+                        myHRP.RotVelocity = Vector3.zero
+                        myHum.PlatformStand = false
+                        myHum.Jump = false
+                    end)
+                    task.wait(0.03)
+                end
+
+                -- Paso 2: anclar el HRP momentaneamente para que el servidor lo vea quieto
+                local _wasAnchored = false
+                pcall(function()
+                    _wasAnchored = myHRP.Anchored
+                    myHRP.Anchored = true
+                end)
+                task.wait(0.1)
+
+                -- Paso 3: hacer el TP con HRP anclado (no puede caer)
+                local ok = pcall(TeleportToMap)
+
+                -- Paso 4: esperar un frame y zerear de nuevo en la nueva posicion
+                task.wait(0.05)
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                    myHRP.Velocity    = Vector3.zero
+                    myHRP.RotVelocity = Vector3.zero
+                end)
+
+                -- Paso 5: desanclar
+                pcall(function()
+                    myHRP.Anchored = _wasAnchored
+                end)
+
+                -- Paso 6: un segundo zereo en la posicion final para confirmar
+                task.wait(0.1)
+                pcall(function()
+                    local c2 = LocalPlayer.Character
+                    local h2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+                    if h2 then
+                        h2.AssemblyLinearVelocity  = Vector3.zero
+                        h2.AssemblyAngularVelocity = Vector3.zero
+                    end
+                end)
+
                 CreateCustomNotification("STEAL GUN", "Fling terminado - volviendo al mapa...", 2)
             end)
 
@@ -29357,6 +29501,75 @@ function CreateWorldUI_QuickFlingButtons()
 
     -- =====================================================================
     -- BOTON: FLING MURDER + FLING TODOS
+
+    -- BINDABLE: STEAL GUN
+    do
+        local _sgBind = _G._sgBind or { enabled = false }
+        _G._sgBind = _sgBind
+
+        CreateAuroraToggle(leftColumn, "Enable Steal Gun Bindable", function(on)
+            _sgBind.enabled = on
+            DestroyCapyBind("STEAL GUN")
+            if on then
+                local sg = Instance.new("ScreenGui")
+                sg.Name = "StealGunBind"; sg.ResetOnSpawn = false
+                sg.IgnoreGuiInset = true; sg.DisplayOrder = 9850
+                pcall(function() sg.Parent = game:GetService("CoreGui") end)
+                if not sg.Parent then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+                _sgBind.gui = sg
+                MakeCapyBindableFrame(sg, "STEAL GUN", function()
+                    if _qfState.stealGunActive then
+                        _qfState.stealGunActive = false
+                        StealGunSystem.enabled  = false
+                        _flingActive            = false
+                        _flingReturning         = false
+                        if StealGunSystem._sgCacheConn then
+                            pcall(function() StealGunSystem._sgCacheConn:Disconnect() end)
+                            StealGunSystem._sgCacheConn = nil
+                        end
+                        if StealGunSystem._sgRemoveConn then
+                            pcall(function() StealGunSystem._sgRemoveConn:Disconnect() end)
+                            StealGunSystem._sgRemoveConn = nil
+                        end
+                        CreateCustomNotification("STEAL GUN", "Cancelled", 2)
+                    else
+                        -- Detect gun holder
+                        _qfStopAll()
+                        StealGunSystem.sheriffOriginalFound = nil
+                        StealGunSystem.sheriffDeadDetected  = false
+                        StealGunSystem.roleCheckDisabled    = false
+                        StealGunSystem.gunInBackpackMode    = false
+                        StealGunSystem._roundToken = (StealGunSystem._roundToken or 0) + 1
+                        _roleCache.lastUpdate = 0
+                        _refreshRoleCache()
+                        local gunHolder = nil
+                        if _roleCache.sheriff and _roleCache.sheriff.Character then
+                            local h = _roleCache.sheriff.Character:FindFirstChildOfClass("Humanoid")
+                            if h and h.Health > 0 then gunHolder = _roleCache.sheriff end
+                        end
+                        if not gunHolder and _roleCache.hero and _roleCache.hero.Character then
+                            local h = _roleCache.hero.Character:FindFirstChildOfClass("Humanoid")
+                            if h and h.Health > 0 then gunHolder = _roleCache.hero end
+                        end
+                        if not gunHolder then
+                            CreateCustomNotification("STEAL GUN", "Gun holder not found", 3)
+                            return
+                        end
+                        _qfState.stealGunActive             = true
+                        StealGunSystem.enabled              = true
+                        StealGunSystem.sheriffOriginalFound = gunHolder
+                        _doStealFling(gunHolder.Character and gunHolder.Character:FindFirstChild("HumanoidRootPart"))
+                        CreateCustomNotification("STEAL GUN", "Flinging " .. gunHolder.Name .. "...", 3)
+                    end
+                end)
+                CreateCustomNotification("STEAL GUN BIND", "Bindable ON", 2)
+            else
+                CreateCustomNotification("STEAL GUN BIND", "Bindable OFF", 2)
+            end
+        end, _sgBind.enabled)
+    end
+
+
     -- Primero flingea al murder, luego activa fling a todos los demas
     -- =====================================================================
     local _fmftActive = false
@@ -29455,358 +29668,415 @@ function CreateWorldUI_QuickFlingButtons()
         end)
     end)
 
-    -- =====================================================================
-    -- SELECTOR DE JUGADOR + BOTON FLING
-    -- Lista de todos los jugadores en la ronda, selecciona uno y lo flinga
-    -- =====================================================================
+
+    -- BINDABLE: FLING MURDER + ALL
     do
-        local _selTarget = nil   -- Player seleccionado actualmente
-        local _selBtns   = {}   -- referencias a los botones de jugadores
-        local _selFlingActive = false
+        local _fmaBind = _G._fmaBind or { enabled = false }
+        _G._fmaBind = _fmaBind
 
-        -- Contenedor de la seccion
-        local selSec = Instance.new("Frame", leftColumn)
-        selSec.Size = UDim2.new(1, -8, 0, 0)
-        selSec.AutomaticSize = Enum.AutomaticSize.Y
-        selSec.BackgroundColor3 = Color3.fromRGB(15, 22, 60)
-        selSec.BackgroundTransparency = 0.3
-        selSec.BorderSizePixel = 0
-        selSec.LayoutOrder = 999
-        Instance.new("UICorner", selSec).CornerRadius = UDim.new(0, 8)
-        local selStroke = Instance.new("UIStroke", selSec)
-        selStroke.Color = Color3.fromRGB(100, 80, 215)
-        selStroke.Thickness = 1.5
-        selStroke.Transparency = 0.3
-        local selList = Instance.new("UIListLayout", selSec)
-        selList.Padding = UDim.new(0, 3)
-        selList.SortOrder = Enum.SortOrder.LayoutOrder
-        local selPad = Instance.new("UIPadding", selSec)
-        selPad.PaddingTop    = UDim.new(0, 6)
-        selPad.PaddingBottom = UDim.new(0, 6)
-        selPad.PaddingLeft   = UDim.new(0, 6)
-        selPad.PaddingRight  = UDim.new(0, 6)
-
-        -- Titulo de seccion
-        local selTitle = Instance.new("TextLabel", selSec)
-        selTitle.Size = UDim2.new(1, 0, 0, 20)
-        selTitle.BackgroundTransparency = 1
-        selTitle.Text = "🎯  FLING SELECTOR"
-        selTitle.TextColor3 = Color3.fromRGB(200, 180, 255)
-        selTitle.Font = Enum.Font.GothamBold
-        selTitle.TextSize = 11
-        selTitle.TextXAlignment = Enum.TextXAlignment.Center
-        selTitle.LayoutOrder = 0
-
-        -- Label de quien esta seleccionado
-        local selLbl = Instance.new("TextLabel", selSec)
-        selLbl.Size = UDim2.new(1, 0, 0, 16)
-        selLbl.BackgroundTransparency = 1
-        selLbl.Text = "Ninguno seleccionado"
-        selLbl.TextColor3 = Color3.fromRGB(160, 200, 255)
-        selLbl.Font = Enum.Font.Gotham
-        selLbl.TextSize = 10
-        selLbl.TextXAlignment = Enum.TextXAlignment.Center
-        selLbl.LayoutOrder = 1
-
-        -- Contenedor scrolleable de botones de jugadores
-        local playerListFrame = Instance.new("ScrollingFrame", selSec)
-        playerListFrame.Size = UDim2.new(1, 0, 0, 0)
-        playerListFrame.AutomaticSize = Enum.AutomaticSize.Y
-        playerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-        playerListFrame.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
-        playerListFrame.ScrollBarThickness = 3
-        playerListFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 80, 215)
-        playerListFrame.BackgroundTransparency = 1
-        playerListFrame.BorderSizePixel = 0
-        playerListFrame.LayoutOrder = 2
-        local pllayout = Instance.new("UIListLayout", playerListFrame)
-        pllayout.Padding = UDim.new(0, 3)
-        pllayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-        -- Boton EJECUTAR FLING (grande, verde, siempre visible)
-        local execBtn = Instance.new("TextButton", selSec)
-        execBtn.Size = UDim2.new(1, 0, 0, 28)
-        execBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
-        execBtn.BackgroundTransparency = 0.1
-        execBtn.BorderSizePixel = 0
-        execBtn.Text = "⚡ FLING AL SELECCIONADO"
-        execBtn.TextColor3 = Color3.fromRGB(80, 255, 140)
-        execBtn.Font = Enum.Font.GothamBold
-        execBtn.TextSize = 11
-        execBtn.AutoButtonColor = false
-        execBtn.ZIndex = 12
-        execBtn.LayoutOrder = 3
-        Instance.new("UICorner", execBtn).CornerRadius = UDim.new(0, 7)
-        local execStroke = Instance.new("UIStroke", execBtn)
-        execStroke.Color = Color3.fromRGB(50, 200, 100)
-        execStroke.Thickness = 1.5
-        execStroke.Transparency = 0.2
-
-        -- Boton REFRESH lista de jugadores
-        local refBtn = Instance.new("TextButton", selSec)
-        refBtn.Size = UDim2.new(1, 0, 0, 22)
-        refBtn.BackgroundColor3 = Color3.fromRGB(20, 30, 80)
-        refBtn.BackgroundTransparency = 0.2
-        refBtn.BorderSizePixel = 0
-        refBtn.Text = "🔄 Actualizar jugadores"
-        refBtn.TextColor3 = Color3.fromRGB(160, 200, 255)
-        refBtn.Font = Enum.Font.Gotham
-        refBtn.TextSize = 10
-        refBtn.AutoButtonColor = false
-        refBtn.ZIndex = 12
-        refBtn.LayoutOrder = 4
-        Instance.new("UICorner", refBtn).CornerRadius = UDim.new(0, 6)
-        local refStroke = Instance.new("UIStroke", refBtn)
-        refStroke.Color = Color3.fromRGB(80, 90, 210)
-        refStroke.Thickness = 1
-        refStroke.Transparency = 0.4
-
-        -- Funcion para reconstruir la lista de botones de jugadores
-        local function _rebuildPlayerList()
-            -- Limpiar botones anteriores
-            for _, ref in ipairs(_selBtns) do
-                pcall(function() ref.btn:Destroy() end)
-            end
-            _selBtns = {}
-
-            -- Si el target seleccionado ya no existe, limpiar
-            if _selTarget and not _selTarget.Parent then
-                _selTarget = nil
-                selLbl.Text = "Ninguno seleccionado"
-            end
-
-            local allPlayers = Players:GetPlayers()
-            local i = 0
-            for _, p in ipairs(allPlayers) do
-                if p ~= LocalPlayer then
-                    i = i + 1
-                    local isSelected = (_selTarget == p)
-
-                    local pBtn = Instance.new("TextButton", playerListFrame)
-                    pBtn.Size = UDim2.new(1, 0, 0, 24)
-                    pBtn.BackgroundColor3 = isSelected
-                        and Color3.fromRGB(80, 40, 180)
-                        or  Color3.fromRGB(25, 35, 90)
-                    pBtn.BackgroundTransparency = isSelected and 0.1 or 0.5
-                    pBtn.BorderSizePixel = 0
-                    pBtn.AutoButtonColor = false
-                    pBtn.ZIndex = 12
-                    pBtn.LayoutOrder = i
-                    Instance.new("UICorner", pBtn).CornerRadius = UDim.new(0, 6)
-
-                    local pStroke = Instance.new("UIStroke", pBtn)
-                    pStroke.Color = isSelected
-                        and Color3.fromRGB(180, 140, 255)
-                        or  Color3.fromRGB(60, 70, 160)
-                    pStroke.Thickness = isSelected and 1.5 or 1
-                    pStroke.Transparency = isSelected and 0.1 or 0.6
-
-                    -- Detectar rol para icono
-                    local _icon = "👤"
-                    if _roleCache then
-                        if _roleCache.murderer == p then _icon = "🔪"
-                        elseif _roleCache.sheriff == p or _roleCache.hero == p then _icon = "🔫"
+        CreateAuroraToggle(leftColumn, "Enable Fling Murder+All Bindable", function(on)
+            _fmaBind.enabled = on
+            DestroyCapyBind("FLING M+ALL")
+            if on then
+                local sg = Instance.new("ScreenGui")
+                sg.Name = "FlingMurderAllBind"; sg.ResetOnSpawn = false
+                sg.IgnoreGuiInset = true; sg.DisplayOrder = 9850
+                pcall(function() sg.Parent = game:GetService("CoreGui") end)
+                if not sg.Parent then sg.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+                _fmaBind.gui = sg
+                MakeCapyBindableFrame(sg, "FLING M+ALL", function()
+                    if _fmftActive then
+                        _fmftActive = false
+                        _qfStopAll()
+                        CreateCustomNotification("FLING M+ALL", "Cancelled", 2)
+                    else
+                        local murder = _roleCache and _roleCache.murderer
+                        if not murder or not murder.Character then
+                            CreateCustomNotification("FLING M+ALL", "Murderer not detected", 3)
+                            return
                         end
+                        _qfStopAll()
+                        _fmftActive = true
+                        CreateCustomNotification("FLING M+ALL", "Phase 1: Flinging murderer...", 3)
+                        task.spawn(function()
+                            local mHRP = murder.Character and murder.Character:FindFirstChild("HumanoidRootPart")
+                            if mHRP then
+                                _doStealFling(mHRP, true)
+                                task.wait(5)
+                            end
+                            if not _fmftActive then return end
+                            TeleportToMap()
+                            task.wait(0.3)
+                            if not _fmftActive then return end
+                            FlingSystem.flingAll = true
+                            StartFlingSystem()
+                            CreateCustomNotification("FLING M+ALL", "Phase 2: Fling All active", 3)
+                            task.wait(10)
+                            _fmftActive = false
+                            FlingSystem.flingAll = false
+                            StopFlingSystem()
+                        end)
                     end
-
-                    local pLbl = Instance.new("TextLabel", pBtn)
-                    pLbl.Size = UDim2.new(1, -8, 1, 0)
-                    pLbl.Position = UDim2.new(0, 4, 0, 0)
-                    pLbl.BackgroundTransparency = 1
-                    pLbl.Text = _icon .. " " .. p.Name .. (isSelected and " ✓" or "")
-                    pLbl.TextColor3 = isSelected
-                        and Color3.fromRGB(220, 200, 255)
-                        or  Color3.fromRGB(200, 215, 255)
-                    pLbl.Font = isSelected and Enum.Font.GothamBold or Enum.Font.Gotham
-                    pLbl.TextSize = 10
-                    pLbl.TextXAlignment = Enum.TextXAlignment.Left
-                    pLbl.ZIndex = 13
-
-                    local _captureP = p
-                    pBtn.Activated:Connect(function()
-                        _selTarget = _captureP
-                        selLbl.Text = "Seleccionado: " .. _captureP.Name
-                        _rebuildPlayerList()  -- refresh visual
-                    end)
-
-                    table.insert(_selBtns, { btn = pBtn, player = p })
-                end
+                end)
+                CreateCustomNotification("FLING M+ALL BIND", "Bindable ON", 2)
+            else
+                CreateCustomNotification("FLING M+ALL BIND", "Bindable OFF", 2)
             end
+        end, _fmaBind.enabled)
+    end
 
-            if i == 0 then
-                local emptyLbl = Instance.new("TextLabel", playerListFrame)
-                emptyLbl.Size = UDim2.new(1, 0, 0, 20)
-                emptyLbl.BackgroundTransparency = 1
-                emptyLbl.Text = "No hay otros jugadores"
-                emptyLbl.TextColor3 = Color3.fromRGB(130, 130, 160)
-                emptyLbl.Font = Enum.Font.Gotham
-                emptyLbl.TextSize = 10
-                emptyLbl.TextXAlignment = Enum.TextXAlignment.Center
-                table.insert(_selBtns, { btn = emptyLbl, player = nil })
-            end
+end
+-- FIN QUICK FLING BUTTONS
+
+-- FLING SELECTOR (standalone, placed in Steal Gun section)
+function CreateWorldUI_FlingSelector()
+    local _selTarget = nil
+    local _selBtns   = {}
+    local _selFlingActive = false
+
+    local selSec = Instance.new("Frame", leftColumn)
+    selSec.Size = UDim2.new(1, -8, 0, 0)
+    selSec.AutomaticSize = Enum.AutomaticSize.Y
+    selSec.BackgroundColor3 = Color3.fromRGB(15, 22, 60)
+    selSec.BackgroundTransparency = 0.3
+    selSec.BorderSizePixel = 0
+    selSec.LayoutOrder = 999
+    Instance.new("UICorner", selSec).CornerRadius = UDim.new(0, 8)
+    local selStroke = Instance.new("UIStroke", selSec)
+    selStroke.Color = Color3.fromRGB(100, 80, 215)
+    selStroke.Thickness = 1.5
+    selStroke.Transparency = 0.3
+    local selList = Instance.new("UIListLayout", selSec)
+    selList.Padding = UDim.new(0, 3)
+    selList.SortOrder = Enum.SortOrder.LayoutOrder
+    local selPad = Instance.new("UIPadding", selSec)
+    selPad.PaddingTop    = UDim.new(0, 6)
+    selPad.PaddingBottom = UDim.new(0, 6)
+    selPad.PaddingLeft   = UDim.new(0, 6)
+    selPad.PaddingRight  = UDim.new(0, 6)
+
+    local selTitle = Instance.new("TextLabel", selSec)
+    selTitle.Size = UDim2.new(1, 0, 0, 20)
+    selTitle.BackgroundTransparency = 1
+    selTitle.Text = "FLING SELECTOR"
+    selTitle.TextColor3 = Color3.fromRGB(200, 180, 255)
+    selTitle.Font = Enum.Font.GothamBold
+    selTitle.TextSize = 11
+    selTitle.TextXAlignment = Enum.TextXAlignment.Center
+    selTitle.LayoutOrder = 0
+
+    local selLbl = Instance.new("TextLabel", selSec)
+    selLbl.Size = UDim2.new(1, 0, 0, 16)
+    selLbl.BackgroundTransparency = 1
+    selLbl.Text = "No player selected"
+    selLbl.TextColor3 = Color3.fromRGB(160, 200, 255)
+    selLbl.Font = Enum.Font.Gotham
+    selLbl.TextSize = 10
+    selLbl.TextXAlignment = Enum.TextXAlignment.Center
+    selLbl.LayoutOrder = 1
+
+    local playerListFrame = Instance.new("ScrollingFrame", selSec)
+    playerListFrame.Size = UDim2.new(1, 0, 0, 80)
+    playerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    playerListFrame.AutomaticCanvasSize = Enum.AutomaticCanvasSize.Y
+    playerListFrame.ScrollBarThickness = 3
+    playerListFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 80, 215)
+    playerListFrame.BackgroundTransparency = 1
+    playerListFrame.BorderSizePixel = 0
+    playerListFrame.LayoutOrder = 2
+    local pllayout = Instance.new("UIListLayout", playerListFrame)
+    pllayout.Padding = UDim.new(0, 3)
+    pllayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    local execBtn = Instance.new("TextButton", selSec)
+    execBtn.Size = UDim2.new(1, 0, 0, 28)
+    execBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
+    execBtn.BackgroundTransparency = 0.1
+    execBtn.BorderSizePixel = 0
+    execBtn.Text = "FLING SELECTED"
+    execBtn.TextColor3 = Color3.fromRGB(80, 255, 140)
+    execBtn.Font = Enum.Font.GothamBold
+    execBtn.TextSize = 11
+    execBtn.AutoButtonColor = false
+    execBtn.ZIndex = 12
+    execBtn.LayoutOrder = 3
+    Instance.new("UICorner", execBtn).CornerRadius = UDim.new(0, 7)
+    local execStroke = Instance.new("UIStroke", execBtn)
+    execStroke.Color = Color3.fromRGB(50, 200, 100)
+    execStroke.Thickness = 1.5
+    execStroke.Transparency = 0.2
+
+    local refBtn = Instance.new("TextButton", selSec)
+    refBtn.Size = UDim2.new(1, 0, 0, 22)
+    refBtn.BackgroundColor3 = Color3.fromRGB(20, 30, 80)
+    refBtn.BackgroundTransparency = 0.2
+    refBtn.BorderSizePixel = 0
+    refBtn.Text = "Refresh players"
+    refBtn.TextColor3 = Color3.fromRGB(160, 200, 255)
+    refBtn.Font = Enum.Font.Gotham
+    refBtn.TextSize = 10
+    refBtn.AutoButtonColor = false
+    refBtn.ZIndex = 12
+    refBtn.LayoutOrder = 4
+    Instance.new("UICorner", refBtn).CornerRadius = UDim.new(0, 6)
+    local refStroke = Instance.new("UIStroke", refBtn)
+    refStroke.Color = Color3.fromRGB(80, 90, 210)
+    refStroke.Thickness = 1
+    refStroke.Transparency = 0.4
+
+    local function _rebuildPlayerList()
+        for _, ref in ipairs(_selBtns) do
+            pcall(function() ref.btn:Destroy() end)
+        end
+        _selBtns = {}
+
+        if _selTarget and not _selTarget.Parent then
+            _selTarget = nil
+            pcall(function() selLbl.Text = "No player selected" end)
         end
 
-        _rebuildPlayerList()
+        local allPlayers = Players:GetPlayers()
+        local i = 0
+        for _, p in ipairs(allPlayers) do
+            if p ~= LocalPlayer then
+                i = i + 1
+                local isSelected = (_selTarget == p)
 
-        refBtn.Activated:Connect(function()
-            _rebuildPlayerList()
-            CreateCustomNotification("FLING SELECTOR", "Lista actualizada", 1.5)
-        end)
+                local pBtn = Instance.new("TextButton", playerListFrame)
+                pBtn.Size = UDim2.new(1, 0, 0, 24)
+                pBtn.BackgroundColor3 = isSelected
+                    and Color3.fromRGB(80, 40, 180)
+                    or  Color3.fromRGB(25, 35, 90)
+                pBtn.BackgroundTransparency = isSelected and 0.1 or 0.5
+                pBtn.BorderSizePixel = 0
+                pBtn.AutoButtonColor = false
+                pBtn.ZIndex = 12
+                pBtn.LayoutOrder = i
+                Instance.new("UICorner", pBtn).CornerRadius = UDim.new(0, 6)
 
-        -- Actualizar lista automaticamente cuando entra/sale un jugador
-        -- FIX: guardar conexiones y desconectarlas cuando el frame sea destruido
-        -- para evitar "attempt to call a nil value" si la pestaña se reconstruye
-        local _selConnPA, _selConnPR
-        local function _selIsAlive() return selSec and selSec.Parent end
+                local pStroke = Instance.new("UIStroke", pBtn)
+                pStroke.Color = isSelected
+                    and Color3.fromRGB(180, 140, 255)
+                    or  Color3.fromRGB(60, 70, 160)
+                pStroke.Thickness = isSelected and 1.5 or 1
+                pStroke.Transparency = isSelected and 0.1 or 0.6
 
-        _selConnPA = Players.PlayerAdded:Connect(function()
-            if not _selIsAlive() then
-                if _selConnPA then pcall(function() _selConnPA:Disconnect() end); _selConnPA = nil end
-                return
-            end
-            task.defer(function() if _selIsAlive() then _rebuildPlayerList() end end)
-        end)
-
-        _selConnPR = Players.PlayerRemoving:Connect(function(p)
-            if not _selIsAlive() then
-                if _selConnPR then pcall(function() _selConnPR:Disconnect() end); _selConnPR = nil end
-                return
-            end
-            if _selTarget == p then
-                _selTarget = nil
-                pcall(function() selLbl.Text = "Ninguno seleccionado" end)
-            end
-            task.defer(function() if _selIsAlive() then _rebuildPlayerList() end end)
-        end)
-
-        selSec.AncestorRemoving:Connect(function()
-            if _selConnPA then pcall(function() _selConnPA:Disconnect() end); _selConnPA = nil end
-            if _selConnPR then pcall(function() _selConnPR:Disconnect() end); _selConnPR = nil end
-        end)
-
-        local function _selSetBtnIdle()
-            pcall(function()
-                execBtn.Text = "⚡ FLING AL SELECCIONADO"
-                execBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
-                execBtn.TextColor3 = Color3.fromRGB(80, 255, 140)
-                execStroke.Color = Color3.fromRGB(50, 200, 100)
-            end)
-        end
-        local function _selSetBtnCancel()
-            pcall(function()
-                execBtn.Text = "⏹ CANCELAR FLING"
-                execBtn.BackgroundColor3 = Color3.fromRGB(80, 20, 20)
-                execBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-                execStroke.Color = Color3.fromRGB(200, 60, 60)
-            end)
-        end
-
-        -- BOTON EJECUTAR FLING
-        execBtn.Activated:Connect(function()
-            if _selFlingActive then
-                _selFlingActive = false
-                _qfStopAll()
-                _selSetBtnIdle()
-                CreateCustomNotification("FLING SELECTOR", "Cancelado", 2)
-                return
-            end
-
-            if not _selTarget then
-                CreateCustomNotification("FLING SELECTOR", "Selecciona un jugador primero", 3)
-                return
-            end
-
-            local tChar = _selTarget.Character
-            local tHRP  = tChar and tChar:FindFirstChild("HumanoidRootPart")
-            if not tHRP then
-                CreateCustomNotification("FLING SELECTOR", _selTarget.Name .. " no tiene character", 2)
-                return
-            end
-
-            local myChar = LocalPlayer.Character
-            local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
-            local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
-            if not myHRP or not myHum then return end
-
-            _qfStopAll()
-            _selFlingActive = true
-            _selSetBtnCancel()
-
-            local _targetName = _selTarget.Name
-            CreateCustomNotification("FLING SELECTOR", "Flingeando a " .. _targetName .. "...", 3)
-
-            task.spawn(function()
-                -- Guardar posicion segura
-                local _ry = myHRP.Position.Y
-                if _ry > 2 and _ry < 800 then
-                    _G.OldPos = myHRP.CFrame
-                    _flingLastSafePos = myHRP.CFrame
+                local _icon = "[i]"
+                if _roleCache then
+                    if _roleCache.murderer == p then _icon = "[M]"
+                    elseif _roleCache.sheriff == p or _roleCache.hero == p then _icon = "[S]"
+                    end
                 end
 
-                local _RS = game:GetService("RunService")
-                local _launched = false
-                local _conn
-                local _t0 = tick()
+                local pLbl = Instance.new("TextLabel", pBtn)
+                pLbl.Size = UDim2.new(1, -8, 1, 0)
+                pLbl.Position = UDim2.new(0, 4, 0, 0)
+                pLbl.BackgroundTransparency = 1
+                pLbl.Text = _icon .. " " .. p.Name .. (isSelected and " [OK]" or "")
+                pLbl.TextColor3 = isSelected
+                    and Color3.fromRGB(220, 200, 255)
+                    or  Color3.fromRGB(200, 215, 255)
+                pLbl.Font = isSelected and Enum.Font.GothamBold or Enum.Font.Gotham
+                pLbl.TextSize = 10
+                pLbl.TextXAlignment = Enum.TextXAlignment.Left
+                pLbl.ZIndex = 13
 
-                local function _zero()
-                    for _ = 1, 3 do pcall(function()
-                        myHRP.AssemblyLinearVelocity  = Vector3.zero
-                        myHRP.AssemblyAngularVelocity = Vector3.zero
-                        myHRP.Velocity = Vector3.zero; myHRP.RotVelocity = Vector3.zero
-                    end) end
-                end
-
-                pcall(function() myHum.PlatformStand = true end)
-
-                _conn = _RS.Heartbeat:Connect(function()
-                    if not tHRP or not tHRP.Parent then
-                        _launched = true; _zero()
-                        if _conn then _conn:Disconnect(); _conn = nil end; return
-                    end
-                    if tHRP.AssemblyLinearVelocity.Magnitude > 120 or tick()-_t0 >= 5 or not _selFlingActive then
-                        _launched = true; _zero()
-                        pcall(function() myHum.PlatformStand = false end)
-                        if _conn then _conn:Disconnect(); _conn = nil end; return
-                    end
-                    pcall(function()
-                        myHRP.CFrame = tHRP.CFrame
-                        myChar:SetPrimaryPartCFrame(tHRP.CFrame)
-                    end)
-                    pcall(function()
-                        myHRP.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
-                        myHRP.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
-                    end)
+                local _captureP = p
+                pBtn.Activated:Connect(function()
+                    _selTarget = _captureP
+                    pcall(function() selLbl.Text = "Selected: " .. _captureP.Name end)
+                    _rebuildPlayerList()
                 end)
 
-                local _wt = 0
-                repeat task.wait(0.05); _wt = _wt + 0.05 until _launched or _wt > 6
-                if _conn then _conn:Disconnect(); _conn = nil end
+                table.insert(_selBtns, { btn = pBtn, player = p })
+            end
+        end
 
-                pcall(function()
+        if i == 0 then
+            local emptyLbl = Instance.new("TextLabel", playerListFrame)
+            emptyLbl.Size = UDim2.new(1, 0, 0, 20)
+            emptyLbl.BackgroundTransparency = 1
+            emptyLbl.Text = "No other players"
+            emptyLbl.TextColor3 = Color3.fromRGB(130, 130, 160)
+            emptyLbl.Font = Enum.Font.Gotham
+            emptyLbl.TextSize = 10
+            emptyLbl.TextXAlignment = Enum.TextXAlignment.Center
+            table.insert(_selBtns, { btn = emptyLbl, player = nil })
+        end
+    end
+
+    -- Rebuild after a short delay so the frame is parented and Players is ready
+    task.defer(function()
+        task.wait(0.1)
+        if selSec and selSec.Parent then
+            _rebuildPlayerList()
+        end
+    end)
+
+    refBtn.Activated:Connect(function()
+        _rebuildPlayerList()
+        CreateCustomNotification("FLING SELECTOR", "List updated", 1.5)
+    end)
+
+    local _selConnPA, _selConnPR
+    local function _selIsAlive() return selSec and selSec.Parent end
+
+    _selConnPA = Players.PlayerAdded:Connect(function()
+        if not _selIsAlive() then
+            if _selConnPA then pcall(function() _selConnPA:Disconnect() end); _selConnPA = nil end
+            return
+        end
+        task.defer(function() if _selIsAlive() then _rebuildPlayerList() end end)
+    end)
+
+    _selConnPR = Players.PlayerRemoving:Connect(function(p)
+        if not _selIsAlive() then
+            if _selConnPR then pcall(function() _selConnPR:Disconnect() end); _selConnPR = nil end
+            return
+        end
+        if _selTarget == p then
+            _selTarget = nil
+            pcall(function() selLbl.Text = "No player selected" end)
+        end
+        task.defer(function() if _selIsAlive() then _rebuildPlayerList() end end)
+    end)
+
+    selSec.AncestorRemoving:Connect(function()
+        if _selConnPA then pcall(function() _selConnPA:Disconnect() end); _selConnPA = nil end
+        if _selConnPR then pcall(function() _selConnPR:Disconnect() end); _selConnPR = nil end
+    end)
+
+    local function _selSetBtnIdle()
+        pcall(function()
+            execBtn.Text = "FLING SELECTED"
+            execBtn.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
+            execBtn.TextColor3 = Color3.fromRGB(80, 255, 140)
+            execStroke.Color = Color3.fromRGB(50, 200, 100)
+        end)
+    end
+    local function _selSetBtnCancel()
+        pcall(function()
+            execBtn.Text = "CANCEL FLING"
+            execBtn.BackgroundColor3 = Color3.fromRGB(80, 20, 20)
+            execBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+            execStroke.Color = Color3.fromRGB(200, 60, 60)
+        end)
+    end
+
+    execBtn.Activated:Connect(function()
+        if _selFlingActive then
+            _selFlingActive = false
+            if _G._qfStateRef then
+                local _qfState = _G._qfStateRef
+                _qfState.flingAllActive    = false
+                _qfState.flingMurderActive = false
+                _qfState.stealGunActive    = false
+                FlingSystem.flingAll       = false
+                FlingSystem.flingMurder    = false
+                FlingSystem.flingSheriff   = false
+                FlingSystem.flingInnocent  = false
+                FlingSystem.specificTarget = nil
+                StopFlingSystem()
+            end
+            _selSetBtnIdle()
+            CreateCustomNotification("FLING SELECTOR", "Cancelled", 2)
+            return
+        end
+
+        if not _selTarget then
+            CreateCustomNotification("FLING SELECTOR", "Select a player first", 3)
+            return
+        end
+
+        local tChar = _selTarget.Character
+        local tHRP  = tChar and tChar:FindFirstChild("HumanoidRootPart")
+        if not tHRP then
+            CreateCustomNotification("FLING SELECTOR", _selTarget.Name .. " has no character", 2)
+            return
+        end
+
+        local myChar = LocalPlayer.Character
+        local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
+        if not myHRP or not myHum then return end
+
+        _selFlingActive = true
+        _selSetBtnCancel()
+
+        local _targetName = _selTarget.Name
+        CreateCustomNotification("FLING SELECTOR", "Flinging " .. _targetName .. "...", 3)
+
+        task.spawn(function()
+            local _ry = myHRP.Position.Y
+            if _ry > 2 and _ry < 800 then
+                _G.OldPos = myHRP.CFrame
+                _flingLastSafePos = myHRP.CFrame
+            end
+
+            local _RS = game:GetService("RunService")
+            local _launched = false
+            local _conn
+            local _t0 = tick()
+
+            local function _zero()
+                for _ = 1, 3 do pcall(function()
                     myHRP.AssemblyLinearVelocity  = Vector3.zero
                     myHRP.AssemblyAngularVelocity = Vector3.zero
                     myHRP.Velocity = Vector3.zero; myHRP.RotVelocity = Vector3.zero
-                    myHum.PlatformStand = false
-                end)
-                task.wait(0.05)
+                end) end
+            end
+
+            pcall(function() myHum.PlatformStand = true end)
+
+            _conn = _RS.Heartbeat:Connect(function()
+                if not tHRP or not tHRP.Parent then
+                    _launched = true; _zero()
+                    if _conn then _conn:Disconnect(); _conn = nil end; return
+                end
+                if tHRP.AssemblyLinearVelocity.Magnitude > 120 or tick()-_t0 >= 5 or not _selFlingActive then
+                    _launched = true; _zero()
+                    pcall(function() myHum.PlatformStand = false end)
+                    if _conn then _conn:Disconnect(); _conn = nil end; return
+                end
                 pcall(function()
-                    myHRP.AssemblyLinearVelocity  = Vector3.zero
-                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                    myHRP.CFrame = tHRP.CFrame
+                    myChar:SetPrimaryPartCFrame(tHRP.CFrame)
                 end)
-
-                _selFlingActive = false
-                _flingActive    = false
-                _flingReturning = false
-
-                _selSetBtnIdle()
-                CreateCustomNotification("FLING SELECTOR", "Fling a " .. _targetName .. " terminado — volviendo...", 2)
-                task.wait(0.2)
-                TeleportToMap()
+                pcall(function()
+                    myHRP.AssemblyLinearVelocity  = Vector3.new(0, 50000, 0)
+                    myHRP.AssemblyAngularVelocity = Vector3.new(50000, 50000, 50000)
+                end)
             end)
+
+            local _wt = 0
+            repeat task.wait(0.05); _wt = _wt + 0.05 until _launched or _wt > 6
+            if _conn then _conn:Disconnect(); _conn = nil end
+
+            pcall(function()
+                myHRP.AssemblyLinearVelocity  = Vector3.zero
+                myHRP.AssemblyAngularVelocity = Vector3.zero
+                myHRP.Velocity = Vector3.zero; myHRP.RotVelocity = Vector3.zero
+                myHum.PlatformStand = false
+            end)
+            task.wait(0.05)
+            pcall(function()
+                myHRP.AssemblyLinearVelocity  = Vector3.zero
+                myHRP.AssemblyAngularVelocity = Vector3.zero
+            end)
+
+            _selFlingActive = false
+            _flingActive    = false
+            _flingReturning = false
+
+            _selSetBtnIdle()
+            CreateCustomNotification("FLING SELECTOR", "Fling on " .. _targetName .. " done - returning...", 2)
+            task.wait(0.2)
+            TeleportToMap()
         end)
-    end  -- fin selector
+    end)
 end
--- FIN QUICK FLING BUTTONS
+-- FIN FLING SELECTOR
+
 
 
 function CreateWorldUI_RompGun() -- global to stay under 200-local limit
@@ -34233,8 +34503,6 @@ function CreateWorldTab()
     if _G._toggleStates then
         _G._toggleStates["Spin"] = false
         _G._toggleStates["Enable Spin Bindable Button"] = false
-        _G._toggleStates["Enable Shift Lock"] = false
-        _G._toggleStates["Enable Shift Lock Bindable"] = false
     end
     ClearContent()
     _makeTwoColumns()  -- FIX: llamar ANTES de las funciones CreateWorldUI_
@@ -34333,12 +34601,7 @@ function CreateWorldTab()
             pcall(function() _G._freezeCharState.heartConn:Disconnect() end)
             _G._freezeCharState.heartConn = nil
         end
-        -- ShiftLock conns
-        if _G._shiftLockState then
-            if _G._shiftLockState.keyConn  then pcall(function() _G._shiftLockState.keyConn:Disconnect()  end) _G._shiftLockState.keyConn  = nil end
-            if _G._shiftLockState.charConn then pcall(function() _G._shiftLockState.charConn:Disconnect() end) _G._shiftLockState.charConn = nil end
-            _G._shiftLockState.bindEnabled = false
-        end
+        -- ShiftLock eliminado del World tab
         -- TP Bindable conns -- desconectar y resetear enabled
         if _G._tpAboveMap then
             if _G._tpAboveMap.conn then pcall(function() _G._tpAboveMap.conn:Disconnect() end) _G._tpAboveMap.conn = nil end
@@ -34402,13 +34665,14 @@ function CreateWorldTab()
     _safeCall(CreateWorldUI_OrbitPlayer, "OrbitPlayer")
     _safeCall(CreateWorldUI_FlingOrbit, "FlingOrbit")
     _safeCall(CreateWorldUI_QuickFlingButtons, "QuickFlingButtons")
+    _safeCall(CreateWorldUI_FlingSelector, "FlingSelector")
 
     -- FreezeCharacter eliminado del World tab
-    _safeCall(CreateWorldUI_AutoVote, "AutoVote")
+    -- AutoVote/TP VotePad eliminado del World tab
     -- CreateWorldUI_TeleportUniversal: funcion no implementada (eliminada)
     _safeCall(CreateWorldUI_ProximityPromptSection, "ProximityPromptSection")
     _safeCall(CreateWorldUI_SpinSection, "SpinSection")
-    _safeCall(CreateWorldUI_ShiftLock,   "ShiftLock")
+    -- ShiftLock eliminado del World tab
     -- ClutchSection y TeleportAboveMap eliminados del World tab
     _safeCall(CreateWorldUI_VoidTeleport, "VoidTeleport")
     _safeCall(CreateWorldUI_ExposeRoles, "ExposeRoles")
@@ -53413,7 +53677,7 @@ function CreateUpdateTab()
                         "[+] Font preference remembered per session.",
                         "[+] New background: Aurora — animated northern lights with color pulse.",
                         "[+] New wallpaper: Glitcher — corrupted TV effect with cyan/red scanlines, glitch blocks and screen flashes.",
-                        "[+] Settings: new 'Auto Desactivar Todos los Toggles' button — stops all active features in one click.",
+                        "[+] Settings: new 'Disable All Toggles' button — stops all active features in one click.",
                         "[*] Background animations no longer bleed outside the image bounds.",
                         "[*] Fixed leftover colors when switching between Zerqon and Sunset backgrounds.",
                         "[-] Removed unnecessary notifications that caused visual clutter.",
@@ -53427,21 +53691,29 @@ function CreateUpdateTab()
                         "[+] Fixed all-tabs-blank bug when clicking during hub load.",
                         "[+] Tab build system serialized with mutex (no more race conditions).",
                         "[+] Custom Crosshairs (Miras) added to Premium tab — 13 designs, mouse-tracking.",
-                        "[*] Knife Aura (_FireKnifeCombat) completamente reescrito:",
-                        "    > Busca el knife por nombre exacto 'Knife' (no agarra la Gun por error).",
-                        "    > KnifeThrown usa bladeCF apuntando al target (firma correcta de MM2).",
-                        "    > Agregado Handle/Kill: el remote que registra la muerte en el servidor.",
-                        "    > HandleTouched incluido para simular la colision con el target.",
-                        "[+] World tab — nuevo boton 'FLING MURDER + TODOS':",
-                        "    > Fase 1: flingea al murderer por hasta 5 segundos.",
-                        "    > Fase 2: teleporta al mapa y activa Fling A Todos automaticamente.",
-                        "[+] World tab — nuevo 'FLING SELECTOR' con lista clickeable de jugadores:",
-                        "    > Muestra todos los jugadores con icono de rol (murder/sheriff/inocente).",
-                        "    > Clic en un nombre lo selecciona (resaltado visual con marca de check).",
-                        "    > Boton FLING AL SELECCIONADO ejecuta sticky fling y vuelve al mapa.",
-                        "    > Boton cambia a CANCELAR FLING mientras esta activo.",
-                        "    > Lista se refresca automaticamente al entrar o salir jugadores.",
-                        "    > Boton manual para actualizar la lista en cualquier momento.",
+                        "[*] Knife Aura (_FireKnifeCombat) completely rewritten:",
+                        "    > Finds the knife by exact name 'Knife' (no longer grabs the Gun by mistake).",
+                        "    > KnifeThrown uses bladeCF pointing at target (correct MM2 signature).",
+                        "    > Added Handle/Kill: the remote that registers the kill on the server.",
+                        "    > HandleTouched included to simulate collision with the target.",
+                        "[+] World tab — new button 'FLING MURDER + ALL':",
+                        "    > Phase 1: flings the murderer for up to 5 seconds.",
+                        "    > Phase 2: teleports to map and activates Fling All automatically.",
+                        "[+] World tab — new 'FLING SELECTOR' with clickable player list:",
+                        "    > Shows all players with role icon (murder/sheriff/innocent).",
+                        "    > Click a name to select it (visual highlight with check mark).",
+                        "    > FLING SELECTED button executes sticky fling and returns to map.",
+                        "    > Button changes to CANCEL FLING while active.",
+                        "    > List refreshes automatically when players join or leave.",
+                        "    > Manual button to refresh the list at any time.",
+                        "[+] Bindable buttons added for on-screen tap (mobile-friendly):",
+                        "    > Fling Murder Bindable — tap to toggle Fling Murder from any screen.",
+                        "    > Steal Gun Bindable — tap to activate/cancel Steal Gun instantly.",
+                        "    > Fling Murder+All Bindable — tap to run the full Murder+All sequence.",
+                        "[-] Removed: Auto Shift Lock from World tab.",
+                        "[-] Removed: TP VotePad (Vote Map Slots) from World tab.",
+                        "[*] Fling Selector moved to the Steal Gun section (Quick Fling area).",
+                        "[*] Fixed Fling Selector player list not loading on first open.",
                     }
                 },
             },
@@ -53452,11 +53724,14 @@ function CreateUpdateTab()
                 "[+] New Glitcher wallpaper — corrupted TV scanlines, cyan/red flashes.",
                 "[+] Settings: one-click button to disable ALL active toggles instantly.",
                 "[+] Custom Crosshairs now exclusive to Premium tab (13 unique designs).",
+                "[+] Bindable buttons: Fling Murder, Steal Gun, Fling Murder+All.",
+                "[+] Fling Murder + All: 1 button to fling the murderer and then everyone.",
+                "[+] Fling Selector: choose who to fling from a clickable player list.",
                 "[-] Removed unnecessary notifications — less visual noise.",
+                "[-] Removed Auto Shift Lock and TP VotePad from World tab.",
                 "[*] Fixed notification delay — no more lag between trigger and display.",
-                "[*] Knife Aura arreglado — ahora registra kills correctamente en el servidor.",
-                "[+] Fling Murder + Todos: 1 boton para flinguear al murder y luego a todos.",
-                "[+] Fling Selector: elegis a quien flinguear desde una lista clickeable.",
+                "[*] Knife Aura fixed — now correctly registers kills on the server.",
+                "[*] Fling Selector fixed — player list now loads correctly on first open.",
             }
         },
         {
