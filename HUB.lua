@@ -664,6 +664,21 @@ local function _saveConfig()
     end
     if _G._hubSettings then
         local hs = _G._hubSettings
+        -- Persistir TODOS los campos de _hubSettings
+        local _hsPersistKeys = {
+            "hubScale","hubOpacity","hubLayoutMode","fontMode",
+            "notifDuration","notifMuted","fpsLimit",
+            "crosshairHidden","hudHidden","chatHidden",
+            "lowRenderQuality","disableShadows","fullbright",
+            "noParticles","noDecals","noDecoration","noSounds",
+            "noPostFX","renderDistance","noBillboards","doubleColumn",
+            "noTabAnimations","noMinMaxAnimations","disableClickSound",
+            "disableKeybinds","undraggableButtons","allowHubDrag",
+        }
+        for _, k in ipairs(_hsPersistKeys) do
+            if hs[k] ~= nil then toSave["__hs_" .. k] = hs[k] end
+        end
+        -- Compatibilidad con saves anteriores (claves sin prefijo __hs_)
         if hs.hubScale   then toSave["__hubScale"]   = hs.hubScale   end
         if hs.hubOpacity then toSave["__hubOpacity"] = hs.hubOpacity end
     end
@@ -696,7 +711,13 @@ local function _loadConfig()
     if not ok2 or type(saved) ~= "table" then return end
     local _restoredActiveCount = 0
     for k, v in pairs(saved) do
-        if k == "__hubScale" or k == "__hubOpacity" then
+        if k:sub(1, 5) == "__hs_" then
+            -- Restaurar campo de _hubSettings por clave prefijada
+            _G._hubSettings = _G._hubSettings or {}
+            local field = k:sub(6)
+            _G._hubSettings[field] = v
+        elseif k == "__hubScale" or k == "__hubOpacity" then
+            -- Compatibilidad con saves anteriores
             _G._hubSettings = _G._hubSettings or {}
             if k == "__hubScale"   then _G._hubSettings.hubScale   = v end
             if k == "__hubOpacity" then _G._hubSettings.hubOpacity = v end
@@ -31163,18 +31184,66 @@ function CreateWorldUI_Spectate()
             if specState.conn then specState.conn:Disconnect() specState.conn = nil end
             if enabled then
                 local _hbTspecConn = 0
+                -- ROL CACHE: guardar el murder encontrado para no llamar findMurderer() cada frame.
+                -- Solo se invalida si el murder muere, pierde el personaje, o cambia de ronda.
+                local _cachedMurder   = nil   -- Player cacheado
+                local _cachedHum      = nil   -- Humanoid cacheado
+                local _cachedHrp      = nil   -- HumanoidRootPart cacheado
+                local _cacheRoundTok  = nil   -- token de ronda al cachear
+                local _cacheDeathConn = nil   -- conexion Died del murder cacheado
+
+                local function _invalidateCache()
+                    _cachedMurder = nil
+                    _cachedHum    = nil
+                    _cachedHrp    = nil
+                    _cacheRoundTok = nil
+                    if _cacheDeathConn then
+                        pcall(function() _cacheDeathConn:Disconnect() end)
+                        _cacheDeathConn = nil
+                    end
+                end
+
+                local function _rebuildCache(murder)
+                    _invalidateCache()
+                    if not murder or not murder.Character then return end
+                    _cachedMurder  = murder
+                    _cachedHum     = murder.Character:FindFirstChildOfClass("Humanoid")
+                    _cachedHrp     = murder.Character:FindFirstChild("HumanoidRootPart")
+                    _cacheRoundTok = _G._sgRoundToken or 0
+                    -- Invalidar cache si el murder muere
+                    if _cachedHum then
+                        _cacheDeathConn = _cachedHum.Died:Connect(_invalidateCache)
+                    end
+                end
+
                 specState.conn = RunService.Heartbeat:Connect(function()
                     _hbTspecConn=_hbTspecConn+1; if _hbTspecConn<3 then return end; _hbTspecConn=0
                     if not specState.enabled then return end
-                    if _G._visualRoundOver then return end  -- OPT: pausar al fin de ronda
-                    local murder = findMurderer()
-                    if murder and murder.Character then
+                    if _G._visualRoundOver then _invalidateCache(); return end
+
+                    -- Invalidar cache si cambio de ronda
+                    local curTok = _G._sgRoundToken or 0
+                    if _cacheRoundTok ~= curTok then _invalidateCache() end
+
+                    -- Validar cache: si el murder cacheado ya no tiene personaje, invalidar
+                    if _cachedMurder and (not _cachedMurder.Character or not _cachedMurder.Parent) then
+                        _invalidateCache()
+                    end
+
+                    -- Si no hay cache valido, buscar el murder ahora
+                    if not _cachedMurder then
+                        local murder = findMurderer()
+                        if murder and murder.Character then
+                            _rebuildCache(murder)
+                        end
+                    end
+
+                    -- Spectate usando el cache
+                    if _cachedMurder and (_cachedHum or _cachedHrp) then
                         local cam = _Camera
                         cam.CameraType = Enum.CameraType.Custom
-                        local hum = murder.Character:FindFirstChildOfClass("Humanoid")
-                        local hrp = murder.Character:FindFirstChild("HumanoidRootPart")
-                        if hum then cam.CameraSubject = hum
-                        elseif hrp then cam.CameraSubject = hrp end
+                        if _cachedHum then cam.CameraSubject = _cachedHum
+                        else cam.CameraSubject = _cachedHrp end
                     end
                 end)
  CreateCustomNotification("SPECTATE", " Auto-spectando al Murder", 3)
@@ -36746,7 +36815,10 @@ function CreateExclusiveTab()
         fpsLimit           = 0,    -- 0 = sin limite
         crosshairHidden    = false,
         hudHidden          = false,
+        chatHidden         = false,
         lowRenderQuality   = false,
+        disableShadows     = false,
+        fullbright         = false,
         doubleColumn       = false, -- doble columna en la vista de Settings
     }
     local HS = _G._hubSettings
@@ -36901,7 +36973,10 @@ function CreateExclusiveTab()
         _hsr.hubScale           = 100
         _hsr.crosshairHidden    = false
         _hsr.hudHidden          = false
+        _hsr.chatHidden         = false
         _hsr.lowRenderQuality   = false
+        _hsr.disableShadows     = false
+        _hsr.fullbright         = false
         -- Resetear optimizaciones
         _hsr.noParticles        = false
         _hsr.noDecals           = false
@@ -37183,6 +37258,16 @@ function CreateExclusiveTab()
             CreateCustomNotification("SETTINGS", "Auto Save OFF — los toggles no se recordaran", 2)
         end
     end, _G._autoSaveEnabled)
+
+    -- Double Column: muestra dos columnas en tabs que lo soporten (Main, World, etc.)
+    -- El cambio aplica al reabrir el tab (el layout se decide al construir el tab)
+    CreateAuroraToggle(settSec, "Double Column Layout", function(on)
+        _hs().doubleColumn = on
+        -- Sincronizar ambas referencias que usa el engine de tabs
+        _G._hubDoubleColumn = on
+        if _G._hubSettings then _G._hubSettings.doubleColumn = on end
+        CreateCustomNotification("SETTINGS", on and "Doble columna ON (reabre el tab)" or "Columna simple ON (reabre el tab)", 2)
+    end, HS.doubleColumn or false)
 
 
 
@@ -37913,12 +37998,13 @@ function CreateExclusiveTab()
     end, HS.hudHidden)
 
     CreateAuroraToggle(hudSec, "Ocultar Chat", function(on)
+        _hs().chatHidden = on
         pcall(function()
             local sg = game:GetService("StarterGui")
             sg:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, not on)
         end)
         CreateCustomNotification("SETTINGS", on and "Chat oculto" or "Chat visible", 1.5)
-    end, false)
+    end, HS.chatHidden or false)
 
     -- -- PERFORMANCE -----------------------------------------------
     local perfSec = CreateBorderedSectionGlobal(rightColumn, " PERFORMANCE")
@@ -37932,16 +38018,27 @@ function CreateExclusiveTab()
     end, HS.lowRenderQuality or false)
 
     CreateAuroraToggle(perfSec, "Disable Shadows (FPS boost)", function(on)
+        _hs().disableShadows = on
         pcall(function()
             game:GetService("Lighting").GlobalShadows = not on
         end)
         CreateCustomNotification("SETTINGS", on and "Sombras OFF" or "Sombras ON", 1.5)
-    end, false)
+    end, HS.disableShadows or false)
 
     CreateAuroraToggle(perfSec, "Fullbright (max Brightness)", function(on)
+        _hs().fullbright = on
         pcall(function()
             local L = game:GetService("Lighting")
             if on then
+                -- Guardar estado original antes de pisar (solo la primera vez)
+                if not _G._lightingOriginals then
+                    _G._lightingOriginals = {
+                        brightness    = L.Brightness,
+                        clockTime     = L.ClockTime,
+                        fogEnd        = L.FogEnd,
+                        globalShadows = L.GlobalShadows,
+                    }
+                end
                 L.Brightness = 10
                 L.ClockTime = 14
                 L.FogEnd = 100000
@@ -37970,7 +38067,7 @@ function CreateExclusiveTab()
             end
         end)
         CreateCustomNotification("SETTINGS", on and "Fullbright ON" or "Fullbright OFF", 1.5)
-    end, false)
+    end, HS.fullbright or false)
 
     CreateSlider(perfSec, "FPS Cap (0 = sin limite)", 0, 60, 0, function(v)
         _hs().fpsLimit = v
@@ -38202,40 +38299,51 @@ function CreateExclusiveTab()
         -- ── SILENCIAR TODOS LOS SONIDOS DEL JUEGO ──
         -- Util para streamers o para reducir carga de audio
         local _soundConns = {}
+        -- FIX: guardar volumes originales para restaurar exacto (no hardcoded 0.5)
+        local _soundOrigVolumes = {}
+        local _soundOrigMaster  = nil
         CreateAuroraToggle(optSec, "Silenciar Sonidos del Juego", function(on)
             _hs().noSounds = on
             for _, c in ipairs(_soundConns) do pcall(function() c:Disconnect() end) end
             _soundConns = {}
-            local function _muteSound(obj)
-                if obj:IsA("Sound") then
-                    if on then
-                        pcall(function() obj.Volume = 0 end)
-                    end
-                end
-            end
             if on then
-                -- Silenciar todas las existentes en workspace y SoundService
-                for _, obj in ipairs(workspace:GetDescendants()) do _muteSound(obj) end
-                _soundConns[1] = workspace.DescendantAdded:Connect(function(obj)
-                    if _hs().noSounds then _muteSound(obj) end
-                end)
-                -- Bajar volumen master del SoundService
+                -- Guardar volumen master original
                 pcall(function()
-                    game:GetService("SoundService").MasterVolume = 0
+                    local ss = game:GetService("SoundService")
+                    _soundOrigMaster = ss.MasterVolume
+                    ss.MasterVolume = 0
                 end)
-            else
-                pcall(function()
-                    game:GetService("SoundService").MasterVolume = 0.5
-                end)
-                -- Restaurar sonidos individuales (best-effort: el juego los restaura solo)
+                -- Silenciar todos los sonidos y guardar sus volumes originales
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if obj:IsA("Sound") then
                         pcall(function()
-                            -- Intentar restaurar al volumen por defecto del juego
-                            if obj.Volume == 0 then obj.Volume = 0.5 end
+                            _soundOrigVolumes[obj] = obj.Volume
+                            obj.Volume = 0
                         end)
                     end
                 end
+                _soundConns[1] = workspace.DescendantAdded:Connect(function(obj)
+                    if _hs().noSounds and obj:IsA("Sound") then
+                        pcall(function()
+                            _soundOrigVolumes[obj] = obj.Volume
+                            obj.Volume = 0
+                        end)
+                    end
+                end)
+            else
+                -- Restaurar volumen master original
+                pcall(function()
+                    local ss = game:GetService("SoundService")
+                    ss.MasterVolume = _soundOrigMaster or 0.5
+                end)
+                _soundOrigMaster = nil
+                -- Restaurar volumes individuales exactos
+                for obj, vol in pairs(_soundOrigVolumes) do
+                    if obj and obj.Parent then
+                        pcall(function() obj.Volume = vol end)
+                    end
+                end
+                _soundOrigVolumes = {}
             end
             CreateCustomNotification("OPT", on and "Sonidos del juego OFF" or "Sonidos del juego ON", 1.5)
         end, _G._hubSettings.noSounds)
