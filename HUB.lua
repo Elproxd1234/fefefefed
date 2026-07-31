@@ -21879,7 +21879,12 @@ function StartKillAllMurder()
                 if tHRP and tHum and tHum.Health > 0 then
                     local dist = (myHRP.Position - tHRP.Position).Magnitude
                     if dist <= 10000 then
-                        FireKnifeOnTarget(knife, tHRP)
+                        -- WALL CHECK: no atacar a través de paredes
+                        local eyePos  = myHRP.Position + Vector3.new(0, 1.5, 0)
+                        local bodyPos = tHRP.Position  + Vector3.new(0, 0.8, 0)
+                        if wallCheckRaycast(eyePos, bodyPos) then
+                            FireKnifeOnTarget(knife, tHRP)
+                        end
                     end
                 end
             end
@@ -43851,6 +43856,10 @@ function CreateCombatTab()
                 if tHRP and tHRP.Parent and tHRP.Position.Y <= 70 then
                     local d = (myPos - tHRP.Position).Magnitude
                     if d <= radius then
+                        -- WALL CHECK: no atacar a través de paredes
+                        local eyePos  = myPos + Vector3.new(0, 1.5, 0)
+                        local bodyPos = tHRP.Position + Vector3.new(0, 0.8, 0)
+                        if not wallCheckRaycast(eyePos, bodyPos) then continue end
                         _FireKnifeCombat(tHRP)
                         _sp(function()
                             pcall(function()
@@ -43888,7 +43897,14 @@ function CreateCombatTab()
             for p, tHRP in pairs(_kaHRPCache) do
                 if tHRP and tHRP.Parent and tHRP.Position.Y <= 70 then
                     local d = (myPos - tHRP.Position).Magnitude
-                    if d <= radius and d < bd then bd = d; best = tHRP end
+                    if d <= radius and d < bd then
+                        -- WALL CHECK: solo seleccionar targets con línea de visión
+                        local eyePos  = myPos + Vector3.new(0, 1.5, 0)
+                        local bodyPos = tHRP.Position + Vector3.new(0, 0.8, 0)
+                        if wallCheckRaycast(eyePos, bodyPos) then
+                            bd = d; best = tHRP
+                        end
+                    end
                 end
             end
             if best then _FireKnifeCombat(best); _w(Settings.premium.knifeAura.cooldown or 0.3) end
