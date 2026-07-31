@@ -33489,15 +33489,50 @@ function CreateWorldUI_TeleportToMap()
     CreateToggle(sec, "Enable TP To Map Bindable Button", M.enabled, function(on)
         M.enabled = on
         if M.conn then pcall(function() M.conn:Disconnect() end) M.conn = nil end
+        -- Destruir GUI bindable anterior
+        local _oldGui = _G._BindableGuiRegistry and _G._BindableGuiRegistry["TP MAP_CapyBtn"]
+        if _oldGui then pcall(function() _oldGui:Destroy() end) end
+        _destroyNamedBindableGui("TP MAP_CapyBtn")
         if on then
+            -- Crear boton flotante bindable
+            local _sg = Instance.new("ScreenGui")
+            _sg.Name = "TpMapBindable"; _sg.ResetOnSpawn = false
+            _sg.Parent = LocalPlayer.PlayerGui
+            local _bf = MakeCapyBindableFrame(_sg, "TP MAP", function()
+                pcall(TeleportToMap)
+            end)
+            if _bf then
+                pcall(function()
+                    _bf.Size = UDim2.new(0, M.sizeX, 0, M.sizeX)
+                    local lbl = _bf:FindFirstChildOfClass("TextLabel")
+                    if lbl then lbl.TextSize = M.fontSize end
+                end)
+            end
             M.conn = UserInputService.InputBegan:Connect(function(inp, gpe)
                 if gpe then return end
                 if inp.KeyCode == Enum.KeyCode.M then pcall(TeleportToMap) end
             end)
         end
     end)
-    CreateSlider(sec, "Teleport To Map Bind Text Size", 6, 24, M.fontSize, function(v) M.fontSize = v end)
-    CreateSlider(sec, "Teleport To Map Bind Size X",    20, 120, M.sizeX,   function(v) M.sizeX   = v end)
+    CreateSlider(sec, "Teleport To Map Bind Text Size", 6, 24, M.fontSize, function(v)
+        M.fontSize = v
+        local g = _G._BindableGuiRegistry and _G._BindableGuiRegistry["TP MAP_CapyBtn"]
+        if g then
+            local bf = g:FindFirstChildOfClass("Frame") or g:FindFirstChildOfClass("TextButton")
+            if bf then
+                local lbl = bf:FindFirstChildOfClass("TextLabel")
+                if lbl then lbl.TextSize = v end
+            end
+        end
+    end)
+    CreateSlider(sec, "Teleport To Map Bind Size X",    20, 120, M.sizeX,   function(v)
+        M.sizeX = v
+        local g = _G._BindableGuiRegistry and _G._BindableGuiRegistry["TP MAP_CapyBtn"]
+        if g then
+            local bf = g:FindFirstChildOfClass("Frame") or g:FindFirstChildOfClass("TextButton")
+            if bf then bf.Size = UDim2.new(0, v, 0, v) end
+        end
+    end)
 end
 
 
