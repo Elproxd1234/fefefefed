@@ -843,7 +843,8 @@ local _autoRestoreOnReexec = {
     -- Visual / estado del personaje
     ["Invisible"]                            = true,
     ["Invisible (Bindable)"]                 = true,
-    ["XRay"]                                 = true,
+    -- FIX INVISIBILITY: XRay removido de neverRestoreToggles para que NO se auto-restaure al unirse.
+    -- Al activarse con chars aun cargando, _xrChars queda incompleto y otros jugadores quedan invisibles.
     ["Second Life"]                          = true,
     ["Orbit Player"]                         = true,
     ["Skip Death Animation"]                 = true,
@@ -26707,30 +26708,62 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(xrInner, "XRay", function(enabled)
             Settings.xray.enabled = enabled
             if enabled then
-                -- Excluir personajes de TODOS los jugadores (no solo el local)
-                local _xrChars = {}
-                for _, p in ipairs(Players:GetPlayers()) do
-                    if p.Character then _xrChars[p.Character] = true end
-                end
+                -- FIX INVISIBILITY: construir el set de chars DINAMICAMENTE en cada
+                -- llamada a _isAnyPlayerPart, no una sola vez al activar.
+                -- Antes: _xrChars se construia una vez -> chars que cargaban despues
+                -- no estaban en el set -> sus partes quedaban con Transparency alterada.
                 local function _isAnyPlayerPart(part)
                     local par = part.Parent
                     while par and par ~= workspace do
-                        if _xrChars[par] then return true end
+                        -- Verificar contra TODOS los chars actuales en tiempo real
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if p.Character and p.Character == par then return true end
+                        end
                         par = par.Parent
                     end
                     return false
                 end
+                -- FIX: restaurar primero cualquier prop anterior para no acumular
+                for part, trans in pairs(Settings.xray.originalProps) do
+                    pcall(function() if part and part.Parent then part.Transparency = trans end end)
+                end
+                Settings.xray.originalProps = {}
                 for _, part in ipairs(workspace:GetDescendants()) do
                     pcall(function()
                         if part:IsA("BasePart") and not _isAnyPlayerPart(part) then
-                            if not Settings.xray.originalProps[part] then
-                                Settings.xray.originalProps[part] = part.Transparency
-                            end
+                            Settings.xray.originalProps[part] = part.Transparency
                             part.Transparency = Settings.xray.transparency / 100
                         end
                     end)
                 end
+                -- FIX: hook para restaurar partes de jugadores que carguen DESPUES
+                -- de activar XRay (evita que queden invisibles)
+                if not _G._xrayCharConn then
+                    _G._xrayCharConn = Players.PlayerAdded:Connect(function(p)
+                        p.CharacterAdded:Connect(function(char)
+                            task.wait(0.5)
+                            if not Settings.xray.enabled then return end
+                            -- Restaurar transparencia original de partes del char nuevo
+                            -- que pueden haber sido afectadas por el loop de xray
+                            for _, part in ipairs(char:GetDescendants()) do
+                                if part:IsA("BasePart") then
+                                    local orig = Settings.xray.originalProps[part]
+                                    if orig ~= nil then
+                                        pcall(function() part.Transparency = orig end)
+                                        Settings.xray.originalProps[part] = nil
+                                    end
+                                end
+                            end
+                        end)
+                    end)
+                end
             else
+                -- Desconectar hook de nuevos jugadores
+                if _G._xrayCharConn then
+                    pcall(function() _G._xrayCharConn:Disconnect() end)
+                    _G._xrayCharConn = nil
+                end
+                -- Restaurar todas las transparencias originales
                 for part, trans in pairs(Settings.xray.originalProps) do
                     pcall(function()
                         if part and part.Parent then
@@ -26934,6 +26967,9 @@ do
                 end)
             end
             if perf.freezeDistant then
+                -- FIX INVISIBILITY: el codigo original usaba LocalTransparencyModifier=1
+                -- en jugadores lejanos, lo que los volvia completamente invisibles.
+                -- Fix: solo pausar animaciones de jugadores lejanos, NUNCA tocar transparencia.
                 task.spawn(function()
                     task.wait(1)
                     for _, p in pairs(_cachedPlayers) do
@@ -26943,9 +26979,24 @@ do
                                 local tHRP = p.Character:FindFirstChild("HumanoidRootPart")
                                 if myHRP and tHRP then
                                     local isFar = (myHRP.Position - tHRP.Position).Magnitude > 150
+                                    -- FIX: solo pausar/reanudar el Animator, nunca ocultar partes
+                                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                                    local animator = hum and hum:FindFirstChildOfClass("Animator")
+                                    if animator then
+                                        pcall(function()
+                                            if isFar then animator:GetPlayingAnimationTracks()[1] and
+                                                animator:GetPlayingAnimationTracks()[1]:AdjustSpeed(0)
+                                            else
+                                                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                                                    track:AdjustSpeed(1)
+                                                end
+                                            end
+                                        end)
+                                    end
+                                    -- Asegurar que LocalTransparencyModifier sea 0 siempre
                                     for _, part in ipairs(p.Character:GetDescendants()) do
-                                        if part:IsA("BasePart") then
-                                            part.LocalTransparencyModifier = isFar and 1 or 0
+                                        if part:IsA("BasePart") and part.LocalTransparencyModifier ~= 0 then
+                                            pcall(function() part.LocalTransparencyModifier = 0 end)
                                         end
                                     end
                                 end
