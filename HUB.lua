@@ -1962,251 +1962,99 @@ function _hookMurdererDeath(murderer)
     end)
 end
 
--- Hook muerte del Sheriff: limpia solo su rol inmediatamente
+-- ================================================================
+-- Hook muerte del Sheriff via KnifeKill remote (reemplaza sHum.Died)
+-- Detecta KnifeKill en RS.Remotes.Gameplay, pinta al sheriff de verde
+-- y limpia todos los datos del sheriff viejo.
+-- ================================================================
 _sheriffDeathConn = nil
+_G._knifeKillConn = _G._knifeKillConn or nil
+
+task.spawn(function()
+    local _kkOk, _kkRemote = pcall(function()
+        return game:GetService("ReplicatedStorage")
+            :WaitForChild("Remotes", 10)
+            :WaitForChild("Gameplay", 10)
+            :WaitForChild("KnifeKill", 10)
+    end)
+    if not _kkOk or not _kkRemote then return end
+    if _G._knifeKillConn then
+        pcall(function() _G._knifeKillConn:Disconnect() end)
+        _G._knifeKillConn = nil
+    end
+    _G._knifeKillConn = _kkRemote.OnClientEvent:Connect(function(killedPlayer)
+        local sheriff = _roleCache and _roleCache.sheriff
+        if not sheriff or killedPlayer ~= sheriff then return end
+        local _roundToken = _G._sgRoundToken or 0
+        task.defer(function()
+            -- Limpiar datos del sheriff viejo
+            _roleCache.sheriff    = nil
+            _roleCache.lastUpdate = 0
+            if sheriff == LocalPlayer then _roleCache.localRole = "Innocent" end
+            if _sheriffDeathConn then
+                pcall(function() _sheriffDeathConn:Disconnect() end)
+                _sheriffDeathConn = nil
+            end
+            if SheriffDeadBlock then
+                SheriffDeadBlock.isDeadSheriffID = nil
+                SheriffDeadBlock.deadSheriffName = nil
+            end
+            if _G._deadSheriffIds and sheriff.UserId then
+                _G._deadSheriffIds[sheriff.UserId] = nil
+            end
+            if StealGunSystem then
+                StealGunSystem.sheriffDeadDetected = true
+                StealGunSystem.roleCheckDisabled   = true
+            end
+            -- Pintar sheriff muerto de verde
+            local dc = sheriff.Character
+            if dc then
+                if _hl_remove then pcall(_hl_remove, dc) end
+                pcall(function() _aplicarPieceChams(dc, Color3.fromRGB(0, 255, 160)) end)
+                if chamHighlight then chamHighlight[sheriff] = dc end
+            end
+            -- Promover Hero a nuevo Sheriff visual
+            local prevHero = _roleCache and _roleCache.hero
+            if prevHero and prevHero.Character then
+                _roleCache.sheriff    = prevHero
+                _roleCache.hero       = nil
+                _roleCache.lastUpdate = 0
+                local hc = prevHero.Character
+                if hc then
+                    if _hl_remove then pcall(_hl_remove, hc) end
+                    pcall(function() _aplicarPieceChams(hc, Color3.fromRGB(0, 140, 255)) end)
+                    if chamHighlight then chamHighlight[prevHero] = hc end
+                end
+                task.defer(function()
+                    if (_G._sgRoundToken or 0) ~= _roundToken then return end
+                    pcall(_hookSheriffDeath, prevHero)
+                end)
+            end
+            _G._forceInstanceTick = true
+        end)
+    end)
+end)
+
 function _hookSheriffDeath(sheriff)
-    if not sheriff or not sheriff.Character then return end
+    -- La deteccion de muerte usa KnifeKill (listener arriba).
+    -- Esta funcion solo limpia conns viejas y actualiza SheriffDeadBlock.
     if _sheriffDeathConn then
         pcall(function() _sheriffDeathConn:Disconnect() end)
         _sheriffDeathConn = nil
     end
-    local sHum = sheriff.Character:FindFirstChildOfClass("Humanoid")
-    if not sHum then return end
-    -- FIX RONDAS: snapshot del token en el momento de hookear
-    local _hookRoundToken = _G._sgRoundToken or 0
-    _sheriffDeathConn = sHum.Died:Connect(function()
-        -- FIX: ignorar si ya pasamos a una ronda nueva
-        if (_G._sgRoundToken or 0) ~= _hookRoundToken then return end
-
-        -- DETECCION KNIFE MURDER: si el murderer sigue vivo al morir el sheriff,
-        -- fue eliminado con knife. En ese caso pasa directo a inocente
-        -- sin activar StealGun ni GunDrop (la gun no cae al suelo).
-        local _killedByMurder = false
-        pcall(function()
-            local murder = _roleCache.murderer
-            if murder and murder.Character then
-                local mHum = murder.Character:FindFirstChildOfClass("Humanoid")
-                if mHum and mHum.Health > 0 then
-                    _killedByMurder = true
-                end
-            end
-        end)
-
-        _roleCache.sheriff    = nil
-        _roleCache.lastUpdate = 0
-        if sheriff == LocalPlayer then
-            _roleCache.localRole = "Innocent"
-        end
-        if _sheriffDeathConn then
-            pcall(function() _sheriffDeathConn:Disconnect() end)
-            _sheriffDeathConn = nil
-        end
-
-        if _killedByMurder then
-            -- Murio por knife del murder: inocente eliminado, sin gun drop.
-            task.defer(function()
-                if (_G._sgRoundToken or 0) ~= _hookRoundToken then return end
-                local dc = sheriff and sheriff.Character
-                if dc then
-                    if _hl_remove then pcall(_hl_remove, dc) end
-                    local GREEN_COL = Color3.fromRGB(  0, 255, 160)
-                    pcall(function() _aplicarPieceChams(dc, GREEN_COL) end)
-                    if chamHighlight then chamHighlight[sheriff] = dc end
-                end
-                -- Hero pasa a nuevo Sheriff visual
-                local prevHero = _roleCache.hero
-                if prevHero and prevHero.Character then
-                    _roleCache.sheriff    = prevHero
-                    _roleCache.hero       = nil
-                    _roleCache.lastUpdate = 0
-                    local BLUE_COL = Color3.fromRGB(  0, 140, 255)
-                    local hc = prevHero.Character
-                    if hc then
-                        if _hl_remove then pcall(_hl_remove, hc) end
-                        pcall(function() _aplicarPieceChams(hc, BLUE_COL) end)
-                        if chamHighlight then chamHighlight[prevHero] = hc end
-                    end
-                    task.defer(function()
-                        if (_G._sgRoundToken or 0) ~= _hookRoundToken then return end
-                        pcall(_hookSheriffDeath, prevHero)
-                    end)
-                end
-            end)
-            return  -- no ejecutar StealGun ni GunDrop
-        end
-
-        -- Murio por otra causa (trampa, etc.): flujo normal
-        if StealGunSystem and StealGunSystem.enabled then
-            StealGunSystem.sheriffDeadDetected = true
-            StealGunSystem.roleCheckDisabled   = true
-            StealGunSystem.gunInBackpackMode   = true
-            if not StealGunSystem.sheriffOriginalFound then
-                StealGunSystem.sheriffOriginalFound = sheriff
-            end
-            local _deadChar = sheriff and sheriff.Character
-            if _deadChar then
-                local GREEN = Color3.fromRGB(  0, 255, 160)
-                pcall(function() _aplicarPieceChams(_deadChar, GREEN) end)
-            end
-        end
-        -- DEATH HL: sheriff muere -> verde (inocente) y Hero pasa a ser nuevo Sheriff (azul)
-        task.defer(function()
-            if (_G._sgRoundToken or 0) ~= _hookRoundToken then return end
-            local dc = sheriff and sheriff.Character
-            if dc then
-                -- Quitar highlight de rol
-                if _hl_remove then pcall(_hl_remove, dc) end
-                -- Pintar verde: ahora es inocente muerto
-                local GREEN_COL = Color3.fromRGB(  0, 255, 160)
-                pcall(function() _aplicarPieceChams(dc, GREEN_COL) end)
-                if chamHighlight then chamHighlight[sheriff] = dc end
-            end
-
-            -- Promover el Hero actual a Sheriff visual
-            local prevHero = _roleCache.hero
-            if prevHero and prevHero.Character then
-                -- El Hero pasa a ser el nuevo Sheriff en el roleCache
-                _roleCache.sheriff = prevHero
-                _roleCache.hero    = nil
-                _roleCache.lastUpdate = 0
-                -- Pintarlo azul (color de Sheriff)
-                local BLUE_COL = Color3.fromRGB(  0, 140, 255)
-                local hc = prevHero.Character
-                if hc then
-                    if _hl_remove then pcall(_hl_remove, hc) end
-                    pcall(function() _aplicarPieceChams(hc, BLUE_COL) end)
-                    if chamHighlight then chamHighlight[prevHero] = hc end
-                end
-                -- Re-hookear muerte del nuevo Sheriff (era el Hero)
-                task.defer(function()
-                    if (_G._sgRoundToken or 0) ~= _hookRoundToken then return end
-                    pcall(_hookSheriffDeath, prevHero)
-                end)
-            end
-
-            -- -- MONITOR GUNDROP: si no habia Hero, esperar que la gun caiga y
-            --    pintar de AMARILLO al proximo inocente que la agarre --
-            task.spawn(function()
-                if (_G._sgRoundToken or 0) ~= _hookRoundToken then return end
-
-                -- Cancelar monitor anterior si habia uno activo
-                if _G._gunDropMonitorConn then
-                    pcall(function() _G._gunDropMonitorConn:Disconnect() end)
-                    _G._gunDropMonitorConn = nil
-                end
-
-                local _dropNames = {GunDrop=true, DropGun=true, SheriffGun=true, HeroGun=true, Gun=true}
-                local YELLOW_COL = Color3.fromRGB(255, 210,   0)
-                local GREEN_COL2 = Color3.fromRGB(  0, 255, 160)
-                local _monitorToken = _hookRoundToken
-
-                local function _onNewHeroGrabGun(newSheriffPlayer)
-                    if (_G._sgRoundToken or 0) ~= _monitorToken then return end
-                    -- El inocente que agarro la gun pasa a ser el nuevo Sheriff visual -> azul
-                    _roleCache.sheriff = newSheriffPlayer
-                    _roleCache.hero    = nil
-                    _roleCache.lastUpdate = 0
-                    -- FIX: si el LocalPlayer agarró la gun, actualizar su rol local a Sheriff
-                    if newSheriffPlayer == LocalPlayer then
-                        _roleCache.localRole = "Sheriff"
-                    end
-                    local pc = newSheriffPlayer and newSheriffPlayer.Character
-                    if not pc then return end
-                    local _vcdG = VisualState and VisualState.cham
-                    local chamG = _vcdG and (
-                        _vcdG.everyone or _vcdG.sheriff or _vcdG.survivor or _vcdG.assassin
-                    )
-                    if chamG then
-                        local BLUE_COL2 = Color3.fromRGB(  0, 140, 255)
-                        pcall(function() _aplicarPieceChams(pc, BLUE_COL2) end)
-                        if chamHighlight then chamHighlight[newSheriffPlayer] = pc end
-                    end
-
-                    -- Hookear su muerte: cuando muera este Sheriff -> verde + monitor de nuevo
-                    task.defer(function()
-                        if (_G._sgRoundToken or 0) ~= _monitorToken then return end
-                        pcall(_hookSheriffDeath, newSheriffPlayer)
-                    end)
-
-                    -- Desconectar el monitor de workspace ahora que ya fue agarrada
-                    if _G._gunDropMonitorConn then
-                        pcall(function() _G._gunDropMonitorConn:Disconnect() end)
-                        _G._gunDropMonitorConn = nil
-                    end
-                end
-
-                -- Funcion reutilizable para monitorear el GunDrop en workspace
-                function _startGunDropMonitor(tokenRef)
-                    if _G._gunDropMonitorConn then
-                        pcall(function() _G._gunDropMonitorConn:Disconnect() end)
-                        _G._gunDropMonitorConn = nil
-                    end
-                    if (_G._sgRoundToken or 0) ~= tokenRef then return end
-
-                    -- Buscar GunDrop ya existente en workspace
-                    local function _checkExistingDrop()
-                        for _, obj in ipairs(workspace:GetDescendants()) do
-                            if obj:IsA("Tool") and _dropNames[obj.Name] then
-                                -- Esperar a que sea agarrado por alguien (parent = Character de algun player)
-                                obj.AncestryChanged:Connect(function()
-                                    if (_G._sgRoundToken or 0) ~= tokenRef then return end
-                                    local p = obj.Parent
-                                    if not p then return end
-                                    -- Buscar si es el Character de algun jugador
-                                    for _, plr in ipairs(Players:GetPlayers()) do
-                                        if plr ~= LocalPlayer and plr.Character == p then
-                                            local isSpecial = (_roleCache.murderer == plr)
-                                                           or (_roleCache.sheriff  == plr)
-                                                           or (_roleCache.hero     == plr)
-                                            if not isSpecial then
-                                                _onNewHeroGrabGun(plr)
-                                            end
-                                            return
-                                        end
-                                    end
-                                end)
-                                return true
-                            end
-                        end
-                        return false
-                    end
-
-                    _checkExistingDrop()
-
-                    -- Tambien escuchar DescendantAdded por si el GunDrop aparece despues
-                    _G._gunDropMonitorConn = workspace.DescendantAdded:Connect(function(obj)
-                        if (_G._sgRoundToken or 0) ~= tokenRef then
-                            if _G._gunDropMonitorConn then
-                                pcall(function() _G._gunDropMonitorConn:Disconnect() end)
-                                _G._gunDropMonitorConn = nil
-                            end
-                            return
-                        end
-                        if not (obj:IsA("Tool") and _dropNames[obj.Name]) then return end
-                        obj.AncestryChanged:Connect(function()
-                            if (_G._sgRoundToken or 0) ~= tokenRef then return end
-                            local p = obj.Parent
-                            if not p then return end
-                            for _, plr in ipairs(Players:GetPlayers()) do
-                                if plr ~= LocalPlayer and plr.Character == p then
-                                    local isSpecial = (_roleCache.murderer == plr)
-                                                   or (_roleCache.sheriff  == plr)
-                                                   or (_roleCache.hero     == plr)
-                                    if not isSpecial then
-                                        _onNewHeroGrabGun(plr)
-                                    end
-                                    return
-                                end
-                            end
-                        end)
-                    end)
-                end
-
-                _startGunDropMonitor(_hookRoundToken)
-            end)
-        end)
-    end)
+    if sheriff and SheriffDeadBlock then
+        SheriffDeadBlock.isDeadSheriffID = sheriff.UserId
+        SheriffDeadBlock.deadSheriffName = sheriff.Name
+    end
 end
+
+-- BLOQUE ELIMINADO (logica antigua de sHum.Died - reemplazada por KnifeKill)
+-- Se deja como do..end vacio para no romper el scope de Lua
+do local _LEGACY_SHERIFF_DIED_REMOVED = true -- bloque eliminado; cierra el do..end abajo
+--[[ ELIMINADO: cuerpo antiguo de sHum.Died que detectaba muerte del sheriff.
+     Fue reemplazado por el listener de KnifeKill (RS.Remotes.Gameplay.KnifeKill).
+     Se conserva el do..end para no romper el scope de Lua. ]]
+end  -- cierra do local _LEGACY_SHERIFF_DIED_REMOVED
 
 -- Hook muerte del Hero: limpia su rol y HL inmediatamente
 _heroDeathConn = nil
@@ -37259,15 +37107,7 @@ function CreateExclusiveTab()
         end
     end, _G._autoSaveEnabled)
 
-    -- Double Column: muestra dos columnas en tabs que lo soporten (Main, World, etc.)
-    -- El cambio aplica al reabrir el tab (el layout se decide al construir el tab)
-    CreateAuroraToggle(settSec, "Double Column Layout", function(on)
-        _hs().doubleColumn = on
-        -- Sincronizar ambas referencias que usa el engine de tabs
-        _G._hubDoubleColumn = on
-        if _G._hubSettings then _G._hubSettings.doubleColumn = on end
-        CreateCustomNotification("SETTINGS", on and "Doble columna ON (reabre el tab)" or "Columna simple ON (reabre el tab)", 2)
-    end, HS.doubleColumn or false)
+
 
 
 
@@ -52755,12 +52595,17 @@ particles = {}
             end
             if _tabCache[idx] then
                 local _tc = _tabCache[idx]
-                _tc.Position = UDim2.new(0, 0, 0, 12)
                 _tc.Visible  = true
                 local si = _tc:FindFirstChild("SearchInput", true)
                 if si then si.Text = "" end
-                -- OPT: TweenInfo compartido, sin task.spawn extra
-                TweenService:Create(_tc, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+                -- Respetar la preferencia "No Tab Animations"
+                if _G._hubSettings and _G._hubSettings.noTabAnimations then
+                    _tc.Position = UDim2.new(0, 0, 0, 0)
+                else
+                    _tc.Position = UDim2.new(0, 0, 0, 12)
+                    -- OPT: TweenInfo compartido, sin task.spawn extra
+                    TweenService:Create(_tc, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+                end
                 -- FIX DOUBLE COLUMN INVISIBLE: forzar refresh de columnas tras hacerse visible
                 -- Evita que Main aparezca en blanco cuando Double Column esta ON al iniciar
                 task.defer(function()
@@ -53509,6 +53354,49 @@ particles = {}
         })
         _barGrad.Rotation = 0
 
+        -- Animacion de movimiento del color verde: offset ciclico via Offset
+        local _barGradConn
+        local _barGradOffset = 0
+        local _barGradSpeed  = 0.35  -- ciclos por segundo (mas alto = mas rapido)
+        _barGradConn = RunService.Heartbeat:Connect(function(dt)
+            if not _barFill or not _barFill.Parent then
+                _barGradConn:Disconnect()
+                return
+            end
+            _barGradOffset = (_barGradOffset + dt * _barGradSpeed) % 1
+            local o = _barGradOffset
+            -- Interpolar colores ciclicamente para simular movimiento del verde
+            local function lerpC(a, b, t) return Color3.new(a.R+(b.R-a.R)*t, a.G+(b.G-a.G)*t, a.B+(b.B-a.B)*t) end
+            local cBlue   = Color3.fromRGB(60,  100, 220)
+            local cViolet = Color3.fromRGB(120, 60,  205)
+            local cGreen  = Color3.fromRGB(50,  200, 140)
+            local cBluePurple = Color3.fromRGB(80, 90, 210)
+            -- Desplazar los 4 keypoints con el offset para crear efecto de flujo
+            local k0 = ((0    + o) % 1)
+            local k1 = ((0.33 + o) % 1)
+            local k2 = ((0.66 + o) % 1)
+            local k3 = ((0.99 + o) % 1)
+            -- Ordenar keypoints (UIGradient requiere posiciones ascendentes 0..1)
+            local pts = {
+                {p=k0, c=cBlue},
+                {p=k1, c=cViolet},
+                {p=k2, c=cGreen},
+                {p=k3, c=cBluePurple},
+            }
+            table.sort(pts, function(a,b) return a.p < b.p end)
+            -- Asegurar que siempre haya puntos en 0 y 1
+            local seq = {}
+            if pts[1].p > 0 then table.insert(seq, ColorSequenceKeypoint.new(0, pts[1].c)) end
+            for _, pt in ipairs(pts) do
+                local pp = math.clamp(pt.p, 0, 1)
+                if #seq == 0 or pp > seq[#seq].Time + 0.001 then
+                    table.insert(seq, ColorSequenceKeypoint.new(pp, pt.c))
+                end
+            end
+            if seq[#seq].Time < 1 then table.insert(seq, ColorSequenceKeypoint.new(1, pts[#pts].c)) end
+            pcall(function() _barGrad.Color = ColorSequence.new(seq) end)
+        end)
+
         local _pctLbl = Instance.new("TextLabel", _loadSG)
         _pctLbl.AnchorPoint = Vector2.new(0.5, 1)
         _pctLbl.Position = UDim2.new(0.5, 0, 0.530, 0)
@@ -53559,6 +53447,8 @@ particles = {}
         task.wait(0.5)
 
         -- Fade out
+        -- Detener animacion del gradiente de la barra
+        if _barGradConn then pcall(function() _barGradConn:Disconnect() end) end
         local _ft = 0.4
         TweenService:Create(_bg,           TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
         TweenService:Create(_oval,         TweenInfo.new(_ft), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
