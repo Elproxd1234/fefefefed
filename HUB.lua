@@ -929,7 +929,7 @@ do
 
         "Touch Fling", "Touch Fling Bindable",
         "Fling Sheriff", "Fling Sheriff (loop)", "Enable Hitbox Expander",
-        "Knife Hitbox", "Kill All Zombie (Halloween)", "Kill All Snowball Fight (Navidad)",
+        "Hitbox Expander", "Knife Hitbox", "Kill All Zombie (Halloween)", "Kill All Snowball Fight (Navidad)",
         "Anti Bang",
         "Bang Random Player", "Bang Murder", "Bang Sheriff", "Bang Innocent",
         " Bindable: Bang Random Player", " Bindable: Bang Murder",
@@ -44540,12 +44540,15 @@ function CreateCombatTab()
         CreateBorderedToggle(_killSheriffSection, "Hitbox Expander", function(en)
             _reachEnabled = en
             if en then
+                -- 0. Restaurar HRPs residuales de ejecuciones anteriores antes de re-expandir
+                -- (evita jugadores deformados si el hub se re-ejecuto sin apagar el toggle)
+                _restoreAllHRPs()
                 -- 1. Aplicar reach al knife
                 local knife = _getKnife()
                 if knife then _applyReach(knife) end
                 _startReachLoop()
-                -- 2. Expandir HRP de todos los jugadores actuales (Players:GetPlayers() siempre fresco)
-                for _, p in ipairs(Players:GetPlayers()) do
+                -- 2. Expandir HRP de todos los jugadores actuales (usando _cachedPlayers)
+                for _, p in ipairs(_cachedPlayers) do
                     if p ~= LocalPlayer then _saveAndExpandHRP(p) end
                 end
                 -- 3. Mostrar SelectionBox en todos los jugadores
