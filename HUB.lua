@@ -6014,7 +6014,7 @@ function _KnifeSA_setupKnife(knife)
                 pcall(function()
                     local animator = _getAnimator()
                     if not animator then return end
-                    task.wait(0.05)
+                    task.wait(0.016)
                     for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
                         local n = t.Name:lower()
                         if n:find("throw") or n:find("charge") or n:find("knife") then
@@ -6657,7 +6657,7 @@ local function _flingDoReturn(Character, RootPart, Humanoid)
             end
         end)
         -- FIX: 2 frames de espera + double-zereo para cancelar inercia residual del servidor
-        task.wait(0.05)
+        task.wait(0.016)
         pcall(function()
             if RootPart.Parent then
                 for _, x in ipairs(Character:GetDescendants()) do
@@ -6670,7 +6670,7 @@ local function _flingDoReturn(Character, RootPart, Humanoid)
                 end
             end
         end)
-        task.wait(0.05)
+        task.wait(0.016)
         pcall(function()
             if RootPart.Parent then
                 RootPart.AssemblyLinearVelocity  = Vector3.zero
@@ -6814,7 +6814,7 @@ function _doStealFling(targetHRP, skipReturn)
 
     local _waitLimit = 0
     repeat
-        task.wait(0.05)
+        task.wait(0.016)
         _waitLimit = _waitLimit + 0.05
     until _targetLaunched or _waitLimit > 9
 
@@ -7078,7 +7078,7 @@ function StartFlingSystem()
                 end)
             end)
             local w = 0
-            repeat task.wait(0.05); w = w + 0.05 until launched or w > 4
+            repeat task.wait(0.016); w = w + 0.05 until launched or w > 4
             if conn then conn:Disconnect(); conn = nil end
             -- FIX: triple zereo post-loop por si quedo inercia de un frame tardio
             pcall(function()
@@ -7088,7 +7088,7 @@ function StartFlingSystem()
                 myHRP.RotVelocity = Vector3.zero
                 myHum.PlatformStand = false
             end)
-            task.wait(0.05)
+            task.wait(0.016)
             pcall(function()
                 myHRP.AssemblyLinearVelocity  = Vector3.zero
                 myHRP.AssemblyAngularVelocity = Vector3.zero
@@ -7851,7 +7851,7 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
 
     -- -- ANIMACION DE ENTRADA ------------------------------
     task.spawn(function()
-        task.wait(0.05)
+        task.wait(0.016)
         TweenService:Create(_bindUiScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
     end)
 
@@ -8297,7 +8297,7 @@ function createBindableButton(name, color)
 
     -- -- ANIMACION DE ENTRADA --------------------------------------
     task.spawn(function()
-        task.wait(0.05)
+        task.wait(0.016)
         TweenService:Create(_bgScale, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
         task.wait(0.45)
 
@@ -11160,7 +11160,7 @@ function CreateToggle(parent, nombre, callback, initialValue)
         if callback then callback(enabled) end
         if not enabled then
             task.spawn(function()
-                task.wait(0.05)
+                task.wait(0.016)
                 _DoToggleRestore(nombre)
             end)
         end
@@ -12588,7 +12588,7 @@ MainSystem = {
         if enabled then
             hum.PlatformStand = true
             hum:ChangeState(Enum.HumanoidStateType.FallingDown)
-            task.wait(0.05)
+            task.wait(0.016)
             if hrp and hrp.Parent then
                 hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, 0, math.pi / 2)
             end
@@ -12816,7 +12816,7 @@ workspace.ChildAdded:Connect(function(child)
     _djPendingBomb = false
     _djLastTime = now
 
-    task.wait(0.05)
+    task.wait(0.016)
     pcall(function()
         local cam   = workspace.CurrentCamera
         local speed = child.AssemblyLinearVelocity.Magnitude
@@ -12864,7 +12864,7 @@ workspace.ChildAdded:Connect(function(child)
 
     if _G.BombAutoSA then
         task.spawn(function()
-            task.wait(0.05)
+            task.wait(0.016)
             local saChar = LocalPlayer.Character
             local bp  = LocalPlayer.Backpack
             local gun = saChar and _findGunIn(saChar)
@@ -13941,7 +13941,7 @@ function CreateMainUI_SwimFly()
                     for _ = 1, 80 do
                         if not state.enabled then break end
                         if hum and hum.Parent then hum.WalkSpeed = 16; hum.JumpPower = 50 end
-                        task.wait(0.05)
+                        task.wait(0.016)
                     end
                 end)
             end)
@@ -15211,7 +15211,7 @@ function CreateMainUI_Universal()
                 task.spawn(function()
                     for _ = 1, 80 do  -- OPT: 100->80, cubre exactamente los 4s de trampa
                         if not _trapImmuneEnabled then break end
-                        task.wait(0.05)
+                        task.wait(0.016)
                         _restore()
                     end
                 end)
@@ -16939,7 +16939,7 @@ function CreateMainUI_InvisibleGhost()
         workspace.CurrentCamera.CameraSubject = fake:FindFirstChild("Humanoid")
 
         -- 7. Restaurar inventario al backpack (para que el clon pueda usarlas)
-        task.wait(0.05)
+        task.wait(0.016)
         for _, t in pairs(tf:GetChildren()) do
             pcall(function() t.Parent = LocalPlayer.Backpack end)
         end
@@ -16956,7 +16956,7 @@ function CreateMainUI_InvisibleGhost()
         local anim = fake:FindFirstChild("Animate")
         if anim then
             anim.Disabled = true
-            task.wait(0.05)
+            task.wait(0.016)
             anim.Disabled = false
         end
 
@@ -16967,7 +16967,7 @@ function CreateMainUI_InvisibleGhost()
             if (currentPos - VOID_POS).Magnitude > 1000 then
                 local newMapCF = hrp.CFrame
                 pcall(function() _inv.fakeChar.HumanoidRootPart.CFrame = newMapCF end)
-                task.wait(0.05)
+                task.wait(0.016)
                 pcall(function() hrp.CFrame = CFrame.new(VOID_POS) end)
             end
         end)
@@ -16996,7 +16996,7 @@ function CreateMainUI_InvisibleGhost()
         -- 3. Desquipar herramientas del clon
         local fHum = fake:FindFirstChildOfClass("Humanoid")
         if fHum then pcall(function() fHum:UnequipTools() end) end
-        task.wait(0.05)
+        task.wait(0.016)
 
         -- 4. Guardar inventario del backpack (herramientas del clon) al temp
         local tf = _inv.tempFolder
@@ -17044,7 +17044,7 @@ function CreateMainUI_InvisibleGhost()
                     hrp.AssemblyAngularVelocity = Vector3.zero
                 end)
             end
-            task.wait(0.05)
+            task.wait(0.016)
             if hrp and hrp.Parent then
                 pcall(function() real:PivotTo(finalCF) end)
                 pcall(function()
@@ -17091,7 +17091,7 @@ function CreateMainUI_InvisibleGhost()
         end)
 
         -- 15. Destruir clon
-        task.wait(0.05)
+        task.wait(0.016)
         pcall(function() fake:Destroy() end)
 
         -- 16. Limpiar estado
@@ -18835,7 +18835,7 @@ function _rfFirePP(pp)
                 if obj.Parent ~= workspace then return end
                 -- Monitorear distancia del cuchillo a mi personaje
                 task.spawn(function()
-                    task.wait(0.05)
+                    task.wait(0.016)
                     local blade = obj:FindFirstChild("BladePosition")
                         or obj:FindFirstChild("KnifeVisual")
                         or obj:FindFirstChildWhichIsA("BasePart")
@@ -24101,7 +24101,7 @@ function _applyKnifeTextESP(obj)
     if _thrownKnifeObjects[obj] then return end
     local part = _getKnifePart(obj)
     if not part then
-        task.wait(0.05)
+        task.wait(0.016)
         if not obj.Parent then return end
         part = _getKnifePart(obj)
         if not part then return end
@@ -27164,7 +27164,7 @@ do
             end)
             ga._auraAddConn = workspace.DescendantAdded:Connect(function(obj)
                 if obj:IsA("Tool") and (obj.Name == "GunDrop" or obj.Name == "DropGun") then
-                    task.wait(0.05)
+                    task.wait(0.016)
                     if _isFloorGun(obj) then _auraCache[obj] = true end
                 end
             end)
@@ -27284,7 +27284,7 @@ local function _tpToPlatform(hrpRef, part)
                 h.AssemblyLinearVelocity = Vector3.zero
             end
         end)
-        task.wait(0.05)
+        task.wait(0.016)
     end
 end
 
@@ -27361,7 +27361,7 @@ function AutoVoteMap(times)
             local newHum  = newChar and newChar:FindFirstChildOfClass("Humanoid")
             local tWait = 0
             repeat
-                task.wait(0.05); tWait = tWait + 0.05
+                task.wait(0.016); tWait = tWait + 0.05
                 newChar = LocalPlayer.Character
                 newHRP  = newChar and newChar:FindFirstChild("HumanoidRootPart")
                 newHum  = newChar and newChar:FindFirstChildOfClass("Humanoid")
@@ -28843,7 +28843,7 @@ function CreateWorldUI_FlingOrbit()
         pcall(function() handle.CFrame = CFrame.new(hrp.Position) end)
         pcall(function() child:PivotTo(CFrame.new(hrp.Position)) end)
         pcall(function()
-            firetouchinterest(hrp, handle, 0); task.wait(0.05)
+            firetouchinterest(hrp, handle, 0); task.wait(0.016)
             firetouchinterest(hrp, handle, 1)
         end)
         task.wait(0.1)
@@ -28856,7 +28856,7 @@ function CreateWorldUI_FlingOrbit()
                 firetouchinterest(hrp, handle, 0); task.wait(0.02)
                 firetouchinterest(hrp, handle, 1)
             end)
-            task.wait(0.05)
+            task.wait(0.016)
         end
         local tries = 0
         while not _hasGun() and tries < 8 and handle and handle.Parent do
@@ -28971,7 +28971,7 @@ function CreateWorldUI_FlingOrbit()
 
         -- TP cerca del sheriff y fling
         pcall(function() myHRP.CFrame = CFrame.new(shHRP.Position + Vector3.new(0, 2, 0)) end)
-        task.wait(0.05)
+        task.wait(0.016)
         FlingSystem.flingSheriff = true; FlingSystem.flingAll = false
         FlingSystem.flingMurder = false; FlingSystem.flingInnocent = false
         _flingStartLoop()
@@ -29240,7 +29240,7 @@ function CreateWorldUI_QuickFlingButtons()
                 -- Esperar hasta que terminen los 5 segundos o el murder salga volando
                 local _waited = 0
                 repeat
-                    task.wait(0.05)
+                    task.wait(0.016)
                     _waited = _waited + 0.05
                 until _launched or _waited > 6
 
@@ -29253,7 +29253,7 @@ function CreateWorldUI_QuickFlingButtons()
                     myHRP.RotVelocity = Vector3.zero
                     myHum.PlatformStand = false
                 end)
-                task.wait(0.05)
+                task.wait(0.016)
                 pcall(function()
                     myHRP.AssemblyLinearVelocity  = Vector3.zero
                     myHRP.AssemblyAngularVelocity = Vector3.zero
@@ -29535,7 +29535,7 @@ function CreateWorldUI_QuickFlingButtons()
             -- Esperar hasta que terminen los 5 segundos o el portador salga volando
             local _waited = 0
             repeat
-                task.wait(0.05)
+                task.wait(0.016)
                 _waited = _waited + 0.05
             until _launched or _waited > 6
 
@@ -29549,7 +29549,7 @@ function CreateWorldUI_QuickFlingButtons()
                 myHRP.RotVelocity = Vector3.zero
                 myHum.PlatformStand = false
             end)
-            task.wait(0.05)
+            task.wait(0.016)
             pcall(function()
                 myHRP.AssemblyLinearVelocity  = Vector3.zero
                 myHRP.AssemblyAngularVelocity = Vector3.zero
@@ -29581,13 +29581,13 @@ function CreateWorldUI_QuickFlingButtons()
                             if handle then
                                 pcall(function() handle.CFrame = CFrame.new(myH.Position) end)
                                 pcall(function() obj:PivotTo(CFrame.new(myH.Position)) end)
-                                task.wait(0.05)
+                                task.wait(0.016)
                                 pcall(function()
                                     firetouchinterest(myH, handle, 0)
                                     task.wait(0.03)
                                     firetouchinterest(myH, handle, 1)
                                 end)
-                                task.wait(0.05)
+                                task.wait(0.016)
                                 grabbed = _sgLocalHasGun()
                             end
                         end
@@ -29952,7 +29952,7 @@ function CreateWorldUI_AutoGrabGun()
                     firetouchinterest(root, gPart, 0)
                     firetouchinterest(root, gPart, 1)
                 end)
-                task.wait(0.05)
+                task.wait(0.016)
                 if _findGun(char) then
                     CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
                 else
@@ -34067,7 +34067,7 @@ local function _startAutoVoteSlot(slotIndex, times, delay)
             -- Esperar que cargue bien
             local tw2 = 0
             repeat
-                task.wait(0.05); tw2 = tw2 + 0.05
+                task.wait(0.016); tw2 = tw2 + 0.05
                 local nc = LocalPlayer.Character
                 local nh = nc and nc:FindFirstChild("HumanoidRootPart")
                 local nhu = nc and nc:FindFirstChildOfClass("Humanoid")
@@ -34792,7 +34792,7 @@ local function _sgFlingPlayer(TargetPlayer)
             -- Ahora movemos la gun al jugador para agarrarla sin teleportarnos
             pcall(function() handle.CFrame = CFrame.new(myHRP.Position) end)
             pcall(function() obj:PivotTo(CFrame.new(myHRP.Position)) end)
-            task.wait(0.05)
+            task.wait(0.016)
             pcall(function()
                 firetouchinterest(myHRP, handle, 0)
                 task.wait(0.03)
@@ -35604,7 +35604,7 @@ function CreatePremiumTab()
                         if cancelRemote then cancelRemote:FireServer() end
                     end
                 end)
-                task.wait(0.05)
+                task.wait(0.016)
             end
             Settings.premium.breakTrade.running = false
             CreateCustomNotification("BREAK TRADE", "Glitch completado", 2)
@@ -36217,7 +36217,7 @@ function CreatePremiumTab()
             if not _skinState._equippedConns then _skinState._equippedConns = {} end
             if not _skinState._equippedConns[tool] then
                 _skinState._equippedConns[tool] = tool.Equipped:Connect(function()
-                    task.wait(0.05)
+                    task.wait(0.016)
                     if _skinState.enabled and _skinState._equippedConns[tool] then
                         pcall(function() tool.Grip = skin.grip end)
                         -- re-verificar un frame despues (animacion puede pisar el grip)
@@ -36609,7 +36609,7 @@ function CreatePremiumTab()
                         end
                         _csSub.Text = table.concat(chars)
                         _csSub.TextColor3 = _glitchColors[math.random(#_glitchColors)]
-                        task.wait(0.05)
+                        task.wait(0.016)
                     end
 
                     -- Flash blanco rapido
@@ -39392,13 +39392,13 @@ function CreateCombatTab()
 
                     if shootRem and shootRem:IsA("RemoteEvent") then
                         pcall(function() shootRem:FireServer(oCF, tCF) end)
-                        task.wait(0.05)
+                        task.wait(0.016)
                         pcall(function() shootRem:FireServer(oCF, tCF) end)
                     else
                         -- Fallback: _fireGunMM2
                         if _fireGunMM2 then
                             _fireGunMM2(gun, tCF)
-                            task.wait(0.05)
+                            task.wait(0.016)
                             _fireGunMM2(gun, tCF)
                         end
                     end
@@ -39800,7 +39800,7 @@ function CreateCombatTab()
 
             -- Animación de entrada
             task.spawn(function()
-                task.wait(0.05)
+                task.wait(0.016)
                 TweenService:Create(bsaScale, TweenInfo.new(0.85, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale=1}):Play()
             end)
 
@@ -40890,7 +40890,7 @@ function CreateCombatTab()
                         if not p then return end
                         local murder = findMurderer and findMurderer()
                         if murder and murder.Character == p then
-                            task.wait(0.05)
+                            task.wait(0.016)
                             local myChar = LocalPlayer.Character
                             local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
                             local tHRP   = murder.Character:FindFirstChild("HumanoidRootPart")
@@ -42192,7 +42192,7 @@ function CreateCombatTab()
                 -- Mejor que Normal: cubre el margen de error de posición del target.
                 task.spawn(function()
                     pcall(throwFn)
-                    task.wait(0.05)
+                    task.wait(0.016)
                     pcall(throwFn)
                 end)
 
@@ -46970,7 +46970,7 @@ function CreateCombatTab()
                     if not alreadyEquipped then
                         _hideBackpackUI()
                         pcall(function() hum:EquipTool(gun) end)
-                        task.wait(0.05)  -- esperar 1 frame para que el equip se registre en el servidor
+                        task.wait(0.016)  -- esperar 1 frame para que el equip se registre en el servidor
                         -- Re-leer la gun desde el char (puede haber cambiado de referencia)
                         gun = char:FindFirstChild(gun.Name) or gun
                     end
@@ -50911,7 +50911,7 @@ function createDangerWarning(knifeHandle, targetPosition)
     task.spawn(function()
         while dangerGui.Parent do
             dangerText.TextSize = 24 + math.sin(tick() * 10) * 4
-            task.wait(0.05)
+            task.wait(0.016)
         end
     end)
 
@@ -51127,7 +51127,7 @@ function _IKS_monitorLife(model)
                      or hitChar.Parent and hitChar.Parent:FindFirstChildOfClass("Humanoid")
             if hum and hum ~= LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
                 task.spawn(function()
-                    task.wait(0.05)  -- pequeno delay para que el hit se registre
+                    task.wait(0.016)  -- pequeno delay para que el hit se registre
                     _IKS_show(model)
                 end)
                 pcall(function() touchConn:Disconnect() end)
@@ -51185,7 +51185,7 @@ function _IKS_startMonitor()
         end)
         if isOwn then return end
 
-        task.wait(0.05)
+        task.wait(0.016)
         local dt2 = tick() - InvisibleKnifeSystem.lastThrowTime
         if dt2 < 2.0 then return end
 
@@ -51455,158 +51455,75 @@ end
 -- [ANIMACION AURORA ELIMINADA - bandas diagonales removidas]
 
 -- ================================================================
--- ESTELA DE ONDAS DEL MAR — animacion de fondo
--- Capas de ondas sinusoidales que se desplazan horizontalmente
--- sobre el fondo aurora, estilo agua profunda con brillo.
--- ZIndex 2 = encima del fondo (1) y debajo del contenido (3+)
+-- ANIMACION AURORA -- desplazamiento y pulso del ImageLabel principal
+-- Anima el propio fondo rbxassetid://139776066876209:
+--   capa1 (ya creada): desplazamiento lento diagonal + zoom suave
+--   capa2: segunda copia del mismo id, offset, transparencia mayor
+--   capa3: overlay de color tintado giratorio (UIGradient sobre capa1)
+-- ZIndex 1/1.5 -- todo dentro del rectangulo del hub
 -- ================================================================
 do
-    local _WAVE_W = 920   -- ancho del hub (mismo que mainFrame.Size)
-    local _WAVE_H = 490   -- alto del hub
+    -- ── Capa 1: el _auroraMainBg ya existe, solo animamos su Position/Size ──
+    -- Configurar para acepta desplazamiento (ScaleType.Tile permite mover la imagen)
+    _auroraMainBg.ScaleType = Enum.ScaleType.Stretch   -- stretch para poder agrandar y mover
+    _auroraMainBg.Size     = UDim2.new(1.08, 0, 1.08, 0)
+    _auroraMainBg.Position = UDim2.new(-0.04, 0, -0.04, 0)
 
-    -- Contenedor de ondas (no clipea para que las ondas salgan del borde)
-    local _waveContainer = Instance.new("Frame", mainFrame)
-    _waveContainer.Name                   = "WaveContainer"
-    _waveContainer.Size                   = UDim2.new(1, 0, 1, 0)
-    _waveContainer.Position               = UDim2.new(0, 0, 0, 0)
-    _waveContainer.BackgroundTransparency = 1
-    _waveContainer.BorderSizePixel        = 0
-    _waveContainer.ClipsDescendants       = true
-    _waveContainer.ZIndex                 = 2
-    Instance.new("UICorner", _waveContainer).CornerRadius = UDim.new(0, 14)
+    -- ── Capa 2: segunda copia del aurora, mas transparente, desplazada al reves ──
+    local _auroraLayer2 = Instance.new("ImageLabel", mainFrame)
+    _auroraLayer2.Name                   = "AuroraBgLayer2"
+    _auroraLayer2.Size                   = UDim2.new(1.12, 0, 1.12, 0)
+    _auroraLayer2.Position               = UDim2.new(-0.06, 0, -0.06, 0)
+    _auroraLayer2.BackgroundTransparency = 1
+    _auroraLayer2.Image                  = "rbxassetid://139776066876209"
+    _auroraLayer2.ScaleType              = Enum.ScaleType.Stretch
+    _auroraLayer2.ImageTransparency      = 0.55
+    _auroraLayer2.ZIndex                 = 1
+    _auroraLayer2.BorderSizePixel        = 0
+    Instance.new("UICorner", _auroraLayer2).CornerRadius = UDim.new(0, 14)
 
-    -- Definicion de capas de ondas
-    -- Cada capa: color, transparencia, posicion Y base (0..1), amplitud, velocidad, grosor
-    local _waveLayers = {
-        -- Ondas profundas (lentas, transparentes, abajo)
-        { r=50,  g=130, b=220, t=0.82, yBase=0.62, amp=18, spd=0.28, thick=38, phase=0.0  },
-        { r=40,  g=100, b=200, t=0.85, yBase=0.70, amp=14, spd=0.22, thick=32, phase=1.1  },
-        -- Ondas medias
-        { r=80,  g=160, b=230, t=0.78, yBase=0.55, amp=22, spd=0.35, thick=28, phase=2.3  },
-        { r=60,  g=140, b=210, t=0.80, yBase=0.75, amp=16, spd=0.30, thick=24, phase=3.7  },
-        -- Ondas superficiales (rapidas, mas visibles)
-        { r=120, g=200, b=255, t=0.72, yBase=0.48, amp=26, spd=0.48, thick=20, phase=0.8  },
-        { r=100, g=180, b=245, t=0.75, yBase=0.80, amp=20, spd=0.42, thick=18, phase=4.2  },
-        -- Crestas (muy rapidas, casi blancas, delgadas)
-        { r=200, g=240, b=255, t=0.68, yBase=0.44, amp=30, spd=0.65, thick=12, phase=1.6  },
-        { r=180, g=230, b=255, t=0.70, yBase=0.85, amp=12, spd=0.55, thick=10, phase=5.0  },
-        -- Estela de brillo central
-        { r=140, g=210, b=255, t=0.60, yBase=0.50, amp=35, spd=0.20, thick=60, phase=6.2  },
-    }
+    -- Tinte de capa2 (ligeramente violeta para contrastar con la capa1)
+    local _l2Grad = Instance.new("UIGradient", _auroraLayer2)
+    _l2Grad.Rotation = 45
+    _l2Grad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(80,  60, 200)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0,  180, 255)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(40, 220, 160)),
+    })
+    _l2Grad.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.6),
+        NumberSequenceKeypoint.new(1, 0.6),
+    })
 
-    -- Por cada capa crear N segmentos horizontales (Frame de 1px de ancho cada uno)
-    -- Para ondas suaves usamos 55 segmentos: suficiente precision, poco costo
-    local _SEG = 55
-    local _segW = _WAVE_W / _SEG
+    -- ── Overlay de shimmer: gradiente giratorio sobre _auroraMainBg ──
+    local _shimmerOverlay = Instance.new("Frame", mainFrame)
+    _shimmerOverlay.Name                   = "AuroraShimmerOverlay"
+    _shimmerOverlay.Size                   = UDim2.new(1, 0, 1, 0)
+    _shimmerOverlay.Position               = UDim2.new(0, 0, 0, 0)
+    _shimmerOverlay.BackgroundTransparency = 1
+    _shimmerOverlay.BorderSizePixel        = 0
+    _shimmerOverlay.ZIndex                 = 1
+    Instance.new("UICorner", _shimmerOverlay).CornerRadius = UDim.new(0, 14)
+    local _shimGrad = Instance.new("UIGradient", _shimmerOverlay)
+    _shimGrad.Rotation = 0
+    _shimGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,    Color3.fromRGB(0,   220, 255)),
+        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(100,  80, 215)),
+        ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(50,  200, 140)),
+        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0,   180, 255)),
+        ColorSequenceKeypoint.new(1,    Color3.fromRGB(0,   220, 255)),
+    })
+    _shimGrad.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0,    0.92),
+        NumberSequenceKeypoint.new(0.45, 0.78),
+        NumberSequenceKeypoint.new(0.5,  0.72),
+        NumberSequenceKeypoint.new(0.55, 0.78),
+        NumberSequenceKeypoint.new(1,    0.92),
+    })
 
-    -- Tabla de referencias: [capa][seg] = Frame
-    local _waveFrames = {}
+    -- [ANIMACION DE MOVIMIENTO ELIMINADA - imagenes estaticas]
 
-    for li, ld in ipairs(_waveLayers) do
-        _waveFrames[li] = {}
-        local _col = Color3.fromRGB(ld.r, ld.g, ld.b)
-        for si = 1, _SEG do
-            local seg = Instance.new("Frame", _waveContainer)
-            seg.BackgroundColor3    = _col
-            seg.BackgroundTransparency = ld.t
-            seg.BorderSizePixel     = 0
-            seg.ZIndex              = 2
-            -- Ancho ligeramente solapado (+1) para no tener gaps
-            seg.Size = UDim2.new(0, math.ceil(_segW) + 1, 0, ld.thick)
-            seg.Position = UDim2.new(0, math.floor((si-1) * _segW), 0, 0)
-            _waveFrames[li][si] = seg
-        end
-    end
-
-    -- Particulas de burbuja / brillo: puntos pequeños que flotan hacia arriba
-    local _MAX_BUBBLES = 22
-    local _bubbles = {}
-    local function _makeBubble()
-        local b = Instance.new("Frame", _waveContainer)
-        local sz = math.random(3, 9)
-        b.Size                   = UDim2.new(0, sz, 0, sz)
-        b.BackgroundColor3       = Color3.fromRGB(180, 230, 255)
-        b.BackgroundTransparency = math.random(55, 75) / 100
-        b.BorderSizePixel        = 0
-        b.ZIndex                 = 3
-        Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
-        -- Posicion inicial aleatoria en la mitad inferior
-        b.Position = UDim2.new(
-            math.random(2, 96) / 100, 0,
-            math.random(55, 95) / 100, 0
-        )
-        return b
-    end
-    for i = 1, _MAX_BUBBLES do
-        _bubbles[i] = {
-            frame  = _makeBubble(),
-            yOff   = math.random(0, 100) / 100,  -- offset de fase
-            xDrift = (math.random(-20, 20)) / 10, -- deriva horizontal
-            speed  = math.random(8, 22) / 100,    -- velocidad de subida
-            alpha  = 0,                            -- 0=apareciendo 1=subiendo 2=muriendo
-        }
-    end
-
-    -- Loop principal de animacion (~20 fps — equilibrio rendimiento/fluidez)
-    local _wt = 0
-    task.spawn(function()
-        while _waveContainer and _waveContainer.Parent do
-            task.wait(0.05)
-            _wt = _wt + 0.05
-
-            -- Actualizar segmentos de cada onda
-            for li, ld in ipairs(_waveLayers) do
-                local yBase = ld.yBase * _WAVE_H
-                local frames = _waveFrames[li]
-                for si = 1, _SEG do
-                    local seg = frames[si]
-                    if seg and seg.Parent then
-                        -- Posicion X de este segmento (centro del segmento)
-                        local xNorm = (si - 0.5) / _SEG
-                        -- Onda principal: senoidal desplazada en el tiempo
-                        local wave1 = math.sin(xNorm * math.pi * 4 + _wt * ld.spd * math.pi * 2 + ld.phase)
-                        -- Segunda onda armonica (frecuencia doble, amplitud mitad) para textura
-                        local wave2 = math.sin(xNorm * math.pi * 8 + _wt * ld.spd * 1.6 * math.pi * 2 + ld.phase * 1.3) * 0.4
-                        local yPos  = yBase + (wave1 + wave2) * ld.amp
-                        -- Clamp suave para que no salga del frame
-                        yPos = math.clamp(yPos, -ld.thick, _WAVE_H)
-                        seg.Position = UDim2.new(0, math.floor((si-1) * _segW), 0, math.floor(yPos))
-                        -- Transparencia pulsa levemente con la ola (crestas mas visibles)
-                        local tPulse = ld.t - wave1 * 0.06
-                        seg.BackgroundTransparency = math.clamp(tPulse, 0.45, 0.93)
-                    end
-                end
-            end
-
-            -- Actualizar burbujas
-            for _, bub in ipairs(_bubbles) do
-                local f = bub.frame
-                if f and f.Parent then
-                    -- Subir la burbuja
-                    local curY = f.Position.Y.Scale - bub.speed * 0.05
-                    local curX = f.Position.X.Scale + bub.xDrift * 0.002
-                    -- Ligero balanceo horizontal (deriva sinusoidal)
-                    curX = curX + math.sin(_wt * 1.5 + bub.yOff * 10) * 0.0008
-                    -- Si llego arriba o salio de los bordes, resetear
-                    if curY < -0.05 or curX < 0 or curX > 1 then
-                        curY = math.random(60, 100) / 100
-                        curX = math.random(2, 96) / 100
-                        bub.xDrift = (math.random(-20, 20)) / 10
-                        bub.speed  = math.random(8, 22) / 100
-                        f.BackgroundTransparency = 0.92  -- aparece casi invisible
-                    else
-                        -- Fade-in al aparecer, fade-out al llegar arriba
-                        local vis = math.min(1 - curY, curY + 0.3) * 3
-                        f.BackgroundTransparency = math.clamp(0.55 + (1 - vis) * 0.35, 0.55, 0.92)
-                    end
-                    f.Position = UDim2.new(curX, 0, curY, 0)
-                end
-            end
-        end
-    end)
-
-    -- Guardar referencia global para que _G._applyHubBackground pueda ocultar/mostrar
-    _G._hubWaveContainer = _waveContainer
+    _G._hubWaveContainer = _shimmerOverlay
 end
 
 -- Borde animado estilo aurora
@@ -51648,17 +51565,17 @@ do
     local _colorTick = 0
     task.spawn(function()
         while glowBorder and glowBorder.Parent do
-            task.wait(0.04)  -- ~25fps para animacion fluida
-            _pulseTick  = _pulseTick  + 0.04
-            _colorTick  = _colorTick  + 0.04
+            task.wait(0.016)  -- ~60fps ultra rapido
+            _pulseTick  = _pulseTick  + 0.016
+            _colorTick  = _colorTick  + 0.016
             -- Oscila grosor entre 1.8 y 2.8 con una onda suave
-            local _pulse = 2.3 + math.sin(_pulseTick * 1.4) * 0.5
+            local _pulse = 2.3 + math.sin(_pulseTick * 8.0) * 1.2
             -- Solo animar si no hay drag activo
             if glowBorder and glowBorder.Parent and not _G._hubDragging then
                 glowBorder.Thickness = _pulse
             end
             -- Ciclo rapido de colores: cambia cada ~0.22 segundos
-            if _colorTick >= 0.22 then
+            if _colorTick >= 0.05 then
                 _colorTick = 0
                 local nextIdx = (_colorIdx % #_borderColors) + 1
                 local c1 = _borderColors[_colorIdx]
@@ -52238,7 +52155,7 @@ do
             if _rot >= 200 then _dir = -1 end
             if _rot <= 40  then _dir =  1 end
             _mainGrad.Rotation = _rot
-            task.wait(0.05)
+            task.wait(0.016)
         end
     end)
 end
@@ -52453,7 +52370,7 @@ particles = {}
         local _dragStartFrame = nil   -- Vector2 (top-left del frame al iniciar)
 
         -- Helpers
-        local BORDER_DRAG_SIZE = 14
+        local BORDER_DRAG_SIZE = 60
 
         local function _resolveFrameTopLeft()
             local ap  = mainFrame.AnchorPoint
