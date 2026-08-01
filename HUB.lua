@@ -43566,7 +43566,6 @@ function CreateCombatTab()
 
 
 
-        })
 
 
 
@@ -43575,7 +43574,8 @@ function CreateCombatTab()
 
 
 
-        })
+
+
 
 
         -- -- TTULO (izquierda, arriba) ------------------------------
@@ -47847,7 +47847,6 @@ function CreateCombatTab()
 
 
 
-        })
 
 
 
@@ -47856,7 +47855,8 @@ function CreateCombatTab()
 
 
 
-        })
+
+
 
 
         local titleLabel = Instance.new("TextLabel", container)
