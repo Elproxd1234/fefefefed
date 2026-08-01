@@ -39514,14 +39514,20 @@ function CreateCombatTab()
             clickBtn.AutoButtonColor      = false
 
             -- Lógica de arrastre
-            local _dragStart, _startPos, _isDragging = nil, nil, false
+            local _dragStart, _startAbsX, _startAbsY, _isDragging = nil, 0, 0, false
             local _lastClick = 0
 
             clickBtn.InputBegan:Connect(function(inp)
                 if inp.UserInputType == Enum.UserInputType.MouseButton1
                 or inp.UserInputType == Enum.UserInputType.Touch then
-                    _dragStart = inp.Position
-                    _startPos  = btnRoot.Position
+                    -- Normalizar AnchorPoint a (0,0) en offset puro ANTES de guardar la posición base
+                    local vp = workspace.CurrentCamera.ViewportSize
+                    local absPos = btnRoot.AbsolutePosition
+                    btnRoot.AnchorPoint = Vector2.new(0, 0)
+                    btnRoot.Position = UDim2.fromOffset(absPos.X, absPos.Y)
+                    _dragStart  = inp.Position
+                    _startAbsX  = absPos.X
+                    _startAbsY  = absPos.Y
                     _isDragging = false
                 end
             end)
@@ -39534,12 +39540,9 @@ function CreateCombatTab()
                 if d.Magnitude > 5 then _isDragging = true end
                 if _isDragging then
                     local vp = workspace.CurrentCamera.ViewportSize
-                    local absX = _startPos.X.Scale * vp.X + _startPos.X.Offset
-                    local absY = _startPos.Y.Scale * vp.Y + _startPos.Y.Offset
-                    btnRoot.AnchorPoint = Vector2.new(0, 0)
                     btnRoot.Position = UDim2.fromOffset(
-                        math.clamp(absX - W/2 + d.X, 0, vp.X - W),
-                        math.clamp(absY - H/2 + d.Y, 0, vp.Y - H)
+                        math.clamp(_startAbsX + d.X, 0, vp.X - W),
+                        math.clamp(_startAbsY + d.Y, 0, vp.Y - H)
                     )
                 end
             end)
@@ -44339,7 +44342,7 @@ function CreateCombatTab()
             local _reachT  = 0
             local _hrpT    = 0   -- contador separado para el chequeo de HRPs (~2Hz)
             _reachConn = _safeConnect(RunService.Heartbeat, function()
-                _reachT = _reachT + 1; if _reachT < 2 then return end; _reachT = 0  -- ~30Hz
+                _reachT = _reachT + 1; if _reachT < 4 then return end; _reachT = 0  -- ~15Hz (reducido de 30Hz para evitar lag con todos los toggles activos)
                 if not _reachEnabled then return end
                 if _G._visualRoundOver then return end
                 -- Mantener knife reach
@@ -44352,7 +44355,7 @@ function CreateCombatTab()
                 _hrpT = _hrpT + 1
                 if _hrpT < 15 then return end
                 _hrpT = 0
-                for _, p in ipairs(Players:GetPlayers()) do
+                for _, p in ipairs(_cachedPlayers) do
                     if p ~= LocalPlayer then
                         local char = p.Character
                         local hrp  = char and char:FindFirstChild("HumanoidRootPart")
