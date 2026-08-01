@@ -7483,10 +7483,31 @@ function DisableNoclip()
     end
     local character = LocalPlayer.Character
     if character then
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        local hum = character:FindFirstChildOfClass("Humanoid")
+        -- FIX DESYNC: guardar posicion exacta antes de restaurar colisiones
+        local _savedPos = hrp and hrp.CFrame or nil
         for _, part in pairs(character:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = true
             end
+        end
+        -- FIX DESYNC: anclar momentaneamente para que el servidor registre
+        -- la posicion correcta antes de que la fisica vuelva a mover al jugador.
+        -- Sin esto los demas te ven en la posicion anterior (desync clasico de noclip).
+        if hrp and _savedPos then
+            task.spawn(function()
+                pcall(function()
+                    local _wasAnchored = hrp.Anchored
+                    hrp.Anchored = true
+                    hrp.CFrame = _savedPos
+                    task.wait(0.05)
+                    hrp.Anchored = _wasAnchored
+                    if hum and hum.Parent then
+                        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                    end
+                end)
+            end)
         end
     end
 end
@@ -13750,10 +13771,42 @@ function CreateMainUI_Fly()
         flyNoclipConn = _safeConnect(RunService.Heartbeat, function(dt)
             if not flyNoclipEnabled then
                 flyNoclipConn:Disconnect(); flyNoclipConn = nil
+                -- FIX DESYNC: frenar completamente antes de destruir BodyVelocity
+                -- Si bv se destruye con velocidad != 0, el servidor no recibe la posicion
+                -- correcta y los demas te siguen viendo en el lugar anterior.
+                pcall(function() bv.Velocity = Vector3.zero end)
+                pcall(function() bv.MaxForce = Vector3.zero end)
+                -- Esperar 2 frames para que el motor de fisica propague el frenado al servidor
+                task.wait(0.05)
+                -- Guardar posicion actual ANTES de restaurar colisiones
+                -- (al restaurar CanCollide el personaje puede saltar fisicamente)
+                local _landPos = hrp and hrp.Position or nil
                 pcall(function() bv:Destroy() end); pcall(function() bg:Destroy() end)
                 _stopSwimAnim()
-                if hum and hum.Parent then hum.PlatformStand = false end
+                -- Restaurar colisiones PRIMERO, luego PlatformStand
+                -- Si se hace al revés el personaje cae con PlatformStand=false antes
+                -- de tener colisiones, causando que atraviese el suelo del lado cliente
                 applyNoclip(LocalPlayer.Character, false)
+                task.wait(0.033)  -- 2 frames para que el motor registre las colisiones
+                if hum and hum.Parent then
+                    hum.PlatformStand = false
+                    -- FIX DESYNC: forzar al servidor a aceptar la posicion actual
+                    -- cambiando el estado a GettingUp (hace un network ownership assertion)
+                    pcall(function()
+                        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                    end)
+                end
+                -- Anclar momentaneamente el HRP para que el servidor registre la posicion exacta
+                -- antes de que la gravedad lo mueva (evita que el servidor lo vea en otro lugar)
+                if hrp and hrp.Parent and _landPos then
+                    pcall(function()
+                        local _oldAnchored = hrp.Anchored
+                        hrp.Anchored = true
+                        hrp.CFrame = CFrame.new(_landPos)
+                        task.wait(0.05)
+                        hrp.Anchored = _oldAnchored
+                    end)
+                end
                 -- Limpiar GUI movil
                 if _flyMobileGui then
                     pcall(function() _flyMobileGui:Destroy() end)
