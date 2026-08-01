@@ -51454,6 +51454,161 @@ end
 
 -- [ANIMACION AURORA ELIMINADA - bandas diagonales removidas]
 
+-- ================================================================
+-- ESTELA DE ONDAS DEL MAR — animacion de fondo
+-- Capas de ondas sinusoidales que se desplazan horizontalmente
+-- sobre el fondo aurora, estilo agua profunda con brillo.
+-- ZIndex 2 = encima del fondo (1) y debajo del contenido (3+)
+-- ================================================================
+do
+    local _WAVE_W = 920   -- ancho del hub (mismo que mainFrame.Size)
+    local _WAVE_H = 490   -- alto del hub
+
+    -- Contenedor de ondas (no clipea para que las ondas salgan del borde)
+    local _waveContainer = Instance.new("Frame", mainFrame)
+    _waveContainer.Name                   = "WaveContainer"
+    _waveContainer.Size                   = UDim2.new(1, 0, 1, 0)
+    _waveContainer.Position               = UDim2.new(0, 0, 0, 0)
+    _waveContainer.BackgroundTransparency = 1
+    _waveContainer.BorderSizePixel        = 0
+    _waveContainer.ClipsDescendants       = true
+    _waveContainer.ZIndex                 = 2
+    Instance.new("UICorner", _waveContainer).CornerRadius = UDim.new(0, 14)
+
+    -- Definicion de capas de ondas
+    -- Cada capa: color, transparencia, posicion Y base (0..1), amplitud, velocidad, grosor
+    local _waveLayers = {
+        -- Ondas profundas (lentas, transparentes, abajo)
+        { r=50,  g=130, b=220, t=0.82, yBase=0.62, amp=18, spd=0.28, thick=38, phase=0.0  },
+        { r=40,  g=100, b=200, t=0.85, yBase=0.70, amp=14, spd=0.22, thick=32, phase=1.1  },
+        -- Ondas medias
+        { r=80,  g=160, b=230, t=0.78, yBase=0.55, amp=22, spd=0.35, thick=28, phase=2.3  },
+        { r=60,  g=140, b=210, t=0.80, yBase=0.75, amp=16, spd=0.30, thick=24, phase=3.7  },
+        -- Ondas superficiales (rapidas, mas visibles)
+        { r=120, g=200, b=255, t=0.72, yBase=0.48, amp=26, spd=0.48, thick=20, phase=0.8  },
+        { r=100, g=180, b=245, t=0.75, yBase=0.80, amp=20, spd=0.42, thick=18, phase=4.2  },
+        -- Crestas (muy rapidas, casi blancas, delgadas)
+        { r=200, g=240, b=255, t=0.68, yBase=0.44, amp=30, spd=0.65, thick=12, phase=1.6  },
+        { r=180, g=230, b=255, t=0.70, yBase=0.85, amp=12, spd=0.55, thick=10, phase=5.0  },
+        -- Estela de brillo central
+        { r=140, g=210, b=255, t=0.60, yBase=0.50, amp=35, spd=0.20, thick=60, phase=6.2  },
+    }
+
+    -- Por cada capa crear N segmentos horizontales (Frame de 1px de ancho cada uno)
+    -- Para ondas suaves usamos 55 segmentos: suficiente precision, poco costo
+    local _SEG = 55
+    local _segW = _WAVE_W / _SEG
+
+    -- Tabla de referencias: [capa][seg] = Frame
+    local _waveFrames = {}
+
+    for li, ld in ipairs(_waveLayers) do
+        _waveFrames[li] = {}
+        local _col = Color3.fromRGB(ld.r, ld.g, ld.b)
+        for si = 1, _SEG do
+            local seg = Instance.new("Frame", _waveContainer)
+            seg.BackgroundColor3    = _col
+            seg.BackgroundTransparency = ld.t
+            seg.BorderSizePixel     = 0
+            seg.ZIndex              = 2
+            -- Ancho ligeramente solapado (+1) para no tener gaps
+            seg.Size = UDim2.new(0, math.ceil(_segW) + 1, 0, ld.thick)
+            seg.Position = UDim2.new(0, math.floor((si-1) * _segW), 0, 0)
+            _waveFrames[li][si] = seg
+        end
+    end
+
+    -- Particulas de burbuja / brillo: puntos pequeños que flotan hacia arriba
+    local _MAX_BUBBLES = 22
+    local _bubbles = {}
+    local function _makeBubble()
+        local b = Instance.new("Frame", _waveContainer)
+        local sz = math.random(3, 9)
+        b.Size                   = UDim2.new(0, sz, 0, sz)
+        b.BackgroundColor3       = Color3.fromRGB(180, 230, 255)
+        b.BackgroundTransparency = math.random(55, 75) / 100
+        b.BorderSizePixel        = 0
+        b.ZIndex                 = 3
+        Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+        -- Posicion inicial aleatoria en la mitad inferior
+        b.Position = UDim2.new(
+            math.random(2, 96) / 100, 0,
+            math.random(55, 95) / 100, 0
+        )
+        return b
+    end
+    for i = 1, _MAX_BUBBLES do
+        _bubbles[i] = {
+            frame  = _makeBubble(),
+            yOff   = math.random(0, 100) / 100,  -- offset de fase
+            xDrift = (math.random(-20, 20)) / 10, -- deriva horizontal
+            speed  = math.random(8, 22) / 100,    -- velocidad de subida
+            alpha  = 0,                            -- 0=apareciendo 1=subiendo 2=muriendo
+        }
+    end
+
+    -- Loop principal de animacion (~20 fps — equilibrio rendimiento/fluidez)
+    local _wt = 0
+    task.spawn(function()
+        while _waveContainer and _waveContainer.Parent do
+            task.wait(0.05)
+            _wt = _wt + 0.05
+
+            -- Actualizar segmentos de cada onda
+            for li, ld in ipairs(_waveLayers) do
+                local yBase = ld.yBase * _WAVE_H
+                local frames = _waveFrames[li]
+                for si = 1, _SEG do
+                    local seg = frames[si]
+                    if seg and seg.Parent then
+                        -- Posicion X de este segmento (centro del segmento)
+                        local xNorm = (si - 0.5) / _SEG
+                        -- Onda principal: senoidal desplazada en el tiempo
+                        local wave1 = math.sin(xNorm * math.pi * 4 + _wt * ld.spd * math.pi * 2 + ld.phase)
+                        -- Segunda onda armonica (frecuencia doble, amplitud mitad) para textura
+                        local wave2 = math.sin(xNorm * math.pi * 8 + _wt * ld.spd * 1.6 * math.pi * 2 + ld.phase * 1.3) * 0.4
+                        local yPos  = yBase + (wave1 + wave2) * ld.amp
+                        -- Clamp suave para que no salga del frame
+                        yPos = math.clamp(yPos, -ld.thick, _WAVE_H)
+                        seg.Position = UDim2.new(0, math.floor((si-1) * _segW), 0, math.floor(yPos))
+                        -- Transparencia pulsa levemente con la ola (crestas mas visibles)
+                        local tPulse = ld.t - wave1 * 0.06
+                        seg.BackgroundTransparency = math.clamp(tPulse, 0.45, 0.93)
+                    end
+                end
+            end
+
+            -- Actualizar burbujas
+            for _, bub in ipairs(_bubbles) do
+                local f = bub.frame
+                if f and f.Parent then
+                    -- Subir la burbuja
+                    local curY = f.Position.Y.Scale - bub.speed * 0.05
+                    local curX = f.Position.X.Scale + bub.xDrift * 0.002
+                    -- Ligero balanceo horizontal (deriva sinusoidal)
+                    curX = curX + math.sin(_wt * 1.5 + bub.yOff * 10) * 0.0008
+                    -- Si llego arriba o salio de los bordes, resetear
+                    if curY < -0.05 or curX < 0 or curX > 1 then
+                        curY = math.random(60, 100) / 100
+                        curX = math.random(2, 96) / 100
+                        bub.xDrift = (math.random(-20, 20)) / 10
+                        bub.speed  = math.random(8, 22) / 100
+                        f.BackgroundTransparency = 0.92  -- aparece casi invisible
+                    else
+                        -- Fade-in al aparecer, fade-out al llegar arriba
+                        local vis = math.min(1 - curY, curY + 0.3) * 3
+                        f.BackgroundTransparency = math.clamp(0.55 + (1 - vis) * 0.35, 0.55, 0.92)
+                    end
+                    f.Position = UDim2.new(curX, 0, curY, 0)
+                end
+            end
+        end
+    end)
+
+    -- Guardar referencia global para que _G._applyHubBackground pueda ocultar/mostrar
+    _G._hubWaveContainer = _waveContainer
+end
+
 -- Borde animado estilo aurora
 glowBorder = Instance.new("UIStroke", mainFrame)
 glowBorder.Color = Color3.fromRGB(100, 80, 215)
@@ -51850,10 +52005,9 @@ _auroraContainer.ClipsDescendants       = true
     end)
 end) --]]
 
--- Fondo principal -- imagen nocturna de montaña
--- Fondo eliminado: hub completamente transparente
-_G._hubBgMainImageRef = nil
-_G._applyHubBackground = function(id) end  -- stub
+-- Stub de compatibilidad: _hubBgMainImageRef ya fue asignado arriba (en AuroraBgMain)
+-- NO redefinir _applyHubBackground aqui para no pisar la referencia real
+-- _G._hubBgMainImageRef = nil   -- comentado: ya esta asignado
 
 -- [CAPAS AURORA ELIMINADAS]
 -- ===============================================================
