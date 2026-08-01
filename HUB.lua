@@ -48421,18 +48421,67 @@ function CreateCombatTab()
                 fr.BorderSizePixel     = 0
                 fr.ZIndex              = 9801
                 Instance.new("UICorner", fr).CornerRadius = UDim.new(0, 10)
+                -- FIX: usar ThemeColors.Primary para que el borde cambie con el tema del hub
                 local frs = Instance.new("UIStroke", fr)
-                frs.Color = Color3.fromRGB(255,   0,  40); frs.Thickness = 1.5; frs.Transparency = 0.2
+                frs.Color = ThemeColors.Primary; frs.Thickness = 1.5; frs.Transparency = 0.2
                 local frl = Instance.new("UIListLayout", fr)
                 frl.Padding = UDim.new(0, 2); frl.FillDirection = Enum.FillDirection.Vertical
                 local frp = Instance.new("UIPadding", fr)
                 frp.PaddingTop = UDim.new(0,6); frp.PaddingBottom = UDim.new(0,6)
                 frp.PaddingLeft = UDim.new(0,8); frp.PaddingRight = UDim.new(0,8)
 
+                -- FIX DRAG: hacer el panel arrastrable igual que el Information Panel
+                do
+                    local _tjDragging = false
+                    local _tjDragStart = nil
+                    local _tjFrameStart = nil
+                    local _tjUIS = game:GetService("UserInputService")
+                    -- Intentar UIDragDetector primero (ejecutores modernos)
+                    local _tjDDOk = pcall(function()
+                        local _tjDD = Instance.new("UIDragDetector", fr)
+                        _tjDD.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
+                        _tjDD.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
+                        _tjDD.Dragged:Connect(function()
+                            local vp = workspace.CurrentCamera.ViewportSize
+                            fr.Position = UDim2.fromOffset(
+                                math.clamp(fr.Position.X.Offset, 0, vp.X - fr.AbsoluteSize.X),
+                                math.clamp(fr.Position.Y.Offset, 0, vp.Y - fr.AbsoluteSize.Y))
+                        end)
+                    end)
+                    if not _tjDDOk then
+                        -- Fallback manual (ejecutores sin UIDragDetector)
+                        fr.InputBegan:Connect(function(input)
+                            if input.UserInputType == Enum.UserInputType.MouseButton1
+                            or input.UserInputType == Enum.UserInputType.Touch then
+                                _tjDragging   = true
+                                _tjDragStart  = input.Position
+                                _tjFrameStart = Vector2.new(fr.Position.X.Offset, fr.Position.Y.Offset)
+                            end
+                        end)
+                        fr.InputEnded:Connect(function(input)
+                            if input.UserInputType == Enum.UserInputType.MouseButton1
+                            or input.UserInputType == Enum.UserInputType.Touch then
+                                _tjDragging = false
+                            end
+                        end)
+                        _tjUIS.InputChanged:Connect(function(input)
+                            if not _tjDragging then return end
+                            if input.UserInputType ~= Enum.UserInputType.MouseMovement
+                            and input.UserInputType ~= Enum.UserInputType.Touch then return end
+                            local delta = input.Position - _tjDragStart
+                            local vp    = workspace.CurrentCamera.ViewportSize
+                            fr.Position = UDim2.fromOffset(
+                                math.clamp(_tjFrameStart.X + delta.X, 0, vp.X - fr.AbsoluteSize.X),
+                                math.clamp(_tjFrameStart.Y + delta.Y, 0, vp.Y - fr.AbsoluteSize.Y))
+                        end)
+                    end
+                end
+
                 -- Título
                 local title = Instance.new("TextLabel", fr)
                 title.Size = UDim2.new(1, 0, 0, 22); title.BackgroundTransparency = 1
-                title.Text = " ⬢ TRAJECTORY INFO"; title.TextColor3 = Color3.fromRGB(255,   0,  40)
+                -- FIX: usar ThemeColors.Primary para que el título respete el tema del hub
+                title.Text = " ⬢ TRAJECTORY INFO"; title.TextColor3 = ThemeColors.Primary
                 title.Font = Enum.Font.Montserrat; title.TextSize = 13
                 title.TextXAlignment = Enum.TextXAlignment.Left; title.ZIndex = 9802
 
@@ -52288,10 +52337,11 @@ particles = {}
             if _hubCorner then
                 TweenService:Create(_hubCorner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 14)}):Play()
             end
+            -- FIX: usar ThemeColors.Primary para que el borde siempre refleje el color del tema activo
             TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 Thickness    = 1.6,
                 Transparency = 0.6,
-                Color        = Color3.fromRGB(220, 220, 220),
+                Color        = ThemeColors.Primary,
             }):Play()
         end
 
@@ -52401,11 +52451,11 @@ particles = {}
 
     header.MouseEnter:Connect(function()
         header.Active = true
-        -- Expandir borde al hacer hover (senal de que se puede mover)
+        -- FIX: usar ThemeColors.Primary para respetar el tema activo al hacer hover
         TweenService:Create(glowBorder, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Thickness    = 5,
             Transparency = 0.05,
-            Color        = Color3.fromRGB(100, 80, 215),
+            Color        = ThemeColors.Primary,
         }):Play()
     end)
 
@@ -52419,15 +52469,17 @@ particles = {}
         end
     end)
 
-    -- Encoger borde al soltar el drag
-    local _origInputEnded = UserInputService.InputEnded:Connect(function(input)
+    -- FIX DRAG FREEZE: usar _safeConnect (NO RegisterTabConn) para que al cambiar de tab
+    -- esta conexion NO se destruya y el estado "dragging" siempre se resetee al soltar el mouse.
+    -- Con RegisterTabConn, al cambiar de tab la conexion mueria y dragging quedaba true para siempre.
+    _safeConnect(UserInputService.InputEnded, function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
+            dragging = false  -- FIX: resetear flag aquí también para evitar que quede colgado
             task.defer(function()
                 _deactivateDragEffect()
             end)
         end
     end)
-    RegisterTabConn(_origInputEnded)
 
     -- -- BOTN CERRAR (flecha)  esquina superior derecha, fondo transparente --
     local arrowToggleBtn = Instance.new("TextButton", header)
