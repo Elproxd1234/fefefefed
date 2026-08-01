@@ -51631,17 +51631,55 @@ do
     _G._hubBorderGrad = _borderGrad
     -- Registrar en el shimmer global (velocidad 45 = rotacion lenta y elegante)
     RegisterShimmer(_borderGrad, 45, 0)
-    -- Pulso de transparencia via Heartbeat compartido (no nuevo loop)
+    -- Pulso de grosor + animacion de colores rapida en el borde
     local _pulseTick = 0
+    -- Paleta de colores para el ciclo rapido del borde
+    local _borderColors = {
+        Color3.fromRGB(100,  80, 215),  -- violeta
+        Color3.fromRGB( 60, 160, 255),  -- azul brillante
+        Color3.fromRGB( 50, 220, 160),  -- verde aurora
+        Color3.fromRGB(180,  60, 255),  -- morado neon
+        Color3.fromRGB( 80, 200, 255),  -- cyan
+        Color3.fromRGB(255,  80, 200),  -- pink neon
+        Color3.fromRGB(100, 255, 120),  -- verde neon
+        Color3.fromRGB(255, 140,  60),  -- naranja
+    }
+    local _colorIdx = 1
+    local _colorTick = 0
     task.spawn(function()
-        while _borderGrad and _borderGrad.Parent do
-            task.wait(0.05)
-            _pulseTick = _pulseTick + 0.05
+        while glowBorder and glowBorder.Parent do
+            task.wait(0.04)  -- ~25fps para animacion fluida
+            _pulseTick  = _pulseTick  + 0.04
+            _colorTick  = _colorTick  + 0.04
             -- Oscila grosor entre 1.8 y 2.8 con una onda suave
             local _pulse = 2.3 + math.sin(_pulseTick * 1.4) * 0.5
-            -- Solo animar si no hay drag activo (drag tiene su propio tween de grosor)
+            -- Solo animar si no hay drag activo
             if glowBorder and glowBorder.Parent and not _G._hubDragging then
                 glowBorder.Thickness = _pulse
+            end
+            -- Ciclo rapido de colores: cambia cada ~0.22 segundos
+            if _colorTick >= 0.22 then
+                _colorTick = 0
+                local nextIdx = (_colorIdx % #_borderColors) + 1
+                local c1 = _borderColors[_colorIdx]
+                local c2 = _borderColors[nextIdx]
+                local c3 = _borderColors[(nextIdx % #_borderColors) + 1]
+                -- Actualizar gradiente del borde con los colores actuales
+                if _borderGrad and _borderGrad.Parent then
+                    pcall(function()
+                        _borderGrad.Color = ColorSequence.new({
+                            ColorSequenceKeypoint.new(0,    c1),
+                            ColorSequenceKeypoint.new(0.33, c2),
+                            ColorSequenceKeypoint.new(0.66, c3),
+                            ColorSequenceKeypoint.new(1,    c1),
+                        })
+                    end)
+                end
+                -- Tambien actualizar el color base del borde para ejecutores sin gradiente
+                if glowBorder and glowBorder.Parent and not _G._hubDragging then
+                    glowBorder.Color = c1
+                end
+                _colorIdx = nextIdx
             end
         end
     end)
@@ -52404,7 +52442,7 @@ particles = {}
     dragIcon.BackgroundTransparency = 1
     dragIcon.Text = ""
     dragIcon.TextTransparency = 1
-    dragIcon.ZIndex = 20
+    dragIcon.ZIndex = 50  -- FIX DRAG: ZIndex alto para capturar inputs por encima de elementos del header
     dragIcon.AutoButtonColor = false
     dragIcon.Active = true
 
@@ -52561,8 +52599,9 @@ particles = {}
         end)
 
         -- Hover del header: resaltar borde (solo visual, no inicia drag)
+        -- FIX DRAG: header.Active siempre true para que dragIcon reciba inputs
+        header.Active = true
         header.MouseEnter:Connect(function()
-            header.Active = true
             if not _dragActive then
                 TweenService:Create(glowBorder, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                     Thickness    = 5,
@@ -52572,7 +52611,7 @@ particles = {}
         end)
         header.MouseLeave:Connect(function()
             if not _dragActive then
-                header.Active = false
+                -- FIX DRAG: NO desactivar header.Active en MouseLeave (rompe drag en algunos ejecutores)
                 TweenService:Create(glowBorder, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                     Thickness    = 2.3,
                     Transparency = 0.10,
@@ -56424,7 +56463,9 @@ function CreateUseTab()
 
             local img, ov
             pcall(function()
-                -- Imagen principal: arranca invisible, la animacion hace el fade-in
+                -- FIX FONDO: ZIndex=1 para que quede debajo del contenido pero visible.
+                -- ZIndex=0 puede causar que algunos ejecutores no rendericen la imagen.
+                -- Active=false: no interceptar clics del usuario.
                 img = Instance.new("ImageLabel", mainFrame)
                 img.Name = "HubBackground"
                 img.Size = UDim2.new(1, 0, 1, 0)
@@ -56432,9 +56473,15 @@ function CreateUseTab()
                 img.BackgroundTransparency = 1
                 img.Image = bg.imageId
                 img.ScaleType = Enum.ScaleType.Crop
-                img.ImageTransparency = 0.95   -- comienza invisible, animacion hace fade-in
-                img.ZIndex = 0   -- FIX: ZIndex=0 queda DEBAJO de todo contenido (minimo absoluto con Global mode)
-                img.Active = false  -- FIX: no interceptar clics ni input del usuario
+                img.ImageTransparency = 1   -- arranca invisible, animacion hace fade-in
+                img.ZIndex = 1   -- FIX: ZIndex=1 garantiza visibilidad en todos los ejecutores
+                img.Active = false  -- no interceptar clics ni input del usuario
+                -- FIX: fade-in garantizado sin depender de token (aplica siempre)
+                task.delay(0.05, function()
+                    if img and img.Parent then
+                        TweenService:Create(img, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {ImageTransparency = 0.10}):Play()
+                    end
+                end)
                 if bg.overlay then
                     ov = Instance.new("ImageLabel", mainFrame)
                     ov.Name = "HubBackgroundOverlay"
@@ -56443,9 +56490,14 @@ function CreateUseTab()
                     ov.BackgroundTransparency = 1
                     ov.Image = bg.overlay
                     ov.ScaleType = Enum.ScaleType.Crop
-                    ov.ImageTransparency = 0.95  -- arranca invisible, animacion hace fade-in
-                    ov.ZIndex = 0   -- FIX: mismo nivel que img, ambos debajo del contenido
-                    ov.Active = false  -- FIX: no interceptar clics ni input del usuario
+                    ov.ImageTransparency = 1  -- arranca invisible
+                    ov.ZIndex = 1   -- FIX: mismo nivel que img
+                    ov.Active = false  -- no interceptar clics ni input del usuario
+                    task.delay(0.05, function()
+                        if ov and ov.Parent then
+                            TweenService:Create(ov, TweenInfo.new(0.5, Enum.EasingStyle.Sine), {ImageTransparency = 0.10}):Play()
+                        end
+                    end)
                 end
             end)
 
