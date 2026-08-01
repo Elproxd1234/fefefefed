@@ -51366,15 +51366,7 @@ mainFrame.BackgroundTransparency = 0.12
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
--- Gradiente de fondo: mezcla violeta (carga Primary) -> azul oscuro -> verde (carga Accent)
-local _mainGrad = Instance.new("UIGradient", mainFrame)
-_mainGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0,    Color3.fromRGB(80,  50, 180)),  -- violeta oscuro
-    ColorSequenceKeypoint.new(0.40, Color3.fromRGB(25,  40, 100)),  -- azul base
-    ColorSequenceKeypoint.new(0.75, Color3.fromRGB(20,  80,  90)),  -- transicion verde-azul
-    ColorSequenceKeypoint.new(1,    Color3.fromRGB(30, 120,  80)),  -- verde oscuro
-})
-_mainGrad.Rotation = 135
+-- [GRADIENTE DIAGONAL ELIMINADO]
 
 -- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
 -- El UIScale que se aplica abajo se encarga de que entre en pantalla.
@@ -51405,108 +51397,7 @@ _G._applyHubBackground = function(id)
     end
 end
 
--- ── ANIMACION AURORA SOBRE EL FONDO DEL HUB ──
--- Bandas de colores animadas encima de la imagen, iguales a la pantalla de carga
--- ClipsDescendants ya esta en true en mainFrame, asi que quedan recortadas
-local _hubAuroraContainer = Instance.new("Frame", mainFrame)
-_hubAuroraContainer.Name                   = "HubAuroraOverlay"
-_hubAuroraContainer.Size                   = UDim2.new(1, 0, 1, 0)
-_hubAuroraContainer.Position               = UDim2.new(0, 0, 0, 0)
-_hubAuroraContainer.BackgroundTransparency = 1
-_hubAuroraContainer.BorderSizePixel        = 0
-_hubAuroraContainer.ZIndex                 = 2
-_hubAuroraContainer.ClipsDescendants       = true
-
-local _HUB_AURORA_COLORS = {
-    Color3.fromRGB(50,  130, 255),   -- azul brillante
-    Color3.fromRGB(110,  50, 220),   -- violeta
-    Color3.fromRGB(40,  210, 150),   -- verde-cian
-    Color3.fromRGB(90,  80,  230),   -- azul-violeta
-    Color3.fromRGB(30,  180, 200),   -- cian
-    Color3.fromRGB(130,  60, 200),   -- violeta-rosa
-}
-local _HUB_BAND_COUNT = 7
-
-task.spawn(function()
-    -- Esperar a que el hub este listo antes de iniciar las bandas
-    repeat task.wait(0.1) until _G._hubReady
-
-    local _hubBandConns = {}
-
-    for i = 1, _HUB_BAND_COUNT do
-        local band = Instance.new("Frame", _hubAuroraContainer)
-        band.AnchorPoint        = Vector2.new(0, 0.5)
-        band.BackgroundColor3   = _HUB_AURORA_COLORS[i % #_HUB_AURORA_COLORS + 1]
-        band.BackgroundTransparency = 0.78
-        band.BorderSizePixel    = 0
-        band.Size               = UDim2.new(1.9, 0, 0, math.random(18, 44))
-        local startY = ((i - 1) / _HUB_BAND_COUNT) + math.random(-6, 6) / 100
-        band.Position           = UDim2.new(-0.45, 0, startY, 0)
-        band.Rotation           = -15
-        band.ZIndex             = 3
-
-        local bg = Instance.new("UIGradient", band)
-        local c1 = _HUB_AURORA_COLORS[((i - 1) % #_HUB_AURORA_COLORS) + 1]
-        local c2 = _HUB_AURORA_COLORS[(i % #_HUB_AURORA_COLORS) + 1]
-        bg.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(0, 0, 0)),
-            ColorSequenceKeypoint.new(0.18, c1),
-            ColorSequenceKeypoint.new(0.50, c2),
-            ColorSequenceKeypoint.new(0.82, c1),
-            ColorSequenceKeypoint.new(1,    Color3.fromRGB(0, 0, 0)),
-        })
-        bg.Rotation = 90
-
-        local speed      = 0.030 + (i * 0.008)   -- mas lento que la pantalla de carga
-        local phase      = (i - 1) / _HUB_BAND_COUNT
-        local elapsed    = 0
-        local pulseSpeed = 0.22 + (i * 0.05)
-        local pulsePhase = i * 0.9
-        local colorSpeed = 0.08 + (i * 0.03)
-        local colorPhase = (i - 1) / _HUB_BAND_COUNT
-
-        local conn
-        conn = RunService.Heartbeat:Connect(function(dt)
-            if not band or not band.Parent then conn:Disconnect(); return end
-            elapsed = elapsed + dt
-
-            -- Movimiento vertical lento
-            local yPos = ((phase + elapsed * speed) % 1.0)
-            band.Position = UDim2.new(-0.45, 0, yPos - 0.05, 0)
-
-            -- Pulso de transparencia
-            local pulse = 0.78 + math.sin(elapsed * pulseSpeed + pulsePhase) * 0.07
-            band.BackgroundTransparency = pulse
-
-            -- Rotacion suave del gradiente
-            bg.Rotation = 90 + math.sin(elapsed * 0.14 + phase * math.pi) * 8
-
-            -- Ciclo de colores
-            local t = (elapsed * colorSpeed + colorPhase) % 1.0
-            local colorCount = #_HUB_AURORA_COLORS
-            local fIdx = t * colorCount
-            local idxA = math.floor(fIdx) % colorCount + 1
-            local idxB = (idxA % colorCount) + 1
-            local idxC = (idxB % colorCount) + 1
-            local frac = fIdx - math.floor(fIdx)
-            local function lerpC(a, b, f)
-                return Color3.new(a.R+(b.R-a.R)*f, a.G+(b.G-a.G)*f, a.B+(b.B-a.B)*f)
-            end
-            local newC1 = lerpC(_HUB_AURORA_COLORS[idxA], _HUB_AURORA_COLORS[idxB], frac)
-            local newC2 = lerpC(_HUB_AURORA_COLORS[idxB], _HUB_AURORA_COLORS[idxC], frac)
-            pcall(function()
-                bg.Color = ColorSequence.new({
-                    ColorSequenceKeypoint.new(0,    Color3.fromRGB(0, 0, 0)),
-                    ColorSequenceKeypoint.new(0.18, newC1),
-                    ColorSequenceKeypoint.new(0.50, newC2),
-                    ColorSequenceKeypoint.new(0.82, newC1),
-                    ColorSequenceKeypoint.new(1,    Color3.fromRGB(0, 0, 0)),
-                })
-            end)
-        end)
-        table.insert(_hubBandConns, conn)
-    end
-end)
+-- [ANIMACION AURORA ELIMINADA - bandas diagonales removidas]
 
 -- Borde azul nen estilo OverdriveInterface
 glowBorder = Instance.new("UIStroke", mainFrame)
@@ -51571,18 +51462,7 @@ do
         local _oldOrbBot = mainFrame:FindFirstChild("_HubSatOrbBot")
         if _oldOrbBot then _oldOrbBot:Destroy() end
 
-        -- Gradiente diagonal: esquina superior izquierda mas clara, inferior derecha mas oscura
-        -- En mobile intensificamos un poco para que se vea igual con pantalla brillante
-        local satGrad = Instance.new("UIGradient", mainFrame)
-        satGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   Color3.fromRGB(_isMobileColor and 55 or 40,  _isMobileColor and 22 or 18,  _isMobileColor and 100 or 80)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(_isMobileColor and 22 or 18,  _isMobileColor and 12 or 10,  _isMobileColor and 50  or 40)),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(_isMobileColor and 12 or 10,  _isMobileColor and 6  or 5,   _isMobileColor and 30  or 25)),
-        })
-        satGrad.Transparency = NumberSequence.new(0)
-        satGrad.Rotation = 135  -- diagonal
-        satGrad.Name = "_HubSatGrad"
-        satGrad.ZOffset = 0
+        -- [GRADIENTE DIAGONAL ELIMINADO]
 
         -- Capa de brillo purpura superior (orb ambient) - DENTRO del hub para mobile
         -- En mobile el orb va dentro del frame (position 0.5, 0.05) para no quedar cortado
@@ -51648,7 +51528,7 @@ _auroraContainer.Position               = UDim2.new(0, 0, 0, 0)
 _auroraContainer.BackgroundTransparency = 1
 _auroraContainer.BorderSizePixel        = 0
 _auroraContainer.ZIndex                 = 1
-_auroraContainer.ClipsDescendants       = false
+_auroraContainer.ClipsDescendants       = true
 
 -- [FONDO DE ONDAS ELIMINADO]
 
@@ -53645,102 +53525,9 @@ particles = {}
                 task.wait(3.0)
             end
         end)
-        local _auroraConns = {}
+        -- [BANDAS DIAGONALES DE CARGA ELIMINADAS]
         local _auroraBands = {}
-        local _AURORA_COLORS = {
-            Color3.fromRGB(50,  130, 255),  -- azul brillante
-            Color3.fromRGB(110,  50, 220),  -- violeta
-            Color3.fromRGB(40,  210, 150),  -- verde-cian
-            Color3.fromRGB(90,  80,  230),  -- azul-violeta
-            Color3.fromRGB(30,  180, 200),  -- cian
-            Color3.fromRGB(130, 60,  200),  -- violeta-rosa
-        }
-        local _AURORA_COUNT = 6
-        for i = 1, _AURORA_COUNT do
-            local band = Instance.new("Frame", _oval)  -- hijo del oval = recortado por ClipsDescendants
-            band.AnchorPoint = Vector2.new(0, 0.5)
-            band.BackgroundColor3 = _AURORA_COLORS[i]
-            band.BackgroundTransparency = 0.72
-            band.BorderSizePixel = 0
-            -- Ancho mayor al 100% para cubrir el borde diagonal sin huecos
-            band.Size = UDim2.new(1.8, 0, 0, math.random(24, 50))
-            local startY = ((i - 1) / _AURORA_COUNT) + math.random(-8, 8) / 100
-            band.Position = UDim2.new(-0.4, 0, startY, 0)
-            band.Rotation = -18
-            band.ZIndex = 6  -- encima del fondo del oval pero debajo del logo/barra
-            -- Gradiente: desvanece los dos bordes de la banda
-            local bg = Instance.new("UIGradient", band)
-            local c1 = _AURORA_COLORS[i]
-            local c2 = _AURORA_COLORS[(i % _AURORA_COUNT) + 1]
-            bg.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0,    Color3.fromRGB(0,0,0)),
-                ColorSequenceKeypoint.new(0.18, c1),
-                ColorSequenceKeypoint.new(0.50, c2),
-                ColorSequenceKeypoint.new(0.82, c1),
-                ColorSequenceKeypoint.new(1,    Color3.fromRGB(0,0,0)),
-            })
-            bg.Rotation = 90
-            local speed      = 0.045 + (i * 0.012)
-            local phase      = (i - 1) / _AURORA_COUNT
-            local elapsed    = 0
-            local pulseSpeed = 0.28 + (i * 0.065)
-            local pulsePhase = i * 0.85
-            -- Velocidad de ciclo de color: cada banda a ritmo diferente (lento)
-            local colorSpeed = 0.12 + (i * 0.04)
-            local colorPhase = (i - 1) / _AURORA_COUNT
-            table.insert(_auroraBands, band)
-            local conn
-            conn = RunService.Heartbeat:Connect(function(dt)
-                if not band or not band.Parent then conn:Disconnect(); return end
-                elapsed = elapsed + dt
-                local yPos = ((phase + elapsed * speed) % 1.0)
-                band.Position = UDim2.new(-0.4, 0, yPos - 0.05, 0)
-                local pulse = 0.72 + math.sin(elapsed * pulseSpeed + pulsePhase) * 0.08
-                band.BackgroundTransparency = 1 - (1 - pulse)
-                bg.Rotation = 90 + math.sin(elapsed * 0.18 + phase * math.pi) * 10
-
-                -- ── ANIMACION DE COLOR: cicla suavemente entre colores aurora ──
-                -- t va de 0 a 1 continuamente, se usa para interpolar entre colores
-                local t = (elapsed * colorSpeed + colorPhase) % 1.0
-                -- Indice flotante dentro del arreglo de colores
-                local colorCount = #_AURORA_COLORS
-                local fIdx = (t * colorCount)
-                local idxA = math.floor(fIdx) % colorCount + 1
-                local idxB = (idxA % colorCount) + 1
-                local frac = fIdx - math.floor(fIdx)
-                -- Interpolar entre color A y color B
-                local function lerpC(a, b, f)
-                    return Color3.new(
-                        a.R + (b.R - a.R) * f,
-                        a.G + (b.G - a.G) * f,
-                        a.B + (b.B - a.B) * f
-                    )
-                end
-                local cA = _AURORA_COLORS[idxA]
-                local cB = _AURORA_COLORS[idxB]
-                -- Segundo color: siguiente en el ciclo con offset
-                local idxC = (idxB % colorCount) + 1
-                local cC = _AURORA_COLORS[idxC]
-                local newC1 = lerpC(cA, cB, frac)
-                local newC2 = lerpC(cB, cC, frac)
-                -- Actualizar gradiente de la banda: solo los colores centrales, negro en los bordes
-                pcall(function()
-                    bg.Color = ColorSequence.new({
-                        ColorSequenceKeypoint.new(0,    Color3.fromRGB(0, 0, 0)),
-                        ColorSequenceKeypoint.new(0.18, newC1),
-                        ColorSequenceKeypoint.new(0.50, newC2),
-                        ColorSequenceKeypoint.new(0.82, newC1),
-                        ColorSequenceKeypoint.new(1,    Color3.fromRGB(0, 0, 0)),
-                    })
-                end)
-            end)
-            table.insert(_auroraConns, conn)
-        end
-
-        local function _stopAurora()
-            for _, c in ipairs(_auroraConns) do pcall(function() c:Disconnect() end) end
-            _auroraConns = {}
-        end
+        local function _stopAurora() end
 
         TweenService:Create(_oval, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
             Size = UDim2.new(_OVAL_W, 0, _OVAL_H, 0)
