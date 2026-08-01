@@ -51454,12 +51454,43 @@ end
 
 -- [ANIMACION AURORA ELIMINADA - bandas diagonales removidas]
 
--- Borde azul nen estilo OverdriveInterface
+-- Borde animado estilo aurora
 glowBorder = Instance.new("UIStroke", mainFrame)
 glowBorder.Color = Color3.fromRGB(100, 80, 215)
 glowBorder.Thickness = 2.0
 glowBorder.Transparency = 0.10
 glowBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+-- ANIMACION DE BORDE: gradiente giratorio con los colores del tema
+do
+    local _borderGrad = Instance.new("UIGradient", glowBorder)
+    _borderGrad.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0,    Color3.fromRGB(100,  80, 215)),  -- Primary (violeta)
+        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(50,  200, 140)),  -- Accent  (verde)
+        ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(60,  100, 220)),  -- Aurora1 (azul)
+        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(110,  60, 200)),  -- Aurora2 (violeta claro)
+        ColorSequenceKeypoint.new(1,    Color3.fromRGB(100,  80, 215)),  -- Primary (cierra el loop)
+    })
+    _borderGrad.Rotation = 0
+    -- Pulso de grosor suave en paralelo al shimmer de rotacion
+    _G._hubBorderGrad = _borderGrad
+    -- Registrar en el shimmer global (velocidad 45 = rotacion lenta y elegante)
+    RegisterShimmer(_borderGrad, 45, 0)
+    -- Pulso de transparencia via Heartbeat compartido (no nuevo loop)
+    local _pulseTick = 0
+    task.spawn(function()
+        while _borderGrad and _borderGrad.Parent do
+            task.wait(0.05)
+            _pulseTick = _pulseTick + 0.05
+            -- Oscila grosor entre 1.8 y 2.8 con una onda suave
+            local _pulse = 2.3 + math.sin(_pulseTick * 1.4) * 0.5
+            -- Solo animar si no hay drag activo (drag tiene su propio tween de grosor)
+            if glowBorder and glowBorder.Parent and not _G._hubDragging then
+                glowBorder.Thickness = _pulse
+            end
+        end
+    end)
+end
 
 uiScale = Instance.new("UIScale", mainFrame)
 uiScale.Scale = 1
@@ -52205,229 +52236,155 @@ particles = {}
     _hdSub.TextYAlignment = Enum.TextYAlignment.Center
     _hdSub.ZIndex = 12
 
-    -- dragIcon: boton transparente que cubre todo el header para capturar drag
+    -- ================================================================
+    -- DRAG DEL HUB — sistema único consolidado (v-fix)
+    -- Un solo flag global _G._hubDragging evita que dos sistemas
+    -- compitan y dejen el flag stuck al cambiar de tab o re-ejecutar.
+    -- ================================================================
+    _G._hubDragging = false  -- flag global visible por el pulso del borde
+
+    -- dragIcon: boton transparente sobre todo el header para capturar drag
     local dragIcon = Instance.new("TextButton", header)
     dragIcon.Size = UDim2.new(1, 0, 1, 0)
     dragIcon.Position = UDim2.new(0, 0, 0, 0)
     dragIcon.BackgroundTransparency = 1
     dragIcon.Text = ""
     dragIcon.TextTransparency = 1
-    dragIcon.ZIndex = 20  -- encima de labels (ZIndex 12) para capturar clicks
+    dragIcon.ZIndex = 20
     dragIcon.AutoButtonColor = false
     dragIcon.Active = true
 
-    -- Drag directo en el header (metodo secundario, mas robusto)
     do
-        local _d = false
-        local _dStart = nil
-        local _dFrameStart = nil
-        local function _resolvePos()
-            local ap = mainFrame.AnchorPoint
+        -- Estado de drag en upvalues locales (no closures anidadas)
+        local _dragActive    = false
+        local _dragStartMouse = nil   -- Vector3
+        local _dragStartFrame = nil   -- Vector2 (top-left del frame al iniciar)
+
+        -- Helpers
+        local BORDER_DRAG_SIZE = 14
+
+        local function _resolveFrameTopLeft()
+            local ap  = mainFrame.AnchorPoint
             local pos = mainFrame.Position
-            local vp = workspace.CurrentCamera.ViewportSize
-            if ap == Vector2.new(0,0) then
+            local vp  = workspace.CurrentCamera.ViewportSize
+            if ap == Vector2.new(0, 0) then
                 return Vector2.new(pos.X.Offset, pos.Y.Offset)
-            else
-                local cx = pos.X.Scale * vp.X + pos.X.Offset
-                local cy = pos.Y.Scale * vp.Y + pos.Y.Offset
-                return Vector2.new(cx - mainFrame.AbsoluteSize.X * ap.X, cy - mainFrame.AbsoluteSize.Y * ap.Y)
             end
+            local cx = pos.X.Scale * vp.X + pos.X.Offset
+            local cy = pos.Y.Scale * vp.Y + pos.Y.Offset
+            return Vector2.new(cx - mainFrame.AbsoluteSize.X * ap.X,
+                               cy - mainFrame.AbsoluteSize.Y * ap.Y)
         end
-        local function _startDragIcon(pos)
-            if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
-            local mPos = pos or UserInputService:GetMouseLocation()
-            local resolved = _resolvePos()
-            mainFrame.AnchorPoint = Vector2.new(0, 0)
-            mainFrame.Position = UDim2.new(0, resolved.X, 0, resolved.Y)
-            _d = true
-            -- FIX SCROLL+DRAG: bloquear scroll de los toggles mientras se arrastra el hub
-            if leftColumn then pcall(function() leftColumn.ScrollingEnabled = false end) end
-            _dStart = Vector3.new(mPos.X, mPos.Y, 0)
-            _dFrameStart = resolved
-        end
-        dragIcon.MouseButton1Down:Connect(function()
-            _startDragIcon()
-        end)
-        dragIcon.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.Touch then
-                _startDragIcon(Vector2.new(input.Position.X, input.Position.Y))
-            end
-        end)
-        _safeConnect(UserInputService.InputChanged, function(input)
-            if not _d then return end
-            if _G._sliderDragging then return end
-            if input.UserInputType ~= Enum.UserInputType.MouseMovement
-            and input.UserInputType ~= Enum.UserInputType.Touch then return end
-            local delta = input.Position - _dStart
-            local vp = workspace.CurrentCamera.ViewportSize
-            local fw = mainFrame.AbsoluteSize.X
-            local fh = mainFrame.AbsoluteSize.Y
-            mainFrame.Position = UDim2.new(0,
-                math.clamp(_dFrameStart.X + delta.X, 0, vp.X - fw), 0,
-                math.clamp(_dFrameStart.Y + delta.Y, 0, vp.Y - fh))
-        end)
-        _safeConnect(UserInputService.InputEnded, function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-                _d = false
-                -- FIX SCROLL+DRAG: restaurar scroll de toggles al soltar
-                if leftColumn then pcall(function() leftColumn.ScrollingEnabled = true end) end
-            end
-        end)
-    end
 
-
-    local dragging   = false
-    local dragInput  = nil
-    local dragStartMouse = nil  -- Vector3: posicion del mouse al iniciar drag
-    local dragStartFrame = nil  -- Vector2: posicion absoluta top-left del frame al iniciar drag
-
-    local function update(input)
-        if not dragStartMouse or not dragStartFrame then return end
-        local delta = input.Position - dragStartMouse
-        local vp    = workspace.CurrentCamera.ViewportSize
-        local fw    = mainFrame.AbsoluteSize.X
-        local fh    = mainFrame.AbsoluteSize.Y
-        local absX  = math.clamp(dragStartFrame.X + delta.X, 0, vp.X - fw)
-        local absY  = math.clamp(dragStartFrame.Y + delta.Y, 0, vp.Y - fh)
-        mainFrame.Position = UDim2.new(0, absX, 0, absY)
-    end
-
-    do
-        -- Drag via UserInputService global para evitar que hijos del header
-        -- (ImageLabel, TextLabel, botones) intercepten el click
-        local function _mouseOverHeader(inputPos)
-            local mPos = inputPos or UserInputService:GetMouseLocation()
+        local function _mouseOverHeader(p2d)
             local hPos = header.AbsolutePosition
             local hSiz = header.AbsoluteSize
-            return mPos.X >= hPos.X and mPos.X <= hPos.X + hSiz.X
-               and mPos.Y >= hPos.Y and mPos.Y <= hPos.Y + hSiz.Y
+            return p2d.X >= hPos.X and p2d.X <= hPos.X + hSiz.X
+               and p2d.Y >= hPos.Y and p2d.Y <= hPos.Y + hSiz.Y
         end
-
-        -- BORDER_DRAG_SIZE: franja en px en cada borde del hub que activa el drag
-        local BORDER_DRAG_SIZE = 14
 
         local function _mouseOverBorder(p2d)
             local fPos = mainFrame.AbsolutePosition
             local fSiz = mainFrame.AbsoluteSize
-            local inX  = p2d.X >= fPos.X and p2d.X <= fPos.X + fSiz.X
-            local inY  = p2d.Y >= fPos.Y and p2d.Y <= fPos.Y + fSiz.Y
-            if not (inX and inY) then return false end
-            local onLeft   = p2d.X <= fPos.X + BORDER_DRAG_SIZE
-            local onRight  = p2d.X >= fPos.X + fSiz.X - BORDER_DRAG_SIZE
-            local onTop    = p2d.Y <= fPos.Y + BORDER_DRAG_SIZE
-            local onBottom = p2d.Y >= fPos.Y + fSiz.Y - BORDER_DRAG_SIZE
-            return onLeft or onRight or onTop or onBottom
+            if p2d.X < fPos.X or p2d.X > fPos.X + fSiz.X then return false end
+            if p2d.Y < fPos.Y or p2d.Y > fPos.Y + fSiz.Y then return false end
+            return p2d.X <= fPos.X + BORDER_DRAG_SIZE
+                or p2d.X >= fPos.X + fSiz.X - BORDER_DRAG_SIZE
+                or p2d.Y <= fPos.Y + BORDER_DRAG_SIZE
+                or p2d.Y >= fPos.Y + fSiz.Y - BORDER_DRAG_SIZE
         end
 
+        -- Efectos visuales al arrastrar / soltar
         local function _activateDragEffect()
+            _G._hubDragging = true
             local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
             if _hubCorner then
-                TweenService:Create(_hubCorner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 28)}):Play()
+                TweenService:Create(_hubCorner, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    {CornerRadius = UDim.new(0, 28)}):Play()
             end
             TweenService:Create(glowBorder, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Thickness    = 6,
+                Thickness    = 7,
                 Transparency = 0.0,
-                Color        = Color3.fromRGB(100, 80, 215),
             }):Play()
         end
 
         local function _deactivateDragEffect()
+            _G._hubDragging = false
             local _hubCorner = mainFrame:FindFirstChildOfClass("UICorner")
             if _hubCorner then
-                TweenService:Create(_hubCorner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 14)}):Play()
+                TweenService:Create(_hubCorner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+                    {CornerRadius = UDim.new(0, 14)}):Play()
             end
-            -- FIX: usar ThemeColors.Primary para que el borde siempre refleje el color del tema activo
+            -- Grosor vuelve al rango del pulso; el loop de pulso lo retoma automaticamente
             TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Thickness    = 1.6,
-                Transparency = 0.6,
-                Color        = ThemeColors.Primary,
+                Thickness    = 2.3,
+                Transparency = 0.10,
             }):Play()
         end
 
-        -- Usar _safeConnect para que el drag NO se destruya al cambiar de tab
-        _safeConnect(UserInputService.InputBegan, function(input)
-            if input.UserInputType ~= Enum.UserInputType.MouseButton1
-            and input.UserInputType ~= Enum.UserInputType.Touch then return end
-            -- FIX: respetar la opcion "Allow Hub Drag" de Settings
+        -- Inicio de drag (compartido por mouse y touch)
+        local function _startDrag(inputPos2D)
             if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
-
-            local _inputPos2D = Vector2.new(input.Position.X, input.Position.Y)
-            local _onHeader = _mouseOverHeader(_inputPos2D)
-            local _onBorder = _mouseOverBorder(_inputPos2D)
-
-            -- Solo arrastrar si el input cae dentro del header O en los bordes del frame
-            if not _onHeader and not _onBorder then return end
-
-            -- Verificar que el punto este dentro del mainFrame
-            local fPos = mainFrame.AbsolutePosition
-            local fSiz = mainFrame.AbsoluteSize
-            if _inputPos2D.X < fPos.X or _inputPos2D.X > fPos.X + fSiz.X then return end
-            if _inputPos2D.Y < fPos.Y or _inputPos2D.Y > fPos.Y + fSiz.Y then return end
-
-            -- FIX: no iniciar drag si hay un ScrollingFrame bajo el cursor.
-            -- Evita que scrollear una pestana (o arrastrar la scrollbar) mueva el HUD.
-            -- NOTA: el return dentro del pcall closure NO sale del handler -> usar flag.
+            -- Verificar zona valida (header o borde)
+            if not _mouseOverHeader(inputPos2D) and not _mouseOverBorder(inputPos2D) then return end
+            -- No arrastrar si hay ScrollingFrame bajo el cursor
             do
-                local _blockDrag = false
+                local _block = false
                 local _ok, _objs = pcall(function()
-                    return game:GetService("UserInputService"):GetGuiObjectsAtPosition(_inputPos2D.X, _inputPos2D.Y)
+                    return UserInputService:GetGuiObjectsAtPosition(inputPos2D.X, inputPos2D.Y)
                 end)
                 if _ok and _objs then
                     for _, _obj in ipairs(_objs) do
-                        if _obj:IsA("ScrollingFrame") then _blockDrag = true; break end
+                        if _obj:IsA("ScrollingFrame") then _block = true; break end
                     end
                 end
-                -- Tambien bloquear si el click cae sobre la scrollbar del lCol
-                -- (franja derecha del hub donde esta la barrita de scroll de toggles)
-                if not _blockDrag and leftColumn and leftColumn.ScrollBarThickness > 0 then
+                if not _block and leftColumn and leftColumn.ScrollBarThickness > 0 then
                     local _lcPos = leftColumn.AbsolutePosition
                     local _lcSiz = leftColumn.AbsoluteSize
-                    local _sbW   = leftColumn.ScrollBarThickness + 6  -- margen extra touch
-                    local _inSBX = _inputPos2D.X >= (_lcPos.X + _lcSiz.X - _sbW)
-                    local _inSBY = _inputPos2D.Y >= _lcPos.Y and _inputPos2D.Y <= (_lcPos.Y + _lcSiz.Y)
-                    if _inSBX and _inSBY then _blockDrag = true end
+                    local _sbW   = leftColumn.ScrollBarThickness + 6
+                    if inputPos2D.X >= (_lcPos.X + _lcSiz.X - _sbW)
+                    and inputPos2D.Y >= _lcPos.Y and inputPos2D.Y <= (_lcPos.Y + _lcSiz.Y) then
+                        _block = true
+                    end
                 end
-                if _blockDrag then return end
+                if _block then return end
             end
-
-            -- Efecto: bordes se agrandan visualmente al sostener click en borde o header
-            _activateDragEffect()
-
-            -- Usar AbsoluteSize real (no valores hardcodeados) para calcular offset
-            local vp  = workspace.CurrentCamera.ViewportSize
-            local pos = mainFrame.Position
-            local ap  = mainFrame.AnchorPoint
-            local fw  = mainFrame.AbsoluteSize.X
-            local fh  = mainFrame.AbsoluteSize.Y
-            local curX, curY
-
-            if ap == Vector2.new(0, 0) then
-                curX = pos.X.Offset
-                curY = pos.Y.Offset
-            else
-                local centerX = pos.X.Scale * vp.X + pos.X.Offset
-                local centerY = pos.Y.Scale * vp.Y + pos.Y.Offset
-                curX = centerX - fw * ap.X
-                curY = centerY - fh * ap.Y
-            end
-
+            -- Convertir posicion a offset (eliminar AnchorPoint para simplificar calculo)
+            local tl = _resolveFrameTopLeft()
             mainFrame.AnchorPoint = Vector2.new(0, 0)
-            mainFrame.Position    = UDim2.new(0, curX, 0, curY)
-
-            dragging       = true
-            -- FIX SCROLL+DRAG: bloquear scroll de toggles mientras se arrastra el hub
+            mainFrame.Position    = UDim2.new(0, tl.X, 0, tl.Y)
+            _dragActive     = true
+            _dragStartMouse = Vector2.new(inputPos2D.X, inputPos2D.Y)
+            _dragStartFrame = tl
             if leftColumn then pcall(function() leftColumn.ScrollingEnabled = false end) end
-            dragStartMouse = input.Position  -- Vector3: funciona igual para mouse y touch
-            dragStartFrame = Vector2.new(curX, curY)
+            _activateDragEffect()
+        end
+
+        -- Conectar inicio de drag desde dragIcon (cubre el header completo)
+        dragIcon.MouseButton1Down:Connect(function()
+            local mp = UserInputService:GetMouseLocation()
+            _startDrag(Vector2.new(mp.X, mp.Y))
+        end)
+        dragIcon.InputBegan:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.Touch then
+                _startDrag(Vector2.new(inp.Position.X, inp.Position.Y))
+            end
         end)
 
+        -- Movimiento (un solo _safeConnect — no duplicado)
         _safeConnect(UserInputService.InputChanged, function(input)
-            if not dragging then return end
+            if not _dragActive then return end
             if _G._sliderDragging then return end
             if input.UserInputType ~= Enum.UserInputType.MouseMovement
             and input.UserInputType ~= Enum.UserInputType.Touch then return end
-            update(input)
+            local delta = Vector2.new(input.Position.X, input.Position.Y) - _dragStartMouse
+            local vp    = workspace.CurrentCamera.ViewportSize
+            local fw    = mainFrame.AbsoluteSize.X
+            local fh    = mainFrame.AbsoluteSize.Y
+            mainFrame.Position = UDim2.new(0,
+                math.clamp(_dragStartFrame.X + delta.X, 0, vp.X - fw), 0,
+                math.clamp(_dragStartFrame.Y + delta.Y, 0, vp.Y - fh))
+            -- Sincronizar estela si existe
             task.defer(function()
                 local trailSG = hubGui and hubGui:FindFirstChild("EstelaContainer")
                 if trailSG and trailSG.Parent then
@@ -52437,49 +52394,38 @@ particles = {}
             end)
         end)
 
+        -- Fin de drag (un solo _safeConnect — resetea flag siempre)
         _safeConnect(UserInputService.InputEnded, function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = false
-                -- FIX SCROLL+DRAG: restaurar scroll de toggles al soltar
-                if leftColumn then pcall(function() leftColumn.ScrollingEnabled = true end) end
-                -- Esquinas vuelven a normal al soltar
-                _deactivateDragEffect()
+                if _dragActive then
+                    _dragActive = false
+                    if leftColumn then pcall(function() leftColumn.ScrollingEnabled = true end) end
+                    _deactivateDragEffect()
+                end
+            end
+        end)
+
+        -- Hover del header: resaltar borde (solo visual, no inicia drag)
+        header.MouseEnter:Connect(function()
+            header.Active = true
+            if not _dragActive then
+                TweenService:Create(glowBorder, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    Thickness    = 5,
+                    Transparency = 0.0,
+                }):Play()
+            end
+        end)
+        header.MouseLeave:Connect(function()
+            if not _dragActive then
+                header.Active = false
+                TweenService:Create(glowBorder, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    Thickness    = 2.3,
+                    Transparency = 0.10,
+                }):Play()
             end
         end)
     end -- cierra do drag
-
-    header.MouseEnter:Connect(function()
-        header.Active = true
-        -- FIX: usar ThemeColors.Primary para respetar el tema activo al hacer hover
-        TweenService:Create(glowBorder, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Thickness    = 5,
-            Transparency = 0.05,
-            Color        = ThemeColors.Primary,
-        }):Play()
-    end)
-
-    header.MouseLeave:Connect(function()
-        if not dragging then
-            header.Active = false
-        end
-        -- Volver al borde normal al salir (solo si no esta arrastrando)
-        if not dragging then
-            _deactivateDragEffect()
-        end
-    end)
-
-    -- FIX DRAG FREEZE: usar _safeConnect (NO RegisterTabConn) para que al cambiar de tab
-    -- esta conexion NO se destruya y el estado "dragging" siempre se resetee al soltar el mouse.
-    -- Con RegisterTabConn, al cambiar de tab la conexion mueria y dragging quedaba true para siempre.
-    _safeConnect(UserInputService.InputEnded, function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
-            dragging = false  -- FIX: resetear flag aquí también para evitar que quede colgado
-            task.defer(function()
-                _deactivateDragEffect()
-            end)
-        end
-    end)
 
     -- -- BOTN CERRAR (flecha)  esquina superior derecha, fondo transparente --
     local arrowToggleBtn = Instance.new("TextButton", header)
