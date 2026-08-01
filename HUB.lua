@@ -26210,6 +26210,48 @@ function CreateVisualsTab()
     end)
 end, _G._chamDropGun or false)
 
+        MiniHeader(inner, "THROWING KNIFE", Color3.fromRGB(255, 80, 40))
+        CreateAuroraToggle(inner, "Cham ThrowingKnife", function(v)
+            _G._chamTKEnabled = v
+            if not v then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    pcall(function()
+                        local hl = obj:FindFirstChild("_ChamTKHL")
+                        if hl then hl:Destroy() end
+                    end)
+                end
+                if _G._chamTKConn then _G._chamTKConn:Disconnect(); _G._chamTKConn = nil end
+                if _G._chamTKScanConn then _G._chamTKScanConn:Disconnect(); _G._chamTKScanConn = nil end
+                return
+            end
+            local function _applyTKCham(obj)
+                if not obj or not obj.Parent then return end
+                if obj:IsDescendantOf(Players) then return end
+                local nm = obj.Name:lower()
+                if not (nm:find("throwingknife") or nm:find("throwing_knife") or nm:find("throwknife") or nm == "throwingknife") then return end
+                if obj:FindFirstChild("_ChamTKHL") then return end
+                pcall(function()
+                    local hl = Instance.new("Highlight")
+                    hl.Name = "_ChamTKHL"
+                    hl.FillColor = Color3.fromRGB(255, 60, 20)
+                    hl.OutlineColor = Color3.fromRGB(255, 180, 100)
+                    hl.OutlineTransparency = 0
+                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    hl.Adornee = obj
+                    hl.Parent = obj
+                    hl.FillTransparency = 0.3
+                    obj.AncestryChanged:Connect(function()
+                        if not obj.Parent then pcall(function() hl:Destroy() end) end
+                    end)
+                end)
+            end
+            for _, obj in ipairs(workspace:GetDescendants()) do pcall(_applyTKCham, obj) end
+            if _G._chamTKConn then _G._chamTKConn:Disconnect() end
+            _G._chamTKConn = workspace.DescendantAdded:Connect(function(obj)
+                if _G._chamTKEnabled then _sp(function() pcall(_applyTKCham, obj) end) end
+            end)
+        end, _G._chamTKEnabled or false)
+
         makeESPPlayerPin(inner, vc, ThemeColors.Aurora1)
     end
 
@@ -26333,6 +26375,70 @@ end, _G._chamDropGun or false)
             end)
         end, _G._espGunEnabled or false)
 
+        MiniHeader(inner, "THROWING KNIFE", Color3.fromRGB(255, 80, 40))
+        CreateAuroraToggle(inner, "ESP ThrowingKnife", function(v)
+            _G._espTKEnabled = v
+            if not v then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    pcall(function()
+                        local hl = obj:FindFirstChild("_ESPTKHighlight")
+                        if hl then hl:Destroy() end
+                        local bb = obj:FindFirstChild("_ESPTKBillboard")
+                        if bb then bb:Destroy() end
+                    end)
+                end
+                if _G._espTKConn then _G._espTKConn:Disconnect(); _G._espTKConn = nil end
+                return
+            end
+            local function _applyESPTK(obj)
+                if not obj or not obj.Parent then return end
+                if obj:IsDescendantOf(Players) then return end
+                local nm = obj.Name:lower()
+                if not (nm:find("throwingknife") or nm:find("throwing_knife") or nm:find("throwknife") or nm == "throwingknife") then return end
+                if obj:FindFirstChild("_ESPTKHighlight") then return end
+                pcall(function()
+                    local hl = Instance.new("Highlight")
+                    hl.Name = "_ESPTKHighlight"
+                    hl.FillColor = Color3.fromRGB(255, 60, 20)
+                    hl.OutlineColor = Color3.fromRGB(255, 200, 100)
+                    hl.OutlineTransparency = 0
+                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    hl.Adornee = obj
+                    hl.Parent = obj
+                    hl.FillTransparency = 0.5
+                end)
+                if not obj:FindFirstChild("_ESPTKBillboard") then
+                    pcall(function()
+                        local bb = Instance.new("BillboardGui", obj)
+                        bb.Name = "_ESPTKBillboard"
+                        bb.Size = UDim2.new(0, 160, 0, 40)
+                        bb.AlwaysOnTop = true
+                        bb.StudsOffset = Vector3.new(0, 3, 0)
+                        local lbl = Instance.new("TextLabel", bb)
+                        lbl.Size = UDim2.new(1, 0, 1, 0)
+                        lbl.Text = "[ THROWING KNIFE ]"
+                        lbl.TextColor3 = Color3.fromRGB(255, 100, 40)
+                        lbl.BackgroundTransparency = 1
+                        lbl.TextStrokeTransparency = 0
+                        lbl.Font = Enum.Font.Montserrat
+                        lbl.TextScaled = true
+                    end)
+                end
+                obj.AncestryChanged:Connect(function()
+                    if not obj.Parent then
+                        pcall(function()
+                            local h = obj:FindFirstChild("_ESPTKHighlight"); if h then h:Destroy() end
+                            local b = obj:FindFirstChild("_ESPTKBillboard"); if b then b:Destroy() end
+                        end)
+                    end
+                end)
+            end
+            for _, obj in ipairs(workspace:GetDescendants()) do pcall(_applyESPTK, obj) end
+            if _G._espTKConn then _G._espTKConn:Disconnect() end
+            _G._espTKConn = workspace.DescendantAdded:Connect(function(obj)
+                if _G._espTKEnabled then _sp(function() pcall(_applyESPTK, obj) end) end
+            end)
+        end, _G._espTKEnabled or false)
  CreateAuroraToggle(inner, "ESP Display Distance", function(v) ve.distance=v end, ve.distance)
         makeESPPlayerPin(inner, ve, ThemeColors.Accent)
     end
@@ -26394,6 +26500,45 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Outline Assassin Only", function(v) vo.assassin=v end, vo.assassin)
         CreateAuroraToggle(inner, "Outline Survivor Only", function(v) vo.survivor=v end, vo.survivor)
         CreateAuroraToggle(inner, "Outline Zombie Only", function(v) vo.zombie=v end, vo.zombie)
+        MiniHeader(inner, "THROWING KNIFE", Color3.fromRGB(255, 80, 40))
+        CreateAuroraToggle(inner, "Outline ThrowingKnife", function(v)
+            _G._outlineTKEnabled = v
+            if not v then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    pcall(function()
+                        local hl = obj:FindFirstChild("_OutlineTKHL")
+                        if hl then hl:Destroy() end
+                    end)
+                end
+                if _G._outlineTKConn then _G._outlineTKConn:Disconnect(); _G._outlineTKConn = nil end
+                return
+            end
+            local function _applyOutlineTK(obj)
+                if not obj or not obj.Parent then return end
+                if obj:IsDescendantOf(Players) then return end
+                local nm = obj.Name:lower()
+                if not (nm:find("throwingknife") or nm:find("throwing_knife") or nm:find("throwknife") or nm == "throwingknife") then return end
+                if obj:FindFirstChild("_OutlineTKHL") then return end
+                pcall(function()
+                    local hl = Instance.new("Highlight")
+                    hl.Name = "_OutlineTKHL"
+                    hl.FillTransparency = 1
+                    hl.OutlineColor = Color3.fromRGB(255, 120, 60)
+                    hl.OutlineTransparency = 0
+                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    hl.Adornee = obj
+                    hl.Parent = obj
+                    obj.AncestryChanged:Connect(function()
+                        if not obj.Parent then pcall(function() hl:Destroy() end) end
+                    end)
+                end)
+            end
+            for _, obj in ipairs(workspace:GetDescendants()) do pcall(_applyOutlineTK, obj) end
+            if _G._outlineTKConn then _G._outlineTKConn:Disconnect() end
+            _G._outlineTKConn = workspace.DescendantAdded:Connect(function(obj)
+                if _G._outlineTKEnabled then _sp(function() pcall(_applyOutlineTK, obj) end) end
+            end)
+        end, _G._outlineTKEnabled or false)
         MiniHeader(inner, "BY OBJECT", Color3.fromRGB(255,220,100))
         CreateAuroraToggle(inner, "Highlight Dropped Gun", function(v)
             _G._hlGunEnabled = v
@@ -26551,6 +26696,46 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Box Assassin Only", function(v)
             vb.assassin = v; _refreshBoxESP()
         end, vb.assassin)
+        MiniHeader(inner, "THROWING KNIFE", Color3.fromRGB(255, 80, 40))
+        CreateAuroraToggle(inner, "Box ThrowingKnife", function(v)
+            _G._boxTKEnabled = v
+            if not v then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    pcall(function()
+                        local bx = obj:FindFirstChild("_BoxTKAdornment")
+                        if bx then bx:Destroy() end
+                    end)
+                end
+                if _G._boxTKConn then _G._boxTKConn:Disconnect(); _G._boxTKConn = nil end
+                return
+            end
+            local function _applyBoxTK(obj)
+                if not obj or not obj.Parent then return end
+                if obj:IsDescendantOf(Players) then return end
+                local nm = obj.Name:lower()
+                if not (nm:find("throwingknife") or nm:find("throwing_knife") or nm:find("throwknife") or nm == "throwingknife") then return end
+                if not obj:IsA("BasePart") and not obj:IsA("Model") then return end
+                if obj:FindFirstChild("_BoxTKAdornment") then return end
+                pcall(function()
+                    local box = Instance.new("SelectionBox")
+                    box.Name = "_BoxTKAdornment"
+                    box.SurfaceColor3 = Color3.fromRGB(255, 60, 20)
+                    box.SurfaceTransparency = 0.6
+                    box.LineThickness = 0.04
+                    box.Color3 = Color3.fromRGB(255, 180, 80)
+                    box.Adornee = obj
+                    box.Parent = obj
+                    obj.AncestryChanged:Connect(function()
+                        if not obj.Parent then pcall(function() box:Destroy() end) end
+                    end)
+                end)
+            end
+            for _, obj in ipairs(workspace:GetDescendants()) do pcall(_applyBoxTK, obj) end
+            if _G._boxTKConn then _G._boxTKConn:Disconnect() end
+            _G._boxTKConn = workspace.DescendantAdded:Connect(function(obj)
+                if _G._boxTKEnabled then _sp(function() pcall(_applyBoxTK, obj) end) end
+            end)
+        end, _G._boxTKEnabled or false)
     end
 
     do
