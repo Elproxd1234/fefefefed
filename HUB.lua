@@ -11236,23 +11236,15 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     local C_TRACK_FG = Color3.fromRGB(100, 80, 215)
     local C_THUMB    = Color3.fromRGB(255, 255, 255)
 
-    local CONTAINER_H = 68
+    local CONTAINER_H = 52
 
     local container = Instance.new("Frame", actualParent)
     container.Name                   = "SliderWrapper_" .. nombre
     container.Size                   = UDim2.new(1, -4, 0, CONTAINER_H)
-    container.BackgroundColor3       = C_BG
-    container.BackgroundTransparency = 0.25
+    container.BackgroundTransparency = 1
     container.BorderSizePixel        = 0
     container.ClipsDescendants       = false
     container.ZIndex                 = 10
-    local contCorner = Instance.new("UICorner", container)
-    contCorner.CornerRadius          = UDim.new(0, 12)
-    local contStroke = Instance.new("UIStroke", container)
-    contStroke.Color           = C_STROKE
-    contStroke.Thickness       = 0
-    contStroke.Transparency    = 1
-    contStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Titulo izquierda
     local titleLabel = Instance.new("TextLabel", container)
@@ -11294,10 +11286,10 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     -- Track del slider (abajo)
     local sliderTrack = Instance.new("Frame", container)
     sliderTrack.Name                   = "SliderTrack"
-    sliderTrack.Size                   = UDim2.new(1, -28, 0, 4)
-    sliderTrack.Position               = UDim2.new(0, 14, 0, 46)
+    sliderTrack.Size                   = UDim2.new(1, -28, 0, 2)
+    sliderTrack.Position               = UDim2.new(0, 14, 0, 38)
     sliderTrack.BackgroundColor3       = C_TRACK_BG
-    sliderTrack.BackgroundTransparency = 0.40
+    sliderTrack.BackgroundTransparency = 0.35
     sliderTrack.BorderSizePixel        = 0
     sliderTrack.ClipsDescendants       = false
     sliderTrack.ZIndex                 = 12
@@ -41624,36 +41616,13 @@ function CreateCombatTab()
         local CONTAINER_H = 44   -- igual que CreateSlider
         local STEP = 0.01
 
-        -- -- CONTENEDOR PRINCIPAL  glassmorphism idntico a CreateSlider --
+        -- -- CONTENEDOR PRINCIPAL  sin fondo, solo track y label flotando --
         local container = Instance.new("Frame", parent)
         container.Name                   = "GunSliderWrapper_" .. title
         container.Size                   = UDim2.new(1, -4, 0, CONTAINER_H)
-        container.BackgroundColor3       = ThemeColors.Background
-        container.BackgroundTransparency = 0.85
+        container.BackgroundTransparency = 1
         container.BorderSizePixel        = 0
         container.ClipsDescendants       = false
-        Instance.new("UICorner", container).CornerRadius = UDim.new(0, 10)
-
-        -- Borde aurora shimmer (igual que CreateSlider)
-        local _cStroke = Instance.new("UIStroke", container)
-        _cStroke.Thickness       = 1.5
-        _cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        local _cStrokeGrad = Instance.new("UIGradient", _cStroke)
-        _cStrokeGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   ThemeColors.Primary),
-            ColorSequenceKeypoint.new(0.5, ThemeColors.Accent),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(60, 80, 200)),
-        })
-        RegisterShimmer(_cStrokeGrad, 60, math.random(0, 359))
-
-        -- Gradiente de fondo diagonal
-        local _cBgGrad = Instance.new("UIGradient", container)
-        _cBgGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   Color3.fromRGB(60, 80, 200)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(6, 22, 15)),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(60, 80, 200)),
-        })
-        _cBgGrad.Rotation = 135
 
         -- -- TTULO (izquierda, arriba) ------------------------------
         local titleLabel = Instance.new("TextLabel", container)
@@ -41714,19 +41683,19 @@ function CreateCombatTab()
         -- -- TRACK ----------------------------------------------------
         local sliderTrack = Instance.new("Frame", container)
         sliderTrack.Name                   = "SliderTrack"
-        sliderTrack.Size                   = UDim2.new(1, -82, 0, 6)
-        sliderTrack.Position               = UDim2.new(0, 74, 0, 36)
+        sliderTrack.Size                   = UDim2.new(1, -20, 0, 2)
+        sliderTrack.Position               = UDim2.new(0, 10, 0, 36)
         sliderTrack.BackgroundColor3       = C_TRACK_BG
-        sliderTrack.BackgroundTransparency = 0.55
+        sliderTrack.BackgroundTransparency = 0.40
         sliderTrack.BorderSizePixel        = 0
         sliderTrack.ClipsDescendants       = false
         sliderTrack.ZIndex                 = 12
         Instance.new("UICorner", sliderTrack).CornerRadius = UDim.new(1, 0)
-        local trackStroke = Instance.new("UIStroke", sliderTrack)
-        trackStroke.Color           = C_STROKE
-        trackStroke.Thickness       = 1
-        trackStroke.Transparency    = 0.35
-        trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+
+
+
+
 
         -- Fill bar teal brillante
         local initPct = math.clamp((defaultVal - minVal) / math.max(0.001, maxVal - minVal), 0, 1)
@@ -43582,32 +43551,32 @@ function CreateCombatTab()
         local container = Instance.new("Frame", parent)
         container.Name                   = "KnifeSliderWrapper_" .. title
         container.Size                   = UDim2.new(1, -4, 0, CONTAINER_H)
-        container.BackgroundColor3       = ThemeColors.Background
-        container.BackgroundTransparency = 0.85
+
+        container.BackgroundTransparency = 1
         container.BorderSizePixel        = 0
         container.ClipsDescendants       = false
-        Instance.new("UICorner", container).CornerRadius = UDim.new(0, 10)
 
-        -- Borde aurora shimmer (igual que CreateSlider)
-        local _cStroke = Instance.new("UIStroke", container)
-        _cStroke.Thickness       = 1.5
-        _cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        local _cStrokeGrad = Instance.new("UIGradient", _cStroke)
-        _cStrokeGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   ThemeColors.Primary),
-            ColorSequenceKeypoint.new(0.5, ThemeColors.Accent),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(60, 80, 200)),
-        })
-        RegisterShimmer(_cStrokeGrad, 60, math.random(0, 359))
 
-        -- Gradiente de fondo diagonal (igual que CreateSlider)
-        local _cBgGrad = Instance.new("UIGradient", container)
-        _cBgGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   Color3.fromRGB(60, 80, 200)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(6, 22, 15)),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(60, 80, 200)),
+
+
+
+
+
+
+
+
+
         })
-        _cBgGrad.Rotation = 135
+
+
+
+
+
+
+
+
+        })
+
 
         -- -- TTULO (izquierda, arriba) ------------------------------
         local titleLabel = Instance.new("TextLabel", container)
@@ -43667,19 +43636,19 @@ function CreateCombatTab()
         -- -- TRACK ----------------------------------------------------
         local sliderTrack = Instance.new("Frame", container)
         sliderTrack.Name                   = "SliderTrack"
-        sliderTrack.Size                   = UDim2.new(1, -82, 0, 6)
-        sliderTrack.Position               = UDim2.new(0, 74, 0, 36)
+        sliderTrack.Size                   = UDim2.new(1, -20, 0, 2)
+        sliderTrack.Position               = UDim2.new(0, 10, 0, 36)
         sliderTrack.BackgroundColor3       = C_TRACK_BG
-        sliderTrack.BackgroundTransparency = 0.55
+        sliderTrack.BackgroundTransparency = 0.40
         sliderTrack.BorderSizePixel        = 0
         sliderTrack.ClipsDescendants       = false
         sliderTrack.ZIndex                 = 12
         Instance.new("UICorner", sliderTrack).CornerRadius = UDim.new(1, 0)
-        local trackStroke = Instance.new("UIStroke", sliderTrack)
-        trackStroke.Color           = C_STROKE
-        trackStroke.Thickness       = 1
-        trackStroke.Transparency    = 0.35
-        trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+
+
+
+
 
         -- Fill bar teal brillante
         local initPct = math.clamp((defaultVal - minVal) / math.max(0.001, maxVal - minVal), 0, 1)
@@ -47862,33 +47831,33 @@ function CreateCombatTab()
         local container = Instance.new("Frame", parent)
         container.Name                   = "PredSliderWrapper_" .. title
         container.Size                   = UDim2.new(1, -4, 0, CONTAINER_H)
-        container.BackgroundColor3       = ThemeColors.Background
-        container.BackgroundTransparency = 0.85
+
+        container.BackgroundTransparency = 1
         container.BorderSizePixel        = 0
         container.ClipsDescendants       = false
         container.ZIndex                 = 10
-        Instance.new("UICorner", container).CornerRadius = UDim.new(0, 10)
 
-        -- Borde aurora shimmer (igual que CreateSlider)
-        local _cStroke = Instance.new("UIStroke", container)
-        _cStroke.Thickness       = 1.5
-        _cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        local _cStrokeGrad = Instance.new("UIGradient", _cStroke)
-        _cStrokeGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   ThemeColors.Primary),
-            ColorSequenceKeypoint.new(0.5, ThemeColors.Accent),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(60, 80, 200)),
-        })
-        RegisterShimmer(_cStrokeGrad, 60, math.random(0, 359))
 
-        -- Gradiente de fondo diagonal
-        local _cBgGrad = Instance.new("UIGradient", container)
-        _cBgGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   Color3.fromRGB(60, 80, 200)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(6, 22, 15)),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(60, 80, 200)),
+
+
+
+
+
+
+
+
+
         })
-        _cBgGrad.Rotation = 135
+
+
+
+
+
+
+
+
+        })
+
 
         local titleLabel = Instance.new("TextLabel", container)
         titleLabel.Size = UDim2.new(1, -90, 0, 18); titleLabel.Position = UDim2.new(0, 10, 0, 6)
@@ -47923,13 +47892,13 @@ function CreateCombatTab()
 
         local sliderTrack = Instance.new("Frame", container)
         sliderTrack.Name = "SliderTrack"
-        sliderTrack.Size = UDim2.new(1, -82, 0, 6); sliderTrack.Position = UDim2.new(0, 74, 0, 36)
-        sliderTrack.BackgroundColor3 = C_TRACK_BG; sliderTrack.BackgroundTransparency = 0.20
+        sliderTrack.Size = UDim2.new(1, -20, 0, 2); sliderTrack.Position = UDim2.new(0, 10, 0, 36)
+        sliderTrack.BackgroundColor3 = C_TRACK_BG; sliderTrack.BackgroundTransparency = 0.40
         sliderTrack.BorderSizePixel = 0; sliderTrack.ClipsDescendants = false; sliderTrack.ZIndex = 12
         Instance.new("UICorner", sliderTrack).CornerRadius = UDim.new(1, 0)
-        local trackStroke = Instance.new("UIStroke", sliderTrack)
-        trackStroke.Color = C_STROKE; trackStroke.Thickness = 1; trackStroke.Transparency = 0.35
-        trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+
+
 
         local initPct = math.clamp((defaultVal - minVal) / math.max(0.001, maxVal - minVal), 0, 1)
         local sliderFill = Instance.new("Frame", sliderTrack)
