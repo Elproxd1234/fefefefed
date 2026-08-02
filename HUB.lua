@@ -36274,12 +36274,12 @@ function CreatePremiumTab()
                 meshId = "http://www.roblox.com/asset/?id=95356090",
                 texId  = "http://www.roblox.com/asset/?id=126534866",
                 scale  = Vector3.new(1.7999999523162842, 1.7999999523162842, 1.7999999523162842),
-                -- GRIP: mismo agarre que ElderwoodGun
+                -- GRIP: agarre ElderwoodGun + Ry180 (corrige forward invertido)
                 grip   = CFrame.new(
-                    -0.567565918, -0.124303818, -0.0424308777,
-                    -0.000212550163, 0.0230092816, -0.999735236,
-                    -0.011778634,   0.999665856,   0.0230101906,
-                     0.99993062,    0.0117804073,  5.85317612e-05
+                    0.567565918, -0.124303818, -0.0424308777,
+                    0.0002125502, 0.0230092816, 0.9997352360,
+                    0.0117786340, 0.9996658560, -0.0230101906,
+                    -0.9999306200, 0.0117804073, -0.0000585318
                 ),
             },
             {
@@ -36287,12 +36287,12 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://7775027413",
                 texId  = "http://www.roblox.com/asset/?id=7775245551",
                 scale  = Vector3.new(0.05999999865889549, 0.05000000074505806, 0.05000000074505806),
-                -- GRIP: mismo agarre que ElderwoodGun
+                -- GRIP: agarre ElderwoodGun + Ry180 (corrige forward invertido)
                 grip   = CFrame.new(
-                    -0.567565918, -0.124303818, -0.0424308777,
-                    -0.000212550163, 0.0230092816, -0.999735236,
-                    -0.011778634,   0.999665856,   0.0230101906,
-                     0.99993062,    0.0117804073,  5.85317612e-05
+                    0.567565918, -0.124303818, -0.0424308777,
+                    0.0002125502, 0.0230092816, 0.9997352360,
+                    0.0117786340, 0.9996658560, -0.0230101906,
+                    -0.9999306200, 0.0117804073, -0.0000585318
                 ),
                 dualGun = true,
             },
@@ -36330,12 +36330,12 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://15374602183",
                 texId  = "rbxassetid://15409041564",
                 scale  = Vector3.new(0.08, 0.08, 0.08),
-                -- GRIP: mismo agarre que ElderwoodGun
+                -- GRIP: agarre ElderwoodGun + Ry180 (corrige forward invertido)
                 grip   = CFrame.new(
-                    -0.567565918, -0.124303818, -0.0424308777,
-                    -0.000212550163, 0.0230092816, -0.999735236,
-                    -0.011778634,   0.999665856,   0.0230101906,
-                     0.99993062,    0.0117804073,  5.85317612e-05
+                    0.567565918, -0.124303818, -0.0424308777,
+                    0.0002125502, 0.0230092816, 0.9997352360,
+                    0.0117786340, 0.9996658560, -0.0230101906,
+                    -0.9999306200, 0.0117804073, -0.0000585318
                 ),
                 dualGun = true,
             },
@@ -36769,7 +36769,6 @@ function CreatePremiumTab()
             -- Auto-setear modo gun al usar este selector
             if _skinState.mode ~= "gun" then
                 if _skinState.enabled then _scResetAll(); _skinState.enabled = false end
-                _skinState.origData = {}  -- FIX: limpiar cache de tools del modo anterior (knife)
                 _skinState.mode = "gun"
                 _skinState.skinIdx = 1
             end
@@ -36829,7 +36828,6 @@ function CreatePremiumTab()
                 _scApply(tool, _scGetSkin(), true)
             end
             -- Intentar de nuevo con delays por si la gun tarda en cargarse (mobile)
-            -- FIX MOBILE v4: extendido hasta 5s para executors lentos
             task.delay(0.3, function()
                 if not _skinState.enabled then return end
                 local gun2 = _findGunMobile()
@@ -36844,16 +36842,6 @@ function CreatePremiumTab()
                 if not _skinState.enabled then return end
                 local gun4 = _findGunMobile()
                 if gun4 then _scApply(gun4, _scGetSkin(), true) end
-            end)
-            task.delay(3.0, function()
-                if not _skinState.enabled then return end
-                local gun5 = _findGunMobile()
-                if gun5 then _scApply(gun5, _scGetSkin(), true) end
-            end)
-            task.delay(5.0, function()
-                if not _skinState.enabled then return end
-                local gun6 = _findGunMobile()
-                if gun6 then _scApply(gun6, _scGetSkin(), true) end
             end)
         end)
 
@@ -46376,35 +46364,33 @@ function CreateCombatTab()
                         return false
                     end
 
+                    -- Esperar hasta 8s a que aparezca la gun
                     local waited = 0
                     while not _gunReady() and waited < 8 do
-                        task.wait(0.25); waited = waited + 0.25
+                        task.wait(0.25)
+                        waited = waited + 0.25
                     end
 
                     if not (gs and gs.enabled) then return end
-
+                    -- Limpiar conns que pudieran haberse creado mientras esperabamos
+                    if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
+                    if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
+                    if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
                     _dualStartArm(gs, _dualGunKeywords)
 
-                    -- Hook backpack: gun pick-up desde el suelo
+                    -- Tambien hookear el backpack: si la gun aparece mas tarde (pick-up), re-armar
                     if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end) end
                     _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
                         if not (gs and gs.enabled) then return end
-                        if not tool:IsA("Tool") or not _dualGunKeywords[tool.Name] then return end
-                        task.wait(0.1)
-                        _dualStartArm(gs, _dualGunKeywords)
-                    end)
-
-                    -- Hook Character.ChildAdded: gun equipada directamente al char
-                    if _G._dualGunCharPickupConn then pcall(function() _G._dualGunCharPickupConn:Disconnect() end) end
-                    local _dgNewChar = newChar or LocalPlayer.Character
-                    if _dgNewChar then
-                        _G._dualGunCharPickupConn = _dgNewChar.ChildAdded:Connect(function(tool)
-                            if not (gs and gs.enabled) then return end
-                            if not tool:IsA("Tool") or not _dualGunKeywords[tool.Name] then return end
+                        if not tool:IsA("Tool") then return end
+                        if _dualGunKeywords[tool.Name] then
                             task.wait(0.1)
+                            if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
+                            if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
+                            if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
                             _dualStartArm(gs, _dualGunKeywords)
-                        end)
-                    end
+                        end
+                    end)
                 end)
             end
         end)
