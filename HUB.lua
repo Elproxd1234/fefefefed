@@ -53310,7 +53310,11 @@ particles = {}
     end
 
     function SetActiveTab(idx)
-        if idx == activeTabIdx and _tabBuilt[idx] then return end  -- OPT: no hacer nada si ya es la tab activa Y ya fue construida
+        -- OPT: no hacer nada si ya es la tab activa Y ya fue construida Y ya es visible
+        -- FIX MAIN EN BLANCO: si el contentContainer esta oculto (hub recien abierto),
+        -- NO hacer early-return aunque el tab ya este construido -- hay que restaurar visibilidad
+        local _ccVisible = contentContainer and contentContainer.Visible
+        if idx == activeTabIdx and _tabBuilt[idx] and _ccVisible then return end
         -- FIX: asegurarse de que contentContainer sea visible al cargar cualquier tab
         if contentContainer and not contentContainer.Visible then
             contentContainer.Visible = true
@@ -53449,6 +53453,43 @@ particles = {}
     _G._SetActiveTab     = SetActiveTab
     _G._contentContainer = contentContainer
     _G._playTabSound     = PlayTabSound
+
+    -- FIX MAIN TAB EN BLANCO AL REABRIR: definir _reloadActiveTab robusto globalmente.
+    -- El anterior se definia dentro de _showTab (callback de SetActiveTab) y quedaba
+    -- desactualizado si SetActiveTab hacia early-return por la guardia idx==activeTabIdx.
+    -- Esta version siempre fuerza la visibilidad del tab activo sin pasar por la guardia.
+    _G._reloadActiveTab = function()
+        local idx = activeTabIdx
+        local frame = _tabCache[idx]
+        if not frame or not frame.Parent then
+            -- El frame fue destruido: reconstruirlo
+            _tabBuilt[idx] = nil
+            _tabCache[idx] = nil
+            _G._isTabRebuild = true
+            _buildTabCached(idx, function()
+                if _tabCache[idx] then
+                    _tabCache[idx].Visible = true
+                    if contentContainer then contentContainer.Visible = true end
+                end
+            end)
+            _G._isTabRebuild = false
+        else
+            -- El frame existe pero quedó Visible=false al cerrar: restaurarlo
+            if contentContainer then contentContainer.Visible = true end
+            frame.Visible = true
+            -- Forzar refresh de columnas (fix Main en blanco con doble columna)
+            task.defer(function()
+                if not frame or not frame.Parent then return end
+                local wrapper = frame:FindFirstChild("TwoColumnWrapper")
+                if wrapper then
+                    local lc = wrapper:FindFirstChild("LeftColumn")
+                    local rc = wrapper:FindFirstChild("RightColumn")
+                    if lc then lc.Visible = false; lc.Visible = true end
+                    if rc then rc.Visible = false; rc.Visible = true end
+                end
+            end)
+        end
+    end
 
     -- -- DOCK DE TABS EXTERNO  barra flotante DEBAJO del hub --------------
     -- SIDEBAR VERTICAL IZQUIERDA dentro del mainFrame (siempre visible)
