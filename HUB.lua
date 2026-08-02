@@ -36935,6 +36935,14 @@ function CreatePremiumTab()
                         task.spawn(_scTryApplyKnife)
                     end
                 end)
+                -- FIX MURDER NEW ROUND: intentar aplicar inmediatamente + delays por si el
+                -- knife ya esta en el personaje (o llega poco despues del respawn/nueva ronda)
+                task.spawn(_scTryApplyKnife)
+                task.delay(0.5,  function() if _skinState.enabled and _skinState.mode == "knife" and not _G._dualKnifeEnabled then local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end end end)
+                task.delay(1.2,  function() if _skinState.enabled and _skinState.mode == "knife" and not _G._dualKnifeEnabled then local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end end end)
+                task.delay(2.5,  function() if _skinState.enabled and _skinState.mode == "knife" and not _G._dualKnifeEnabled then local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end end end)
+                task.delay(4.0,  function() if _skinState.enabled and _skinState.mode == "knife" and not _G._dualKnifeEnabled then local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end end end)
+                task.delay(7.0,  function() if _skinState.enabled and _skinState.mode == "knife" and not _G._dualKnifeEnabled then local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end end end)
             end
 
             CreateNebulaSelector(leftColumn, "Skin -- Knife 🔪", _knifeNames, _knifeNames[1], function(sel)
