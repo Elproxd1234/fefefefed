@@ -45470,7 +45470,13 @@ function CreateCombatTab()
             if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
             if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
             if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
-            -- Stepped: levanta el brazo izquierdo
+            -- Estado para la animacion de slash del brazo izquierdo
+            -- _slashPhase: nil = idle, "forward" = yendo al frente, "back" = volviendo
+            state._slashPhase     = nil
+            state._slashT         = 0   -- tiempo transcurrido en la fase actual
+            state._slashLastClock = 0
+
+            -- Stepped: levanta el brazo izquierdo y lo anima al hacer slash
             state.steppedConn = _safeConnect(RunService.Stepped, function()
                 if not state.enabled then return end
                 local char = LocalPlayer.Character
@@ -45489,15 +45495,51 @@ function CreateCombatTab()
                 local lElbow    = lLA and lLA:FindFirstChild("LeftElbow")
                 local lHandPart = char:FindFirstChild("LeftHand")
                 local lWrist    = lHandPart and lHandPart:FindFirstChild("LeftWrist")
+
+                -- Calcular dt para la interpolacion del slash
+                local now = os.clock()
+                local dt  = now - (state._slashLastClock or now)
+                state._slashLastClock = now
+
+                -- Angulo base (brazo al frente): 90 grados
+                local BASE_X = math.rad(90)
+                -- Angulo de slash (brazo hacia arriba-adelante): 130 grados
+                local SLASH_X = math.rad(130)
+                -- Duracion de cada fase del slash en segundos
+                local PHASE_DUR = 0.18
+
+                local targetX = BASE_X
+                if state._slashPhase == "forward" then
+                    state._slashT = math.min(state._slashT + dt, PHASE_DUR)
+                    local t = state._slashT / PHASE_DUR
+                    -- easeOutQuad
+                    t = 1 - (1 - t) * (1 - t)
+                    targetX = BASE_X + (SLASH_X - BASE_X) * t
+                    if state._slashT >= PHASE_DUR then
+                        state._slashPhase = "back"
+                        state._slashT = 0
+                    end
+                elseif state._slashPhase == "back" then
+                    state._slashT = math.min(state._slashT + dt, PHASE_DUR)
+                    local t = state._slashT / PHASE_DUR
+                    t = 1 - (1 - t) * (1 - t)
+                    targetX = SLASH_X + (BASE_X - SLASH_X) * t
+                    if state._slashT >= PHASE_DUR then
+                        state._slashPhase = nil
+                        state._slashT = 0
+                        targetX = BASE_X
+                    end
+                end
+
                 if lShoulder then
-                    lShoulder.Transform = CFrame.Angles(math.rad(90), 0, 0)
+                    lShoulder.Transform = CFrame.Angles(targetX, 0, 0)
                     if lElbow then lElbow.Transform = CFrame.new() end
                     if lWrist then lWrist.Transform = CFrame.new() end
                     return
                 end
-                local torso   = char:FindFirstChild("Torso")
+                local torso    = char:FindFirstChild("Torso")
                 local lJointR6 = torso and torso:FindFirstChild("Left Shoulder")
-                if lJointR6 then lJointR6.Transform = CFrame.Angles(math.rad(90), 0, 0) end
+                if lJointR6 then lJointR6.Transform = CFrame.Angles(targetX, 0, 0) end
             end)
 
             -- RenderStepped: clona handle y lo weldea a la mano izquierda
@@ -45537,11 +45579,30 @@ function CreateCombatTab()
                 if not (handle and grip and lHand) then return end
                 -- Verificar que el handle pertenece a la tool correcta (no a otra tool del char)
                 if handle.Parent ~= tool then return end
+
+                -- FIX GRIP DK ESPEJO: obtener el grip real del tool (C0 puede estar pisado por skin changer).
+                -- Prioridad: 1) origData del skin changer (grip original MM2)
+                --            2) tool.Grip actual
+                --            3) grip.C0 del RightGrip (fallback)
+                local function _getOrigGripCF()
+                    local sc = _G._skinChangerState
+                    if sc and sc.origData and sc.origData[tool] and sc.origData[tool].Grip then
+                        return sc.origData[tool].Grip
+                    end
+                    -- Caché propio del dual knife (se guarda al crear el clon)
+                    if state._origGripCache and state._origGripTool == tool then
+                        return state._origGripCache
+                    end
+                    return nil
+                end
+
                 local existing = char:FindFirstChild("DK_Clone")
                 if existing then
                     local w = existing:FindFirstChild("MirrorWeld")
                     if w then
-                        local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
+                        local origGrip = _getOrigGripCF()
+                        local gCF = origGrip or grip.C0
+                        local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = gCF:GetComponents()
                         w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
                         w.C1 = grip.C1
                     end
@@ -45584,7 +45645,22 @@ function CreateCombatTab()
                 weld.Name  = "MirrorWeld"
                 weld.Part0 = lHand
                 weld.Part1 = clon
-                local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
+                -- FIX GRIP DK ESPEJO: usar grip original MM2, no el grip pisado por skin changer.
+                -- Prioridad: origData del skin changer → tool.Grip actual → grip.C0 del RightGrip
+                local _origGripCF = nil
+                local sc = _G._skinChangerState
+                if sc and sc.origData and sc.origData[tool] and sc.origData[tool].Grip then
+                    _origGripCF = sc.origData[tool].Grip
+                else
+                    -- Intentar leer tool.Grip antes de que el skin changer lo pise
+                    pcall(function() _origGripCF = tool.Grip end)
+                end
+                -- Si ninguno, caer al RightGrip.C0 actual
+                if not _origGripCF then _origGripCF = grip.C0 end
+                -- Guardar cache para el update loop del renderConn
+                state._origGripCache = _origGripCF
+                state._origGripTool  = tool
+                local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = _origGripCF:GetComponents()
                 weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
                 weld.C1 = grip.C1
 
@@ -45643,6 +45719,9 @@ function CreateCombatTab()
                     state.isAttacking = true
                     state._lastStab = now
                     _G._dualSlashToggle = not _G._dualSlashToggle
+                    -- FIX BRAZO IZQ: disparar animacion de slash en el steppedConn
+                    state._slashPhase = "forward"
+                    state._slashT     = 0
                     -- FIX SLASH ANIM: matar slash nativa sincronicamente antes del spawn
                     if _dkKillNativeSlash then _dkKillNativeSlash() end
                     -- Usar _dkPlaySlot (definida despues del toggle, accesible via upvalue del closure externo)
@@ -45703,6 +45782,11 @@ function CreateCombatTab()
             if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
             -- Limpiar hook AnimationPlayed del custom anim
             if _dkAnimPlayedConn then pcall(function() _dkAnimPlayedConn:Disconnect() end); _dkAnimPlayedConn = nil end
+            -- Limpiar cache del grip original
+            state._origGripCache = nil
+            state._origGripTool  = nil
+            state._slashPhase    = nil
+            state._slashT        = 0
             -- Limpiar clon si existe
             local char = LocalPlayer.Character
             if char then
@@ -46032,6 +46116,9 @@ function CreateCombatTab()
                         if now - (state._lastStab or -999) < 0.85 then return end
                         state.isAttacking = true
                         state._lastStab   = now
+                        -- FIX BRAZO IZQ: disparar animacion de slash en el steppedConn
+                        state._slashPhase = "forward"
+                        state._slashT     = 0
                         -- FIX SLASH ANIM: matar slash nativa en el mismo frame del input (sincrono)
                         -- antes de que el juego la dispare, y ANTES del spawn del play
                         _dkKillNativeSlash()
@@ -46334,6 +46421,9 @@ function CreateCombatTab()
                             if now - (ks._lastStab or -999) < 0.85 then return end
                             ks.isAttacking = true
                             ks._lastStab   = now
+                            -- FIX BRAZO IZQ: disparar animacion de slash en el steppedConn
+                            ks._slashPhase = "forward"
+                            ks._slashT     = 0
                             -- FIX SLASH ANIM: matar slash nativa sincronicamente antes del spawn
                             _dkKillNativeSlash()
                             -- Reproducir anim custom en spawn
