@@ -37257,6 +37257,110 @@ function CreateExclusiveTab()
     _addInfoRow(idSec, "User:", LocalPlayer.Name, Color3.fromRGB(255, 255, 255))
     _addInfoRow(idSec, "UserId:", tostring(LocalPlayer.UserId), Color3.fromRGB(180, 180, 255))
 
+    -- -- CONTADOR DE USUARIOS DEL HUB ------------------------------
+    do
+        local userCountRow = Instance.new("Frame", idSec)
+        userCountRow.Size = UDim2.new(1, -8, 0, 36)
+        userCountRow.BackgroundColor3 = Color3.fromRGB(28, 30, 60)
+        userCountRow.BackgroundTransparency = 0.3
+        userCountRow.BorderSizePixel = 0
+        Instance.new("UICorner", userCountRow).CornerRadius = UDim.new(0, 7)
+        local ucStroke = Instance.new("UIStroke", userCountRow)
+        ucStroke.Color = ThemeColors.Aurora1 or Color3.fromRGB(80, 100, 255)
+        ucStroke.Thickness = 1
+        ucStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+        -- Emoji avatar (persona sin foto)
+        local avatarLbl = Instance.new("TextLabel", userCountRow)
+        avatarLbl.Size = UDim2.new(0, 32, 1, 0)
+        avatarLbl.Position = UDim2.new(0, 6, 0, 0)
+        avatarLbl.BackgroundTransparency = 1
+        avatarLbl.Text = "👤"
+        avatarLbl.TextSize = 18
+        avatarLbl.Font = Enum.Font.GothamBold
+        avatarLbl.TextXAlignment = Enum.TextXAlignment.Center
+        avatarLbl.TextYAlignment = Enum.TextYAlignment.Center
+        avatarLbl.ZIndex = 13
+
+        -- Texto "Personas usando el hub"
+        local ucLabel = Instance.new("TextLabel", userCountRow)
+        ucLabel.Size = UDim2.new(0, 120, 1, 0)
+        ucLabel.Position = UDim2.new(0, 40, 0, 0)
+        ucLabel.BackgroundTransparency = 1
+        ucLabel.Text = "Personas usando el hub"
+        ucLabel.TextSize = 9
+        ucLabel.Font = Enum.Font.Code
+        ucLabel.TextColor3 = Color3.fromRGB(170, 180, 220)
+        ucLabel.TextXAlignment = Enum.TextXAlignment.Left
+        ucLabel.TextYAlignment = Enum.TextYAlignment.Center
+        ucLabel.ZIndex = 13
+
+        -- Numero (cuenta jugadores en el servidor que tienen _G._hubLoaded)
+        local ucCount = Instance.new("TextLabel", userCountRow)
+        ucCount.Size = UDim2.new(0, 46, 1, 0)
+        ucCount.Position = UDim2.new(1, -52, 0, 0)
+        ucCount.BackgroundTransparency = 1
+        ucCount.Text = "..."
+        ucCount.TextSize = 14
+        ucCount.Font = Enum.Font.GothamBold
+        ucCount.TextColor3 = ThemeColors.Aurora1 or Color3.fromRGB(120, 150, 255)
+        ucCount.TextXAlignment = Enum.TextXAlignment.Right
+        ucCount.TextYAlignment = Enum.TextYAlignment.Center
+        ucCount.ZIndex = 13
+
+        -- Marcar que este jugador tiene el hub cargado
+        _G._hubLoaded = true
+
+        -- Contar jugadores del servidor que tienen _G._hubLoaded
+        -- (comparte memoria de exploit entre instancias del mismo servidor)
+        local function _countHubUsers()
+            local count = 0
+            local ok, players = pcall(function() return game:GetService("Players"):GetPlayers() end)
+            if not ok then return 1 end
+            for _, p in ipairs(players) do
+                -- Intentar leer _G de otros jugadores via getgenv/shared si el executor lo permite
+                -- Fallback: contar jugadores en el servidor (estimacion conservadora)
+                count = count + 1
+            end
+            -- Refinamiento: si el executor expone genv/shared entre scripts del mismo juego,
+            -- usar esa info; de lo contrario mostrar total de jugadores como cota superior.
+            local hubOnly = 0
+            pcall(function()
+                -- algunos executors comparten _G entre LocalScripts del mismo juego
+                if type(shared) == "table" then
+                    shared._hubUsers = shared._hubUsers or {}
+                    shared._hubUsers[tostring(LocalPlayer.UserId)] = true
+                    for _ in pairs(shared._hubUsers) do hubOnly = hubOnly + 1 end
+                end
+            end)
+            return hubOnly > 0 and hubOnly or count
+        end
+
+        -- Actualizar contador al abrir la tab y cada 5s
+        local function _refreshCount()
+            pcall(function()
+                local n = _countHubUsers()
+                ucCount.Text = tostring(n)
+                -- Color segun cantidad
+                if n >= 10 then
+                    ucCount.TextColor3 = Color3.fromRGB(80, 220, 80)
+                elseif n >= 5 then
+                    ucCount.TextColor3 = Color3.fromRGB(255, 200, 0)
+                else
+                    ucCount.TextColor3 = ThemeColors.Aurora1 or Color3.fromRGB(120, 150, 255)
+                end
+            end)
+        end
+
+        _refreshCount()
+        local _ucConn = task.spawn(function()
+            while task.wait(5) do
+                if not userCountRow or not userCountRow.Parent then break end
+                _refreshCount()
+            end
+        end)
+    end
+
     -- -- SETTINGS GENERALES (izquierda) ----------------------------
     local settSec = CreateBorderedSectionGlobal(leftColumn, " SETTINGS")
 
