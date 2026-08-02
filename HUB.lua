@@ -37257,7 +37257,7 @@ function CreateExclusiveTab()
     _addInfoRow(idSec, "User:", LocalPlayer.Name, Color3.fromRGB(255, 255, 255))
     _addInfoRow(idSec, "UserId:", tostring(LocalPlayer.UserId), Color3.fromRGB(180, 180, 255))
 
-    -- -- CONTADOR DE USUARIOS DEL HUB ------------------------------
+    -- -- CONTADOR DE USUARIOS DEL HUB (real: counterapi.dev) --------
     do
         local userCountRow = Instance.new("Frame", idSec)
         userCountRow.Size = UDim2.new(1, -8, 0, 36)
@@ -37270,7 +37270,7 @@ function CreateExclusiveTab()
         ucStroke.Thickness = 1
         ucStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-        -- Emoji avatar (persona sin foto)
+        -- Emoji avatar
         local avatarLbl = Instance.new("TextLabel", userCountRow)
         avatarLbl.Size = UDim2.new(0, 32, 1, 0)
         avatarLbl.Position = UDim2.new(0, 6, 0, 0)
@@ -37282,9 +37282,9 @@ function CreateExclusiveTab()
         avatarLbl.TextYAlignment = Enum.TextYAlignment.Center
         avatarLbl.ZIndex = 13
 
-        -- Texto "Personas usando el hub"
+        -- Texto descriptivo
         local ucLabel = Instance.new("TextLabel", userCountRow)
-        ucLabel.Size = UDim2.new(0, 120, 1, 0)
+        ucLabel.Size = UDim2.new(0, 130, 1, 0)
         ucLabel.Position = UDim2.new(0, 40, 0, 0)
         ucLabel.BackgroundTransparency = 1
         ucLabel.Text = "Personas usando el hub"
@@ -37295,7 +37295,7 @@ function CreateExclusiveTab()
         ucLabel.TextYAlignment = Enum.TextYAlignment.Center
         ucLabel.ZIndex = 13
 
-        -- Numero (cuenta jugadores en el servidor que tienen _G._hubLoaded)
+        -- Numero en tiempo real
         local ucCount = Instance.new("TextLabel", userCountRow)
         ucCount.Size = UDim2.new(0, 46, 1, 0)
         ucCount.Position = UDim2.new(1, -52, 0, 0)
@@ -37308,53 +37308,49 @@ function CreateExclusiveTab()
         ucCount.TextYAlignment = Enum.TextYAlignment.Center
         ucCount.ZIndex = 13
 
-        -- Marcar que este jugador tiene el hub cargado
-        _G._hubLoaded = true
+        -- API de contador global (counterapi.dev - gratuita, sin auth)
+        local _UC_BASE = "https://api.counterapi.dev/v1/zerqonhub/users_v1"
 
-        -- Contar jugadores del servidor que tienen _G._hubLoaded
-        -- (comparte memoria de exploit entre instancias del mismo servidor)
-        local function _countHubUsers()
-            local count = 0
-            local ok, players = pcall(function() return game:GetService("Players"):GetPlayers() end)
-            if not ok then return 1 end
-            for _, p in ipairs(players) do
-                -- Intentar leer _G de otros jugadores via getgenv/shared si el executor lo permite
-                -- Fallback: contar jugadores en el servidor (estimacion conservadora)
-                count = count + 1
-            end
-            -- Refinamiento: si el executor expone genv/shared entre scripts del mismo juego,
-            -- usar esa info; de lo contrario mostrar total de jugadores como cota superior.
-            local hubOnly = 0
-            pcall(function()
-                -- algunos executors comparten _G entre LocalScripts del mismo juego
-                if type(shared) == "table" then
-                    shared._hubUsers = shared._hubUsers or {}
-                    shared._hubUsers[tostring(LocalPlayer.UserId)] = true
-                    for _ in pairs(shared._hubUsers) do hubOnly = hubOnly + 1 end
-                end
+        local function _ucReq(url)
+            local ok, res = pcall(function()
+                return request({ Url = url, Method = "GET" })
             end)
-            return hubOnly > 0 and hubOnly or count
+            if not ok or not res or not res.Body then return nil end
+            local jok, data = pcall(function()
+                return game:GetService("HttpService"):JSONDecode(res.Body)
+            end)
+            return jok and data or nil
         end
 
-        -- Actualizar contador al abrir la tab y cada 5s
+        -- Incrementar el contador UNA SOLA VEZ por sesion de juego
+        if not _G._hubUserCountIncremented then
+            _G._hubUserCountIncremented = true
+            task.spawn(function()
+                _ucReq(_UC_BASE .. "/up")
+            end)
+        end
+
+        -- Obtener y mostrar el total actual
         local function _refreshCount()
-            pcall(function()
-                local n = _countHubUsers()
-                ucCount.Text = tostring(n)
-                -- Color segun cantidad
-                if n >= 10 then
-                    ucCount.TextColor3 = Color3.fromRGB(80, 220, 80)
-                elseif n >= 5 then
-                    ucCount.TextColor3 = Color3.fromRGB(255, 200, 0)
-                else
-                    ucCount.TextColor3 = ThemeColors.Aurora1 or Color3.fromRGB(120, 150, 255)
-                end
+            task.spawn(function()
+                local data = _ucReq(_UC_BASE)
+                if not data then return end
+                local n = tonumber(data.count) or tonumber(data.value) or tonumber(data.hits) or 0
+                pcall(function()
+                    if not ucCount or not ucCount.Parent then return end
+                    ucCount.Text = tostring(n)
+                    ucCount.TextColor3 = n >= 50
+                        and Color3.fromRGB(80, 220, 80)
+                        or  n >= 10
+                        and Color3.fromRGB(255, 200, 0)
+                        or  ThemeColors.Aurora1 or Color3.fromRGB(120, 150, 255)
+                end)
             end)
         end
 
         _refreshCount()
-        local _ucConn = task.spawn(function()
-            while task.wait(5) do
+        task.spawn(function()
+            while task.wait(30) do
                 if not userCountRow or not userCountRow.Parent then break end
                 _refreshCount()
             end
