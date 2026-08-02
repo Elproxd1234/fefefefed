@@ -669,7 +669,7 @@ local function _saveConfig()
         local hs = _G._hubSettings
         -- Persistir TODOS los campos de _hubSettings
         local _hsPersistKeys = {
-            "hubScale","hubOpacity","hubLayoutMode","fontMode",
+            "hubScale","hubOpacity","fontMode",
             "notifDuration","notifMuted","fpsLimit",
             "crosshairHidden","hudHidden","chatHidden",
             "lowRenderQuality","disableShadows","fullbright",
@@ -718,7 +718,10 @@ local function _loadConfig()
             -- Restaurar campo de _hubSettings por clave prefijada
             _G._hubSettings = _G._hubSettings or {}
             local field = k:sub(6)
-            _G._hubSettings[field] = v
+            -- NUNCA restaurar hubLayoutMode: siempre forzar Sidebar izquierda (modo 1)
+            if field ~= "hubLayoutMode" then
+                _G._hubSettings[field] = v
+            end
         elseif k == "__hubScale" or k == "__hubOpacity" then
             -- Compatibilidad con saves anteriores
             _G._hubSettings = _G._hubSettings or {}
@@ -10782,10 +10785,8 @@ function _makeTwoColumns()
     -- == COLUMNAS ===============================================
     local COL_TOP = SEARCH_H + 8
     local GAP = 4
-    -- Doble columna solo en PC; en mobile/pantalla chica una sola columna
-    local _isMobileDevice = (UserInputService and UserInputService.TouchEnabled)
-        or (workspace.CurrentCamera.ViewportSize.X < 700)
-    local _useDoubleCol = not _isMobileDevice
+    -- Leer preferencia de doble columna
+    local _useDoubleCol = _G._hubSettings and _G._hubSettings.doubleColumn or false
 
     local lCol = Instance.new("ScrollingFrame", wrapper)
     lCol.Name = "LeftColumn"
@@ -36934,7 +36935,7 @@ function CreateExclusiveTab()
         lowRenderQuality   = false,
         disableShadows     = false,
         fullbright         = false,
-        doubleColumn       = true,  -- doble columna SIEMPRE activada
+        doubleColumn       = false, -- doble columna en la vista de Settings
     }
     local HS = _G._hubSettings
     local function _hs() return _G._hubSettings end
@@ -37100,8 +37101,8 @@ function CreateExclusiveTab()
         _hsr.noPostFX           = false
         _hsr.renderDistance     = 0
         _hsr.noBillboards       = false
-        _hsr.doubleColumn       = true   -- doble columna SIEMPRE activada
-        _G._hubDoubleColumn       = true
+        _hsr.doubleColumn       = false
+        _G._hubDoubleColumn       = false
         _G._hubDisableKeybinds    = false
         _G._hubUndraggableButtons = false
         _G._hubDisableAnimations  = false
@@ -37421,14 +37422,11 @@ function CreateExclusiveTab()
 
                 if mode == 1 then
                     -- LAYOUT 1: Sidebar izquierda (200px, vertical) — clasico
-                    TweenService:Create(dock, ti, {
-                        Position = UDim2.new(0, 0, 0, 36),
-                        Size     = UDim2.new(0, 200, 1, -36)
-                    }):Play()
-                    TweenService:Create(contentContainer, ti, {
-                        Position = UDim2.new(0, 200, 0, 36),
-                        Size     = UDim2.new(1, -200, 1, -36)
-                    }):Play()
+                    -- El dock ya inicia en 200px, solo asegurar posicion correcta sin Tween
+                    dock.Position = UDim2.new(0, 0, 0, 36)
+                    dock.Size     = UDim2.new(0, 200, 1, -36)
+                    contentContainer.Position = UDim2.new(0, 200, 0, 36)
+                    contentContainer.Size     = UDim2.new(1, -200, 1, -36)
                     if dockLayout then
                         dockLayout.FillDirection       = Enum.FillDirection.Vertical
                         dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -37623,10 +37621,6 @@ function CreateExclusiveTab()
             local _layoutNames = {"Sidebar Izq", "Barra Top", "Sidebar Der", "Barra Bot", "Mini Izq"}
             CreateCustomNotification("LAYOUT", "Layout: " .. (_layoutNames[mode] or "?") .. " aplicado", 2)
         end
-        -- FIX REOPEN LAYOUT: exponer globalmente para que el reopener (skull button)
-        -- pueda restaurar el layout al reabrir el hub.
-        _G._applyHubLayout = _applyHubLayout
-
 
         -- ============================================================
         -- Funcion helper: dibuja un diagrama miniatura del layout
@@ -37811,10 +37805,10 @@ function CreateExclusiveTab()
             end)
         end
 
-        -- Aplicar layout guardado si no es el default
-        if _curLayoutMode ~= 1 then
-            task.defer(function() _applyHubLayout(_curLayoutMode) end)
-        end
+        -- SIEMPRE aplicar layout 1 (Sidebar izquierda) al iniciar, ignorar valor guardado
+        _G._hubSettings.hubLayoutMode = 1
+        _curLayoutMode = 1
+        task.defer(function() _applyHubLayout(1) end)
     end
 
     -- -- OPACIDAD Y VISUAL DEL HUB --------------------------------
@@ -49996,29 +49990,8 @@ minimizeBtn.Activated:Connect(function()
                     uiScale.Scale = 0
                     TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
                 end
-                -- FIX REOPEN LAYOUT: restaurar el layout guardado al reabrir
-                -- (sin esto el TabDock quedaba en posición incorrecta al reabrir)
-                task.defer(function()
-                    if _G._applyHubLayout and _G._hubSettings then
-                        pcall(_G._applyHubLayout, _G._hubSettings.hubLayoutMode or 1)
-                    end
-                end)
-                -- FIX TABS DESAPARECEN: al reabrir el hub, forzar que la pestaña
-                -- activa vuelva a ser visible (se ocultó con Visible=false al cerrar)
-                task.defer(function()
-                    if _G._reloadActiveTab then
-                        pcall(_G._reloadActiveTab)
-                    elseif _G._SetActiveTab then
-                        local idx = _G._activeTabIdx or 1
-                        pcall(_G._SetActiveTab, idx)
-                    end
-                end)
-                -- FIX BARRA ICONOS DESAPARECE: restablecer la barra de pestañas al reabrir
-                task.defer(function()
-                    if _G._mostrarBarraTabs then
-                        pcall(_G._mostrarBarraTabs)
-                    end
-                end)
+                -- NO llamar _reloadActiveTab: no es necesario y disparaba
+                -- la pantalla de disculpas del premium al reconstruir el tab.
             else
                 abrirHub()
             end
@@ -50284,28 +50257,7 @@ closeBtn.Activated:Connect(function()
                     uiScale.Scale = 0
                     TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
                 end
-                -- FIX REOPEN LAYOUT: restaurar el layout guardado al reabrir
-                task.defer(function()
-                    if _G._applyHubLayout and _G._hubSettings then
-                        pcall(_G._applyHubLayout, _G._hubSettings.hubLayoutMode or 1)
-                    end
-                end)
-                -- FIX TABS DESAPARECEN: al reabrir el hub, forzar que la pestaña
-                -- activa vuelva a ser visible (se ocultó con Visible=false al cerrar)
-                task.defer(function()
-                    if _G._reloadActiveTab then
-                        pcall(_G._reloadActiveTab)
-                    elseif _G._SetActiveTab then
-                        local idx = _G._activeTabIdx or 1
-                        pcall(_G._SetActiveTab, idx)
-                    end
-                end)
-                -- FIX BARRA ICONOS DESAPARECE: restablecer la barra de pestañas al reabrir
-                task.defer(function()
-                    if _G._mostrarBarraTabs then
-                        pcall(_G._mostrarBarraTabs)
-                    end
-                end)
+                -- NO llamar _reloadActiveTab: causaba el popup de premium
             else
                 abrirHub()
             end
@@ -51588,12 +51540,6 @@ function abrirHub()
                 pcall(_G._reloadActiveTab)
             end
         end)
-        -- FIX BARRA ICONOS DESAPARECE: restablecer la barra de pestañas al reabrir
-        task.defer(function()
-            if _G._mostrarBarraTabs then
-                pcall(_G._mostrarBarraTabs)
-            end
-        end)
         return
     end
     _G._hubReady = false  -- resetear al (re)abrir
@@ -52607,146 +52553,20 @@ particles = {}
     _hdSub.ZIndex = 12
 
     -- ================================================================
-    -- TARJETA DE PERFIL DEL JUGADOR — esquina superior izquierda del hub
-    -- Posicionada ENCIMA del header (superposición), alineada a la izq.
-    -- Muestra: avatar circular + nombre de usuario
-    -- ================================================================
-    do
-        local _plr = game:GetService("Players").LocalPlayer
-
-        -- La tarjeta va en mainFrame (no en header) para sobresalir del topbar
-        -- Position: esquina superior izquierda del hub
-        local _profileCard = Instance.new("Frame", mainFrame)
-        _profileCard.Name = "PlayerProfileCard"
-        _G._hubProfileCard = _profileCard  -- FIX: exponer para ocultar al abrir pestana (se asigna antes de poblarlo)
-        _profileCard.Size = UDim2.new(0, 210, 0, 46)
-        _profileCard.Position = UDim2.new(0, 8, 0, 58)   -- debajo del topbar, más abajo
-        _profileCard.AnchorPoint = Vector2.new(0, 0)
-        _profileCard.BackgroundColor3 = Color3.fromRGB(10, 10, 28)
-        _profileCard.BackgroundTransparency = 0.35
-        _profileCard.BorderSizePixel = 0
-        _profileCard.ZIndex = 20   -- encima del header (ZIndex 10)
-        Instance.new("UICorner", _profileCard).CornerRadius = UDim.new(0, 9)
-        local _pcStroke = Instance.new("UIStroke", _profileCard)
-        _pcStroke.Color = Color3.fromRGB(100, 80, 215)
-        _pcStroke.Thickness = 1.3
-        _pcStroke.Transparency = 0.35
-        _pcStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-        -- Avatar circular
-        local _avatarFrame = Instance.new("Frame", _profileCard)
-        _avatarFrame.Name = "AvatarFrame"
-        _avatarFrame.Size = UDim2.new(0, 36, 0, 36)
-        _avatarFrame.Position = UDim2.new(0, 5, 0.5, 0)
-        _avatarFrame.AnchorPoint = Vector2.new(0, 0.5)
-        _avatarFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 70)
-        _avatarFrame.BackgroundTransparency = 0.3
-        _avatarFrame.BorderSizePixel = 0
-        _avatarFrame.ZIndex = 21
-        _avatarFrame.ClipsDescendants = true
-        Instance.new("UICorner", _avatarFrame).CornerRadius = UDim.new(1, 0)
-        local _avatarStroke = Instance.new("UIStroke", _avatarFrame)
-        _avatarStroke.Color = Color3.fromRGB(100, 80, 215)
-        _avatarStroke.Thickness = 1.5
-        _avatarStroke.Transparency = 0.15
-
-        local _avatarImg = Instance.new("ImageLabel", _avatarFrame)
-        _avatarImg.Name = "AvatarImage"
-        _avatarImg.Size = UDim2.new(1, 0, 1, 0)
-        _avatarImg.BackgroundTransparency = 1
-        _avatarImg.Image = ""
-        _avatarImg.ScaleType = Enum.ScaleType.Crop
-        _avatarImg.ZIndex = 22
-        _avatarImg.BorderSizePixel = 0
-
-        -- Nombre de usuario
-        local _userLabel = Instance.new("TextLabel", _profileCard)
-        _userLabel.Name = "UsernameLabel"
-        _userLabel.Size = UDim2.new(1, -50, 1, 0)
-        _userLabel.Position = UDim2.new(0, 46, 0, 0)
-        _userLabel.BackgroundTransparency = 1
-        _userLabel.Text = _plr and _plr.Name or "..."
-        _userLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
-        _userLabel.FontFace = Font.fromEnum(Enum.Font.GothamBold)
-        _userLabel.TextSize = 14
-        _userLabel.TextXAlignment = Enum.TextXAlignment.Left
-        _userLabel.TextYAlignment = Enum.TextYAlignment.Center
-        _userLabel.TextTruncate = Enum.TextTruncate.AtEnd
-        _userLabel.ZIndex = 21
-
-        -- Cargar headshot del avatar
-        task.spawn(function()
-            if not _plr then return end
-            local ok, result = pcall(function()
-                return game:GetService("Players"):GetUserThumbnailAsync(
-                    _plr.UserId,
-                    Enum.ThumbnailType.HeadShot,
-                    Enum.ThumbnailSize.Size48x48
-                )
-            end)
-            if ok and result and _avatarImg and _avatarImg.Parent then
-                _avatarImg.Image = result
-            end
-        end)
-
-        -- Pulso sutil del borde
-        task.spawn(function()
-            while _profileCard and _profileCard.Parent do
-                TweenService:Create(_pcStroke, TweenInfo.new(2.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                    {Transparency = 0.05}):Play()
-                task.wait(2.0)
-                if not (_profileCard and _profileCard.Parent) then break end
-                TweenService:Create(_pcStroke, TweenInfo.new(2.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                    {Transparency = 0.5}):Play()
-                task.wait(2.0)
-            end
-        end)
-    end
-    -- ================================================================
-    -- FIN TARJETA DE PERFIL
-    -- ================================================================
-
-    -- ================================================================
     -- DRAG DEL HUB — sistema único consolidado (v-fix)
     -- Un solo flag global _G._hubDragging evita que dos sistemas
     -- compitan y dejen el flag stuck al cambiar de tab o re-ejecutar.
     -- ================================================================
     _G._hubDragging = false  -- flag global visible por el pulso del borde
 
-    -- DRAG HANDLE MOBILE: boton flotante visible en el borde izquierdo del hub
-    -- En mobile el header de 36px es imposible de tocar con precision.
-    -- Esta zona de 44x80px da un target comodo con el pulgar.
-    local _dragHandle = Instance.new("TextButton", mainFrame)
-    _dragHandle.Name = "MobileDragHandle"
-    _dragHandle.Size = UDim2.new(0, 22, 0, 80)
-    _dragHandle.AnchorPoint = Vector2.new(0, 0.5)
-    _dragHandle.Position = UDim2.new(0, 0, 0.5, 0)
-    _dragHandle.BackgroundColor3 = Color3.fromRGB(100, 80, 215)
-    _dragHandle.BackgroundTransparency = 0.5
-    _dragHandle.BorderSizePixel = 0
-    _dragHandle.Text = "⠿"   -- icono de grip visual
-    _dragHandle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    _dragHandle.TextTransparency = 0.3
-    _dragHandle.TextSize = 14
-    _dragHandle.ZIndex = 500  -- encima de absolutamente todo
-    _dragHandle.AutoButtonColor = false
-    _dragHandle.Active = true
-    do
-        local _dhCorner = Instance.new("UICorner", _dragHandle)
-        _dhCorner.CornerRadius = UDim.new(0, 6)
-        -- Solo visible en mobile
-        _dragHandle.Visible = UserInputService.TouchEnabled
-    end
-
-    -- dragIcon: boton transparente sobre el header completo
-    -- FIX MOBILE: ZIndex 500 para que el touch llegue por encima de todo
+    -- dragIcon: boton transparente sobre todo el header para capturar drag
     local dragIcon = Instance.new("TextButton", header)
     dragIcon.Size = UDim2.new(1, 0, 1, 0)
     dragIcon.Position = UDim2.new(0, 0, 0, 0)
     dragIcon.BackgroundTransparency = 1
     dragIcon.Text = ""
     dragIcon.TextTransparency = 1
-    dragIcon.ZIndex = 500
+    dragIcon.ZIndex = 50  -- FIX DRAG: ZIndex alto para capturar inputs por encima de elementos del header
     dragIcon.AutoButtonColor = false
     dragIcon.Active = true
 
@@ -52821,7 +52641,30 @@ particles = {}
         -- Inicio de drag (compartido por mouse y touch)
         local function _startDrag(inputPos2D)
             if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
-            -- Drag desde el header: siempre permitido, no hay scroll aqui
+            -- Verificar zona valida (header o borde)
+            if not _mouseOverHeader(inputPos2D) and not _mouseOverBorder(inputPos2D) then return end
+            -- No arrastrar si hay ScrollingFrame bajo el cursor
+            do
+                local _block = false
+                local _ok, _objs = pcall(function()
+                    return UserInputService:GetGuiObjectsAtPosition(inputPos2D.X, inputPos2D.Y)
+                end)
+                if _ok and _objs then
+                    for _, _obj in ipairs(_objs) do
+                        if _obj:IsA("ScrollingFrame") then _block = true; break end
+                    end
+                end
+                if not _block and leftColumn and leftColumn.ScrollBarThickness > 0 then
+                    local _lcPos = leftColumn.AbsolutePosition
+                    local _lcSiz = leftColumn.AbsoluteSize
+                    local _sbW   = leftColumn.ScrollBarThickness + 6
+                    if inputPos2D.X >= (_lcPos.X + _lcSiz.X - _sbW)
+                    and inputPos2D.Y >= _lcPos.Y and inputPos2D.Y <= (_lcPos.Y + _lcSiz.Y) then
+                        _block = true
+                    end
+                end
+                if _block then return end
+            end
             -- Convertir posicion a offset (eliminar AnchorPoint para simplificar calculo)
             local tl = _resolveFrameTopLeft()
             mainFrame.AnchorPoint = Vector2.new(0, 0)
@@ -52843,16 +52686,6 @@ particles = {}
                 _startDrag(Vector2.new(inp.Position.X, inp.Position.Y))
             end
         end)
-        -- Conectar drag handle lateral (mobile)
-        _dragHandle.MouseButton1Down:Connect(function()
-            local mp = UserInputService:GetMouseLocation()
-            _startDrag(Vector2.new(mp.X, mp.Y))
-        end)
-        _dragHandle.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.Touch then
-                _startDrag(Vector2.new(inp.Position.X, inp.Position.Y))
-            end
-        end)
 
         -- Movimiento (un solo _safeConnect — no duplicado)
         _safeConnect(UserInputService.InputChanged, function(input)
@@ -52864,25 +52697,15 @@ particles = {}
             local vp    = workspace.CurrentCamera.ViewportSize
             local fw    = mainFrame.AbsoluteSize.X
             local fh    = mainFrame.AbsoluteSize.Y
-            local _newX = math.clamp(_dragStartFrame.X + delta.X, 0, vp.X - fw)
-            local _newY = math.clamp(_dragStartFrame.Y + delta.Y, 0, vp.Y - fh)
-            mainFrame.Position = UDim2.new(0, _newX, 0, _newY)
+            mainFrame.Position = UDim2.new(0,
+                math.clamp(_dragStartFrame.X + delta.X, 0, vp.X - fw), 0,
+                math.clamp(_dragStartFrame.Y + delta.Y, 0, vp.Y - fh))
             -- Sincronizar estela si existe
             task.defer(function()
                 local trailSG = hubGui and hubGui:FindFirstChild("EstelaContainer")
                 if trailSG and trailSG.Parent then
                     trailSG.Position    = mainFrame.Position
                     trailSG.AnchorPoint = mainFrame.AnchorPoint
-                end
-            end)
-            -- Sincronizar BarFrame con el hub al arrastrar (snap inmediato durante drag)
-            task.defer(function()
-                local _bf = _G._hubBarFrame
-                if _bf and _bf.Parent and _bf.Visible and mainFrame and mainFrame.Parent then
-                    local _mfAbs = mainFrame.AbsolutePosition
-                    local _mfSiz = mainFrame.AbsoluteSize
-                    _bf.AnchorPoint = Vector2.new(0.5, 0)
-                    _bf.Position    = UDim2.new(0, _mfAbs.X + _mfSiz.X * 0.5, 0, _mfAbs.Y + _mfSiz.Y + 8)
                 end
             end)
         end)
@@ -52954,102 +52777,7 @@ particles = {}
 
     minimizeBtn = arrowToggleBtn
 
-    -- ================================================================
-    -- IMAGENES DEBAJO DE LA FLECHA (esquina derecha del hub)
-    -- Se colocan en mainFrame, alineadas a la derecha, justo debajo
-    -- del boton cerrar (arrowToggleBtn).
-    -- ================================================================
-    local _cornerImgTop = Instance.new("ImageLabel", mainFrame)
-    _cornerImgTop.Name               = "CornerImgTop"
-    _cornerImgTop.Size               = UDim2.new(0, 280, 0, 160)
-    _cornerImgTop.AnchorPoint        = Vector2.new(1, 0)
-    _cornerImgTop.Position           = UDim2.new(1, -4, 0, 36)
-    _cornerImgTop.BackgroundTransparency = 1
-    _cornerImgTop.Image              = "rbxassetid://138272175698969"
-    _cornerImgTop.ScaleType          = Enum.ScaleType.Fit
-    _cornerImgTop.ZIndex             = 14
-    _G._hubCornerImgTop = _cornerImgTop  -- FIX: exponer para ocultar al abrir pestana
 
-    -- Valor de ping dentro de la imagen Network Ping
-    local _pingValLabel = Instance.new("TextLabel", _cornerImgTop)
-    _pingValLabel.Size               = UDim2.new(1, -20, 0, 52)
-    _pingValLabel.Position           = UDim2.new(0, 10, 0.5, -10)
-    _pingValLabel.BackgroundTransparency = 1
-    _pingValLabel.Text               = "-- ms"
-    _pingValLabel.TextColor3         = Color3.fromRGB(230, 60, 30)
-    _pingValLabel.FontFace           = Font.fromEnum(Enum.Font.GothamBold)
-    _pingValLabel.TextSize           = 48
-    _pingValLabel.TextXAlignment     = Enum.TextXAlignment.Left
-    _pingValLabel.ZIndex             = 15
-
-    local _cornerImgBot = Instance.new("ImageLabel", mainFrame)
-    _cornerImgBot.Name               = "CornerImgBot"
-    _cornerImgBot.Size               = UDim2.new(0, 280, 0, 160)
-    _cornerImgBot.AnchorPoint        = Vector2.new(1, 0)
-    _cornerImgBot.Position           = UDim2.new(1, -4, 0, 200)
-    _cornerImgBot.BackgroundTransparency = 1
-    _cornerImgBot.Image              = "rbxassetid://70736777884386"
-    _cornerImgBot.ScaleType          = Enum.ScaleType.Fit
-    _cornerImgBot.ZIndex             = 14
-    _G._hubCornerImgBot = _cornerImgBot  -- FIX: exponer para ocultar al abrir pestana
-
-    -- Valor de FPS dentro de la imagen FPS
-    local _fpsValLabel = Instance.new("TextLabel", _cornerImgBot)
-    _fpsValLabel.Size                = UDim2.new(1, -20, 0, 52)
-    _fpsValLabel.Position            = UDim2.new(0, 10, 0.5, -10)
-    _fpsValLabel.BackgroundTransparency = 1
-    _fpsValLabel.Text                = "-- fps"
-    _fpsValLabel.TextColor3          = Color3.fromRGB(0, 210, 60)
-    _fpsValLabel.FontFace            = Font.fromEnum(Enum.Font.GothamBold)
-    _fpsValLabel.TextSize            = 48
-    _fpsValLabel.TextXAlignment      = Enum.TextXAlignment.Left
-    _fpsValLabel.ZIndex              = 15
-
-    -- Loop de actualizacion ping + fps para los labels de las imagenes
-    do
-        local _RS2       = game:GetService("RunService")
-        local _fc2       = 0
-        local _fa2       = 0
-        local _pingEMA2  = 80
-        local _conn2
-        _conn2 = _RS2.RenderStepped:Connect(function(dt)
-            _fc2 = _fc2 + 1
-            _fa2 = _fa2 + dt
-            if _fa2 >= 0.5 then
-                -- FPS
-                local _fps2 = _fc2 / _fa2
-                _fc2 = 0; _fa2 = 0
-                _fpsValLabel.Text = string.format("%.2f", _fps2)
-                if _fps2 >= 55 then
-                    _fpsValLabel.TextColor3 = Color3.fromRGB(0, 210, 60)
-                elseif _fps2 >= 30 then
-                    _fpsValLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-                else
-                    _fpsValLabel.TextColor3 = Color3.fromRGB(230, 60, 30)
-                end
-                -- Ping
-                local _rp2 = 0
-                pcall(function()
-                    _rp2 = math.round(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue())
-                end)
-                if _rp2 == 0 then
-                    pcall(function() _rp2 = math.round(LocalPlayer:GetNetworkPing() * 1000) end)
-                end
-                _pingEMA2 = _pingEMA2 * 0.7 + _rp2 * 0.3
-                local _dp2 = math.round(_pingEMA2)
-                _pingValLabel.Text = _dp2 .. " ms"
-                if _dp2 < 80 then
-                    _pingValLabel.TextColor3 = Color3.fromRGB(0, 210, 60)
-                elseif _dp2 < 150 then
-                    _pingValLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-                else
-                    _pingValLabel.TextColor3 = Color3.fromRGB(230, 60, 30)
-                end
-            end
-        end)
-        if _G._imgStatsConn then pcall(function() _G._imgStatsConn:Disconnect() end) end
-        _G._imgStatsConn = _conn2
-    end
 
     -- -- LAYOUT: tabs FUERA del hub, flotando DEBAJO ---------------------
     local SIDE_W = 0  -- sin sidebar lateral
@@ -53182,7 +52910,7 @@ particles = {}
         "rbxassetid://106210005188847",  -- COMBAT
         "rbxassetid://108970709424798",  -- USE
         "rbxassetid://92303431451948",   -- EMOTES
-        "rbxassetid://130483494855221",  -- UPDATE (nuevo logotipo)
+        "rbxassetid://106192543804072",  -- UPDATE
     }
 
     local sideButtons = {}
@@ -53303,34 +53031,28 @@ particles = {}
     local function _applyBtnState(i, isActive)
         local btn = sideButtons[i]
         if not btn then return end
-        local r        = _G._tabBtnRefs[i]
-        local icon     = r and r.icon
-        local stroke   = r and r.stroke
-        local activeBar= r and r.activeBar
-        local lbl2     = r and r.lbl2
+        local r         = _G._tabBtnRefs[i]
+        local icon      = r and r.icon
+        local stroke    = r and r.stroke
+        local activeBar = r and r.activeBar
+        local lbl2      = r and r.lbl2
         if isActive then
-            -- Tab activa: fondo blanco semitransparente para destacar
-            TweenService:Create(btn, _ti_tab, {BackgroundColor3 = Color3.fromRGB(100, 80, 215), BackgroundTransparency = 0.5}):Play()
-            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = Color3.fromRGB(200, 240, 255)}):Play() end
-            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(120, 80, 255)}):Play() end
-            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(120, 80, 255)}):Play() end
-            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(220, 245, 255)}):Play() end
-        else
-            -- Tab inactiva: completamente transparente, borde blanco, texto blanco
-            TweenService:Create(btn, _ti_tab, {BackgroundTransparency = 1}):Play()
-            if icon      then TweenService:Create(icon,      _ti_tab, {ImageColor3  = Color3.fromRGB(255, 255, 255)}):Play() end
-            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(255,255,255)}):Play() end
-            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 1}):Play() end
+            -- Tab activa: SIN fondo, solo borde cyan brillante y texto blanco
+            btn.BackgroundTransparency = 1
+            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(0, 230, 170)}):Play() end
+            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(0, 230, 170)}):Play() end
             if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(255, 255, 255)}):Play() end
+        else
+            -- Tab inactiva: SIN fondo, borde cyan suave, texto cyan
+            btn.BackgroundTransparency = 1
+            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0.25, Color = Color3.fromRGB(0, 200, 150)}):Play() end
+            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 1}):Play() end
+            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(0, 210, 150)}):Play() end
         end
     end
 
     function SetActiveTab(idx)
-        -- OPT: no hacer nada si ya es la tab activa Y ya fue construida Y ya es visible
-        -- FIX MAIN EN BLANCO: si el contentContainer esta oculto (hub recien abierto),
-        -- NO hacer early-return aunque el tab ya este construido -- hay que restaurar visibilidad
-        local _ccVisible = contentContainer and contentContainer.Visible
-        if idx == activeTabIdx and _tabBuilt[idx] and _ccVisible then return end
+        if idx == activeTabIdx and _tabBuilt[idx] then return end  -- OPT: no hacer nada si ya es la tab activa Y ya fue construida
         -- FIX: asegurarse de que contentContainer sea visible al cargar cualquier tab
         if contentContainer and not contentContainer.Visible then
             contentContainer.Visible = true
@@ -53392,7 +53114,6 @@ particles = {}
         -- OPT: animar SOLO el boton anterior (idle) y el nuevo (active) — no el loop completo
         _applyBtnState(activeTabIdx, false)
         activeTabIdx = idx
-        _G._activeTabIdx = idx  -- FIX TABS: exponer para que los skull buttons puedan restaurar la pestaña activa
         _applyBtnState(idx, true)
         -- Construir solo la primera vez; luego mostrar instantaneamente (sin lag)
         -- FIX CLICK RAPIDO: _showTab se llama como callback cuando el build termina.
@@ -53407,17 +53128,8 @@ particles = {}
                     _tabBuilt[idx] = nil
                     _tabCache[idx] = nil
                     _G._isTabRebuild = true
-                    _buildTabCached(idx, function()
-                        -- Mostrar el tab recién construido
-                        if _tabCache[idx] then
-                            _tabCache[idx].Visible = true
-                        end
-                    end)
+                    _buildTabCached(idx)
                     _G._isTabRebuild = false
-                else
-                    -- FIX TABS DESAPARECEN: el tab ya existe en caché pero
-                    -- quedó Visible=false al cerrar el hub — restaurarlo
-                    _tabCache[idx].Visible = true
                 end
             end
             if _tabCache[idx] then
@@ -53465,47 +53177,7 @@ particles = {}
             end
         end
     end
-    -- Exponer SetActiveTab y contentContainer en _G para que la barra externa pueda usarlos
-    _G._SetActiveTab     = SetActiveTab
-    _G._contentContainer = contentContainer
-    _G._playTabSound     = PlayTabSound
 
-    -- FIX MAIN TAB EN BLANCO AL REABRIR: definir _reloadActiveTab robusto globalmente.
-    -- El anterior se definia dentro de _showTab (callback de SetActiveTab) y quedaba
-    -- desactualizado si SetActiveTab hacia early-return por la guardia idx==activeTabIdx.
-    -- Esta version siempre fuerza la visibilidad del tab activo sin pasar por la guardia.
-    _G._reloadActiveTab = function()
-        local idx = activeTabIdx
-        local frame = _tabCache[idx]
-        if not frame or not frame.Parent then
-            -- El frame fue destruido: reconstruirlo
-            _tabBuilt[idx] = nil
-            _tabCache[idx] = nil
-            _G._isTabRebuild = true
-            _buildTabCached(idx, function()
-                if _tabCache[idx] then
-                    _tabCache[idx].Visible = true
-                    if contentContainer then contentContainer.Visible = true end
-                end
-            end)
-            _G._isTabRebuild = false
-        else
-            -- El frame existe pero quedó Visible=false al cerrar: restaurarlo
-            if contentContainer then contentContainer.Visible = true end
-            frame.Visible = true
-            -- Forzar refresh de columnas (fix Main en blanco con doble columna)
-            task.defer(function()
-                if not frame or not frame.Parent then return end
-                local wrapper = frame:FindFirstChild("TwoColumnWrapper")
-                if wrapper then
-                    local lc = wrapper:FindFirstChild("LeftColumn")
-                    local rc = wrapper:FindFirstChild("RightColumn")
-                    if lc then lc.Visible = false; lc.Visible = true end
-                    if rc then rc.Visible = false; rc.Visible = true end
-                end
-            end)
-        end
-    end
 
     -- -- DOCK DE TABS EXTERNO  barra flotante DEBAJO del hub --------------
     -- SIDEBAR VERTICAL IZQUIERDA dentro del mainFrame (siempre visible)
@@ -53523,7 +53195,7 @@ particles = {}
     -- SIEMPRE usar layout de PC (sidebar vertical) — el auto-scale se encarga
     -- de que el hub entre completo en pantalla, tanto en PC como en móvil.
     local _isMobileLayout = false
-    local SIDEBAR_W = 120  -- ajustado para botones de 110px de ancho
+    local SIDEBAR_W = 200  -- ancho igual al layout modo 1 (_applyHubLayout)
     local TAB_BAR_BOTTOM_H = 0
 
     local tabDockFrame = Instance.new("Frame", mainFrame)
@@ -53535,36 +53207,25 @@ particles = {}
     tabDockFrame.ClipsDescendants = true
     tabDockFrame.BackgroundColor3 = Color3.fromRGB(25, 40, 100)
 
-    -- Imagen de fondo de la barra de pestañas (nuevo logotipo/skin)
-    local _dockBgImg = Instance.new("ImageLabel", tabDockFrame)
-    _dockBgImg.Name = "DockBgImage"
-    _dockBgImg.Size = UDim2.new(1, 0, 1, 0)
-    _dockBgImg.Position = UDim2.new(0, 0, 0, 0)
-    _dockBgImg.BackgroundTransparency = 1
-    _dockBgImg.Image = "rbxassetid://130483494855221"
-    _dockBgImg.ScaleType = Enum.ScaleType.Crop
-    _dockBgImg.ImageTransparency = 0
-    _dockBgImg.ZIndex = 12
-    _dockBgImg.BorderSizePixel = 0
-
     if _isMobileLayout then
         -- Móvil: barra horizontal en la parte inferior del hub
         tabDockFrame.Position = UDim2.new(0, 0, 1, -TAB_BAR_BOTTOM_H)
         tabDockFrame.Size = UDim2.new(1, 0, 0, TAB_BAR_BOTTOM_H)
         tabDockFrame.BackgroundTransparency = 1
-        tabDockFrame.Visible = true
+        tabDockFrame.Visible = false
     else
-        -- Desktop: sidebar vertical izquierda
-        tabDockFrame.Position = UDim2.new(0, 0, 0, 36)
-        tabDockFrame.Size = UDim2.new(0, SIDEBAR_W, 1, -36)
-        tabDockFrame.BackgroundTransparency = 1
-        tabDockFrame.Visible = true
+        -- Desktop: sidebar vertical izquierda — SIEMPRE VISIBLE
+        tabDockFrame.Position               = UDim2.new(0, 0, 0, 36)
+        tabDockFrame.Size                   = UDim2.new(0, SIDEBAR_W, 1, -36)
+        tabDockFrame.BackgroundColor3       = Color3.fromRGB(6, 14, 24)
+        tabDockFrame.BackgroundTransparency = 0.08
+        tabDockFrame.Visible                = true
     end
 
     local _dockStroke = Instance.new("UIStroke", tabDockFrame)
-    _dockStroke.Color = Color3.fromRGB(100, 80, 215)
-    _dockStroke.Thickness = 1.5
-    _dockStroke.Transparency = 0.3
+    _dockStroke.Color           = Color3.fromRGB(0, 200, 150)
+    _dockStroke.Thickness       = 2
+    _dockStroke.Transparency    = 0.15
     _dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local tabDockList = Instance.new("ScrollingFrame", tabDockFrame)
@@ -53592,24 +53253,23 @@ particles = {}
         dockPad.PaddingLeft   = UDim.new(0, 2)
         dockPad.PaddingRight  = UDim.new(0, 2)
     else
-        -- Desktop: tabs verticales
+        -- Desktop: tabs verticales compactas (icono + nombre)
         tabDockList.ScrollingDirection = Enum.ScrollingDirection.Y
         tabDockList.CanvasSize = UDim2.new(0, 0, 0, 0)
         tabDockList.AutomaticCanvasSize = Enum.AutomaticSize.Y
         dockLayout.FillDirection = Enum.FillDirection.Vertical
         dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-        dockLayout.Padding = UDim.new(0, 2)
-        dockPad.PaddingTop    = UDim.new(0, 6)
-        dockPad.PaddingBottom = UDim.new(0, 0)
-        dockPad.PaddingLeft   = UDim.new(0, 4)
-        dockPad.PaddingRight  = UDim.new(0, 4)
+        dockLayout.Padding = UDim.new(0, 5)
+        dockPad.PaddingTop    = UDim.new(0, 8)
+        dockPad.PaddingBottom = UDim.new(0, 8)
+        dockPad.PaddingLeft   = UDim.new(0, 5)
+        dockPad.PaddingRight  = UDim.new(0, 5)
     end
 
-    -- Sidebar oculta: contentContainer ocupa todo el ancho del hub
-    -- La barra de imagen (BarFrame) reemplaza la navegacion
-    contentContainer.Position = UDim2.new(0, 0, 0, 36)
-    contentContainer.Size = UDim2.new(1, 0, 1, -36)
-    contentContainer.Visible = false  -- Hub inicia sin ninguna pestana abierta
+    -- Sidebar visible a la izquierda: contentContainer empieza despues de la sidebar
+    contentContainer.Position = UDim2.new(0, SIDEBAR_W, 0, 36)
+    contentContainer.Size     = UDim2.new(1, -SIDEBAR_W, 1, -36)
+    contentContainer.Visible  = false  -- Hub inicia sin ninguna pestana abierta
 
     local C_TAB_IDLE   = Color3.fromRGB(255, 255, 255)
     local C_TAB_ACTIVE = Color3.fromRGB(255, 255, 255)
@@ -53617,88 +53277,70 @@ particles = {}
     local C_NEON       = Color3.fromRGB(255, 255, 255)
 
     local BTN_W = _isMobileLayout and 48 or 110
-    local BTN_H = _isMobileLayout and 36 or 220
+    local BTN_H = _isMobileLayout and 36 or 52  -- altura compacta: icono + nombre
+
+    -- Sin iconos rbxassetid: los botones muestran solo texto centrado (sin carga de assets)
 
     local function _syncDockPos() end  -- no-op, dock es parte del mainFrame
 
-    -- Crear botones verticales en la sidebar
+    -- Crear botones verticales en la sidebar — estilo icono + nombre, borde cyan
     for i = 1, #tabNames do
+        -- Contenedor del boton
         local btn = Instance.new("TextButton", tabDockList)
-        btn.Name = tabNames[i] .. "SideBtn"
-        btn.Size = _isMobileLayout and UDim2.new(0, BTN_W, 1, -4) or UDim2.new(1, -8, 0, BTN_H)
-        btn.BackgroundTransparency = 1  -- completamente transparente (sin fondo)
-        btn.BorderSizePixel = 0
-        btn.Text = ""
-        btn.AutoButtonColor = false
-        btn.ClipsDescendants = false
-        btn.ZIndex = 13
+        btn.Name             = tabNames[i] .. "SideBtn"
+        btn.Size             = _isMobileLayout and UDim2.new(0, BTN_W, 1, -4)
+                                               or  UDim2.new(1, -8, 0, BTN_H)
+        btn.BackgroundColor3        = Color3.fromRGB(10, 22, 36)
+        btn.BackgroundTransparency  = 1
+        btn.BorderSizePixel         = 0
+        btn.Text                    = ""
+        btn.AutoButtonColor         = false
+        btn.ClipsDescendants        = false
+        btn.ZIndex                  = 13
 
-        local _tabTag = Instance.new("StringValue", btn)
-        _tabTag.Name = "TAB_BTN_PROTECTED"
-        _tabTag.Value = "1"
+        local _tabTag       = Instance.new("StringValue", btn)
+        _tabTag.Name        = "TAB_BTN_PROTECTED"
+        _tabTag.Value       = "1"
 
         -- Esquinas redondeadas
-        local btnCorner = Instance.new("UICorner", btn)
-        btnCorner.CornerRadius = UDim.new(0, 15)
+        local btnCorner         = Instance.new("UICorner", btn)
+        btnCorner.CornerRadius  = UDim.new(0, 12)
 
-        -- Borde blanco permanente
-        local btnStroke = Instance.new("UIStroke", btn)
-        btnStroke.Color = Color3.fromRGB(100, 80, 215)
-        btnStroke.Thickness = 2
-        btnStroke.Transparency = 0.2
-        btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        -- Borde cyan permanente
+        local btnStroke             = Instance.new("UIStroke", btn)
+        btnStroke.Color             = Color3.fromRGB(0, 200, 150)
+        btnStroke.Thickness         = 1.8
+        btnStroke.Transparency      = 0.25
+        btnStroke.ApplyStrokeMode   = Enum.ApplyStrokeMode.Border
 
-        -- Barra lateral izquierda (indicador activo)
-        local activeBar = Instance.new("Frame", btn)
-        activeBar.Name = "ActiveBar"
-        activeBar.Size = UDim2.new(0, 3, 0.6, 0)
-        activeBar.AnchorPoint = Vector2.new(0, 0.5)
-        activeBar.Position = UDim2.new(0, 0, 0.5, 0)
-        activeBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        activeBar.BackgroundTransparency = 1
-        activeBar.BorderSizePixel = 0
-        activeBar.ZIndex = 16
+        -- Indicador de activo (barra izquierda)
+        local activeBar                 = Instance.new("Frame", btn)
+        activeBar.Name                  = "ActiveBar"
+        activeBar.Size                  = UDim2.new(0, 3, 0.7, 0)
+        activeBar.AnchorPoint           = Vector2.new(0, 0.5)
+        activeBar.Position              = UDim2.new(0, 0, 0.5, 0)
+        activeBar.BackgroundColor3      = Color3.fromRGB(0, 220, 160)
+        activeBar.BackgroundTransparency= 1
+        activeBar.BorderSizePixel       = 0
+        activeBar.ZIndex                = 16
         Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
 
-        -- Icono del tab: carga escalonada para no saturar la CDN
-        local icon = Instance.new("ImageLabel", btn)
-        icon.Name = "TabIcon"
-        icon.Size = UDim2.new(0, 38, 0, 38)
-        icon.AnchorPoint = Vector2.new(0.5, 0)
-        icon.Position = UDim2.new(0.5, 0, 0, 8)
-        icon.BackgroundTransparency = 1
-        icon.BorderSizePixel = 0
-        icon.Image = ""
-        icon.ScaleType = Enum.ScaleType.Fit
-        icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
-        icon.ZIndex = 14
-        icon.ImageTransparency = 0
-        icon.Visible = true
-        -- Tab 1 carga inmediato; el resto escalonado cada 0.06s
-        local _iconAsset = tabIcons[i] or ""
-        local _iconDelay = (i == 1) and 0 or (i - 1) * 0.06
-        task.delay(_iconDelay, function()
-            if not icon or not icon.Parent then return end
-            icon.Image = _iconAsset
-        end)
-
-        -- Label del nombre: debajo del icono
-        local lbl = Instance.new("TextLabel", btn)
-        lbl.Name = "TabLabel"
-        lbl.Size = UDim2.new(1, -6, 0, 22)
-        lbl.AnchorPoint = Vector2.new(0.5, 1)
-        lbl.Position = UDim2.new(0.5, 0, 1, -6)
-        lbl.BackgroundTransparency = 1
-        -- Móvil: abreviar el texto a 4 chars para que quepan en barra horizontal
-        lbl.Text = _isMobileLayout and tabNames[i]:sub(1,4) or tabNames[i]
-        lbl.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
-        lbl.TextSize = _isMobileLayout and 9 or 15
-        lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-        lbl.TextXAlignment = Enum.TextXAlignment.Center
-        lbl.TextWrapped = true
-        lbl.TextStrokeTransparency = 0.7
-        lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-        lbl.ZIndex = 14
+        -- Label centrado en el boton (sin icono rbxassetid)
+        local lbl                   = Instance.new("TextLabel", btn)
+        lbl.Name                    = "TabLabel"
+        lbl.Size                    = UDim2.new(1, -4, 1, 0)
+        lbl.AnchorPoint             = Vector2.new(0.5, 0.5)
+        lbl.Position                = UDim2.new(0.5, 0, 0.5, 0)
+        lbl.BackgroundTransparency  = 1
+        lbl.Text                    = tabNames[i]
+        lbl.FontFace                = Font.fromEnum(Enum.Font.GothamMedium)
+        lbl.TextSize                = 12
+        lbl.TextColor3              = Color3.fromRGB(0, 210, 150)
+        lbl.TextXAlignment          = Enum.TextXAlignment.Center
+        lbl.TextYAlignment          = Enum.TextYAlignment.Center
+        lbl.TextWrapped             = false
+        lbl.TextStrokeTransparency  = 1
+        lbl.ZIndex                  = 14
         do
             local _tabKey = tabNames[i]:lower():gsub(" ", "_")
             table.insert(_LangObjects, {obj=lbl, key=_tabKey, prefix="", suffix=""})
@@ -53713,14 +53355,12 @@ particles = {}
         btn.MouseEnter:Connect(function()
             if activeTabIdx ~= i then
                 PlayHoverSound()
-                TweenService:Create(btn, ti, {BackgroundTransparency = 0.85}):Play()
-                TweenService:Create(icon, ti, {ImageColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+                TweenService:Create(lbl, ti, {TextColor3 = Color3.fromRGB(160, 255, 210)}):Play()
             end
         end)
         btn.MouseLeave:Connect(function()
             if activeTabIdx ~= i then
-                TweenService:Create(btn, ti, {BackgroundTransparency = 1}):Play()
-                TweenService:Create(icon, ti, {ImageColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+                TweenService:Create(lbl, ti, {TextColor3 = Color3.fromRGB(0, 210, 150)}):Play()
             end
         end)
 
@@ -53730,26 +53370,24 @@ particles = {}
             if not wasVisible then
                 contentContainer.Visible = true
                 if _G._hubSettings and _G._hubSettings.noTabAnimations then
-                    contentContainer.Position = UDim2.new(0, 0, 0, 36)
+                    contentContainer.Position = UDim2.new(0, SIDEBAR_W, 0, 36)
                 else
-                    contentContainer.Position = UDim2.new(0, 0, 1.1, 0)
+                    contentContainer.Position = UDim2.new(0, SIDEBAR_W, 1.1, 0)
                     TweenService:Create(contentContainer, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                        Position = UDim2.new(0, 0, 0, 36)
+                        Position = UDim2.new(0, SIDEBAR_W, 0, 36)
                     }):Play()
                 end
             end
             SetActiveTab(i)
-            -- TabDock siempre visible: NO se oculta al entrar a una pestana
             _G._tabContentActive = true
         end)
 
         sideButtons[i] = btn
-        -- OPT: cachear refs del boton para evitar FindFirstChild en cada SetActiveTab
         _G._tabBtnRefs[i] = {
-            icon      = btn:FindFirstChild("TabIcon", true),
-            stroke    = btn:FindFirstChildOfClass("UIStroke"),
-            activeBar = btn:FindFirstChild("ActiveBar"),
-            lbl2      = btn:FindFirstChild("TabLabel", true),
+            icon      = nil,
+            stroke    = btnStroke,
+            activeBar = activeBar,
+            lbl2      = lbl,
         }
     end
 
@@ -53823,215 +53461,110 @@ particles = {}
         if _arrowBtnDebounce then return end
         _arrowBtnDebounce = true
         task.delay(0.5, function() _arrowBtnDebounce = false end)
+        -- disparar el handler de cierre/minimizar
+        local _hubGuiRef    = hubGui
+        local _mainFrameRef = mainFrame
         pcall(CloseExpandPanel)
-
-        -- FIX: si hay una pestaña abierta, solo cerrar el contenido (volver al home)
-        -- NO cerrar el hub completo. Solo se cierra el hub si ya estamos en home (sin pestaña).
-        if _G._tabContentActive then
-            pcall(function() if _G._stopWeapon then _G._stopWeapon() end end)
-            pcall(function() if _G._stopKnife  then _G._stopKnife()  end end)
-            _goBackToEmpty()
-            return  -- NO continuar con el cierre del hub
-        end
-
         pcall(function() if _G._stopWeapon then _G._stopWeapon() end end)
         pcall(function() if _G._stopKnife  then _G._stopKnife()  end end)
-        _goBackToEmpty()
-
-        -- Cerrar el hub con fade-out suave (solo si ya estábamos en home)
-        local _ts = game:GetService("TweenService")
-        local _tiFade = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        -- FIX REOPEN FADE: guardar tabla de transparencias originales ANTES del fade
-        -- para poder restaurarlas exactas al reabrir (sin esto todo quedaba invisible)
-        _G._hubFadeSnapshot = {}
-        pcall(function()
-            _G._hubFadeSnapshot[mainFrame] = {
-                bg  = mainFrame.BackgroundTransparency,
-            }
-            for _, desc in ipairs(mainFrame:GetDescendants()) do
-                pcall(function()
-                    local snap = {}
-                    if desc:IsA("Frame") or desc:IsA("ImageLabel") or desc:IsA("TextLabel")
-                    or desc:IsA("TextButton") or desc:IsA("ImageButton") then
-                        snap.bg = desc.BackgroundTransparency
-                    end
-                    if desc:IsA("TextLabel") or desc:IsA("TextButton") then
-                        snap.text = desc.TextTransparency
-                    end
-                    if desc:IsA("ImageLabel") or desc:IsA("ImageButton") then
-                        snap.img = desc.ImageTransparency
-                    end
-                    if next(snap) then
-                        _G._hubFadeSnapshot[desc] = snap
-                    end
-                end)
-            end
-        end)
-        _ts:Create(mainFrame, _tiFade, {BackgroundTransparency = 1}):Play()
-        for _, desc in ipairs(mainFrame:GetDescendants()) do
+        if _G._hubSettings and _G._hubSettings.noMinMaxAnimations then
+            if _mainFrameRef then _mainFrameRef.BackgroundTransparency = 1 end
+            if tabDockFrame  then tabDockFrame.BackgroundTransparency  = 1 end
+        else
             pcall(function()
-                if desc:IsA("Frame") or desc:IsA("ImageLabel") or desc:IsA("TextLabel") or desc:IsA("TextButton") or desc:IsA("ImageButton") then
-                    if desc:FindFirstChildOfClass("UIStroke") == nil then
-                        _ts:Create(desc, _tiFade, {BackgroundTransparency = 1}):Play()
-                    end
+                local uiScaleClose = _mainFrameRef:FindFirstChildOfClass("UIScale")
+                if uiScaleClose then
+                    TweenService:Create(uiScaleClose, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Scale = 0}):Play()
                 end
-                if desc:IsA("TextLabel") or desc:IsA("TextButton") then
-                    _ts:Create(desc, _tiFade, {TextTransparency = 1}):Play()
-                end
-                if desc:IsA("ImageLabel") or desc:IsA("ImageButton") then
-                    _ts:Create(desc, _tiFade, {ImageTransparency = 1}):Play()
+                TweenService:Create(_mainFrameRef, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+                if tabDockFrame then
+                    TweenService:Create(tabDockFrame, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
                 end
             end)
         end
-        -- Slide-up del mainFrame mientras desaparece
-        _ts:Create(mainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-            {Position = UDim2.new(0.5, 0, 0.5, -30)}):Play()
-
-        task.delay(0.45, function()
-            hubGui.Enabled = false
-            _G._hubHidden  = true
-            -- Restaurar posicion para cuando vuelva a abrirse
-            mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-
-            -- Crear el boton de reapertura (skull) igual que minimizeBtn
-            local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-            if pg then
-                -- Limpiar reopeners anteriores
-                local _old = pg:FindFirstChild("BypasHubReopener")
-                if _old then _old:Destroy() end
-
-                local rGui = Instance.new("ScreenGui")
-                rGui.Name = "BypasHubReopener"
-                rGui.ResetOnSpawn = false
-                rGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                rGui.DisplayOrder = 9998
-                rGui.Parent = pg
-
-                local SKULL_SIZE  = 80
-                local skullMainFrame = Instance.new("Frame", rGui)
-                skullMainFrame.Name = "MainFrame"
-                skullMainFrame.BackgroundTransparency = 1
-                skullMainFrame.AnchorPoint = Vector2.new(0.5, 0)
-                skullMainFrame.Size = UDim2.new(0, SKULL_SIZE, 0, SKULL_SIZE)
-                skullMainFrame.Position = UDim2.new(0.5, 0, 0, 10)
-
-                local rBtn = Instance.new("ImageButton", skullMainFrame)
-                rBtn.Name = "SkullButton"
-                rBtn.AnchorPoint = Vector2.new(0.5, 0.5)
-                rBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
-                rBtn.Size = UDim2.new(0, 0, 0, 0)
-                rBtn.BackgroundTransparency = 1
-                rBtn.Image = "rbxassetid://100287275990702"
-                rBtn.ImageColor3 = Color3.fromRGB(210, 215, 220)
-                rBtn.ScaleType = Enum.ScaleType.Fit
-                rBtn.ZIndex = 100
-
-                TweenService:Create(rBtn, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                    Size = UDim2.new(0, SKULL_SIZE * 0.9, 0, SKULL_SIZE * 0.9)
-                }):Play()
-
-                rBtn.MouseEnter:Connect(function()
-                    TweenService:Create(rBtn, TweenInfo.new(0.2), {ImageTransparency = 0.3}):Play()
-                end)
-                rBtn.MouseLeave:Connect(function()
-                    TweenService:Create(rBtn, TweenInfo.new(0.2), {ImageTransparency = 0}):Play()
-                end)
-
-                rBtn.Activated:Connect(function()
-                    local shrink = TweenService:Create(rBtn, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
-                        Size = UDim2.new(0, 0, 0, 0),
-                        ImageTransparency = 1
-                    })
-                    shrink:Play()
-                    shrink.Completed:Connect(function()
-                        rGui:Destroy()
-                        local existingHub = LocalPlayer.PlayerGui:FindFirstChild("f")
-                                         or game:GetService("CoreGui"):FindFirstChild("f")
-                        if existingHub and _G._hubHidden then
-                            existingHub.Enabled = true
-                            _G._hubHidden = false
-                            -- FIX REOPEN FADE: restaurar transparencias desde snapshot guardado al cerrar
-                            pcall(function()
-                                local snap = _G._hubFadeSnapshot
-                                if snap then
-                                    for obj, vals in pairs(snap) do
-                                        if obj and obj.Parent then
-                                            pcall(function()
-                                                if vals.bg   ~= nil then obj.BackgroundTransparency = vals.bg   end
-                                                if vals.text ~= nil then obj.TextTransparency       = vals.text end
-                                                if vals.img  ~= nil then obj.ImageTransparency      = vals.img  end
-                                            end)
-                                        end
-                                    end
-                                    _G._hubFadeSnapshot = nil
-                                end
-                            end)
-                            local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
-                            if uiScale then
-                                uiScale.Scale = 0
-                                TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
-                                    {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
-                            end
-                            -- FIX REOPEN LAYOUT: restaurar layout al reabrir
-                            task.defer(function()
-                                if _G._applyHubLayout and _G._hubSettings then
-                                    pcall(_G._applyHubLayout, _G._hubSettings.hubLayoutMode or 1)
-                                end
-                            end)
-                        else
-                            abrirHub()
+        _G._hubHidden = true
+        pcall(_flushConfig)
+        task.delay(0.36, function()
+            pcall(function() if _hubGuiRef then _hubGuiRef.Enabled = false end end)
+            pcall(function()
+                for _, parent in ipairs({ LocalPlayer:FindFirstChildOfClass("PlayerGui"), game:GetService("CoreGui") }) do
+                    if parent then local _h = parent:FindFirstChild("f"); if _h then _h.Enabled = false end end
+                end
+                if gethui then local _gh = gethui():FindFirstChild("f"); if _gh then _gh.Enabled = false end end
+            end)
+            if tabDockGui then pcall(function() tabDockGui.Enabled = false end) end
+        end)
+        -- Skull reopener
+        local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        if pg then
+            -- Destruir reopeners anteriores
+            for _, ch in ipairs(pg:GetChildren()) do
+                if ch:IsA("ScreenGui") and (ch.Name == "reReopener" or ch.Name:find("Reopener")) then
+                    pcall(function() ch:Destroy() end)
+                end
+            end
+            local rGui2 = Instance.new("ScreenGui")
+            rGui2.Name = "reReopener"
+            rGui2.ResetOnSpawn = false
+            rGui2.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+            rGui2.DisplayOrder = 9998
+            rGui2.Parent = pg
+            local SKULL_SIZE2 = 130
+            local skullMF2 = Instance.new("Frame", rGui2)
+            skullMF2.BackgroundTransparency = 1
+            skullMF2.AnchorPoint = Vector2.new(0.5, 0)
+            skullMF2.Size = UDim2.new(0, SKULL_SIZE2, 0, SKULL_SIZE2)
+            skullMF2.Position = UDim2.new(0.5, 0, 0, 10)
+            local rBtn2 = Instance.new("ImageButton", skullMF2)
+            rBtn2.AnchorPoint = Vector2.new(0.5, 0.5)
+            rBtn2.Position = UDim2.new(0.5, 0, 0.5, 0)
+            rBtn2.Size = UDim2.new(0, 0, 0, 0)
+            rBtn2.BackgroundTransparency = 1
+            rBtn2.Image = "rbxassetid://100287275990702"
+            rBtn2.ImageColor3 = Color3.fromRGB(255, 255, 255)
+            rBtn2.ScaleType = Enum.ScaleType.Fit
+            rBtn2.ZIndex = 100
+            rBtn2.Active = true
+            Instance.new("UICorner", rBtn2).CornerRadius = UDim.new(0, 14)
+            TweenService:Create(rBtn2, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, SKULL_SIZE2 * 0.9, 0, SKULL_SIZE2 * 0.9)
+            }):Play()
+            local _rBtn2Clicked = false
+            local function _reopenHub()
+                if _rBtn2Clicked then return end
+                _rBtn2Clicked = true
+                task.delay(0.1, function()
+                    pcall(function() rGui2:Destroy() end)
+                    local existingHub = LocalPlayer.PlayerGui:FindFirstChild("f")
+                                     or game:GetService("CoreGui"):FindFirstChild("f")
+                    if existingHub then
+                        existingHub.Enabled = true
+                        _G._hubHidden = false
+                        if mainFrame and mainFrame.Parent then
+                            mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+                            mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
                         end
-                    end)
+                        local uiScaleR = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
+                        if uiScaleR then
+                            uiScaleR.Scale = 0
+                            TweenService:Create(uiScaleR, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                        end
+                    else
+                        task.spawn(abrirHub)
+                    end
                 end)
             end
-        end)
-
-        -- Re-mostrar la barra de pestanas si existe
-        task.spawn(function()
-            task.wait(0.1)
-            local _barF = nil
-            for _, parent in ipairs({hubGui, game:GetService("Players").LocalPlayer.PlayerGui, gethui and gethui() or nil}) do
-                if parent then
-                    _barF = parent:FindFirstChild("BarFrame", true)
-                    if _barF then break end
-                end
-            end
-            if _barF then
-                -- Calcular posicion relativa al hub (dinamico)
-                local _reappFinal2, _reappStart2
-                if mainFrame and mainFrame.Parent then
-                    local _mfAbs = mainFrame.AbsolutePosition
-                    local _mfSiz = mainFrame.AbsoluteSize
-                    local _cx  = _mfAbs.X + _mfSiz.X * 0.5
-                    local _by  = _mfAbs.Y + _mfSiz.Y + 8
-                    _reappFinal2 = UDim2.new(0, _cx, 0, _by)
-                    _reappStart2 = UDim2.new(0, _cx, 0, _by + 35)
-                else
-                    _reappFinal2 = UDim2.new(0.5, 0, 0.5, 305)
-                    _reappStart2 = UDim2.new(0.5, 0, 0.5, 340)
-                end
-                _barF.AnchorPoint = Vector2.new(0.5, 0)
-                _barF.Position = _reappStart2
-                _barF.Visible  = true
-                local _bgImg = _barF:FindFirstChild("FullBarImage")
-                if _bgImg then _bgImg.ImageTransparency = 1 end
-                for _, child in ipairs(_barF:GetChildren()) do
-                    if child:IsA("ImageButton") then child.ImageTransparency = 1 end
-                end
-                local _tiReapp = TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-                local _tsBar = game:GetService("TweenService")
-                _tsBar:Create(_barF, _tiReapp, {Position = _reappFinal2}):Play()
-                if _bgImg then _tsBar:Create(_bgImg, _tiReapp, {ImageTransparency = 0}):Play() end
-                for _, child in ipairs(_barF:GetChildren()) do
-                    if child:IsA("ImageButton") then
-                        _tsBar:Create(child, _tiReapp, {ImageTransparency = 0}):Play()
-                    end
-                end
-            end
-        end)
+            rBtn2.Activated:Connect(_reopenHub)
+            rBtn2.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.Touch then _reopenHub() end
+            end)
+        end
     end
-    -- FIX: solo usar Activated (funciona en PC y mobile). InputBegan + Activated = doble disparo en touch.
-    arrowToggleBtn.Activated:Connect(_arrowBtnFire)
+    -- Conectar tanto MouseButton1Click como InputBegan (touch) para compatibilidad movil
+    arrowToggleBtn.Activated:Connect(_arrowBtnFire)  -- FIX MOBILE: reemplaza MouseButton1Click
+    arrowToggleBtn.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.Touch then _arrowBtnFire() end
+    end)
 
     restoreBtn.Activated:Connect(function()
         _goBackToEmpty()
@@ -54072,25 +53605,7 @@ particles = {}
         _G._homePanelLoopActive = true
         task.spawn(function()
             while homePanel and homePanel.Parent do
-                local _showHome = not _G._tabContentActive
-                homePanel.Visible = _showHome
-                -- FIX: ocultar Network Ping y FPS al entrar a una pestana
-                pcall(function()
-                    if _G._hubCornerImgTop and _G._hubCornerImgTop.Parent then
-                        _G._hubCornerImgTop.Visible = _showHome
-                    end
-                end)
-                pcall(function()
-                    if _G._hubCornerImgBot and _G._hubCornerImgBot.Parent then
-                        _G._hubCornerImgBot.Visible = _showHome
-                    end
-                end)
-                -- FIX: ocultar tarjeta de perfil (usuario) al entrar a una pestana
-                pcall(function()
-                    if _G._hubProfileCard and _G._hubProfileCard.Parent then
-                        _G._hubProfileCard.Visible = _showHome
-                    end
-                end)
+                homePanel.Visible = not _G._tabContentActive
                 task.wait(0.1)
             end
             _G._homePanelLoopActive = false
@@ -54181,7 +53696,10 @@ particles = {}
             end
             task.defer(function()
                 _G._tabContentActive = false
-                -- Hub inicia sin pestana abierta (imagen reemplaza sidebar)
+                -- AUTO-ABRIR MAIN al iniciar
+                contentContainer.Visible = true
+                contentContainer.Position = UDim2.new(0, 200, 0, 36)
+                pcall(function() SetActiveTab(1) end)  -- 1 = MAIN
             -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
@@ -54550,10 +54068,12 @@ particles = {}
             mainFrame:FindFirstChildOfClass("UIScale").Scale = (_getTargetScale and _getTargetScale() or 0.70)
         end
         print("3: Hub completamente visible")
-        -- Auto-cargar el primer tab (MAIN) al iniciar
+        -- AUTO-ABRIR MAIN al iniciar
         task.defer(function()
             _G._tabContentActive = false
-            -- Hub inicia sin pestana abierta (imagen reemplaza sidebar)
+            contentContainer.Visible = true
+            contentContainer.Position = UDim2.new(0, 200, 0, 36)
+            pcall(function() SetActiveTab(1) end)  -- 1 = MAIN
             -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo.
             -- Si no habia ninguno guardado, aplicar Glitch (index 1) por defecto.
             task.delay(0.5, function()
@@ -54633,7 +54153,10 @@ particles = {}
             _G._hubAlreadyBuilt = true
             task.defer(function()
                 _G._tabContentActive = false
-                -- Hub inicia sin pestana abierta (imagen reemplaza sidebar)
+                -- AUTO-ABRIR MAIN al iniciar
+                contentContainer.Visible = true
+                contentContainer.Position = UDim2.new(0, 200, 0, 36)
+                pcall(function() SetActiveTab(1) end)  -- 1 = MAIN
             -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
             task.delay(0.6, function()
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
@@ -54965,32 +54488,6 @@ function CreateUpdateTab()
     -- Datos del changelog
     local UPDATES = {
         {
-            version = "v1.02",
-            entries = {
-                {
-                    game = "Murder Mystery 2",
-                    lines = {
-                        "[+] ESP Knife: highlights the knife on the map with a colored box and label — always know where it dropped.",
-                        "[+] ESP Knife: distance counter shown next to the label in real time.",
-                        "[+] ESP Knife: color picker to customize the highlight color.",
-                        "[+] ESP Knife: toggle visibility on/off from the Combat tab.",
-                        "[*] Hub appearance overhaul — new cleaner header layout and smoother sidebar.",
-                        "[*] Tab icons load staggered on startup to reduce CDN pressure and lag.",
-                        "[*] Mobile drag fixed — hub now drags correctly from the header on touch screens.",
-                        "[*] Update tab now fully in English.",
-                        "[*] Single-column layout auto-detected on mobile for better readability.",
-                    }
-                },
-            },
-            whatsnew = {
-                "[+] ESP Knife — see the knife through walls with distance label and custom color.",
-                "[*] Full hub appearance refresh — cleaner look on all devices.",
-                "[*] Mobile drag fixed — grab the header to move the hub on touch screens.",
-                "[*] Staggered icon loading — tabs appear faster on startup.",
-                "[*] Auto single-column on mobile — no more content cut off on small screens.",
-            }
-        },
-        {
             version = "v1.01",
             entries = {
                 {
@@ -55001,7 +54498,7 @@ function CreateUpdateTab()
                         "[+] Font preference remembered per session.",
                         "[+] New background: Aurora — animated northern lights with color pulse.",
                         "[+] New wallpaper: Glitcher — corrupted TV effect with cyan/red scanlines, glitch blocks and screen flashes.",
-                        "[+] Settings: new 'Disable All Toggles' button — stops all active features in one click.",
+                        "[+] Settings: new 'Auto Desactivar Todos los Toggles' button — stops all active features in one click.",
                         "[-] Settings: removed Double Column toggle — caused layout bugs.",
                         "[*] Background animations no longer bleed outside the image bounds.",
                         "[*] Fixed leftover colors when switching between Zerqon and Sunset backgrounds.",
@@ -56176,7 +55673,6 @@ _G._ItemsFakeState = _ItemsFakeState
 end -- cierra abrirHub
 
 abrirHub()
-
 -- == FIX TEXTO OSCURO: asegurar visibilidad en labels de AuroraToggle sin pisar el gradiente cyan ==
 task.spawn(function()
     repeat task.wait(0.1) until _G._hubReady
@@ -56209,7 +55705,7 @@ task.spawn(function()
     -- Fijar los que se agreguen al cambiar de tab
     local _fixBusy = false
     _mainF.DescendantAdded:Connect(function(obj)
-        if _fixBusy then return 
+        if _fixBusy then return end
         _fixBusy = true
         task.spawn(function()
             task.wait()  -- diferir un frame sin usar task.defer (evita re-entrancy)
@@ -56220,3 +55716,4 @@ task.spawn(function()
         end)
     end)
 end)
+-- (barra flotante externa eliminada: la navegacion ahora es la sidebar izquierda)
