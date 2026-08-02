@@ -56209,7 +56209,7 @@ task.spawn(function()
     -- Fijar los que se agreguen al cambiar de tab
     local _fixBusy = false
     _mainF.DescendantAdded:Connect(function(obj)
-        if _fixBusy then return end
+        if _fixBusy then return 
         _fixBusy = true
         task.spawn(function()
             task.wait()  -- diferir un frame sin usar task.defer (evita re-entrancy)
