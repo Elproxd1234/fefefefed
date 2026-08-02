@@ -45393,13 +45393,7 @@ function CreateCombatTab()
             if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
             if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
             if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
-            -- Estado para la animacion de slash del brazo izquierdo
-            -- _slashPhase: nil = idle, "forward" = yendo al frente, "back" = volviendo
-            state._slashPhase     = nil
-            state._slashT         = 0   -- tiempo transcurrido en la fase actual
-            state._slashLastClock = 0
-
-            -- Stepped: levanta el brazo izquierdo y lo anima al hacer slash
+            -- Stepped: levanta el brazo izquierdo
             state.steppedConn = _safeConnect(RunService.Stepped, function()
                 if not state.enabled then return end
                 local char = LocalPlayer.Character
@@ -45418,51 +45412,15 @@ function CreateCombatTab()
                 local lElbow    = lLA and lLA:FindFirstChild("LeftElbow")
                 local lHandPart = char:FindFirstChild("LeftHand")
                 local lWrist    = lHandPart and lHandPart:FindFirstChild("LeftWrist")
-
-                -- Calcular dt para la interpolacion del slash
-                local now = os.clock()
-                local dt  = now - (state._slashLastClock or now)
-                state._slashLastClock = now
-
-                -- Angulo base (brazo al frente): 90 grados
-                local BASE_X = math.rad(90)
-                -- Angulo de slash (brazo hacia arriba-adelante): 130 grados
-                local SLASH_X = math.rad(130)
-                -- Duracion de cada fase del slash en segundos
-                local PHASE_DUR = 0.18
-
-                local targetX = BASE_X
-                if state._slashPhase == "forward" then
-                    state._slashT = math.min(state._slashT + dt, PHASE_DUR)
-                    local t = state._slashT / PHASE_DUR
-                    -- easeOutQuad
-                    t = 1 - (1 - t) * (1 - t)
-                    targetX = BASE_X + (SLASH_X - BASE_X) * t
-                    if state._slashT >= PHASE_DUR then
-                        state._slashPhase = "back"
-                        state._slashT = 0
-                    end
-                elseif state._slashPhase == "back" then
-                    state._slashT = math.min(state._slashT + dt, PHASE_DUR)
-                    local t = state._slashT / PHASE_DUR
-                    t = 1 - (1 - t) * (1 - t)
-                    targetX = SLASH_X + (BASE_X - SLASH_X) * t
-                    if state._slashT >= PHASE_DUR then
-                        state._slashPhase = nil
-                        state._slashT = 0
-                        targetX = BASE_X
-                    end
-                end
-
                 if lShoulder then
-                    lShoulder.Transform = CFrame.Angles(targetX, 0, 0)
+                    lShoulder.Transform = CFrame.Angles(math.rad(90), 0, 0)
                     if lElbow then lElbow.Transform = CFrame.new() end
                     if lWrist then lWrist.Transform = CFrame.new() end
                     return
                 end
-                local torso    = char:FindFirstChild("Torso")
+                local torso   = char:FindFirstChild("Torso")
                 local lJointR6 = torso and torso:FindFirstChild("Left Shoulder")
-                if lJointR6 then lJointR6.Transform = CFrame.Angles(targetX, 0, 0) end
+                if lJointR6 then lJointR6.Transform = CFrame.Angles(math.rad(90), 0, 0) end
             end)
 
             -- RenderStepped: clona handle y lo weldea a la mano izquierda
@@ -45502,39 +45460,12 @@ function CreateCombatTab()
                 if not (handle and grip and lHand) then return end
                 -- Verificar que el handle pertenece a la tool correcta (no a otra tool del char)
                 if handle.Parent ~= tool then return end
-
-                -- FIX GRIP DK ESPEJO / CLON ACOSTADO: obtener el grip original MM2 del tool.
-                -- Prioridad: 1) origData del skin changer (guardado ANTES de pisar con skin grip)
-                --            2) cache propio del dual knife (guardado al crear el clon)
-                --            3) nil -> fallback a grip.C0 del RightGrip en el caller
-                -- NUNCA leer tool.Grip aqui si el skin changer esta activo: ya fue pisado
-                -- con _KNIFE_GRIP_STD y causaria el clon "acostado" en la mano izquierda.
-                local function _getOrigGripCF()
-                    local sc = _G._skinChangerState
-                    if sc and sc.origData and sc.origData[tool] and sc.origData[tool].Grip then
-                        return sc.origData[tool].Grip
-                    end
-                    -- Cache propio del dual knife (guardado al crear el clon por primera vez)
-                    if state._origGripCache and state._origGripTool == tool then
-                        return state._origGripCache
-                    end
-                    -- Skin changer inactivo: tool.Grip es el grip MM2 limpio, seguro de leer
-                    local ok, gf = pcall(function() return tool.Grip end)
-                    if ok and gf then return gf end
-                    return nil
-                end
-
                 local existing = char:FindFirstChild("DK_Clone")
                 if existing then
                     local w = existing:FindFirstChild("MirrorWeld")
                     if w then
-                        local origGrip = _getOrigGripCF()
-                        local gCF = origGrip or grip.C0
-                        local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = gCF:GetComponents()
-                        -- FIX ESPEJO: formula correcta M*R*M donde M=diag(-1,1,1)
-                        -- Negar X en pos; en rot: r01,r02,r10,r20 se niegan, resto igual.
-                        -- Esto preserva det=+1 (rotacion valida) evitando el clon flotando.
-                        w.C0 = CFrame.new(-px, py, pz, r00, -r01, -r02, -r10, r11, r12, -r20, r21, r22)
+                        local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
+                        w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
                         w.C1 = grip.C1
                     end
                     -- FIX DUAL INVISIBLE: mantener el clon visible aunque el handle cambie de transparencia
@@ -45576,35 +45507,8 @@ function CreateCombatTab()
                 weld.Name  = "MirrorWeld"
                 weld.Part0 = lHand
                 weld.Part1 = clon
-                -- FIX CLON ACOSTADO: usar SIEMPRE el grip guardado en origData ANTES
-                -- de que el skin changer lo pisara. Si el skin changer ya actuó y pisó
-                -- tool.Grip con _KNIFE_GRIP_STD, el espejo queda con orientación incorrecta
-                -- (clon "acostado"). La única fuente fiable es origData[tool].Grip que se
-                -- guarda justo antes de la primera aplicación de skin (grip MM2 original).
-                -- Si origData no existe todavía (skin changer inactivo), leer tool.Grip
-                -- actual que en ese caso es el grip limpio de MM2.
-                local _origGripCF = nil
-                local sc = _G._skinChangerState
-                if sc and sc.origData and sc.origData[tool] and sc.origData[tool].Grip then
-                    -- Skin changer ya actuó: usar grip original guardado antes del piso
-                    _origGripCF = sc.origData[tool].Grip
-                elseif state._origGripCache and state._origGripTool == tool then
-                    -- Cache propio del dual knife de creaciones anteriores
-                    _origGripCF = state._origGripCache
-                else
-                    -- Skin changer inactivo: tool.Grip es el grip MM2 limpio
-                    pcall(function() _origGripCF = tool.Grip end)
-                end
-                -- Fallback final: RightGrip.C0
-                if not _origGripCF then _origGripCF = grip.C0 end
-                -- Guardar cache para el update loop del renderConn
-                state._origGripCache = _origGripCF
-                state._origGripTool  = tool
-                local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = _origGripCF:GetComponents()
-                -- FIX ESPEJO: formula correcta M*R*M donde M=diag(-1,1,1)
-                -- Negar X en pos; en rot: r01,r02,r10,r20 se niegan, resto igual.
-                -- Preserva det=+1 => rotacion valida => clon en mano izquierda correctamente.
-                weld.C0 = CFrame.new(-px, py, pz, r00, -r01, -r02, -r10, r11, r12, -r20, r21, r22)
+                local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
+                weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
                 weld.C1 = grip.C1
 
                 -- HOOK PREMIUM SKIN: solo aplicar skin al clon si es Dual Gun (no Dual Knife)
@@ -45654,6 +45558,8 @@ function CreateCombatTab()
                 local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
 
                 -- -- LMB/Touch = SLASH cuando SA est OFF (SA lo maneja si est ON) --
+                -- FIX: sin _sp() para que _dkPlaySlot->_dkKillNativeSlash actue en el mismo frame.
+                -- FIX: usar _dkToggle local en vez de _G._dualSlashToggle (global compartido).
                 if isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
                     and not (KnifeSAState and KnifeSAState.enabled) then
                     if state.isAttacking then return end
@@ -45661,44 +45567,31 @@ function CreateCombatTab()
                     if now - (state._lastStab or -999) < 0.85 then return end
                     state.isAttacking = true
                     state._lastStab = now
-                    _G._dualSlashToggle = not _G._dualSlashToggle
-                    -- FIX BRAZO IZQ: disparar animacion de slash en el steppedConn
-                    state._slashPhase = "forward"
-                    state._slashT     = 0
-                    -- FIX SLASH ANIM: matar slash nativa sincronicamente antes del spawn
-                    if _dkKillNativeSlash then _dkKillNativeSlash() end
-                    -- Usar _dkPlaySlot (definida despues del toggle, accesible via upvalue del closure externo)
-                    _sp(function()
-                        if _dkPlaySlot then
-                            _dkPlaySlot(_G._dualSlashToggle and "slotA" or "slotB", 1.0)
-                        end
-                    end)
+                    _dkToggle = not _dkToggle
+                    -- Llamada directa (sin spawn) para que killNativeSlash actue en este frame
+                    if _dkPlaySlot then
+                        _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
+                    end
                     local ev = tool:FindFirstChild("Events")
                     local ks = ev and ev:FindFirstChild("KnifeStabbed")
                     if ks then pcall(function() ks:FireServer() end) end
                     _dl(0.85, function() state.isAttacking = false end)
 
-                -- -- RMB/Touch = DUALSTAB ANIMATION (Dual Knife ON) ---------------------------
+                -- -- RMB/Touch = THROW (Dual Knife ON) ---------------------------
+                -- FIX: RMB en Dual Knife debe tirar el cuchillo (igual que el inputConn
+                -- del toggle), no reproducir una animacion hardcodeada de DualStab
+                -- con un ID externo que puede no existir.
                 elseif isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch) then
                     local now = os.clock()
-                    if now - (state._lastThrow or -999) < 0.8 then return end
+                    if now - (state._lastThrow or -999) < 1.0 then return end
                     state._lastThrow = now
-                    -- Reproducir animacion DualStab
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    local animator = hum and hum:FindFirstChildOfClass("Animator")
-                    if animator then
-                        local animObj = Instance.new("Animation")
-                        animObj.AnimationId = "rbxassetid://2470501967"
-                        local ok, track = pcall(function() return animator:LoadAnimation(animObj) end)
-                        if ok and track then
-                            pcall(function() track:Play(0.05) end)
-                        end
-                    end
-                    -- Activar stab en el servidor
-                    local ev = tool:FindFirstChild("Events")
-                    local ks = ev and ev:FindFirstChild("KnifeStabbed")
-                    if ks then pcall(function() ks:FireServer() end) end
-                    _dl(0.8, function() state.isAttacking = false end)
+                    _dkStopAll()
+                    local myHRP = char:FindFirstChild("HumanoidRootPart")
+                    local cam   = workspace.CurrentCamera
+                    local targetCF = myHRP
+                        and CFrame.new(myHRP.Position, myHRP.Position + cam.CFrame.LookVector * 100)
+                        or cam.CFrame
+                    if knifeThrown then pcall(function() knifeThrown:FireServer(targetCF, targetCF) end) end
 
                 -- -- LMB/Touch = THROW (modo normal sin Dual) --------------------
                 elseif not isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
@@ -45723,13 +45616,6 @@ function CreateCombatTab()
             if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
             if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
             if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
-            -- Limpiar hook AnimationPlayed del custom anim
-            if _dkAnimPlayedConn then pcall(function() _dkAnimPlayedConn:Disconnect() end); _dkAnimPlayedConn = nil end
-            -- Limpiar cache del grip original
-            state._origGripCache = nil
-            state._origGripTool  = nil
-            state._slashPhase    = nil
-            state._slashT        = 0
             -- Limpiar clon si existe
             local char = LocalPlayer.Character
             if char then
@@ -45747,48 +45633,6 @@ function CreateCombatTab()
         -- ==============================================================
         local _dkAnimTracks  = {}   -- { slotA = track, slotB = track }
         local _dkToggle      = false
-
-        -- CUSTOM ANIM SYSTEM: IDs configurables por el usuario (igual al script externo)
-        -- Cuando enabled=true, _dkPreloadTracks carga estos IDs en slotA/slotB
-        -- y _dkKillNativeSlash bloquea el slash nativo en AnimationPlayed tambien.
-        local _dkCustomAnim = {
-            enabled  = true,   -- AUTO: siempre activo con Dual Knife
-            idleAnim = "rbxassetid://85267536017874",  -- ID quieto (configurable)
-            runAnim  = "rbxassetid://99847966455703",  -- ID corriendo (configurable)
-        }
-        -- Hook AnimationPlayed para bloquear slash nativo en tiempo real
-        local _dkAnimPlayedConn = nil
-
-        -- Conectar/desconectar el hook de AnimationPlayed segun el toggle custom
-        local function _dkSetupAnimPlayedHook()
-            if _dkAnimPlayedConn then
-                pcall(function() _dkAnimPlayedConn:Disconnect() end)
-                _dkAnimPlayedConn = nil
-            end
-            if not _dkCustomAnim.enabled then return end
-            local char = LocalPlayer.Character
-            if not char then return end
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            local animator = hum and hum:FindFirstChildOfClass("Animator")
-            if not animator then return end
-            _dkAnimPlayedConn = animator.AnimationPlayed:Connect(function(track)
-                -- Solo bloquear si el Dual Knife esta activo y el custom anim esta ON
-                if not (_G._dualKnifeState and _G._dualKnifeState.enabled) then return end
-                if not _dkCustomAnim.enabled then return end
-                -- Verificar que hay un knife equipado
-                local tool = char:FindFirstChildOfClass("Tool")
-                if not tool or not _dualMatchKeywords(tool, _dualKnifeKeywords) then return end
-                -- Bloquear slash/stab/attack nativos (Priority != Action4 = no son nuestros)
-                if track.Priority ~= Enum.AnimationPriority.Action4 then
-                    local id = (track.Animation and track.Animation.AnimationId or ""):lower()
-                    local nm = (track.Name or ""):lower()
-                    if nm:find("slash") or nm:find("stab") or nm:find("hit") or nm:find("attack")
-                       or id:find("slash") or id:find("stab") or id:find("attack") then
-                        pcall(function() track:Stop(0) end)
-                    end
-                end
-            end)
-        end
 
         local function _dkGetAnimator()
             local char = LocalPlayer.Character
@@ -45829,38 +45673,6 @@ function CreateCombatTab()
             if not animator then return end
 
             _dkAnimTracks = {}
-
-            -- 0. CUSTOM ANIM: si el usuario configuro IDs propios, usarlos directamente
-            if _dkCustomAnim.enabled then
-                local function _loadCustomId(id)
-                    if not id or id == "" then return nil end
-                    -- asegurar formato rbxassetid://
-                    if not id:find("rbxassetid://") and not id:find("http") then
-                        id = "rbxassetid://" .. id
-                    end
-                    local ok, tr = pcall(function()
-                        local a = Instance.new("Animation")
-                        a.AnimationId = id
-                        a.Parent = tool  -- necesario para LoadAnimation en algunos executors
-                        local t = animator:LoadAnimation(a)
-                        t.Priority = Enum.AnimationPriority.Action4
-                        a.Parent = nil   -- limpiar despues de cargar
-                        return t
-                    end)
-                    return ok and tr or nil
-                end
-                local char = LocalPlayer.Character
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                local isMoving = hum and hum.MoveDirection.Magnitude > 0.1
-                -- slotA = quieto, slotB = corriendo (o mismo si no hay runAnim)
-                _dkAnimTracks.slotA = _loadCustomId(_dkCustomAnim.idleAnim)
-                _dkAnimTracks.slotB = _loadCustomId(_dkCustomAnim.runAnim)
-                    or _dkAnimTracks.slotA
-                print("[DK] slotA=", _dkAnimTracks.slotA, "slotB=", _dkAnimTracks.slotB)
-                -- Re-hookear AnimationPlayed por si el char cambio
-                _dkSetupAnimPlayedHook()
-                return  -- no seguir con la logica nativa
-            end
 
             -- 1. Recopilar todas las anims del knife
             local allAnims = {}
@@ -45918,7 +45730,7 @@ function CreateCombatTab()
             for _, t in ipairs(playing) do
                 if t.Priority ~= Enum.AnimationPriority.Action4 then
                     local n = (t.Name or ""):lower()
-                    if n:find("slash") or n:find("stab") or n:find("hit") or n:find("attack") then
+                    if n:find("slash") or n:find("stab") or n:find("hit") or n:find("animation1") or n:find("attack") then
                         pcall(function() t:Stop(0) end)
                     end
                 end
@@ -45933,46 +45745,25 @@ function CreateCombatTab()
 
         local function _dkPlaySlot(slot, speed)
             speed = speed or 1.0
-            -- Si custom anim ON: elegir slot segun movimiento (idle=slotA, run=slotB)
-            if _dkCustomAnim.enabled then
-                local char = LocalPlayer.Character
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                local isMoving = hum and hum.MoveDirection.Magnitude > 0.1
-                slot = isMoving and "slotB" or "slotA"
-            end
             -- FIX: matar nativa en el mismo frame del input (sin yield)
             _dkKillNativeSlash()
 
             local track = _dkAnimTracks[slot]
-            -- FIX DUAL KNIFE v10: si los tracks no cargaron todavia (race condition
-            -- entre _sp(_dkPreloadTracks) async y el primer click del usuario),
-            -- intentar cargar sincronicamente antes de rendirse.
+            -- Si el track no existe o ya no es válido (tras respawn), recargar
             if not _dkIsTrackValid(track) then
                 _dkAnimTracks = {}
-                _dkPreloadTracks()  -- intento sincrono
+                _dkPreloadTracks()
                 track = _dkAnimTracks[slot]
-                -- Si aun no hay track, esperar hasta 1s en steps de 0.1s
-                if not _dkIsTrackValid(track) then
-                    local _waited = 0
-                    repeat
-                        task.wait(0.1); _waited = _waited + 0.1
-                        _dkPreloadTracks()
-                        track = _dkAnimTracks[slot]
-                    until _dkIsTrackValid(track) or _waited >= 1.0
-                end
                 if not _dkIsTrackValid(track) then return end
             end
 
             if track.IsPlaying then
                 pcall(function() track:Stop(0) end)
                 _w()
-                -- FIX SLASH ANIM: matar nativos que el juego disparo durante el yield del Stop
-                _dkKillNativeSlash()
             end
             -- Segunda pasada post-yield (atrapa lo que el servidor disparó en ese frame)
             _dkKillNativeSlash()
 
-            print("[DK] Playing track:", slot, track)
             pcall(function() track:Play(0.05); track:AdjustSpeed(speed) end)
         end
 
@@ -45980,6 +45771,60 @@ function CreateCombatTab()
             for _, t in pairs(_dkAnimTracks) do
                 pcall(function() if t.IsPlaying then t:Stop(0.08) end end)
             end
+        end
+
+
+        -- Helper: re-armar solo las conexiones de Dual Knife tras pick-up o respawn.
+        -- FIX BUG 2: los BpConn/CharPickupConn llamaban _dualStartArm y luego dejaban
+        -- inputConn=nil sin recrear el conn correcto (el que usa _dkPlaySlot/_dkToggle).
+        -- Esta funcion centraliza el re-arm completo: pose+clon+inputConn+tracks.
+        local function _dkRearm(st)
+            if st.steppedConn then pcall(function() st.steppedConn:Disconnect() end); st.steppedConn = nil end
+            if st.renderConn  then pcall(function() st.renderConn:Disconnect()  end); st.renderConn  = nil end
+            if st.inputConn   then pcall(function() st.inputConn:Disconnect()   end); st.inputConn   = nil end
+            _dkAnimTracks = {}
+            _dualStartArm(st, _dualKnifeKeywords)
+            -- Reemplazar el inputConn de _dualStartArm (logica vieja) por el correcto
+            if st.inputConn then pcall(function() st.inputConn:Disconnect() end); st.inputConn = nil end
+            _sp(_dkPreloadTracks)
+            st.inputConn = UserInputService.InputBegan:Connect(function(input, gp)
+                if gp then return end
+                if not st.enabled then return end
+                local char = LocalPlayer.Character
+                if not char then return end
+                local tool = nil
+                for _, t in ipairs(char:GetChildren()) do
+                    if t:IsA("Tool") and _dualMatchKeywords(t, _dualKnifeKeywords) then tool = t; break end
+                end
+                if not tool then return end
+                local events       = tool:FindFirstChild("Events")
+                local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
+                local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
+                if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
+                    and not (KnifeSAState and KnifeSAState.enabled) then
+                    if st.isAttacking then return end
+                    local now = os.clock()
+                    if now - (st._lastStab or -999) < 0.85 then return end
+                    st.isAttacking = true
+                    st._lastStab   = now
+                    _dkToggle = not _dkToggle
+                    _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
+                    if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
+                    _dl(0.85, function() st.isAttacking = false end)
+                elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+                    if not knifeThrown then return end
+                    local now = os.clock()
+                    if now - (st._lastThrow or -999) < 1.0 then return end
+                    st._lastThrow = now
+                    _dkStopAll()
+                    local myHRP = char:FindFirstChild("HumanoidRootPart")
+                    local cam   = workspace.CurrentCamera
+                    local targetCF = myHRP
+                        and CFrame.new(myHRP.Position, myHRP.Position + cam.CFrame.LookVector * 100)
+                        or cam.CFrame
+                    pcall(function() knifeThrown:FireServer(targetCF, targetCF) end)
+                end
+            end)
         end
 
         -- -- TOGGLE: DUAL KNIFE --------------------------------------------
@@ -45998,26 +45843,6 @@ function CreateCombatTab()
                 _dkToggle            = false
                 _dkAnimTracks        = {}
 
-                -- FIX GRIP DK: si el skin changer de knife pis� el grip,
-                -- restaurar el grip original ANTES de llamar _dualStartArm.
-                -- _dualStartArm usa RightGrip.C0 para calcular el weld espejo;
-                -- si el grip fue modificado por el skin changer, el clon queda mal posicionado.
-                do
-                    local _sc = _G._skinChangerState
-                    local _char = LocalPlayer.Character
-                    if _char and _sc and _sc.origData then
-                        for _, t in ipairs(_char:GetChildren()) do
-                            if t:IsA("Tool") and _dualMatchKeywords(t, _dualKnifeKeywords) then
-                                local _origData = _sc.origData[t]
-                                if _origData and _origData.Grip then
-                                    pcall(function() t.Grip = _origData.Grip end)
-                                end
-                                break
-                            end
-                        end
-                    end
-                end
-
                 -- Pose del brazo + clon handle (igual que antes)
                 _dualStartArm(state, _dualKnifeKeywords)
 
@@ -46028,11 +45853,7 @@ function CreateCombatTab()
                     state.inputConn = nil
                 end
 
-                -- FIX DUAL KNIFE v10: preload sincrono ANTES de crear inputConn
-                -- para que los tracks esten disponibles en el primer click del usuario.
-                _dkCustomAnim.enabled = true
-                _dkPreloadTracks()
-                _dkSetupAnimPlayedHook()
+                _sp(_dkPreloadTracks)
 
                 state.inputConn = UserInputService.InputBegan:Connect(function(input, gp)
                     if gp then return end
@@ -46059,14 +45880,10 @@ function CreateCombatTab()
                         if now - (state._lastStab or -999) < 0.85 then return end
                         state.isAttacking = true
                         state._lastStab   = now
-                        -- FIX BRAZO IZQ: disparar animacion de slash en el steppedConn
-                        state._slashPhase = "forward"
-                        state._slashT     = 0
-                        -- FIX SLASH ANIM: matar slash nativa en el mismo frame del input (sincrono)
-                        -- antes de que el juego la dispare, y ANTES del spawn del play
-                        _dkKillNativeSlash()
-                        -- Reproducir anim custom en spawn
-                        _sp(function() _dkPlaySlot("slotA", 1.0) end)
+                        _dkToggle = not _dkToggle
+                        -- Reproducir en este hilo (sin task.spawn) para que
+                        -- _dkKillNativeSlash acte en el mismo frame del input
+                        _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
                         if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                         _dl(0.85, function() state.isAttacking = false end)
 
@@ -46097,14 +45914,8 @@ function CreateCombatTab()
                     if not tool:IsA("Tool") then return end
                     if _dualMatchKeywords(tool, _dualKnifeKeywords) then
                         task.wait(0.1)
-                        if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
-                        if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
-                        if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
-                        _dkAnimTracks = {}
-                        _dualStartArm(state, _dualKnifeKeywords)
-                        if state.inputConn then pcall(function() state.inputConn:Disconnect() end); state.inputConn = nil end
-                        _dkPreloadTracks()  -- FIX v10: sincrono
-                        _dkSetupAnimPlayedHook()
+                        -- FIX BUG 2: usar _dkRearm para recrear pose+clon+inputConn correcto
+                        _dkRearm(state)
                     end
                 end)
 
@@ -46123,14 +45934,8 @@ function CreateCombatTab()
                         if not tool:IsA("Tool") then return end
                         if _dualMatchKeywords(tool, _dualKnifeKeywords) then
                             task.wait(0.1)
-                            if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
-                            if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
-                            if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
-                            _dkAnimTracks = {}
-                            _dualStartArm(state, _dualKnifeKeywords)
-                            if state.inputConn then pcall(function() state.inputConn:Disconnect() end); state.inputConn = nil end
-                            _dkPreloadTracks()  -- FIX v10: sincrono
-                            _dkSetupAnimPlayedHook()
+                            -- FIX BUG 2: usar _dkRearm para recrear pose+clon+inputConn correcto
+                            _dkRearm(state)
                         end
                     end)
                 end
@@ -46156,9 +45961,6 @@ function CreateCombatTab()
                         if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
                     end
                 end
-                -- AUTO: desactivar anim custom al apagar Dual Knife
-                _dkCustomAnim.enabled = false
-                if _dkAnimPlayedConn then pcall(function() _dkAnimPlayedConn:Disconnect() end); _dkAnimPlayedConn = nil end
                 CreateCustomNotification("DUAL KNIFE", "X Desactivado", 2)
             end
         end, false)
@@ -46245,12 +46047,8 @@ function CreateCombatTab()
                 _dualCleanState(ks)
                 local char = LocalPlayer.Character
                 if char then
-                    _dkAnimTracks = {}
-                    _dualStartArm(ks, _dualKnifeKeywords)
-                    -- FIX DUAL KNIFE v10: preload sincrono dentro del defer (no async)
-                    -- para que los tracks esten listos antes de que el inputConn dispare.
-                    if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
-                    _dkPreloadTracks()
+                    -- FIX BUG 2: usar _dkRearm para incluir el inputConn correcto
+                    _dkRearm(ks)
                 end
             end
             if gs and gs.enabled then
@@ -46305,13 +46103,8 @@ function CreateCombatTab()
                         if not (ks and ks.enabled) then return end
                         if not tool:IsA("Tool") or not _dualMatchKeywords(tool, _dualKnifeKeywords) then return end
                         task.wait(0.1)
-                        if ks.steppedConn then pcall(function() ks.steppedConn:Disconnect() end); ks.steppedConn = nil end
-                        if ks.renderConn  then pcall(function() ks.renderConn:Disconnect()  end); ks.renderConn  = nil end
-                        if ks.inputConn   then pcall(function() ks.inputConn:Disconnect()   end); ks.inputConn   = nil end
-                        _dkAnimTracks = {}
-                        _dualStartArm(ks, _dualKnifeKeywords)
-                        if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
-                        _dkPreloadTracks()  -- FIX v10: sincrono, evita race con inputConn
+                        -- FIX BUG 2: _dkRearm recrea pose+clon+inputConn correcto
+                        _dkRearm(ks)
                     end)
                     -- FIX NUEVA RONDA: hookear Character.ChildAdded para detectar cuando el
                     -- jugador EQUIPA el knife (Backpack->Character). Ese evento NO dispara
@@ -46323,70 +46116,14 @@ function CreateCombatTab()
                             if not (ks and ks.enabled) then return end
                             if not tool:IsA("Tool") or not _dualMatchKeywords(tool, _dualKnifeKeywords) then return end
                             task.wait(0.1)
-                            if ks.steppedConn then pcall(function() ks.steppedConn:Disconnect() end); ks.steppedConn = nil end
-                            if ks.renderConn  then pcall(function() ks.renderConn:Disconnect()  end); ks.renderConn  = nil end
-                            if ks.inputConn   then pcall(function() ks.inputConn:Disconnect()   end); ks.inputConn   = nil end
-                            _dkAnimTracks = {}
-                            _dualStartArm(ks, _dualKnifeKeywords)
-                            if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
-                            _dkPreloadTracks()  -- FIX v10: sincrono
+                            -- FIX BUG 2: _dkRearm recrea pose+clon+inputConn correcto
+                            _dkRearm(ks)
                         end)
                     end
 
-                    -- Invalidar cache de tracks (el Animator cambio tras respawn)
-                    _dkAnimTracks = {}
-                    -- Re-arrancar pose del brazo
-                    _dualStartArm(ks, _dualKnifeKeywords)
-                    -- Reemplazar inputConn por el nuestro (con killNativeSlash)
-                    -- FIX DUAL KNIFE v10: cargar tracks PRIMERO y crear inputConn DESPUES
-                    -- para evitar race condition (inputConn fires antes que los tracks esten listos).
-                    if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
-                    _dkPreloadTracks()  -- sincrono en este spawn
-                    ks.inputConn = UserInputService.InputBegan:Connect(function(input, gp)
-                        if gp then return end
-                        if not ks.enabled then return end
-                        local char = LocalPlayer.Character
-                        if not char then return end
-                        local tool = nil
-                        for _, t in ipairs(char:GetChildren()) do
-                            if t:IsA("Tool") and _dualMatchKeywords(t, _dualKnifeKeywords) then
-                                tool = t; break
-                            end
-                        end
-                        if not tool then return end
-                        local events       = tool:FindFirstChild("Events")
-                        local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
-                        local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
-                        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
-                            and not (KnifeSAState and KnifeSAState.enabled) then
-                            if ks.isAttacking then return end
-                            local now = os.clock()
-                            if now - (ks._lastStab or -999) < 0.85 then return end
-                            ks.isAttacking = true
-                            ks._lastStab   = now
-                            -- FIX BRAZO IZQ: disparar animacion de slash en el steppedConn
-                            ks._slashPhase = "forward"
-                            ks._slashT     = 0
-                            -- FIX SLASH ANIM: matar slash nativa sincronicamente antes del spawn
-                            _dkKillNativeSlash()
-                            -- Reproducir anim custom en spawn
-                            _sp(function() _dkPlaySlot("slotA", 1.0) end)
-                            if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
-                            _dl(0.85, function() ks.isAttacking = false end)
-                        elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
-                            if not knifeThrown then return end
-                            local now = os.clock()
-                            if now - (ks._lastThrow or -999) < 1.0 then return end
-                            ks._lastThrow = now
-                            _dkStopAll()
-                            local myHRP = char:FindFirstChild("HumanoidRootPart")
-                            local cam   = workspace.CurrentCamera
-                            local targetCF = myHRP
-                                and CFrame.new(myHRP.Position, myHRP.Position + cam.CFrame.LookVector * 100)
-                                or cam.CFrame
-                            pcall(function() knifeThrown:FireServer(targetCF, targetCF) end)
-                        end
-                    end)
+                    -- FIX BUG 2: _dkRearm centraliza el re-arm completo (pose+clon+inputConn+tracks)
+                    -- Elimina el inputConn inline duplicado que habia aqui
+                    _dkRearm(ks)
                 end)
             end
             -- Re-iniciar Dual Gun si estaba activo
