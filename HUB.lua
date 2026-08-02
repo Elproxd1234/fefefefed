@@ -45694,6 +45694,8 @@ function CreateCombatTab()
             if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
             if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
             if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
+            -- Limpiar hook AnimationPlayed del custom anim
+            if _dkAnimPlayedConn then pcall(function() _dkAnimPlayedConn:Disconnect() end); _dkAnimPlayedConn = nil end
             -- Limpiar clon si existe
             local char = LocalPlayer.Character
             if char then
@@ -45711,6 +45713,48 @@ function CreateCombatTab()
         -- ==============================================================
         local _dkAnimTracks  = {}   -- { slotA = track, slotB = track }
         local _dkToggle      = false
+
+        -- CUSTOM ANIM SYSTEM: IDs configurables por el usuario (igual al script externo)
+        -- Cuando enabled=true, _dkPreloadTracks carga estos IDs en slotA/slotB
+        -- y _dkKillNativeSlash bloquea el slash nativo en AnimationPlayed tambien.
+        local _dkCustomAnim = {
+            enabled  = true,   -- AUTO: siempre activo con Dual Knife
+            idleAnim = "rbxassetid://85267536017874",  -- ID quieto (configurable)
+            runAnim  = "rbxassetid://99847966455703",  -- ID corriendo (configurable)
+        }
+        -- Hook AnimationPlayed para bloquear slash nativo en tiempo real
+        local _dkAnimPlayedConn = nil
+
+        -- Conectar/desconectar el hook de AnimationPlayed segun el toggle custom
+        local function _dkSetupAnimPlayedHook()
+            if _dkAnimPlayedConn then
+                pcall(function() _dkAnimPlayedConn:Disconnect() end)
+                _dkAnimPlayedConn = nil
+            end
+            if not _dkCustomAnim.enabled then return end
+            local char = LocalPlayer.Character
+            if not char then return end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local animator = hum and hum:FindFirstChildOfClass("Animator")
+            if not animator then return end
+            _dkAnimPlayedConn = animator.AnimationPlayed:Connect(function(track)
+                -- Solo bloquear si el Dual Knife esta activo y el custom anim esta ON
+                if not (_G._dualKnifeState and _G._dualKnifeState.enabled) then return end
+                if not _dkCustomAnim.enabled then return end
+                -- Verificar que hay un knife equipado
+                local tool = char:FindFirstChildOfClass("Tool")
+                if not tool or not _dualMatchKeywords(tool, _dualKnifeKeywords) then return end
+                -- Bloquear slash/stab/attack nativos (Priority != Action4 = no son nuestros)
+                if track.Priority ~= Enum.AnimationPriority.Action4 then
+                    local id = (track.Animation and track.Animation.AnimationId or ""):lower()
+                    local nm = (track.Name or ""):lower()
+                    if nm:find("slash") or nm:find("stab") or nm:find("hit") or nm:find("attack")
+                       or id:find("slash") or id:find("stab") or id:find("attack") then
+                        pcall(function() track:Stop(0) end)
+                    end
+                end
+            end)
+        end
 
         local function _dkGetAnimator()
             local char = LocalPlayer.Character
@@ -45751,6 +45795,38 @@ function CreateCombatTab()
             if not animator then return end
 
             _dkAnimTracks = {}
+
+            -- 0. CUSTOM ANIM: si el usuario configuro IDs propios, usarlos directamente
+            if _dkCustomAnim.enabled then
+                local function _loadCustomId(id)
+                    if not id or id == "" then return nil end
+                    -- asegurar formato rbxassetid://
+                    if not id:find("rbxassetid://") and not id:find("http") then
+                        id = "rbxassetid://" .. id
+                    end
+                    local ok, tr = pcall(function()
+                        local a = Instance.new("Animation")
+                        a.AnimationId = id
+                        a.Parent = tool  -- necesario para LoadAnimation en algunos executors
+                        local t = animator:LoadAnimation(a)
+                        t.Priority = Enum.AnimationPriority.Action4
+                        a.Parent = nil   -- limpiar despues de cargar
+                        return t
+                    end)
+                    return ok and tr or nil
+                end
+                local char = LocalPlayer.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                local isMoving = hum and hum.MoveDirection.Magnitude > 0.1
+                -- slotA = quieto, slotB = corriendo (o mismo si no hay runAnim)
+                _dkAnimTracks.slotA = _loadCustomId(_dkCustomAnim.idleAnim)
+                _dkAnimTracks.slotB = _loadCustomId(_dkCustomAnim.runAnim)
+                    or _dkAnimTracks.slotA
+                print("[DK] slotA=", _dkAnimTracks.slotA, "slotB=", _dkAnimTracks.slotB)
+                -- Re-hookear AnimationPlayed por si el char cambio
+                _dkSetupAnimPlayedHook()
+                return  -- no seguir con la logica nativa
+            end
 
             -- 1. Recopilar todas las anims del knife
             local allAnims = {}
@@ -45808,7 +45884,7 @@ function CreateCombatTab()
             for _, t in ipairs(playing) do
                 if t.Priority ~= Enum.AnimationPriority.Action4 then
                     local n = (t.Name or ""):lower()
-                    if n:find("slash") or n:find("stab") or n:find("hit") or n:find("animation1") or n:find("attack") then
+                    if n:find("slash") or n:find("stab") or n:find("hit") or n:find("attack") then
                         pcall(function() t:Stop(0) end)
                     end
                 end
@@ -45823,6 +45899,13 @@ function CreateCombatTab()
 
         local function _dkPlaySlot(slot, speed)
             speed = speed or 1.0
+            -- Si custom anim ON: elegir slot segun movimiento (idle=slotA, run=slotB)
+            if _dkCustomAnim.enabled then
+                local char = LocalPlayer.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                local isMoving = hum and hum.MoveDirection.Magnitude > 0.1
+                slot = isMoving and "slotB" or "slotA"
+            end
             -- FIX: matar nativa en el mismo frame del input (sin yield)
             _dkKillNativeSlash()
 
@@ -45853,6 +45936,7 @@ function CreateCombatTab()
             -- Segunda pasada post-yield (atrapa lo que el servidor disparó en ese frame)
             _dkKillNativeSlash()
 
+            print("[DK] Playing track:", slot, track)
             pcall(function() track:Play(0.05); track:AdjustSpeed(speed) end)
         end
 
@@ -45910,7 +45994,9 @@ function CreateCombatTab()
 
                 -- FIX DUAL KNIFE v10: preload sincrono ANTES de crear inputConn
                 -- para que los tracks esten disponibles en el primer click del usuario.
+                _dkCustomAnim.enabled = true
                 _dkPreloadTracks()
+                _dkSetupAnimPlayedHook()
 
                 state.inputConn = UserInputService.InputBegan:Connect(function(input, gp)
                     if gp then return end
@@ -45937,10 +46023,8 @@ function CreateCombatTab()
                         if now - (state._lastStab or -999) < 0.85 then return end
                         state.isAttacking = true
                         state._lastStab   = now
-                        _dkToggle = not _dkToggle
-                        -- Reproducir en este hilo (sin task.spawn) para que
-                        -- _dkKillNativeSlash acte en el mismo frame del input
-                        _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
+                        -- Reproducir anim custom en spawn
+                        _sp(function() _dkPlaySlot("slotA", 1.0) end)
                         if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                         _dl(0.85, function() state.isAttacking = false end)
 
@@ -45978,6 +46062,7 @@ function CreateCombatTab()
                         _dualStartArm(state, _dualKnifeKeywords)
                         if state.inputConn then pcall(function() state.inputConn:Disconnect() end); state.inputConn = nil end
                         _dkPreloadTracks()  -- FIX v10: sincrono
+                        _dkSetupAnimPlayedHook()
                     end
                 end)
 
@@ -46003,6 +46088,7 @@ function CreateCombatTab()
                             _dualStartArm(state, _dualKnifeKeywords)
                             if state.inputConn then pcall(function() state.inputConn:Disconnect() end); state.inputConn = nil end
                             _dkPreloadTracks()  -- FIX v10: sincrono
+                            _dkSetupAnimPlayedHook()
                         end
                     end)
                 end
@@ -46028,6 +46114,9 @@ function CreateCombatTab()
                         if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
                     end
                 end
+                -- AUTO: desactivar anim custom al apagar Dual Knife
+                _dkCustomAnim.enabled = false
+                if _dkAnimPlayedConn then pcall(function() _dkAnimPlayedConn:Disconnect() end); _dkAnimPlayedConn = nil end
                 CreateCustomNotification("DUAL KNIFE", "X Desactivado", 2)
             end
         end, false)
@@ -46233,8 +46322,8 @@ function CreateCombatTab()
                             if now - (ks._lastStab or -999) < 0.85 then return end
                             ks.isAttacking = true
                             ks._lastStab   = now
-                            _dkToggle = not _dkToggle
-                            _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
+                            -- Reproducir anim custom en spawn
+                            _sp(function() _dkPlaySlot("slotA", 1.0) end)
                             if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                             _dl(0.85, function() ks.isAttacking = false end)
                         elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
