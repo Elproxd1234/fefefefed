@@ -36336,26 +36336,6 @@ function CreatePremiumTab()
 
         local _SC_KNIFE_SKINS = {
             {
-                -- Icebreaker: MeshPart -- IDs del ZERQON Skin Changer (Icebreaker Edition)
-                name      = "Icebreaker",
-                meshId    = "rbxassetid://6124173614",
-                texId     = "rbxassetid://6124173821",
-                scale     = Vector3.new(0.056, 0.056, 0.056),
-                grip      = _KNIFE_GRIP_STD,
-                dualKnife = true,
-            },
-            {
-                -- Corrupt: SpecialMesh -- IDs capturados via MM2 Skin Analyzer
-                -- FIX INVISIBLE: URLs http:// no resuelven en executors modernos -> usar rbxassetid://
-                name         = "Corrupt",
-                meshId       = "rbxassetid://121944778",
-                texId        = "rbxassetid://162016526",
-                scale        = Vector3.new(0.056, 0.056, 0.056),
-                grip         = _KNIFE_GRIP_STD,
-                dualKnife    = true,
-                forceVisible = true,
-            },
-            {
                 -- Turkey: SpecialMesh -- IDs capturados via MM2 Skin Analyzer
                 name      = "Turkey",
                 meshId    = "rbxassetid://15320557481",
@@ -36363,18 +36343,6 @@ function CreatePremiumTab()
                 scale     = Vector3.new(0.0560000017285347, 0.0560000017285347, 0.0560000017285347),
                 grip      = _KNIFE_GRIP_STD,
                 dualKnife = true,
-            },
-            {
-                -- Celestial: MeshPart -- IDs capturados via MM2 Skin Analyzer
-                -- FIX TEXTURE: ID moderno (15 dig) no carga en SpecialMesh.TextureId
-                -- -> meshPartOnly=true: solo aplica TextureID directo al MeshPart, sin inyectar SpecialMesh
-                name         = "Celestial",
-                meshId       = "rbxassetid://109711282082830",
-                texId        = "rbxassetid://117556526686597",
-                scale        = Vector3.new(0.056, 0.056, 0.056),
-                grip         = _KNIFE_GRIP_STD,
-                dualKnife    = true,
-                meshPartOnly = true,
             },
             {
                 -- Candleflame: MeshPart -- IDs capturados via MM2 Skin Analyzer
@@ -36424,15 +36392,14 @@ function CreatePremiumTab()
                                     obj.TextureId = eData.Texture
                                     obj.Scale     = eData.Scale
                                 elseif obj:IsA("MeshPart") then
-                                    obj.TextureID = eData.Texture
-                                    -- FIX MOBILE v3: destruir el SpecialMesh que inyectamos
-                                    if eData._injectedSM and eData._injectedSM.Parent then
-                                        pcall(function() eData._injectedSM:Destroy() end)
-                                    else
-                                        -- Si no lo trackiamos (compat), igual buscamos y destruimos
-                                        local _sm = obj:FindFirstChildOfClass("SpecialMesh")
-                                        if _sm then pcall(function() _sm:Destroy() end) end
+                                    -- Restaurar MeshId y TextureID originales
+                                    if eData.Mesh then
+                                        obj.MeshId = eData.Mesh
                                     end
+                                    obj.TextureID = eData.Texture
+                                    -- Destruir cualquier SpecialMesh inyectado que cause invisibilidad
+                                    local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                                    if _sm then pcall(function() _sm:Destroy() end) end
                                 end
                             end)
                         end
@@ -36451,41 +36418,32 @@ function CreatePremiumTab()
 
         -- LOGICA DIRECTA SOBRE EL HANDLE (como el Rayfield skin changer)
         -- Aplica para TODOS los tipos de knife sin importar si el Handle es MeshPart o BasePart:
-        --   1. Handle MeshPart  -> MeshId readonly, inyectar SpecialMesh hijo
-        --   2. Handle BasePart con SpecialMesh hijo  -> pisar MeshId/TextureId/Scale
-        --   3. Handle BasePart sin SpecialMesh (legacy)  -> pisar directo
+        --   1. Handle MeshPart  -> escribir MeshId y TextureID directamente (executor lo permite)
+        --                          NUNCA inyectar SpecialMesh: un SM dentro de MeshPart vuelve
+        --                          el part completamente invisible en Roblox.
+        --   2. Handle BasePart con SpecialMesh hijo  -> pisar MeshId/TextureId/Scale del SM
+        --   3. Handle BasePart sin SpecialMesh (legacy)  -> pisar MeshId/TextureID directo
         local function _applyToAnyHandle(handle, skin, tool)
             if not handle or not skin then return end
-            -- FIX CORRUPT INVISIBLE: forzar visibilidad cuando la skin lo requiere
-            if skin.forceVisible then
-                pcall(function() handle.Transparency = 0; handle.LocalTransparencyModifier = 0 end)
-            end
+            -- Forzar visibilidad siempre para evitar que sistemas externos dejen el knife invisible
+            pcall(function() handle.Transparency = 0; handle.LocalTransparencyModifier = 0 end)
             if handle:IsA("MeshPart") then
-                -- MeshId es readonly en LocalScript sobre MeshPart
+                -- En executor, MeshPart.MeshId SI es escribible (a diferencia de LocalScript).
+                -- Escribir MeshId + TextureID directamente: es la unica forma correcta.
+                -- NUNCA inyectar SpecialMesh en un MeshPart: lo vuelve invisible.
                 if not _skinState.origData[tool].Elements[handle] then
                     _skinState.origData[tool].Elements[handle] = {
-                        Texture     = handle.TextureID,
-                        _injectedSM = nil,
+                        Mesh    = handle.MeshId,
+                        Texture = handle.TextureID,
                     }
                 end
-                pcall(function() handle.TextureID = skin.texId end)
-                -- meshPartOnly: NO inyectar SpecialMesh (IDs modernos de 15+ dig no cargan
-                -- en SpecialMesh.TextureId y pueden corromper el render del MeshPart).
-                -- Solo usar TextureID directo del MeshPart.
-                if not skin.meshPartOnly then
-                    pcall(function()
-                        local _sm = handle:FindFirstChildOfClass("SpecialMesh")
-                        if not _sm then
-                            _sm = Instance.new("SpecialMesh")
-                            _sm.MeshType = Enum.MeshType.FileMesh
-                            _sm.Parent   = handle
-                            _skinState.origData[tool].Elements[handle]._injectedSM = _sm
-                        end
-                        _sm.MeshId    = skin.meshId
-                        _sm.TextureId = skin.texId
-                        _sm.Scale     = skin.scale
-                    end)
-                end
+                -- Destruir cualquier SpecialMesh inyectado previamente que cause invisibilidad
+                local _existingSM = handle:FindFirstChildOfClass("SpecialMesh")
+                if _existingSM then pcall(function() _existingSM:Destroy() end) end
+                pcall(function()
+                    handle.MeshId    = skin.meshId
+                    handle.TextureID = skin.texId
+                end)
             else
                 -- BasePart: primero buscar SpecialMesh hijo
                 local specialMesh = handle:FindFirstChildOfClass("SpecialMesh")
@@ -36524,27 +36482,22 @@ function CreatePremiumTab()
             -- El DK_Clone ES el handle clonado directamente (no un Tool con Handle hijo)
             -- Tratar el container como el handle mismo
             local function _applyMeshToObj(obj)
-                -- FIX CORRUPT INVISIBLE: forzar visibilidad en cualquier BasePart del clon
-                if skin.forceVisible and obj:IsA("BasePart") then
+                -- Forzar visibilidad siempre en cualquier BasePart
+                if obj:IsA("BasePart") then
                     pcall(function() obj.Transparency = 0; obj.LocalTransparencyModifier = 0 end)
                 end
                 if obj:IsA("MeshPart") then
-                    pcall(function() obj.TextureID = skin.texId end)
-                    -- meshPartOnly: no inyectar SpecialMesh para IDs modernos de 15+ dig
-                    if not skin.meshPartOnly then
-                        pcall(function()
-                            local _sm = obj:FindFirstChildOfClass("SpecialMesh")
-                            if not _sm then
-                                _sm = Instance.new("SpecialMesh")
-                                _sm.MeshType = Enum.MeshType.FileMesh
-                                _sm.Parent   = obj
-                            end
-                            _sm.MeshId    = skin.meshId
-                            _sm.TextureId = skin.texId
-                            _sm.Scale     = skin.scale
-                        end)
-                    end
+                    -- FIX INVISIBLE: NUNCA inyectar SpecialMesh en MeshPart — lo vuelve invisible.
+                    -- En executor, MeshPart.MeshId es escribible directo.
+                    -- Destruir SM inyectados previos si existen
+                    local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                    if _sm then pcall(function() _sm:Destroy() end) end
+                    pcall(function()
+                        obj.MeshId    = skin.meshId
+                        obj.TextureID = skin.texId
+                    end)
                 elseif obj:IsA("SpecialMesh") then
+                    -- SM propio del BasePart (no inyectado): actualizar normalmente
                     pcall(function()
                         obj.MeshId    = skin.meshId
                         obj.TextureId = skin.texId
@@ -36603,11 +36556,12 @@ function CreatePremiumTab()
             -- Recorrer el resto de descendants por partes decorativas adicionales
             for _, obj in pairs(tool:GetDescendants()) do
                 if obj.Name ~= "Handle" then
-                    -- FIX CORRUPT INVISIBLE: forzar visibilidad en todos los BasePart del tool
-                    if skin.forceVisible and obj:IsA("BasePart") then
+                    -- Forzar visibilidad en todos los BasePart del tool siempre
+                    if obj:IsA("BasePart") then
                         pcall(function() obj.Transparency = 0; obj.LocalTransparencyModifier = 0 end)
                     end
                     if obj:IsA("SpecialMesh") then
+                        -- SM propio de un BasePart: actualizar normalmente
                         if not _skinState.origData[tool].Elements[obj] then
                             _skinState.origData[tool].Elements[obj] = {
                                 Mesh = obj.MeshId, Texture = obj.TextureId, Scale = obj.Scale
@@ -36619,26 +36573,21 @@ function CreatePremiumTab()
                             obj.Scale     = skin.scale
                         end)
                     elseif obj:IsA("MeshPart") then
+                        -- FIX INVISIBLE: escribir MeshId+TextureID directo en MeshPart.
+                        -- Nunca inyectar SpecialMesh en MeshPart: lo vuelve invisible.
                         if not _skinState.origData[tool].Elements[obj] then
                             _skinState.origData[tool].Elements[obj] = {
-                                Texture = obj.TextureID, _injectedSM = nil,
+                                Mesh    = obj.MeshId,
+                                Texture = obj.TextureID,
                             }
                         end
-                        pcall(function() obj.TextureID = skin.texId end)
-                        if not skin.meshPartOnly then
-                            pcall(function()
-                                local _sm = obj:FindFirstChildOfClass("SpecialMesh")
-                                if not _sm then
-                                    _sm = Instance.new("SpecialMesh")
-                                    _sm.MeshType = Enum.MeshType.FileMesh
-                                    _sm.Parent   = obj
-                                    _skinState.origData[tool].Elements[obj]._injectedSM = _sm
-                                end
-                                _sm.MeshId    = skin.meshId
-                                _sm.TextureId = skin.texId
-                                _sm.Scale     = skin.scale
-                            end)
-                        end
+                        -- Destruir SM inyectados previos si existen
+                        local _existSM = obj:FindFirstChildOfClass("SpecialMesh")
+                        if _existSM then pcall(function() _existSM:Destroy() end) end
+                        pcall(function()
+                            obj.MeshId    = skin.meshId
+                            obj.TextureID = skin.texId
+                        end)
                     end
                 end
             end
@@ -36812,14 +36761,11 @@ function CreatePremiumTab()
                                 obj.TextureId = eData.Texture
                                 obj.Scale     = eData.Scale
                             elseif obj:IsA("MeshPart") then
+                                -- FIX INVISIBLE: restaurar MeshId + TextureID, destruir SM si hay
+                                if eData.Mesh then obj.MeshId = eData.Mesh end
                                 obj.TextureID = eData.Texture
-                                -- FIX MOBILE v3: destruir SpecialMesh inyectado en swap
-                                if eData._injectedSM and eData._injectedSM.Parent then
-                                    pcall(function() eData._injectedSM:Destroy() end)
-                                else
-                                    local _sm = obj:FindFirstChildOfClass("SpecialMesh")
-                                    if _sm then pcall(function() _sm:Destroy() end) end
-                                end
+                                local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                                if _sm then pcall(function() _sm:Destroy() end) end
                             end
                         end)
                     end
@@ -36988,13 +36934,11 @@ function CreatePremiumTab()
                                     obj.TextureId = eData.Texture
                                     obj.Scale     = eData.Scale
                                 elseif obj:IsA("MeshPart") then
+                                    -- FIX INVISIBLE: restaurar MeshId + TextureID, destruir SM si hay
+                                    if eData.Mesh then obj.MeshId = eData.Mesh end
                                     obj.TextureID = eData.Texture
-                                    if eData._injectedSM and eData._injectedSM.Parent then
-                                        pcall(function() eData._injectedSM:Destroy() end)
-                                    else
-                                        local _sm = obj:FindFirstChildOfClass("SpecialMesh")
-                                        if _sm then pcall(function() _sm:Destroy() end) end
-                                    end
+                                    local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                                    if _sm then pcall(function() _sm:Destroy() end) end
                                 end
                             end)
                         end
@@ -45390,13 +45334,7 @@ function CreateCombatTab()
 
         -- -- NOMBRES EXACTOS de tools en MM2 (fix: antes usaba string.find parcial
         -- que clonaba cualquier handle de cualquier tool con nombre similar) --------
-        -- FIX DUAL KNIFE v10: ampliar nombres exactos + detector por KnifeClient/blade
-        -- Antes solo matcheaba Knife/VIPKnife/GodKnife -> no funcionaba con DefaultKnife,
-        -- MurderKnife ni skins con nombre personalizado que siguen teniendo KnifeClient.
-        local _dualKnifeNames = {
-            Knife=true, VIPKnife=true, GodKnife=true,
-            DefaultKnife=true, MurderKnife=true, KnifeHandle=true,
-        }
+        local _dualKnifeNames = { Knife=true, VIPKnife=true, GodKnife=true }
         local _dualGunNames   = { Gun=true, SheriffGun=true, HeroGun=true, GunDrop=true }
 
         -- _dualKnifeKeywords/_dualGunKeywords se reusan como identificadores de modo
@@ -45405,23 +45343,8 @@ function CreateCombatTab()
 
         local function _dualMatchKeywords(tool, nameSet)
             if not tool then return false end
-            -- Comparacion de nombre EXACTO primero
-            if nameSet[tool.Name] == true then return true end
-            -- FIX DUAL KNIFE v10: fallback por estructura interna para knives con nombre custom
-            -- (skins, variantes de servidor) que no estan en la lista exacta pero son cuchillos reales.
-            -- Solo aplica cuando nameSet es el de knives (tiene la clave "Knife").
-            if nameSet == _dualKnifeNames then
-                local n = tool.Name:lower()
-                -- Excluir explicitamente guns/bombs/otros
-                if n:find("gun") or n:find("sheriff") or n:find("revolver")
-                   or n:find("bomb") or n:find("snow") or tool:FindFirstChild("GunClient") then
-                    return false
-                end
-                -- Es un knife real si tiene KnifeClient, o el nombre contiene "knife"/"blade"
-                if tool:FindFirstChild("KnifeClient") then return true end
-                if n:find("knife") or n:find("blade") then return true end
-            end
-            return false
+            -- Comparacion de nombre EXACTO — no matchea nada con string.find parcial
+            return nameSet[tool.Name] == true
         end
 
         -- -- ESTADO GLOBAL DUAL --------------------------------------------
@@ -45580,19 +45503,24 @@ function CreateCombatTab()
                 -- Verificar que el handle pertenece a la tool correcta (no a otra tool del char)
                 if handle.Parent ~= tool then return end
 
-                -- FIX GRIP DK ESPEJO: obtener el grip real del tool (C0 puede estar pisado por skin changer).
-                -- Prioridad: 1) origData del skin changer (grip original MM2)
-                --            2) tool.Grip actual
-                --            3) grip.C0 del RightGrip (fallback)
+                -- FIX GRIP DK ESPEJO / CLON ACOSTADO: obtener el grip original MM2 del tool.
+                -- Prioridad: 1) origData del skin changer (guardado ANTES de pisar con skin grip)
+                --            2) cache propio del dual knife (guardado al crear el clon)
+                --            3) nil -> fallback a grip.C0 del RightGrip en el caller
+                -- NUNCA leer tool.Grip aqui si el skin changer esta activo: ya fue pisado
+                -- con _KNIFE_GRIP_STD y causaria el clon "acostado" en la mano izquierda.
                 local function _getOrigGripCF()
                     local sc = _G._skinChangerState
                     if sc and sc.origData and sc.origData[tool] and sc.origData[tool].Grip then
                         return sc.origData[tool].Grip
                     end
-                    -- Caché propio del dual knife (se guarda al crear el clon)
+                    -- Cache propio del dual knife (guardado al crear el clon por primera vez)
                     if state._origGripCache and state._origGripTool == tool then
                         return state._origGripCache
                     end
+                    -- Skin changer inactivo: tool.Grip es el grip MM2 limpio, seguro de leer
+                    local ok, gf = pcall(function() return tool.Grip end)
+                    if ok and gf then return gf end
                     return nil
                 end
 
@@ -45603,7 +45531,10 @@ function CreateCombatTab()
                         local origGrip = _getOrigGripCF()
                         local gCF = origGrip or grip.C0
                         local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = gCF:GetComponents()
-                        w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                        -- FIX ESPEJO: formula correcta M*R*M donde M=diag(-1,1,1)
+                        -- Negar X en pos; en rot: r01,r02,r10,r20 se niegan, resto igual.
+                        -- Esto preserva det=+1 (rotacion valida) evitando el clon flotando.
+                        w.C0 = CFrame.new(-px, py, pz, r00, -r01, -r02, -r10, r11, r12, -r20, r21, r22)
                         w.C1 = grip.C1
                     end
                     -- FIX DUAL INVISIBLE: mantener el clon visible aunque el handle cambie de transparencia
@@ -45645,23 +45576,35 @@ function CreateCombatTab()
                 weld.Name  = "MirrorWeld"
                 weld.Part0 = lHand
                 weld.Part1 = clon
-                -- FIX GRIP DK ESPEJO: usar grip original MM2, no el grip pisado por skin changer.
-                -- Prioridad: origData del skin changer → tool.Grip actual → grip.C0 del RightGrip
+                -- FIX CLON ACOSTADO: usar SIEMPRE el grip guardado en origData ANTES
+                -- de que el skin changer lo pisara. Si el skin changer ya actuó y pisó
+                -- tool.Grip con _KNIFE_GRIP_STD, el espejo queda con orientación incorrecta
+                -- (clon "acostado"). La única fuente fiable es origData[tool].Grip que se
+                -- guarda justo antes de la primera aplicación de skin (grip MM2 original).
+                -- Si origData no existe todavía (skin changer inactivo), leer tool.Grip
+                -- actual que en ese caso es el grip limpio de MM2.
                 local _origGripCF = nil
                 local sc = _G._skinChangerState
                 if sc and sc.origData and sc.origData[tool] and sc.origData[tool].Grip then
+                    -- Skin changer ya actuó: usar grip original guardado antes del piso
                     _origGripCF = sc.origData[tool].Grip
+                elseif state._origGripCache and state._origGripTool == tool then
+                    -- Cache propio del dual knife de creaciones anteriores
+                    _origGripCF = state._origGripCache
                 else
-                    -- Intentar leer tool.Grip antes de que el skin changer lo pise
+                    -- Skin changer inactivo: tool.Grip es el grip MM2 limpio
                     pcall(function() _origGripCF = tool.Grip end)
                 end
-                -- Si ninguno, caer al RightGrip.C0 actual
+                -- Fallback final: RightGrip.C0
                 if not _origGripCF then _origGripCF = grip.C0 end
                 -- Guardar cache para el update loop del renderConn
                 state._origGripCache = _origGripCF
                 state._origGripTool  = tool
                 local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = _origGripCF:GetComponents()
-                weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                -- FIX ESPEJO: formula correcta M*R*M donde M=diag(-1,1,1)
+                -- Negar X en pos; en rot: r01,r02,r10,r20 se niegan, resto igual.
+                -- Preserva det=+1 => rotacion valida => clon en mano izquierda correctamente.
+                weld.C0 = CFrame.new(-px, py, pz, r00, -r01, -r02, -r10, r11, r12, -r20, r21, r22)
                 weld.C1 = grip.C1
 
                 -- HOOK PREMIUM SKIN: solo aplicar skin al clon si es Dual Gun (no Dual Knife)
