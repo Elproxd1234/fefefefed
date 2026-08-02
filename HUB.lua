@@ -8465,22 +8465,8 @@ function updateBindables()
                     end
                 end
             end
-            -- PC: click izquierdo
-            shootBtnGui.Frame.MouseButton1Click:Connect(_doShootMurderer)
-            -- MOBILE: touch (TouchTap o Activated)
-            pcall(function()
-                shootBtnGui.Frame.TouchTap:Connect(function()
-                    _doShootMurderer()
-                end)
-            end)
-            -- Fallback mobile: InputBegan sobre el boton
-            pcall(function()
-                shootBtnGui.Frame.InputBegan:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.Touch then
-                        _doShootMurderer()
-                    end
-                end)
-            end)
+            -- FIX MOBILE v4: Activated cubre PC (MouseButton1Click) y touch en un solo evento
+            shootBtnGui.Frame.Activated:Connect(_doShootMurderer)
         end
     else
         if shootBtnGui then
@@ -10796,6 +10782,9 @@ function _makeTwoColumns()
     lCol.ScrollBarImageColor3 = ThemeColors.Primary
     lCol.CanvasSize = UDim2.new(0,0,0,0)
     lCol.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    -- FIX MOBILE v4: scroll más suave en touch (WhenScrollable evita el bounce en PC)
+    lCol.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
+    lCol.ScrollingDirection = Enum.ScrollingDirection.Y
 
     local rCol
     if _useDoubleCol then
@@ -33072,19 +33061,8 @@ function CreateWorldUI_ShiftLock()
                 end)
             end
 
-            -- PC: click
-            pcall(function() _slBtn.Frame.MouseButton1Click:Connect(_onPress) end)
-            -- Mobile: touch
-            pcall(function()
-                _slBtn.Frame.TouchTap:Connect(_onPress)
-            end)
-            pcall(function()
-                _slBtn.Frame.InputBegan:Connect(function(inp)
-                    if inp.UserInputType == Enum.UserInputType.Touch then
-                        _onPress()
-                    end
-                end)
-            end)
+            -- FIX MOBILE v4: Activated cubre PC y touch en un solo evento
+            pcall(function() _slBtn.Frame.Activated:Connect(_onPress) end)
         end
     end, false)
 end
@@ -36427,6 +36405,14 @@ function CreatePremiumTab()
                                     obj.Scale     = eData.Scale
                                 elseif obj:IsA("MeshPart") then
                                     obj.TextureID = eData.Texture
+                                    -- FIX MOBILE v3: destruir el SpecialMesh que inyectamos
+                                    if eData._injectedSM and eData._injectedSM.Parent then
+                                        pcall(function() eData._injectedSM:Destroy() end)
+                                    else
+                                        -- Si no lo trackiamos (compat), igual buscamos y destruimos
+                                        local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                                        if _sm then pcall(function() _sm:Destroy() end) end
+                                    end
                                 end
                             end)
                         end
@@ -36461,9 +36447,14 @@ function CreatePremiumTab()
                     task.wait(0.016)
                     if _skinState.enabled and _skinState._equippedConns[tool] then
                         pcall(function() tool.Grip = skin.grip end)
-                        -- re-verificar un frame despues (animacion puede pisar el grip)
                         task.wait(0.1)
                         pcall(function() tool.Grip = skin.grip end)
+                        -- FIX MOBILE v3: un tercer re-check a 0.4s porque animaciones
+                        -- de equipado en mobile terminan mas tarde que en PC
+                        task.wait(0.3)
+                        if _skinState.enabled then
+                            pcall(function() tool.Grip = skin.grip end)
+                        end
                     end
                 end)
             end
@@ -36482,9 +36473,30 @@ function CreatePremiumTab()
                     end)
                 elseif obj:IsA("MeshPart") then
                     if not _skinState.origData[tool].Elements[obj] then
-                        _skinState.origData[tool].Elements[obj] = { Texture = obj.TextureID }
+                        -- FIX MOBILE v3: guardar textura original Y SpecialMesh injected si ya habia uno
+                        local _existSM = obj:FindFirstChildOfClass("SpecialMesh")
+                        _skinState.origData[tool].Elements[obj] = {
+                            Texture    = obj.TextureID,
+                            _injectedSM = nil,  -- se llena abajo si creamos uno nuevo
+                        }
                     end
                     pcall(function() obj.TextureID = skin.texId end)
+                    -- FIX MOBILE v3: MeshPart.MeshId es readonly desde LocalScript.
+                    -- Insertamos un SpecialMesh hijo para forzar el cambio de forma y scale.
+                    -- Roblox renderiza el SpecialMesh sobre el MeshPart cuando ambos existen.
+                    pcall(function()
+                        local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                        if not _sm then
+                            _sm = Instance.new("SpecialMesh")
+                            _sm.MeshType = Enum.MeshType.FileMesh
+                            _sm.Parent   = obj
+                            -- Marcar que lo creamos nosotros para el reset
+                            _skinState.origData[tool].Elements[obj]._injectedSM = _sm
+                        end
+                        _sm.MeshId    = skin.meshId
+                        _sm.TextureId = skin.texId
+                        _sm.Scale     = skin.scale
+                    end)
                 end
             end
             -- FIX GRIP: NO tocar rg.C1 del Motor6D — Roblox lo maneja solo al equipar.
@@ -36503,7 +36515,19 @@ function CreatePremiumTab()
                                 obj.Scale     = skin.scale
                             end)
                         elseif obj:IsA("MeshPart") then
-                            pcall(function() obj.TextureID = skin.texId end)
+                            pcall(function()
+                                obj.TextureID = skin.texId
+                                -- FIX MOBILE v3: inyectar SpecialMesh en DK_Clone tambien
+                                local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                                if not _sm then
+                                    _sm = Instance.new("SpecialMesh")
+                                    _sm.MeshType = Enum.MeshType.FileMesh
+                                    _sm.Parent   = obj
+                                end
+                                _sm.MeshId    = skin.meshId
+                                _sm.TextureId = skin.texId
+                                _sm.Scale     = skin.scale
+                            end)
                         end
                     end
                 end
@@ -36526,7 +36550,7 @@ function CreatePremiumTab()
                 end
             end
             if not _hasMesh then
-                -- Esperar a que llegue el primer mesh (timeout 2s)
+                -- FIX MOBILE v3: timeout extendido a 4s y re-intento cada 0.1s
                 task.spawn(function()
                     local _t = 0
                     repeat
@@ -36536,9 +36560,15 @@ function CreatePremiumTab()
                                 _hasMesh = true; break
                             end
                         end
-                    until _hasMesh or _t >= 2 or not tool.Parent
+                    until _hasMesh or _t >= 4 or not tool.Parent
                     if tool.Parent and _skinState.enabled then
                         _scApplyInner(tool, skin)
+                        -- Re-aplicar 0.5s despues por si el grip se pisa en mobile
+                        task.delay(0.5, function()
+                            if tool.Parent and _skinState.enabled then
+                                pcall(function() tool.Grip = skin.grip end)
+                            end
+                        end)
                     end
                 end)
                 return
@@ -36607,8 +36637,11 @@ function CreatePremiumTab()
                     end
                 end)
                 -- Re-check extra con delay por si la gun tarda en cargarse en mobile
-                task.delay(0.5, _scTryApplyGun)
-                task.delay(1.2, _scTryApplyGun)
+                -- FIX MOBILE v4: más delays cubre executors lentos (Delta, Arceus X)
+                task.delay(0.5,  _scTryApplyGun)
+                task.delay(1.2,  _scTryApplyGun)
+                task.delay(2.5,  _scTryApplyGun)
+                task.delay(4.0,  _scTryApplyGun)
             end
 
             local _scChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -36716,6 +36749,13 @@ function CreatePremiumTab()
                                 obj.Scale     = eData.Scale
                             elseif obj:IsA("MeshPart") then
                                 obj.TextureID = eData.Texture
+                                -- FIX MOBILE v3: destruir SpecialMesh inyectado en swap
+                                if eData._injectedSM and eData._injectedSM.Parent then
+                                    pcall(function() eData._injectedSM:Destroy() end)
+                                else
+                                    local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                                    if _sm then pcall(function() _sm:Destroy() end) end
+                                end
                             end
                         end)
                     end
@@ -36743,6 +36783,7 @@ function CreatePremiumTab()
                 _scApply(tool, _scGetSkin(), true)
             end
             -- Intentar de nuevo con delays por si la gun tarda en cargarse (mobile)
+            -- FIX MOBILE v4: extendido hasta 5s para executors lentos
             task.delay(0.3, function()
                 if not _skinState.enabled then return end
                 local gun2 = _findGunMobile()
@@ -36757,6 +36798,16 @@ function CreatePremiumTab()
                 if not _skinState.enabled then return end
                 local gun4 = _findGunMobile()
                 if gun4 then _scApply(gun4, _scGetSkin(), true) end
+            end)
+            task.delay(3.0, function()
+                if not _skinState.enabled then return end
+                local gun5 = _findGunMobile()
+                if gun5 then _scApply(gun5, _scGetSkin(), true) end
+            end)
+            task.delay(5.0, function()
+                if not _skinState.enabled then return end
+                local gun6 = _findGunMobile()
+                if gun6 then _scApply(gun6, _scGetSkin(), true) end
             end)
         end)
 
@@ -40081,9 +40132,9 @@ function CreateCombatTab()
                 TweenService:Create(bsaStroke, TweenInfo.new(0.12), {Transparency=0.1, Thickness=2}):Play()
             end)
 
-            -- Click: flash visual + disparar con gun flash
+            -- FIX MOBILE v4: Activated cubre MouseButton1Up en PC y TouchTap en mobile
             local _bsaLastShot = 0
-            bsaFill.MouseButton1Up:Connect(function()
+            bsaFill.Activated:Connect(function()
                 if _bDragging then return end
                 if not _bsaState.enabled then return end
                 local now = tick()
@@ -45381,7 +45432,19 @@ function CreateCombatTab()
                                         obj.Scale     = _cSkin.scale
                                     end)
                                 elseif obj:IsA("MeshPart") then
-                                    pcall(function() obj.TextureID = _cSkin.texId end)
+                                    pcall(function()
+                                        obj.TextureID = _cSkin.texId
+                                        -- FIX MOBILE v3: inyectar SpecialMesh en clon dual
+                                        local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                                        if not _sm then
+                                            _sm = Instance.new("SpecialMesh")
+                                            _sm.MeshType = Enum.MeshType.FileMesh
+                                            _sm.Parent   = obj
+                                        end
+                                        _sm.MeshId    = _cSkin.meshId
+                                        _sm.TextureId = _cSkin.texId
+                                        _sm.Scale     = _cSkin.scale
+                                    end)
                                 end
                             end
                         end
@@ -49128,9 +49191,13 @@ function CreateCombatTab()
                 return (x - abs.X) / math.max(siz.X, 1)
             end
 
-            _ssDrag.MouseButton1Down:Connect(function() _ssDragging = true end)
-            _ssDrag.MouseButton1Up:Connect(function() _ssDragging = false end)
-            _ssDrag.InputBegan:Connect(function(inp) if inp.UserInputType == Enum.UserInputType.Touch then _ssDragging = true end end)
+            -- FIX MOBILE v4: InputBegan cubre mouse y touch para drag start/stop
+            _ssDrag.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                or inp.UserInputType == Enum.UserInputType.Touch then
+                    _ssDragging = true
+                end
+            end)
             UserInputService.InputEnded:Connect(function(inp)
                 if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then _ssDragging = false end
             end)
@@ -49138,9 +49205,6 @@ function CreateCombatTab()
                 if _ssDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
                     _ssUpdate(_ssPct(inp.Position.X))
                 end
-            end)
-            _ssDrag.Activated:Connect(function()
-                _ssUpdate(_ssPct(UserInputService:GetMouseLocation().X))
             end)
             _ssDrag.Activated:Connect(function()
                 _ssUpdate(_ssPct(UserInputService:GetMouseLocation().X))
@@ -52684,13 +52748,12 @@ particles = {}
             _activateDragEffect()
         end
 
-        -- Conectar inicio de drag desde dragIcon (cubre el header completo)
-        dragIcon.MouseButton1Down:Connect(function()
-            local mp = UserInputService:GetMouseLocation()
-            _startDrag(Vector2.new(mp.X, mp.Y))
-        end)
+        -- FIX MOBILE v4: InputBegan cubre MouseButton1 y Touch en un solo listener
         dragIcon.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.Touch then
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                local mp = UserInputService:GetMouseLocation()
+                _startDrag(Vector2.new(mp.X, mp.Y))
+            elseif inp.UserInputType == Enum.UserInputType.Touch then
                 _startDrag(Vector2.new(inp.Position.X, inp.Position.Y))
             end
         end)
