@@ -36533,32 +36533,55 @@ function CreatePremiumTab()
                 _skinState.origData[tool] = { Grip = tool.Grip, Elements = {} }
             end
 
-            -- GRIP: NO sobreescribir cuando Dual Knife esta activo.
-            -- El DK usa el RightGrip real del tool para calcular el weld espejo;
-            -- pisarlo con _KNIFE_GRIP_STD deja el knife "acostado" en la mano izquierda.
+            -- GRIP: usar el grip REAL del tool (detectado en tiempo de ejecucion).
+            -- Si la tabla de skin trae un grip de fallback lo usamos solo cuando el
+            -- tool todavia no tiene un grip valido (CFrame identidad = arma sin hold).
+            -- De esta forma tanto gun como knife respetan la animacion nativa del juego.
             local _isDualKnifeActive = _G._dualKnifeEnabled == true
             if not _isDualKnifeActive then
-                pcall(function() tool.Grip = skin.grip end)
-            end
-
-            -- Re-aplicar grip en Equipped (mobile puede pisarlo al animar)
-            -- Solo cuando Dual Knife NO esta activo, por la misma razon.
-            if not _skinState._equippedConns then _skinState._equippedConns = {} end
-            if not _skinState._equippedConns[tool] then
-                _skinState._equippedConns[tool] = tool.Equipped:Connect(function()
-                    task.wait(0.016)
-                    if _skinState.enabled and _skinState._equippedConns[tool] then
-                        if not (_G._dualKnifeEnabled == true) then
-                            pcall(function() tool.Grip = skin.grip end)
-                            task.wait(0.1)
-                            pcall(function() tool.Grip = skin.grip end)
-                            task.wait(0.3)
-                            if _skinState.enabled then
-                                pcall(function() tool.Grip = skin.grip end)
+                -- Leer el grip nativo del tool antes de pisarlo
+                local _nativeGrip = nil
+                pcall(function() _nativeGrip = tool.Grip end)
+                -- Considerar "identidad" si todos los componentes son ~0 / ~1 en diagonal
+                local function _isIdentity(cf)
+                    if not cf then return true end
+                    local p = cf.Position
+                    if math.abs(p.X) > 0.001 or math.abs(p.Y) > 0.001 or math.abs(p.Z) > 0.001 then
+                        return false  -- tiene offset de posicion: es un grip real
+                    end
+                    -- Sin offset de posicion: verificar si hay rotacion
+                    local rx, ry, rz = cf:ToEulerAnglesXYZ()
+                    return math.abs(rx) < 0.001 and math.abs(ry) < 0.001 and math.abs(rz) < 0.001
+                end
+                local _gripToApply = (_nativeGrip and not _isIdentity(_nativeGrip))
+                    and _nativeGrip   -- grip nativo valido: usarlo tal cual
+                    or  skin.grip     -- fallback: grip de la tabla (skin hardcodeado)
+                pcall(function() tool.Grip = _gripToApply end)
+                -- Re-aplicar grip en Equipped (mobile puede pisarlo al animar)
+                if not _skinState._equippedConns then _skinState._equippedConns = {} end
+                if not _skinState._equippedConns[tool] then
+                    _skinState._equippedConns[tool] = tool.Equipped:Connect(function()
+                        task.wait(0.016)
+                        if _skinState.enabled and _skinState._equippedConns[tool] then
+                            if not (_G._dualKnifeEnabled == true) then
+                                -- Re-leer grip nativo en cada Equipped (puede cambiar al respawnear)
+                                local _ng2 = nil
+                                pcall(function() _ng2 = tool.Grip end)
+                                local _g2 = (_ng2 and not _isIdentity(_ng2)) and _ng2 or skin.grip
+                                pcall(function() tool.Grip = _g2 end)
+                                task.wait(0.1)
+                                pcall(function() tool.Grip = _g2 end)
+                                task.wait(0.3)
+                                if _skinState.enabled then
+                                    pcall(function() tool.Grip = _g2 end)
+                                end
                             end
                         end
-                    end
-                end)
+                    end)
+                end
+            else
+                -- Dual Knife activo: NO tocar el grip (el DK lo calcula internamente)
+                if not _skinState._equippedConns then _skinState._equippedConns = {} end
             end
 
             -- MESH + TEXTURE: aplicar directo sobre el Handle (logica Rayfield)
