@@ -53218,14 +53218,14 @@ particles = {}
         tabDockFrame.Position               = UDim2.new(0, 0, 0, 36)
         tabDockFrame.Size                   = UDim2.new(0, SIDEBAR_W, 1, -36)
         tabDockFrame.BackgroundColor3       = Color3.fromRGB(6, 14, 24)
-        tabDockFrame.BackgroundTransparency = 0.08
+        tabDockFrame.BackgroundTransparency = 1
         tabDockFrame.Visible                = true
     end
 
     local _dockStroke = Instance.new("UIStroke", tabDockFrame)
     _dockStroke.Color           = Color3.fromRGB(0, 200, 150)
     _dockStroke.Thickness       = 2
-    _dockStroke.Transparency    = 0.15
+    _dockStroke.Transparency    = 1
     _dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local tabDockList = Instance.new("ScrollingFrame", tabDockFrame)
