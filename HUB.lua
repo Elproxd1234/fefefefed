@@ -36286,15 +36286,17 @@ function CreatePremiumTab()
 
             {
                 -- Bacon: SpecialMesh, Grip exacto del scanner, GunClient confirmado
+                -- FIX GRIP: el grip anterior tenia rotacion 90 en X (gun acostada/dada vuelta)
+                -- Corregido al grip estandar del GunClient de MM2 (mismo que Luger/ElderwoodGun)
                 name   = "Bacon",
                 meshId = "http://www.roblox.com/asset/?id=79401392",
                 texId  = "rbxassetid://178240361",
                 scale  = Vector3.new(1.5, 1.5, 1.5),
                 grip   = CFrame.new(
-                    0, -0.759000003, -0.314999998,
-                    1, 0, 0,
-                    0, 0, -1,
-                    0, 1, 0
+                    -0.567565918, -0.124303818, -0.0424308777,
+                    -0.000212550163, 0.0230092816, -0.999735236,
+                    -0.011778634,   0.999665856,   0.0230101906,
+                     0.99993062,    0.0117804073,  5.85317612e-05
                 ),
                 dualGun = true,
             },
@@ -45616,39 +45618,28 @@ function CreateCombatTab()
                     if now - (state._lastStab or -999) < 0.85 then return end
                     state.isAttacking = true
                     state._lastStab = now
-                    _G._dualSlashToggle = not _G._dualSlashToggle
-                    -- Usar _dkPlaySlot (definida despues del toggle, accesible via upvalue del closure externo)
-                    _sp(function()
-                        if _dkPlaySlot then
-                            _dkPlaySlot(_G._dualSlashToggle and "slotA" or "slotB", 1.0)
-                        end
-                    end)
+                    _dkToggle = not _dkToggle
+                    -- FIX: llamar _dkPlaySlot directo (sin _sp) para matar la anim nativa en el mismo frame
+                    if _dkPlaySlot then _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0) end
                     local ev = tool:FindFirstChild("Events")
                     local ks = ev and ev:FindFirstChild("KnifeStabbed")
                     if ks then pcall(function() ks:FireServer() end) end
                     _dl(0.85, function() state.isAttacking = false end)
 
-                -- -- RMB/Touch = DUALSTAB ANIMATION (Dual Knife ON) ---------------------------
+                -- -- RMB/Touch = THROW (Dual Knife ON) ---------------------------
+                -- FIX: RMB debe lanzar el knife (KnifeThrown), no stab. Usar direcci�n de c�mara.
                 elseif isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch) then
+                    if not knifeThrown then return end
                     local now = os.clock()
-                    if now - (state._lastThrow or -999) < 0.8 then return end
+                    if now - (state._lastThrow or -999) < 1.0 then return end
                     state._lastThrow = now
-                    -- Reproducir animacion DualStab
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    local animator = hum and hum:FindFirstChildOfClass("Animator")
-                    if animator then
-                        local animObj = Instance.new("Animation")
-                        animObj.AnimationId = "rbxassetid://2470501967"
-                        local ok, track = pcall(function() return animator:LoadAnimation(animObj) end)
-                        if ok and track then
-                            pcall(function() track:Play(0.05) end)
-                        end
-                    end
-                    -- Activar stab en el servidor
-                    local ev = tool:FindFirstChild("Events")
-                    local ks = ev and ev:FindFirstChild("KnifeStabbed")
-                    if ks then pcall(function() ks:FireServer() end) end
-                    _dl(0.8, function() state.isAttacking = false end)
+                    if _dkStopAll then _dkStopAll() end
+                    local myHRP = char:FindFirstChild("HumanoidRootPart")
+                    local cam = workspace.CurrentCamera
+                    local targetCF = myHRP
+                        and CFrame.new(myHRP.Position, myHRP.Position + cam.CFrame.LookVector * 100)
+                        or cam.CFrame
+                    pcall(function() knifeThrown:FireServer(targetCF, targetCF) end)
 
                 -- -- LMB/Touch = THROW (modo normal sin Dual) --------------------
                 elseif not isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
@@ -45845,6 +45836,26 @@ function CreateCombatTab()
                 _G._dualKnifeEnabled = true
                 _dkToggle            = false
                 _dkAnimTracks        = {}
+
+                -- FIX GRIP DK: si el skin changer de knife pis� el grip,
+                -- restaurar el grip original ANTES de llamar _dualStartArm.
+                -- _dualStartArm usa RightGrip.C0 para calcular el weld espejo;
+                -- si el grip fue modificado por el skin changer, el clon queda mal posicionado.
+                do
+                    local _sc = _G._skinChangerState
+                    local _char = LocalPlayer.Character
+                    if _char and _sc and _sc.origData then
+                        for _, t in ipairs(_char:GetChildren()) do
+                            if t:IsA("Tool") and _dualMatchKeywords(t, _dualKnifeKeywords) then
+                                local _origData = _sc.origData[t]
+                                if _origData and _origData.Grip then
+                                    pcall(function() t.Grip = _origData.Grip end)
+                                end
+                                break
+                            end
+                        end
+                    end
+                end
 
                 -- Pose del brazo + clon handle (igual que antes)
                 _dualStartArm(state, _dualKnifeKeywords)
@@ -46062,9 +46073,45 @@ function CreateCombatTab()
                 if char then
                     _dkAnimTracks = {}
                     _dualStartArm(ks, _dualKnifeKeywords)
-                    -- Reemplazar inputConn con el que usa animaciones nativas
+                    -- FIX TAB REBUILD: reemplazar inputConn con el que usa animaciones nativas
                     if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
                     _sp(_dkPreloadTracks)
+                    -- FIX TAB REBUILD: instalar inputConn con _dkPlaySlot (antes quedaba nil)
+                    ks.inputConn = UserInputService.InputBegan:Connect(function(input, gp)
+                        if gp then return end
+                        if not ks.enabled then return end
+                        local char = LocalPlayer.Character
+                        if not char then return end
+                        local tool = nil
+                        for _, t in ipairs(char:GetChildren()) do
+                            if t:IsA("Tool") and _dualMatchKeywords(t, _dualKnifeKeywords) then tool = t; break end
+                        end
+                        if not tool then return end
+                        local events       = tool:FindFirstChild("Events")
+                        local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
+                        local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
+                        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
+                            and not (KnifeSAState and KnifeSAState.enabled) then
+                            if ks.isAttacking then return end
+                            local now = os.clock()
+                            if now - (ks._lastStab or -999) < 0.85 then return end
+                            ks.isAttacking = true; ks._lastStab = now
+                            _dkToggle = not _dkToggle
+                            _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
+                            if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
+                            _dl(0.85, function() ks.isAttacking = false end)
+                        elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+                            if not knifeThrown then return end
+                            local now = os.clock()
+                            if now - (ks._lastThrow or -999) < 1.0 then return end
+                            ks._lastThrow = now
+                            _dkStopAll()
+                            local myHRP = char:FindFirstChild("HumanoidRootPart")
+                            local cam = workspace.CurrentCamera
+                            local targetCF = myHRP and CFrame.new(myHRP.Position, myHRP.Position + cam.CFrame.LookVector * 100) or cam.CFrame
+                            pcall(function() knifeThrown:FireServer(targetCF, targetCF) end)
+                        end
+                    end)
                 end
             end
             if gs and gs.enabled then
