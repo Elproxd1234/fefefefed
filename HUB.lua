@@ -36286,17 +36286,15 @@ function CreatePremiumTab()
 
             {
                 -- Bacon: SpecialMesh, Grip exacto del scanner, GunClient confirmado
-                -- FIX GRIP: el grip anterior tenia rotacion 90 en X (gun acostada/dada vuelta)
-                -- Corregido al grip estandar del GunClient de MM2 (mismo que Luger/ElderwoodGun)
                 name   = "Bacon",
                 meshId = "http://www.roblox.com/asset/?id=79401392",
                 texId  = "rbxassetid://178240361",
                 scale  = Vector3.new(1.5, 1.5, 1.5),
                 grip   = CFrame.new(
-                    -0.567565918, -0.124303818, -0.0424308777,
-                    -0.000212550163, 0.0230092816, -0.999735236,
-                    -0.011778634,   0.999665856,   0.0230101906,
-                     0.99993062,    0.0117804073,  5.85317612e-05
+                    0, -0.759000003, -0.314999998,
+                    1, 0, 0,
+                    0, 0, -1,
+                    0, 1, 0
                 ),
                 dualGun = true,
             },
@@ -45387,7 +45385,13 @@ function CreateCombatTab()
 
         -- -- NOMBRES EXACTOS de tools en MM2 (fix: antes usaba string.find parcial
         -- que clonaba cualquier handle de cualquier tool con nombre similar) --------
-        local _dualKnifeNames = { Knife=true, VIPKnife=true, GodKnife=true }
+        -- FIX DUAL KNIFE v10: ampliar nombres exactos + detector por KnifeClient/blade
+        -- Antes solo matcheaba Knife/VIPKnife/GodKnife -> no funcionaba con DefaultKnife,
+        -- MurderKnife ni skins con nombre personalizado que siguen teniendo KnifeClient.
+        local _dualKnifeNames = {
+            Knife=true, VIPKnife=true, GodKnife=true,
+            DefaultKnife=true, MurderKnife=true, KnifeHandle=true,
+        }
         local _dualGunNames   = { Gun=true, SheriffGun=true, HeroGun=true, GunDrop=true }
 
         -- _dualKnifeKeywords/_dualGunKeywords se reusan como identificadores de modo
@@ -45396,8 +45400,23 @@ function CreateCombatTab()
 
         local function _dualMatchKeywords(tool, nameSet)
             if not tool then return false end
-            -- Comparacion de nombre EXACTO — no matchea nada con string.find parcial
-            return nameSet[tool.Name] == true
+            -- Comparacion de nombre EXACTO primero
+            if nameSet[tool.Name] == true then return true end
+            -- FIX DUAL KNIFE v10: fallback por estructura interna para knives con nombre custom
+            -- (skins, variantes de servidor) que no estan en la lista exacta pero son cuchillos reales.
+            -- Solo aplica cuando nameSet es el de knives (tiene la clave "Knife").
+            if nameSet == _dualKnifeNames then
+                local n = tool.Name:lower()
+                -- Excluir explicitamente guns/bombs/otros
+                if n:find("gun") or n:find("sheriff") or n:find("revolver")
+                   or n:find("bomb") or n:find("snow") or tool:FindFirstChild("GunClient") then
+                    return false
+                end
+                -- Es un knife real si tiene KnifeClient, o el nombre contiene "knife"/"blade"
+                if tool:FindFirstChild("KnifeClient") then return true end
+                if n:find("knife") or n:find("blade") then return true end
+            end
+            return false
         end
 
         -- -- ESTADO GLOBAL DUAL --------------------------------------------
@@ -45618,28 +45637,39 @@ function CreateCombatTab()
                     if now - (state._lastStab or -999) < 0.85 then return end
                     state.isAttacking = true
                     state._lastStab = now
-                    _dkToggle = not _dkToggle
-                    -- FIX: llamar _dkPlaySlot directo (sin _sp) para matar la anim nativa en el mismo frame
-                    if _dkPlaySlot then _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0) end
+                    _G._dualSlashToggle = not _G._dualSlashToggle
+                    -- Usar _dkPlaySlot (definida despues del toggle, accesible via upvalue del closure externo)
+                    _sp(function()
+                        if _dkPlaySlot then
+                            _dkPlaySlot(_G._dualSlashToggle and "slotA" or "slotB", 1.0)
+                        end
+                    end)
                     local ev = tool:FindFirstChild("Events")
                     local ks = ev and ev:FindFirstChild("KnifeStabbed")
                     if ks then pcall(function() ks:FireServer() end) end
                     _dl(0.85, function() state.isAttacking = false end)
 
-                -- -- RMB/Touch = THROW (Dual Knife ON) ---------------------------
-                -- FIX: RMB debe lanzar el knife (KnifeThrown), no stab. Usar direcci�n de c�mara.
+                -- -- RMB/Touch = DUALSTAB ANIMATION (Dual Knife ON) ---------------------------
                 elseif isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch) then
-                    if not knifeThrown then return end
                     local now = os.clock()
-                    if now - (state._lastThrow or -999) < 1.0 then return end
+                    if now - (state._lastThrow or -999) < 0.8 then return end
                     state._lastThrow = now
-                    if _dkStopAll then _dkStopAll() end
-                    local myHRP = char:FindFirstChild("HumanoidRootPart")
-                    local cam = workspace.CurrentCamera
-                    local targetCF = myHRP
-                        and CFrame.new(myHRP.Position, myHRP.Position + cam.CFrame.LookVector * 100)
-                        or cam.CFrame
-                    pcall(function() knifeThrown:FireServer(targetCF, targetCF) end)
+                    -- Reproducir animacion DualStab
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    local animator = hum and hum:FindFirstChildOfClass("Animator")
+                    if animator then
+                        local animObj = Instance.new("Animation")
+                        animObj.AnimationId = "rbxassetid://2470501967"
+                        local ok, track = pcall(function() return animator:LoadAnimation(animObj) end)
+                        if ok and track then
+                            pcall(function() track:Play(0.05) end)
+                        end
+                    end
+                    -- Activar stab en el servidor
+                    local ev = tool:FindFirstChild("Events")
+                    local ks = ev and ev:FindFirstChild("KnifeStabbed")
+                    if ks then pcall(function() ks:FireServer() end) end
+                    _dl(0.8, function() state.isAttacking = false end)
 
                 -- -- LMB/Touch = THROW (modo normal sin Dual) --------------------
                 elseif not isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
@@ -45797,11 +45827,22 @@ function CreateCombatTab()
             _dkKillNativeSlash()
 
             local track = _dkAnimTracks[slot]
-            -- Si el track no existe o ya no es válido (tras respawn), recargar
+            -- FIX DUAL KNIFE v10: si los tracks no cargaron todavia (race condition
+            -- entre _sp(_dkPreloadTracks) async y el primer click del usuario),
+            -- intentar cargar sincronicamente antes de rendirse.
             if not _dkIsTrackValid(track) then
                 _dkAnimTracks = {}
-                _dkPreloadTracks()
+                _dkPreloadTracks()  -- intento sincrono
                 track = _dkAnimTracks[slot]
+                -- Si aun no hay track, esperar hasta 1s en steps de 0.1s
+                if not _dkIsTrackValid(track) then
+                    local _waited = 0
+                    repeat
+                        task.wait(0.1); _waited = _waited + 0.1
+                        _dkPreloadTracks()
+                        track = _dkAnimTracks[slot]
+                    until _dkIsTrackValid(track) or _waited >= 1.0
+                end
                 if not _dkIsTrackValid(track) then return end
             end
 
@@ -45867,7 +45908,9 @@ function CreateCombatTab()
                     state.inputConn = nil
                 end
 
-                _sp(_dkPreloadTracks)
+                -- FIX DUAL KNIFE v10: preload sincrono ANTES de crear inputConn
+                -- para que los tracks esten disponibles en el primer click del usuario.
+                _dkPreloadTracks()
 
                 state.inputConn = UserInputService.InputBegan:Connect(function(input, gp)
                     if gp then return end
@@ -45934,7 +45977,7 @@ function CreateCombatTab()
                         _dkAnimTracks = {}
                         _dualStartArm(state, _dualKnifeKeywords)
                         if state.inputConn then pcall(function() state.inputConn:Disconnect() end); state.inputConn = nil end
-                        _sp(_dkPreloadTracks)
+                        _dkPreloadTracks()  -- FIX v10: sincrono
                     end
                 end)
 
@@ -45959,7 +46002,7 @@ function CreateCombatTab()
                             _dkAnimTracks = {}
                             _dualStartArm(state, _dualKnifeKeywords)
                             if state.inputConn then pcall(function() state.inputConn:Disconnect() end); state.inputConn = nil end
-                            _sp(_dkPreloadTracks)
+                            _dkPreloadTracks()  -- FIX v10: sincrono
                         end
                     end)
                 end
@@ -46073,45 +46116,10 @@ function CreateCombatTab()
                 if char then
                     _dkAnimTracks = {}
                     _dualStartArm(ks, _dualKnifeKeywords)
-                    -- FIX TAB REBUILD: reemplazar inputConn con el que usa animaciones nativas
+                    -- FIX DUAL KNIFE v10: preload sincrono dentro del defer (no async)
+                    -- para que los tracks esten listos antes de que el inputConn dispare.
                     if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
-                    _sp(_dkPreloadTracks)
-                    -- FIX TAB REBUILD: instalar inputConn con _dkPlaySlot (antes quedaba nil)
-                    ks.inputConn = UserInputService.InputBegan:Connect(function(input, gp)
-                        if gp then return end
-                        if not ks.enabled then return end
-                        local char = LocalPlayer.Character
-                        if not char then return end
-                        local tool = nil
-                        for _, t in ipairs(char:GetChildren()) do
-                            if t:IsA("Tool") and _dualMatchKeywords(t, _dualKnifeKeywords) then tool = t; break end
-                        end
-                        if not tool then return end
-                        local events       = tool:FindFirstChild("Events")
-                        local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
-                        local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
-                        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
-                            and not (KnifeSAState and KnifeSAState.enabled) then
-                            if ks.isAttacking then return end
-                            local now = os.clock()
-                            if now - (ks._lastStab or -999) < 0.85 then return end
-                            ks.isAttacking = true; ks._lastStab = now
-                            _dkToggle = not _dkToggle
-                            _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
-                            if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
-                            _dl(0.85, function() ks.isAttacking = false end)
-                        elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
-                            if not knifeThrown then return end
-                            local now = os.clock()
-                            if now - (ks._lastThrow or -999) < 1.0 then return end
-                            ks._lastThrow = now
-                            _dkStopAll()
-                            local myHRP = char:FindFirstChild("HumanoidRootPart")
-                            local cam = workspace.CurrentCamera
-                            local targetCF = myHRP and CFrame.new(myHRP.Position, myHRP.Position + cam.CFrame.LookVector * 100) or cam.CFrame
-                            pcall(function() knifeThrown:FireServer(targetCF, targetCF) end)
-                        end
-                    end)
+                    _dkPreloadTracks()
                 end
             end
             if gs and gs.enabled then
@@ -46172,7 +46180,7 @@ function CreateCombatTab()
                         _dkAnimTracks = {}
                         _dualStartArm(ks, _dualKnifeKeywords)
                         if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
-                        _sp(_dkPreloadTracks)
+                        _dkPreloadTracks()  -- FIX v10: sincrono, evita race con inputConn
                     end)
                     -- FIX NUEVA RONDA: hookear Character.ChildAdded para detectar cuando el
                     -- jugador EQUIPA el knife (Backpack->Character). Ese evento NO dispara
@@ -46190,7 +46198,7 @@ function CreateCombatTab()
                             _dkAnimTracks = {}
                             _dualStartArm(ks, _dualKnifeKeywords)
                             if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
-                            _sp(_dkPreloadTracks)
+                            _dkPreloadTracks()  -- FIX v10: sincrono
                         end)
                     end
 
@@ -46199,8 +46207,10 @@ function CreateCombatTab()
                     -- Re-arrancar pose del brazo
                     _dualStartArm(ks, _dualKnifeKeywords)
                     -- Reemplazar inputConn por el nuestro (con killNativeSlash)
+                    -- FIX DUAL KNIFE v10: cargar tracks PRIMERO y crear inputConn DESPUES
+                    -- para evitar race condition (inputConn fires antes que los tracks esten listos).
                     if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
-                    _sp(_dkPreloadTracks)
+                    _dkPreloadTracks()  -- sincrono en este spawn
                     ks.inputConn = UserInputService.InputBegan:Connect(function(input, gp)
                         if gp then return end
                         if not ks.enabled then return end
