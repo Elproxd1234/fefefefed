@@ -10782,8 +10782,10 @@ function _makeTwoColumns()
     -- == COLUMNAS ===============================================
     local COL_TOP = SEARCH_H + 8
     local GAP = 4
-    -- Doble columna SIEMPRE activada (forzado)
-    local _useDoubleCol = true
+    -- Doble columna solo en PC; en mobile/pantalla chica una sola columna
+    local _isMobileDevice = (UserInputService and UserInputService.TouchEnabled)
+        or (workspace.CurrentCamera.ViewportSize.X < 700)
+    local _useDoubleCol = not _isMobileDevice
 
     local lCol = Instance.new("ScrollingFrame", wrapper)
     lCol.Name = "LeftColumn"
@@ -53536,13 +53538,13 @@ particles = {}
         tabDockFrame.Position = UDim2.new(0, 0, 1, -TAB_BAR_BOTTOM_H)
         tabDockFrame.Size = UDim2.new(1, 0, 0, TAB_BAR_BOTTOM_H)
         tabDockFrame.BackgroundTransparency = 1
-    tabDockFrame.Visible = false
+        tabDockFrame.Visible = true
     else
         -- Desktop: sidebar vertical izquierda
         tabDockFrame.Position = UDim2.new(0, 0, 0, 36)
         tabDockFrame.Size = UDim2.new(0, SIDEBAR_W, 1, -36)
         tabDockFrame.BackgroundTransparency = 1
-    tabDockFrame.Visible = false
+        tabDockFrame.Visible = true
     end
 
     local _dockStroke = Instance.new("UIStroke", tabDockFrame)
@@ -53644,7 +53646,7 @@ particles = {}
         activeBar.ZIndex = 16
         Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
 
-        -- Icono del tab: lazy load escalonado para no saturar la CDN
+        -- Icono del tab: carga escalonada para no saturar la CDN
         local icon = Instance.new("ImageLabel", btn)
         icon.Name = "TabIcon"
         icon.Size = UDim2.new(0, 38, 0, 38)
@@ -53652,22 +53654,18 @@ particles = {}
         icon.Position = UDim2.new(0.5, 0, 0, 8)
         icon.BackgroundTransparency = 1
         icon.BorderSizePixel = 0
-        icon.Image = ""  -- placeholder vacio hasta que cargue
+        icon.Image = ""
         icon.ScaleType = Enum.ScaleType.Fit
         icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
         icon.ZIndex = 14
-        icon.ImageTransparency = 1  -- invisible hasta que este listo
+        icon.ImageTransparency = 0
         icon.Visible = true
-        -- Tab 1 (activo) carga inmediato; el resto escalonado cada 0.06s
-        local _iconDelay = (i == 1) and 0 or (i - 1) * 0.06
+        -- Tab 1 carga inmediato; el resto escalonado cada 0.06s
         local _iconAsset = tabIcons[i] or ""
+        local _iconDelay = (i == 1) and 0 or (i - 1) * 0.06
         task.delay(_iconDelay, function()
             if not icon or not icon.Parent then return end
             icon.Image = _iconAsset
-            -- Fade-in suave al aparecer
-            local _ts2 = game:GetService("TweenService")
-            _ts2:Create(icon, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                {ImageTransparency = 0}):Play()
         end)
 
         -- Label del nombre: debajo del icono
