@@ -53644,7 +53644,7 @@ particles = {}
         activeBar.ZIndex = 16
         Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
 
-        -- Icono del tab: visible con el asset correspondiente
+        -- Icono del tab: lazy load escalonado para no saturar la CDN
         local icon = Instance.new("ImageLabel", btn)
         icon.Name = "TabIcon"
         icon.Size = UDim2.new(0, 38, 0, 38)
@@ -53652,11 +53652,23 @@ particles = {}
         icon.Position = UDim2.new(0.5, 0, 0, 8)
         icon.BackgroundTransparency = 1
         icon.BorderSizePixel = 0
-        icon.Image = tabIcons[i] or ""
+        icon.Image = ""  -- placeholder vacio hasta que cargue
         icon.ScaleType = Enum.ScaleType.Fit
         icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
         icon.ZIndex = 14
+        icon.ImageTransparency = 1  -- invisible hasta que este listo
         icon.Visible = true
+        -- Tab 1 (activo) carga inmediato; el resto escalonado cada 0.06s
+        local _iconDelay = (i == 1) and 0 or (i - 1) * 0.06
+        local _iconAsset = tabIcons[i] or ""
+        task.delay(_iconDelay, function()
+            if not icon or not icon.Parent then return end
+            icon.Image = _iconAsset
+            -- Fade-in suave al aparecer
+            local _ts2 = game:GetService("TweenService")
+            _ts2:Create(icon, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {ImageTransparency = 0}):Play()
+        end)
 
         -- Label del nombre: debajo del icono
         local lbl = Instance.new("TextLabel", btn)
