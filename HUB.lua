@@ -36524,10 +36524,11 @@ function CreatePremiumTab()
             -- El DK_Clone ES el handle clonado directamente (no un Tool con Handle hijo)
             -- Tratar el container como el handle mismo
             local function _applyMeshToObj(obj)
+                -- FIX CORRUPT INVISIBLE: forzar visibilidad en cualquier BasePart del clon
+                if skin.forceVisible and obj:IsA("BasePart") then
+                    pcall(function() obj.Transparency = 0; obj.LocalTransparencyModifier = 0 end)
+                end
                 if obj:IsA("MeshPart") then
-                    if skin.forceVisible then
-                        pcall(function() obj.Transparency = 0; obj.LocalTransparencyModifier = 0 end)
-                    end
                     pcall(function() obj.TextureID = skin.texId end)
                     -- meshPartOnly: no inyectar SpecialMesh para IDs modernos de 15+ dig
                     if not skin.meshPartOnly then
@@ -36602,6 +36603,10 @@ function CreatePremiumTab()
             -- Recorrer el resto de descendants por partes decorativas adicionales
             for _, obj in pairs(tool:GetDescendants()) do
                 if obj.Name ~= "Handle" then
+                    -- FIX CORRUPT INVISIBLE: forzar visibilidad en todos los BasePart del tool
+                    if skin.forceVisible and obj:IsA("BasePart") then
+                        pcall(function() obj.Transparency = 0; obj.LocalTransparencyModifier = 0 end)
+                    end
                     if obj:IsA("SpecialMesh") then
                         if not _skinState.origData[tool].Elements[obj] then
                             _skinState.origData[tool].Elements[obj] = {
@@ -45638,6 +45643,8 @@ function CreateCombatTab()
                     state.isAttacking = true
                     state._lastStab = now
                     _G._dualSlashToggle = not _G._dualSlashToggle
+                    -- FIX SLASH ANIM: matar slash nativa sincronicamente antes del spawn
+                    if _dkKillNativeSlash then _dkKillNativeSlash() end
                     -- Usar _dkPlaySlot (definida despues del toggle, accesible via upvalue del closure externo)
                     _sp(function()
                         if _dkPlaySlot then
@@ -45932,6 +45939,8 @@ function CreateCombatTab()
             if track.IsPlaying then
                 pcall(function() track:Stop(0) end)
                 _w()
+                -- FIX SLASH ANIM: matar nativos que el juego disparo durante el yield del Stop
+                _dkKillNativeSlash()
             end
             -- Segunda pasada post-yield (atrapa lo que el servidor disparó en ese frame)
             _dkKillNativeSlash()
@@ -46023,6 +46032,9 @@ function CreateCombatTab()
                         if now - (state._lastStab or -999) < 0.85 then return end
                         state.isAttacking = true
                         state._lastStab   = now
+                        -- FIX SLASH ANIM: matar slash nativa en el mismo frame del input (sincrono)
+                        -- antes de que el juego la dispare, y ANTES del spawn del play
+                        _dkKillNativeSlash()
                         -- Reproducir anim custom en spawn
                         _sp(function() _dkPlaySlot("slotA", 1.0) end)
                         if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
@@ -46322,6 +46334,8 @@ function CreateCombatTab()
                             if now - (ks._lastStab or -999) < 0.85 then return end
                             ks.isAttacking = true
                             ks._lastStab   = now
+                            -- FIX SLASH ANIM: matar slash nativa sincronicamente antes del spawn
+                            _dkKillNativeSlash()
                             -- Reproducir anim custom en spawn
                             _sp(function() _dkPlaySlot("slotA", 1.0) end)
                             if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
