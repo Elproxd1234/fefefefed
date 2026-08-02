@@ -2675,8 +2675,7 @@ function _fireGunMM2(gun, targetCF)
         return true
     end
 
-    -- 5. Ultimo recurso
-    _fireGunMM2(gun)
+    -- 5. No se encontro ningun remote de disparo
     return false
 end
 
@@ -36317,7 +36316,7 @@ function CreatePremiumTab()
                 name   = "GingerScope",
                 meshId = "rbxassetid://15374602183",
                 texId  = "rbxassetid://15409041564",
-                scale  = Vector3.new(0.08, 0.08, 0.08),
+                scale  = Vector3.new(1, 1, 1),
                 -- GRIP: mismo agarre que ElderwoodGun
                 grip   = CFrame.new(
                     -0.567565918, -0.124303818, -0.0424308777,
@@ -45593,20 +45592,37 @@ function CreateCombatTab()
                         or cam.CFrame
                     if knifeThrown then pcall(function() knifeThrown:FireServer(targetCF, targetCF) end) end
 
-                -- -- LMB/Touch = THROW (modo normal sin Dual) --------------------
+                -- -- LMB/Touch = SHOOT (Dual Gun) ----------------------------------
                 elseif not isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-                    -- Dual Gun: LMB lanza
-                    -- (solo si Knife SA no est activo  si SA est ON, l maneja el LMB)
-                    if KnifeSAState and KnifeSAState.enabled then return end
-                    if not knifeThrown then return end
+                    -- Dual Gun: LMB dispara usando el remote Shoot de la gun
+                    -- (igual que el GunClient real; no usa KnifeThrown que es del knife)
                     local now = os.clock()
-                    if now - (state._lastThrow or -999) < 1.0 then return end
+                    if now - (state._lastThrow or -999) < 0.6 then return end
                     state._lastThrow = now
+                    local shootR = getShootRemote and getShootRemote(tool)
+                    if not shootR then return end
                     local myHRP = char:FindFirstChild("HumanoidRootPart")
-                    local cam = workspace.CurrentCamera
-                    local targetCF = myHRP and CFrame.new(myHRP.Position, myHRP.Position + cam.CFrame.LookVector * 100)
-                        or cam.CFrame
-                    pcall(function() knifeThrown:FireServer(targetCF, targetCF) end)
+                    local cam   = workspace.CurrentCamera
+                    local gra   = myHRP and myHRP:FindFirstChild("GunRaycastAttachment")
+                    local originPos = (gra and gra.WorldPosition)
+                        or (cam and cam.CFrame.Position)
+                        or (myHRP and myHRP.Position + Vector3.new(0, 1.5, 0))
+                    local targetPos = originPos + (cam and cam.CFrame.LookVector * 500 or Vector3.new(0, 0, -500))
+                    local graWorldCF = gra and gra.WorldCFrame or nil
+                    local originCF, targetCF = buildShootCFrames(originPos, targetPos, graWorldCF)
+                    if not originCF then
+                        originCF = graWorldCF or (myHRP and myHRP.CFrame) or cam.CFrame
+                        local dir = targetPos - originPos
+                        targetCF = dir.Magnitude > 0.01
+                            and CFrame.lookAt(targetPos, originPos)
+                            or (cam and cam.CFrame or originCF)
+                    end
+                    -- Firma 1: Shoot:FireServer(originCF, targetCF) -- GunClient clasico
+                    local ok = pcall(function() shootR:FireServer(originCF, targetCF) end)
+                    if not ok then
+                        -- Firma 2: Shoot:FireServer(1, targetPos) -- GunClient alternativo
+                        pcall(function() shootR:FireServer(1, targetPos) end)
+                    end
                 end
             end)
         end
@@ -46133,7 +46149,6 @@ function CreateCombatTab()
                 if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
                 if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
 
-                -- Esperar a que la gun este en el char o backpack antes de re-armar
                 task.spawn(function()
                     local function _gunReady()
                         local char = LocalPlayer.Character
@@ -46151,51 +46166,33 @@ function CreateCombatTab()
                         return false
                     end
 
-                    -- Esperar hasta 8s a que aparezca la gun
                     local waited = 0
                     while not _gunReady() and waited < 8 do
-                        task.wait(0.25)
-                        waited = waited + 0.25
+                        task.wait(0.25); waited = waited + 0.25
                     end
 
                     if not (gs and gs.enabled) then return end
-                    -- Limpiar conns que pudieran haberse creado mientras esperabamos
-                    if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
-                    if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
-                    if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
+
                     _dualStartArm(gs, _dualGunKeywords)
 
-                    -- Hookear el backpack: si la gun aparece mas tarde (pick-up desde suelo), re-armar
+                    -- Hook backpack: gun pick-up desde el suelo
                     if _G._dualGunBpConn then pcall(function() _G._dualGunBpConn:Disconnect() end) end
                     _G._dualGunBpConn = LocalPlayer.Backpack.ChildAdded:Connect(function(tool)
                         if not (gs and gs.enabled) then return end
-                        if not tool:IsA("Tool") then return end
-                        if _dualGunKeywords[tool.Name] then
-                            task.wait(0.1)
-                            if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
-                            if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
-                            if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
-                            _dualStartArm(gs, _dualGunKeywords)
-                        end
+                        if not tool:IsA("Tool") or not _dualGunKeywords[tool.Name] then return end
+                        task.wait(0.1)
+                        _dualStartArm(gs, _dualGunKeywords)
                     end)
 
-                    -- FIX NUEVA RONDA DUAL GUN: hookear Character.ChildAdded para detectar cuando
-                    -- el jugador EQUIPA la gun (Backpack->Character). Ese evento NO dispara
-                    -- Backpack.ChildAdded, por eso el clon del dual no aparecia en rondas siguientes
-                    -- sin desactivar y reactivar el toggle manualmente.
+                    -- Hook Character.ChildAdded: gun equipada directamente al char
                     if _G._dualGunCharPickupConn then pcall(function() _G._dualGunCharPickupConn:Disconnect() end) end
                     local _dgNewChar = newChar or LocalPlayer.Character
                     if _dgNewChar then
                         _G._dualGunCharPickupConn = _dgNewChar.ChildAdded:Connect(function(tool)
                             if not (gs and gs.enabled) then return end
-                            if not tool:IsA("Tool") then return end
-                            if _dualGunKeywords[tool.Name] then
-                                task.wait(0.1)
-                                if gs.steppedConn then pcall(function() gs.steppedConn:Disconnect() end); gs.steppedConn = nil end
-                                if gs.renderConn  then pcall(function() gs.renderConn:Disconnect()  end); gs.renderConn  = nil end
-                                if gs.inputConn   then pcall(function() gs.inputConn:Disconnect()   end); gs.inputConn   = nil end
-                                _dualStartArm(gs, _dualGunKeywords)
-                            end
+                            if not tool:IsA("Tool") or not _dualGunKeywords[tool.Name] then return end
+                            task.wait(0.1)
+                            _dualStartArm(gs, _dualGunKeywords)
                         end)
                     end
                 end)
