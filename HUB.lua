@@ -11956,6 +11956,8 @@ MainSystem = {
         S.infoGui.ResetOnSpawn = false
         S.infoGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
         S.infoGui.DisplayOrder = 8000
+        -- FIX MOBILE: no bloquear inputs del juego
+        pcall(function() S.infoGui.PassThroughNonActiveDescendants = true end)
         S.infoGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
         local mainPanel = Instance.new("Frame", S.infoGui)
@@ -11965,7 +11967,7 @@ MainSystem = {
         mainPanel.BackgroundTransparency = 0.4
         mainPanel.BorderSizePixel = 0
         mainPanel.ClipsDescendants = true
-        mainPanel.Active = true
+        mainPanel.Active = false  -- FIX MOBILE: no bloquear joystick
 
         Instance.new("UICorner", mainPanel).CornerRadius = UDim.new(0, 12)
 
@@ -11992,6 +11994,7 @@ MainSystem = {
         headerBar.BackgroundColor3 = ThemeColors.BackgroundLight
         headerBar.BackgroundTransparency = 0.9
         headerBar.BorderSizePixel = 0
+        headerBar.Active = true  -- FIX MOBILE: solo header captura touch para arrastrar
 
         local titleLabel = Instance.new("TextLabel", headerBar)
         titleLabel.Size = UDim2.new(1, -40, 1, 0)
@@ -13239,6 +13242,8 @@ function CreateInfoPanel()
     InfoPanelSystem.gui.ResetOnSpawn = false
     InfoPanelSystem.gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     InfoPanelSystem.gui.DisplayOrder = 8000
+    -- FIX MOBILE: no bloquear inputs del juego (joystick/controles)
+    pcall(function() InfoPanelSystem.gui.PassThroughNonActiveDescendants = true end)
     InfoPanelSystem.gui.Parent = playerGui
 
     if MainSystem and MainSystem.state then
@@ -13261,7 +13266,7 @@ function CreateInfoPanel()
     mainPanel.BackgroundTransparency = 0.85
     mainPanel.BorderSizePixel = 0
     mainPanel.ClipsDescendants = true
-    mainPanel.Active = true
+    mainPanel.Active = false  -- FIX MOBILE: no bloquear joystick ni controles táctiles
     Instance.new("UICorner", mainPanel).CornerRadius = UDim.new(0, 12)
 
     -- FIX SCROLL+DRAG: drag movido al header (ver abajo), no al mainPanel completo
@@ -13296,6 +13301,7 @@ function CreateInfoPanel()
     header.BackgroundColor3 = ThemeColors.BackgroundLight
     header.BackgroundTransparency = 0.9
     header.BorderSizePixel = 0
+    header.Active = true  -- FIX MOBILE: solo el header captura touch para arrastrar
 
     local titleLbl = Instance.new("TextLabel", header)
     titleLbl.Size = UDim2.new(1, -10, 1, 0)
@@ -13367,6 +13373,8 @@ function CreateInfoPanel()
     scroll.ScrollBarImageColor3 = ThemeColors.Primary
     scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    -- FIX MOBILE: en móvil el scroll no debe capturar toda el área del panel
+    if _isMobileInfo then scroll.Active = false end
 
     local scrollLayout = Instance.new("UIListLayout", scroll)
     scrollLayout.Padding = UDim.new(0, 2)
