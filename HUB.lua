@@ -52713,15 +52713,40 @@ particles = {}
     -- ================================================================
     _G._hubDragging = false  -- flag global visible por el pulso del borde
 
-    -- dragIcon: boton transparente SOLO sobre el header para capturar drag sin bloquear botones
-    -- FIX MOBILE: ZIndex alto para que el touch llegue aunque haya otros elementos encima
+    -- DRAG HANDLE MOBILE: boton flotante visible en el borde izquierdo del hub
+    -- En mobile el header de 36px es imposible de tocar con precision.
+    -- Esta zona de 44x80px da un target comodo con el pulgar.
+    local _dragHandle = Instance.new("TextButton", mainFrame)
+    _dragHandle.Name = "MobileDragHandle"
+    _dragHandle.Size = UDim2.new(0, 22, 0, 80)
+    _dragHandle.AnchorPoint = Vector2.new(0, 0.5)
+    _dragHandle.Position = UDim2.new(0, 0, 0.5, 0)
+    _dragHandle.BackgroundColor3 = Color3.fromRGB(100, 80, 215)
+    _dragHandle.BackgroundTransparency = 0.5
+    _dragHandle.BorderSizePixel = 0
+    _dragHandle.Text = "⠿"   -- icono de grip visual
+    _dragHandle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    _dragHandle.TextTransparency = 0.3
+    _dragHandle.TextSize = 14
+    _dragHandle.ZIndex = 500  -- encima de absolutamente todo
+    _dragHandle.AutoButtonColor = false
+    _dragHandle.Active = true
+    do
+        local _dhCorner = Instance.new("UICorner", _dragHandle)
+        _dhCorner.CornerRadius = UDim.new(0, 6)
+        -- Solo visible en mobile
+        _dragHandle.Visible = UserInputService.TouchEnabled
+    end
+
+    -- dragIcon: boton transparente sobre el header completo
+    -- FIX MOBILE: ZIndex 500 para que el touch llegue por encima de todo
     local dragIcon = Instance.new("TextButton", header)
     dragIcon.Size = UDim2.new(1, 0, 1, 0)
     dragIcon.Position = UDim2.new(0, 0, 0, 0)
     dragIcon.BackgroundTransparency = 1
     dragIcon.Text = ""
     dragIcon.TextTransparency = 1
-    dragIcon.ZIndex = 5   -- encima del fondo del header pero debajo de los botones (ZIndex 999)
+    dragIcon.ZIndex = 500
     dragIcon.AutoButtonColor = false
     dragIcon.Active = true
 
@@ -52814,6 +52839,16 @@ particles = {}
             _startDrag(Vector2.new(mp.X, mp.Y))
         end)
         dragIcon.InputBegan:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.Touch then
+                _startDrag(Vector2.new(inp.Position.X, inp.Position.Y))
+            end
+        end)
+        -- Conectar drag handle lateral (mobile)
+        _dragHandle.MouseButton1Down:Connect(function()
+            local mp = UserInputService:GetMouseLocation()
+            _startDrag(Vector2.new(mp.X, mp.Y))
+        end)
+        _dragHandle.InputBegan:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.Touch then
                 _startDrag(Vector2.new(inp.Position.X, inp.Position.Y))
             end
