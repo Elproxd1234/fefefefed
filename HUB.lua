@@ -36283,20 +36283,7 @@ function CreatePremiumTab()
                      0.99993062,    0.0117804073,  5.85317612e-05
                 ),
             },
-            {
-                name   = "Harvester",
-                meshId = "rbxassetid://7775027413",
-                texId  = "http://www.roblox.com/asset/?id=7775245551",
-                scale  = Vector3.new(0.05999999865889549, 0.05000000074505806, 0.05000000074505806),
-                -- GRIP: mismo agarre que ElderwoodGun
-                grip   = CFrame.new(
-                    -0.567565918, -0.124303818, -0.0424308777,
-                    -0.000212550163, 0.0230092816, -0.999735236,
-                    -0.011778634,   0.999665856,   0.0230101906,
-                     0.99993062,    0.0117804073,  5.85317612e-05
-                ),
-                dualGun = true,
-            },
+
             {
                 -- Bacon: SpecialMesh, Grip exacto del scanner, GunClient confirmado
                 name   = "Bacon",
@@ -36349,8 +36336,8 @@ function CreatePremiumTab()
 
         local _SC_KNIFE_SKINS = {
             {
-                -- Candy: MeshPart -- IDs capturados via MM2 Skin Analyzer
-                name      = "Candy",
+                -- Icebreaker: MeshPart -- IDs del ZERQON Skin Changer (Icebreaker Edition)
+                name      = "Icebreaker",
                 meshId    = "rbxassetid://6124173614",
                 texId     = "rbxassetid://6124173821",
                 scale     = Vector3.new(0.056, 0.056, 0.056),
@@ -36359,12 +36346,14 @@ function CreatePremiumTab()
             },
             {
                 -- Corrupt: SpecialMesh -- IDs capturados via MM2 Skin Analyzer
-                name      = "Corrupt",
-                meshId    = "http://www.roblox.com/asset/?id=121944778",
-                texId     = "http://www.roblox.com/asset/?id=162016526",
-                scale     = Vector3.new(0.056, 0.056, 0.056),
-                grip      = _KNIFE_GRIP_STD,
-                dualKnife = true,
+                -- FIX INVISIBLE: URLs http:// no resuelven en executors modernos -> usar rbxassetid://
+                name         = "Corrupt",
+                meshId       = "rbxassetid://121944778",
+                texId        = "rbxassetid://162016526",
+                scale        = Vector3.new(0.056, 0.056, 0.056),
+                grip         = _KNIFE_GRIP_STD,
+                dualKnife    = true,
+                forceVisible = true,
             },
             {
                 -- Turkey: SpecialMesh -- IDs capturados via MM2 Skin Analyzer
@@ -36377,12 +36366,15 @@ function CreatePremiumTab()
             },
             {
                 -- Celestial: MeshPart -- IDs capturados via MM2 Skin Analyzer
-                name      = "Celestial",
-                meshId    = "rbxassetid://109711282082830",
-                texId     = "rbxassetid://117556526686597",
-                scale     = Vector3.new(0.056, 0.056, 0.056),
-                grip      = _KNIFE_GRIP_STD,
-                dualKnife = true,
+                -- FIX TEXTURE: ID moderno (15 dig) no carga en SpecialMesh.TextureId
+                -- -> meshPartOnly=true: solo aplica TextureID directo al MeshPart, sin inyectar SpecialMesh
+                name         = "Celestial",
+                meshId       = "rbxassetid://109711282082830",
+                texId        = "rbxassetid://117556526686597",
+                scale        = Vector3.new(0.056, 0.056, 0.056),
+                grip         = _KNIFE_GRIP_STD,
+                dualKnife    = true,
+                meshPartOnly = true,
             },
             {
                 -- Candleflame: MeshPart -- IDs capturados via MM2 Skin Analyzer
@@ -36393,15 +36385,7 @@ function CreatePremiumTab()
                 grip      = _KNIFE_GRIP_STD,
                 dualKnife = true,
             },
-            {
-                -- Harvester (knife version)
-                name      = "Harvester",
-                meshId    = "rbxassetid://7775027413",
-                texId     = "http://www.roblox.com/asset/?id=7775245551",
-                scale     = Vector3.new(0.05, 0.05, 0.05),
-                grip      = _KNIFE_GRIP_STD,
-                dualKnife = true,
-            },
+
         }
 
         -- Exponer lista de knife skins en _G para que _dualStartArm pueda usarla
@@ -36472,6 +36456,10 @@ function CreatePremiumTab()
         --   3. Handle BasePart sin SpecialMesh (legacy)  -> pisar directo
         local function _applyToAnyHandle(handle, skin, tool)
             if not handle or not skin then return end
+            -- FIX CORRUPT INVISIBLE: forzar visibilidad cuando la skin lo requiere
+            if skin.forceVisible then
+                pcall(function() handle.Transparency = 0; handle.LocalTransparencyModifier = 0 end)
+            end
             if handle:IsA("MeshPart") then
                 -- MeshId es readonly en LocalScript sobre MeshPart
                 if not _skinState.origData[tool].Elements[handle] then
@@ -36481,18 +36469,23 @@ function CreatePremiumTab()
                     }
                 end
                 pcall(function() handle.TextureID = skin.texId end)
-                pcall(function()
-                    local _sm = handle:FindFirstChildOfClass("SpecialMesh")
-                    if not _sm then
-                        _sm = Instance.new("SpecialMesh")
-                        _sm.MeshType = Enum.MeshType.FileMesh
-                        _sm.Parent   = handle
-                        _skinState.origData[tool].Elements[handle]._injectedSM = _sm
-                    end
-                    _sm.MeshId    = skin.meshId
-                    _sm.TextureId = skin.texId
-                    _sm.Scale     = skin.scale
-                end)
+                -- meshPartOnly: NO inyectar SpecialMesh (IDs modernos de 15+ dig no cargan
+                -- en SpecialMesh.TextureId y pueden corromper el render del MeshPart).
+                -- Solo usar TextureID directo del MeshPart.
+                if not skin.meshPartOnly then
+                    pcall(function()
+                        local _sm = handle:FindFirstChildOfClass("SpecialMesh")
+                        if not _sm then
+                            _sm = Instance.new("SpecialMesh")
+                            _sm.MeshType = Enum.MeshType.FileMesh
+                            _sm.Parent   = handle
+                            _skinState.origData[tool].Elements[handle]._injectedSM = _sm
+                        end
+                        _sm.MeshId    = skin.meshId
+                        _sm.TextureId = skin.texId
+                        _sm.Scale     = skin.scale
+                    end)
+                end
             else
                 -- BasePart: primero buscar SpecialMesh hijo
                 local specialMesh = handle:FindFirstChildOfClass("SpecialMesh")
@@ -36528,55 +36521,41 @@ function CreatePremiumTab()
         -- Helper: aplicar skin a todos los handles de un Tool o Model
         local function _applyToClone(container, skin)
             if not container or not skin then return end
-            -- Buscar Handle directo primero
-            local h = container:FindFirstChild("Handle")
-            if h then
-                if h:IsA("MeshPart") then
-                    pcall(function() h.TextureID = skin.texId end)
-                    pcall(function()
-                        local _sm = h:FindFirstChildOfClass("SpecialMesh")
-                        if not _sm then
-                            _sm = Instance.new("SpecialMesh")
-                            _sm.MeshType = Enum.MeshType.FileMesh
-                            _sm.Parent   = h
-                        end
-                        _sm.MeshId    = skin.meshId
-                        _sm.TextureId = skin.texId
-                        _sm.Scale     = skin.scale
-                    end)
-                else
-                    local sm = h:FindFirstChildOfClass("SpecialMesh")
-                    if sm then
+            -- El DK_Clone ES el handle clonado directamente (no un Tool con Handle hijo)
+            -- Tratar el container como el handle mismo
+            local function _applyMeshToObj(obj)
+                if obj:IsA("MeshPart") then
+                    if skin.forceVisible then
+                        pcall(function() obj.Transparency = 0; obj.LocalTransparencyModifier = 0 end)
+                    end
+                    pcall(function() obj.TextureID = skin.texId end)
+                    -- meshPartOnly: no inyectar SpecialMesh para IDs modernos de 15+ dig
+                    if not skin.meshPartOnly then
                         pcall(function()
-                            sm.MeshId    = skin.meshId
-                            sm.TextureId = skin.texId
-                            sm.Scale     = skin.scale
+                            local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                            if not _sm then
+                                _sm = Instance.new("SpecialMesh")
+                                _sm.MeshType = Enum.MeshType.FileMesh
+                                _sm.Parent   = obj
+                            end
+                            _sm.MeshId    = skin.meshId
+                            _sm.TextureId = skin.texId
+                            _sm.Scale     = skin.scale
                         end)
                     end
-                end
-            end
-            -- Tambien recorrer todos los descendants
-            for _, obj in pairs(container:GetDescendants()) do
-                if obj:IsA("SpecialMesh") then
+                elseif obj:IsA("SpecialMesh") then
                     pcall(function()
                         obj.MeshId    = skin.meshId
                         obj.TextureId = skin.texId
                         obj.Scale     = skin.scale
                     end)
-                elseif obj:IsA("MeshPart") then
-                    pcall(function() obj.TextureID = skin.texId end)
-                    pcall(function()
-                        local _sm = obj:FindFirstChildOfClass("SpecialMesh")
-                        if not _sm then
-                            _sm = Instance.new("SpecialMesh")
-                            _sm.MeshType = Enum.MeshType.FileMesh
-                            _sm.Parent   = obj
-                        end
-                        _sm.MeshId    = skin.meshId
-                        _sm.TextureId = skin.texId
-                        _sm.Scale     = skin.scale
-                    end)
                 end
+            end
+            -- Aplicar al container mismo (es el handle clonado)
+            _applyMeshToObj(container)
+            -- Y a todos sus descendants
+            for _, obj in pairs(container:GetDescendants()) do
+                _applyMeshToObj(obj)
             end
         end
 
@@ -36586,21 +36565,29 @@ function CreatePremiumTab()
                 _skinState.origData[tool] = { Grip = tool.Grip, Elements = {} }
             end
 
-            -- GRIP
-            pcall(function() tool.Grip = skin.grip end)
+            -- GRIP: NO sobreescribir cuando Dual Knife esta activo.
+            -- El DK usa el RightGrip real del tool para calcular el weld espejo;
+            -- pisarlo con _KNIFE_GRIP_STD deja el knife "acostado" en la mano izquierda.
+            local _isDualKnifeActive = _G._dualKnifeEnabled == true
+            if not _isDualKnifeActive then
+                pcall(function() tool.Grip = skin.grip end)
+            end
 
             -- Re-aplicar grip en Equipped (mobile puede pisarlo al animar)
+            -- Solo cuando Dual Knife NO esta activo, por la misma razon.
             if not _skinState._equippedConns then _skinState._equippedConns = {} end
             if not _skinState._equippedConns[tool] then
                 _skinState._equippedConns[tool] = tool.Equipped:Connect(function()
                     task.wait(0.016)
                     if _skinState.enabled and _skinState._equippedConns[tool] then
-                        pcall(function() tool.Grip = skin.grip end)
-                        task.wait(0.1)
-                        pcall(function() tool.Grip = skin.grip end)
-                        task.wait(0.3)
-                        if _skinState.enabled then
+                        if not (_G._dualKnifeEnabled == true) then
                             pcall(function() tool.Grip = skin.grip end)
+                            task.wait(0.1)
+                            pcall(function() tool.Grip = skin.grip end)
+                            task.wait(0.3)
+                            if _skinState.enabled then
+                                pcall(function() tool.Grip = skin.grip end)
+                            end
                         end
                     end
                 end)
@@ -36633,18 +36620,20 @@ function CreatePremiumTab()
                             }
                         end
                         pcall(function() obj.TextureID = skin.texId end)
-                        pcall(function()
-                            local _sm = obj:FindFirstChildOfClass("SpecialMesh")
-                            if not _sm then
-                                _sm = Instance.new("SpecialMesh")
-                                _sm.MeshType = Enum.MeshType.FileMesh
-                                _sm.Parent   = obj
-                                _skinState.origData[tool].Elements[obj]._injectedSM = _sm
-                            end
-                            _sm.MeshId    = skin.meshId
-                            _sm.TextureId = skin.texId
-                            _sm.Scale     = skin.scale
-                        end)
+                        if not skin.meshPartOnly then
+                            pcall(function()
+                                local _sm = obj:FindFirstChildOfClass("SpecialMesh")
+                                if not _sm then
+                                    _sm = Instance.new("SpecialMesh")
+                                    _sm.MeshType = Enum.MeshType.FileMesh
+                                    _sm.Parent   = obj
+                                    _skinState.origData[tool].Elements[obj]._injectedSM = _sm
+                                end
+                                _sm.MeshId    = skin.meshId
+                                _sm.TextureId = skin.texId
+                                _sm.Scale     = skin.scale
+                            end)
+                        end
                     end
                 end
             end
@@ -36687,8 +36676,9 @@ function CreatePremiumTab()
                     if tool.Parent and _skinState.enabled then
                         _scApplyInner(tool, skin)
                         -- Re-aplicar 0.5s despues por si el grip se pisa en mobile
+                        -- Solo cuando Dual Knife NO esta activo (para no dejar el knife acostado)
                         task.delay(0.5, function()
-                            if tool.Parent and _skinState.enabled then
+                            if tool.Parent and _skinState.enabled and not (_G._dualKnifeEnabled == true) then
                                 pcall(function() tool.Grip = skin.grip end)
                             end
                         end)
@@ -36926,7 +36916,10 @@ function CreatePremiumTab()
             -- Funcion que intenta aplicar la skin al knife actual
             local function _scTryApplyKnife()
                 if not _skinState.enabled or _skinState.mode ~= "knife" then return end
+                -- FIX DUAL KNIFE: no pisar el grip mientras dual knife esta activo
+                if _G._dualKnifeEnabled then return end
                 task.wait(0.15)
+                if _G._dualKnifeEnabled then return end
                 local knife = _findKnife()
                 if knife then _scApply(knife, _scGetSkin(), true) end
             end
@@ -36938,6 +36931,8 @@ function CreatePremiumTab()
                 end
                 _skinState._knifePickupConn = char.ChildAdded:Connect(function(child)
                     if child:IsA("Tool") and _scEsKnife(child) then
+                        -- FIX DUAL KNIFE: no pisar el grip mientras dual knife esta activo
+                        if _G._dualKnifeEnabled then return end
                         task.spawn(_scTryApplyKnife)
                     end
                 end)
@@ -36947,6 +36942,8 @@ function CreatePremiumTab()
                 end
                 _skinState._knifeWsConn = workspace.DescendantAdded:Connect(function(obj)
                     if not _skinState.enabled or _skinState.mode ~= "knife" then return end
+                    -- FIX DUAL KNIFE: no pisar el grip mientras dual knife esta activo
+                    if _G._dualKnifeEnabled then return end
                     if obj:IsA("Tool") and _scEsKnife(obj) then
                         task.spawn(_scTryApplyKnife)
                     end
@@ -37010,18 +37007,22 @@ function CreatePremiumTab()
                 -- Aplicar con delays (mobile / executor lento)
                 task.delay(0.3, function()
                     if not _skinState.enabled or _skinState.mode ~= "knife" then return end
+                    if _G._dualKnifeEnabled then return end
                     local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end
                 end)
                 task.delay(0.8, function()
                     if not _skinState.enabled or _skinState.mode ~= "knife" then return end
+                    if _G._dualKnifeEnabled then return end
                     local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end
                 end)
                 task.delay(1.5, function()
                     if not _skinState.enabled or _skinState.mode ~= "knife" then return end
+                    if _G._dualKnifeEnabled then return end
                     local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end
                 end)
                 task.delay(3.0, function()
                     if not _skinState.enabled or _skinState.mode ~= "knife" then return end
+                    if _G._dualKnifeEnabled then return end
                     local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end
                 end)
 
@@ -37039,38 +37040,21 @@ function CreatePremiumTab()
                         end
                         _skinState._equippedConns = {}
                     end
-                    _scSetupKnifeListener(newChar)
+                    -- FIX DUAL KNIFE: no re-aplicar el skin listener si dual knife esta activo
+                    if not _G._dualKnifeEnabled then
+                        _scSetupKnifeListener(newChar)
+                    end
                 end)
 
                 -- HOOK DUAL KNIFE: aplicar skin al DK_Clone si dual knife esta activo
+                -- Usar _applyToClone que respeta meshPartOnly y forceVisible
                 task.spawn(function()
                     task.wait(0.2)
                     local char3 = LocalPlayer.Character
                     if not char3 then return end
                     local dkClone = char3:FindFirstChild("DK_Clone")
                     if dkClone then
-                        for _, obj in pairs(dkClone:GetDescendants()) do
-                            if obj:IsA("SpecialMesh") then
-                                pcall(function()
-                                    obj.MeshId    = selectedSkin.meshId
-                                    obj.TextureId = selectedSkin.texId
-                                    obj.Scale     = selectedSkin.scale
-                                end)
-                            elseif obj:IsA("MeshPart") then
-                                pcall(function()
-                                    obj.TextureID = selectedSkin.texId
-                                    local _sm2 = obj:FindFirstChildOfClass("SpecialMesh")
-                                    if not _sm2 then
-                                        _sm2 = Instance.new("SpecialMesh")
-                                        _sm2.MeshType = Enum.MeshType.FileMesh
-                                        _sm2.Parent   = obj
-                                    end
-                                    _sm2.MeshId    = selectedSkin.meshId
-                                    _sm2.TextureId = selectedSkin.texId
-                                    _sm2.Scale     = selectedSkin.scale
-                                end)
-                            end
-                        end
+                        _applyToClone(dkClone, selectedSkin)
                     end
                 end)
 
@@ -45396,13 +45380,6 @@ function CreateCombatTab()
     -- ======================================================================
     -- SECCIN: DUAL WEAPON  Dual Knife y Dual Gun
     -- ======================================================================
-    -- animConfig: IDs de animaciones personalizadas para Dual Knife
-    -- Idle  = se reproduce cuando el jugador esta quieto (MoveDirection ~= 0)
-    -- Run   = se reproduce cuando el jugador se esta moviendo
-    local _dkAnimConfig = {
-        idleAnim = "rbxassetid://85267536017874",
-        runAnim  = "rbxassetid://99847966455703",
-    }
     do
         local _dualSection = (CreateBorderedSection and rightColumn) and CreateBorderedSection(rightColumn, "  DUAL WEAPON") or Instance.new("Frame")
 
@@ -45585,9 +45562,9 @@ function CreateCombatTab()
                 weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
                 weld.C1 = grip.C1
 
-                -- HOOK PREMIUM SKIN: aplicar skin al clon segun el modo activo (gun o knife)
-                local isDualGun   = (keywordList == _dualGunKeywords)
-                local isDualKnife = (keywordList == _dualKnifeKeywords)
+                -- HOOK PREMIUM SKIN: solo aplicar skin al clon si es Dual Gun (no Dual Knife)
+                -- FIX: antes aplicaba siempre la skin de gun incluso al clon del knife
+                local isDualGun = (keywordList == _dualGunKeywords)
                 if isDualGun then
                     pcall(function()
                         local sc = _G._skinChangerState
@@ -45602,52 +45579,7 @@ function CreateCombatTab()
                                         obj.Scale     = _cSkin.scale
                                     end)
                                 elseif obj:IsA("MeshPart") then
-                                    pcall(function()
-                                        obj.TextureID = _cSkin.texId
-                                        -- FIX MOBILE v3: inyectar SpecialMesh en clon dual
-                                        local _sm = obj:FindFirstChildOfClass("SpecialMesh")
-                                        if not _sm then
-                                            _sm = Instance.new("SpecialMesh")
-                                            _sm.MeshType = Enum.MeshType.FileMesh
-                                            _sm.Parent   = obj
-                                        end
-                                        _sm.MeshId    = _cSkin.meshId
-                                        _sm.TextureId = _cSkin.texId
-                                        _sm.Scale     = _cSkin.scale
-                                    end)
-                                end
-                            end
-                        end
-                    end)
-                elseif isDualKnife then
-                    -- HOOK DUAL KNIFE SKIN: aplicar skin de knife al DK_Clone
-                    pcall(function()
-                        local sc = _G._skinChangerState
-                        if sc and sc.enabled and sc.mode == "knife" then
-                            local _skinList = _G._SC_KNIFE_SKINS or {}
-                            local _cSkin = _skinList[sc.skinIdx] or _skinList[1]
-                            if _cSkin and _cSkin.meshId ~= "" then
-                                for _, obj in pairs(clon:GetDescendants()) do
-                                    if obj:IsA("SpecialMesh") then
-                                        pcall(function()
-                                            obj.MeshId    = _cSkin.meshId
-                                            obj.TextureId = _cSkin.texId
-                                            obj.Scale     = _cSkin.scale
-                                        end)
-                                    elseif obj:IsA("MeshPart") then
-                                        pcall(function()
-                                            obj.TextureID = _cSkin.texId
-                                            local _sm = obj:FindFirstChildOfClass("SpecialMesh")
-                                            if not _sm then
-                                                _sm = Instance.new("SpecialMesh")
-                                                _sm.MeshType = Enum.MeshType.FileMesh
-                                                _sm.Parent   = obj
-                                            end
-                                            _sm.MeshId    = _cSkin.meshId
-                                            _sm.TextureId = _cSkin.texId
-                                            _sm.Scale     = _cSkin.scale
-                                        end)
-                                    end
+                                    pcall(function() obj.TextureID = _cSkin.texId end)
                                 end
                             end
                         end
@@ -45787,42 +45719,62 @@ function CreateCombatTab()
         local function _dkPreloadTracks()
             local char = LocalPlayer.Character
             if not char then return end
+            local tool = nil
+            for _, t in ipairs(char:GetChildren()) do
+                if t:IsA("Tool") and _dualMatchKeywords(t, _dualKnifeKeywords) then
+                    tool = t; break
+                end
+            end
+            if not tool then return end
             local animator = _dkGetAnimator()
             if not animator then return end
 
             _dkAnimTracks = {}
 
-            -- Detectar si el jugador se esta moviendo para elegir idle o run
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            local isMoving = hum and hum.MoveDirection.Magnitude > 0.1
+            -- 1. Recopilar todas las anims del knife
+            local allAnims = {}
+            for _, v in ipairs(tool:GetDescendants()) do
+                if v:IsA("Animation") then table.insert(allAnims, v) end
+            end
 
-            -- slotA = idle, slotB = run (segun animConfig)
-            local idA = _dkAnimConfig.idleAnim
-            local idB = _dkAnimConfig.runAnim
+            -- 2. Filtrar las de slash/stab
+            local slashAnims = {}
+            for _, a in ipairs(allAnims) do
+                local n = a.Name:lower()
+                if n:find("slash") or n:find("stab") or n:find("hit") or n:find("animation1") then
+                    table.insert(slashAnims, a)
+                end
+            end
+            if #slashAnims == 0 then slashAnims = allAnims end
 
-            local okA, tA = pcall(function()
-                local a = Instance.new("Animation")
-                a.AnimationId = idA
-                local tr = animator:LoadAnimation(a)
-                tr.Priority = Enum.AnimationPriority.Action4
-                return tr
-            end)
-            if okA and tA then _dkAnimTracks.slotA = tA end
+            -- 3. Intentar cargar desde el tool
+            if slashAnims[1] then
+                local ok, t = pcall(function() return animator:LoadAnimation(slashAnims[1]) end)
+                if ok and t then t.Priority = Enum.AnimationPriority.Action4; _dkAnimTracks.slotA = t end
+            end
+            local animB = slashAnims[2] or slashAnims[1]
+            if animB then
+                local ok, t = pcall(function() return animator:LoadAnimation(animB) end)
+                if ok and t then t.Priority = Enum.AnimationPriority.Action4; _dkAnimTracks.slotB = t end
+            end
 
-            local okB, tB = pcall(function()
-                local a = Instance.new("Animation")
-                a.AnimationId = idB
-                local tr = animator:LoadAnimation(a)
-                tr.Priority = Enum.AnimationPriority.Action4
-                return tr
-            end)
-            if okB and tB then _dkAnimTracks.slotB = tB end
-
-            -- Si fallo alguno, compartir el que cargo
+            -- 4. FALLBACK: si el tool no tiene animaciones propias, usar IDs conocidos
+            if not _dkAnimTracks.slotA then
+                for i, id in ipairs(_DK_FALLBACK_IDS) do
+                    local t = _dkLoadAnimFromId(animator, id)
+                    if t then
+                        if not _dkAnimTracks.slotA then
+                            _dkAnimTracks.slotA = t
+                        elseif not _dkAnimTracks.slotB then
+                            _dkAnimTracks.slotB = t
+                            break
+                        end
+                    end
+                end
+            end
+            -- Si solo se cargo slotA, slotB es el mismo (alterna la misma anim)
             if _dkAnimTracks.slotA and not _dkAnimTracks.slotB then
                 _dkAnimTracks.slotB = _dkAnimTracks.slotA
-            elseif _dkAnimTracks.slotB and not _dkAnimTracks.slotA then
-                _dkAnimTracks.slotA = _dkAnimTracks.slotB
             end
         end
 
@@ -45853,18 +45805,12 @@ function CreateCombatTab()
             -- FIX: matar nativa en el mismo frame del input (sin yield)
             _dkKillNativeSlash()
 
-            -- Elegir idle o run segun si el jugador se esta moviendo
-            local char = LocalPlayer.Character
-            local hum  = char and char:FindFirstChildOfClass("Humanoid")
-            local isMoving = hum and hum.MoveDirection.Magnitude > 0.1
-            local activeSlot = isMoving and "slotB" or "slotA"
-
-            local track = _dkAnimTracks[activeSlot]
-            -- Si el track no existe o ya no es valido (tras respawn), recargar
+            local track = _dkAnimTracks[slot]
+            -- Si el track no existe o ya no es válido (tras respawn), recargar
             if not _dkIsTrackValid(track) then
                 _dkAnimTracks = {}
                 _dkPreloadTracks()
-                track = _dkAnimTracks[activeSlot]
+                track = _dkAnimTracks[slot]
                 if not _dkIsTrackValid(track) then return end
             end
 
@@ -45872,7 +45818,7 @@ function CreateCombatTab()
                 pcall(function() track:Stop(0) end)
                 _w()
             end
-            -- Segunda pasada post-yield (atrapa lo que el servidor disparo en ese frame)
+            -- Segunda pasada post-yield (atrapa lo que el servidor disparó en ese frame)
             _dkKillNativeSlash()
 
             pcall(function() track:Play(0.05); track:AdjustSpeed(speed) end)
@@ -45929,7 +45875,7 @@ function CreateCombatTab()
                     local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
                     local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
 
-                    -- LMB/Touch -> animacion personalizada (idle o run segun movimiento)
+                    -- LMB/Touch -> slash alternado (solo si Knife SA est OFF)
                     if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
                         and not (KnifeSAState and KnifeSAState.enabled) then
                         if state.isAttacking then return end
@@ -45937,8 +45883,10 @@ function CreateCombatTab()
                         if now - (state._lastStab or -999) < 0.85 then return end
                         state.isAttacking = true
                         state._lastStab   = now
-                        -- _dkPlaySlot elige idle/run automaticamente segun MoveDirection
-                        _dkPlaySlot("auto", 1.0)
+                        _dkToggle = not _dkToggle
+                        -- Reproducir en este hilo (sin task.spawn) para que
+                        -- _dkKillNativeSlash acte en el mismo frame del input
+                        _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
                         if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                         _dl(0.85, function() state.isAttacking = false end)
 
@@ -46228,8 +46176,8 @@ function CreateCombatTab()
                             if now - (ks._lastStab or -999) < 0.85 then return end
                             ks.isAttacking = true
                             ks._lastStab   = now
-                            -- _dkPlaySlot elige idle/run automaticamente segun MoveDirection
-                            _dkPlaySlot("auto", 1.0)
+                            _dkToggle = not _dkToggle
+                            _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
                             if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                             _dl(0.85, function() ks.isAttacking = false end)
                         elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
@@ -46323,54 +46271,6 @@ function CreateCombatTab()
                 end)
             end
         end)
-
-        -- -- INPUTS: cambiar IDs de animacion del Dual Knife desde la UI ---------
-        do
-            local _dkAnimSection = (CreateBorderedSection and rightColumn)
-                and CreateBorderedSection(rightColumn, "  DUAL KNIFE — Animaciones")
-                or Instance.new("Frame")
-
-            -- Helper para normalizar el ID ingresado
-            local function _normalizeAnimId(text)
-                if text == "" then return nil end
-                if text:find("rbxassetid://") or text:find("http") then
-                    return text
-                else
-                    return "rbxassetid://" .. text
-                end
-            end
-
-            -- Input: Animation ID — Quieto (Idle)
-            if CreateAnimInput or CreateTextInputRow or CreateInputRow then
-                -- Intentar crear input con la funcion del hub si existe
-                pcall(function()
-                    local fn = CreateAnimInput or CreateInputRow or CreateTextInputRow
-                    fn(_dkAnimSection, "Anim ID — Quieto (Idle)", "rbxassetid://85267536017874", function(text)
-                        local id = _normalizeAnimId(text)
-                        if id then
-                            _dkAnimConfig.idleAnim = id
-                            _dkAnimTracks = {}   -- invalidar cache para recargar en el proximo click
-                            CreateCustomNotification("DK ANIM", "Idle actualizado", 2)
-                        end
-                    end)
-                end)
-            end
-
-            -- Input: Animation ID — Corriendo (Run)
-            if CreateAnimInput or CreateTextInputRow or CreateInputRow then
-                pcall(function()
-                    local fn = CreateAnimInput or CreateInputRow or CreateTextInputRow
-                    fn(_dkAnimSection, "Anim ID — Corriendo (Run)", "rbxassetid://99847966455703", function(text)
-                        local id = _normalizeAnimId(text)
-                        if id then
-                            _dkAnimConfig.runAnim = id
-                            _dkAnimTracks = {}   -- invalidar cache para recargar en el proximo click
-                            CreateCustomNotification("DK ANIM", "Run actualizado", 2)
-                        end
-                    end)
-                end)
-            end
-        end
     end
 
     -- ======================================================================
