@@ -36349,20 +36349,20 @@ function CreatePremiumTab()
 
         local _SC_KNIFE_SKINS = {
             {
-                -- Icebreaker: MeshPart -- scale 1,1,1 (escala nativa del mesh, 0.056 lo hace invisible)
-                name      = "Icebreaker",
+                -- Candy: MeshPart -- IDs capturados via MM2 Skin Analyzer
+                name      = "Candy",
                 meshId    = "rbxassetid://6124173614",
                 texId     = "rbxassetid://6124173821",
-                scale     = Vector3.new(1, 1, 1),
+                scale     = Vector3.new(0.056, 0.056, 0.056),
                 grip      = _KNIFE_GRIP_STD,
                 dualKnife = true,
             },
             {
-                -- Corrupt: SpecialMesh -- scale 1,1,1 (escala nativa del mesh, 0.056 lo hace invisible)
+                -- Corrupt: SpecialMesh -- IDs capturados via MM2 Skin Analyzer
                 name      = "Corrupt",
                 meshId    = "http://www.roblox.com/asset/?id=121944778",
                 texId     = "http://www.roblox.com/asset/?id=162016526",
-                scale     = Vector3.new(1, 1, 1),
+                scale     = Vector3.new(0.056, 0.056, 0.056),
                 grip      = _KNIFE_GRIP_STD,
                 dualKnife = true,
             },
@@ -36393,6 +36393,17 @@ function CreatePremiumTab()
                 grip      = _KNIFE_GRIP_STD,
                 dualKnife = true,
             },
+            {
+                -- Harvester (knife version)
+                name      = "Harvester",
+                meshId    = "rbxassetid://7775027413",
+                texId     = "http://www.roblox.com/asset/?id=7775245551",
+                scale     = Vector3.new(0.05, 0.05, 0.05),
+                grip      = _KNIFE_GRIP_STD,
+                dualKnife = true,
+            },
+        }
+
         -- Exponer lista de knife skins en _G para que _dualStartArm pueda usarla
         _G._SC_KNIFE_SKINS = _SC_KNIFE_SKINS
 
@@ -36575,26 +36586,21 @@ function CreatePremiumTab()
                 _skinState.origData[tool] = { Grip = tool.Grip, Elements = {} }
             end
 
-            -- GRIP: para knives NO tocar tool.Grip (el juego ya tiene el agarre correcto).
-            -- Solo aplicar grip para guns donde el modelo cambia de escala/orientacion.
-            if _skinState.mode == "gun" then
-                pcall(function() tool.Grip = skin.grip end)
-            end
+            -- GRIP
+            pcall(function() tool.Grip = skin.grip end)
 
-            -- Re-aplicar grip en Equipped solo para guns
+            -- Re-aplicar grip en Equipped (mobile puede pisarlo al animar)
             if not _skinState._equippedConns then _skinState._equippedConns = {} end
             if not _skinState._equippedConns[tool] then
                 _skinState._equippedConns[tool] = tool.Equipped:Connect(function()
                     task.wait(0.016)
                     if _skinState.enabled and _skinState._equippedConns[tool] then
-                        if _skinState.mode == "gun" then
+                        pcall(function() tool.Grip = skin.grip end)
+                        task.wait(0.1)
+                        pcall(function() tool.Grip = skin.grip end)
+                        task.wait(0.3)
+                        if _skinState.enabled then
                             pcall(function() tool.Grip = skin.grip end)
-                            task.wait(0.1)
-                            pcall(function() tool.Grip = skin.grip end)
-                            task.wait(0.3)
-                            if _skinState.enabled then
-                                pcall(function() tool.Grip = skin.grip end)
-                            end
                         end
                     end
                 end)
@@ -36680,14 +36686,12 @@ function CreatePremiumTab()
                     until _hasMesh or _t >= 4 or not tool.Parent
                     if tool.Parent and _skinState.enabled then
                         _scApplyInner(tool, skin)
-                        -- Re-aplicar grip 0.5s despues solo para guns (knives no tocan Grip)
-                        if _skinState.mode == "gun" then
-                            task.delay(0.5, function()
-                                if tool.Parent and _skinState.enabled then
-                                    pcall(function() tool.Grip = skin.grip end)
-                                end
-                            end)
-                        end
+                        -- Re-aplicar 0.5s despues por si el grip se pisa en mobile
+                        task.delay(0.5, function()
+                            if tool.Parent and _skinState.enabled then
+                                pcall(function() tool.Grip = skin.grip end)
+                            end
+                        end)
                     end
                 end)
                 return
@@ -45392,6 +45396,13 @@ function CreateCombatTab()
     -- ======================================================================
     -- SECCIN: DUAL WEAPON  Dual Knife y Dual Gun
     -- ======================================================================
+    -- animConfig: IDs de animaciones personalizadas para Dual Knife
+    -- Idle  = se reproduce cuando el jugador esta quieto (MoveDirection ~= 0)
+    -- Run   = se reproduce cuando el jugador se esta moviendo
+    local _dkAnimConfig = {
+        idleAnim = "rbxassetid://85267536017874",
+        runAnim  = "rbxassetid://99847966455703",
+    }
     do
         local _dualSection = (CreateBorderedSection and rightColumn) and CreateBorderedSection(rightColumn, "  DUAL WEAPON") or Instance.new("Frame")
 
@@ -45776,62 +45787,42 @@ function CreateCombatTab()
         local function _dkPreloadTracks()
             local char = LocalPlayer.Character
             if not char then return end
-            local tool = nil
-            for _, t in ipairs(char:GetChildren()) do
-                if t:IsA("Tool") and _dualMatchKeywords(t, _dualKnifeKeywords) then
-                    tool = t; break
-                end
-            end
-            if not tool then return end
             local animator = _dkGetAnimator()
             if not animator then return end
 
             _dkAnimTracks = {}
 
-            -- 1. Recopilar todas las anims del knife
-            local allAnims = {}
-            for _, v in ipairs(tool:GetDescendants()) do
-                if v:IsA("Animation") then table.insert(allAnims, v) end
-            end
+            -- Detectar si el jugador se esta moviendo para elegir idle o run
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local isMoving = hum and hum.MoveDirection.Magnitude > 0.1
 
-            -- 2. Filtrar las de slash/stab
-            local slashAnims = {}
-            for _, a in ipairs(allAnims) do
-                local n = a.Name:lower()
-                if n:find("slash") or n:find("stab") or n:find("hit") or n:find("animation1") then
-                    table.insert(slashAnims, a)
-                end
-            end
-            if #slashAnims == 0 then slashAnims = allAnims end
+            -- slotA = idle, slotB = run (segun animConfig)
+            local idA = _dkAnimConfig.idleAnim
+            local idB = _dkAnimConfig.runAnim
 
-            -- 3. Intentar cargar desde el tool
-            if slashAnims[1] then
-                local ok, t = pcall(function() return animator:LoadAnimation(slashAnims[1]) end)
-                if ok and t then t.Priority = Enum.AnimationPriority.Action4; _dkAnimTracks.slotA = t end
-            end
-            local animB = slashAnims[2] or slashAnims[1]
-            if animB then
-                local ok, t = pcall(function() return animator:LoadAnimation(animB) end)
-                if ok and t then t.Priority = Enum.AnimationPriority.Action4; _dkAnimTracks.slotB = t end
-            end
+            local okA, tA = pcall(function()
+                local a = Instance.new("Animation")
+                a.AnimationId = idA
+                local tr = animator:LoadAnimation(a)
+                tr.Priority = Enum.AnimationPriority.Action4
+                return tr
+            end)
+            if okA and tA then _dkAnimTracks.slotA = tA end
 
-            -- 4. FALLBACK: si el tool no tiene animaciones propias, usar IDs conocidos
-            if not _dkAnimTracks.slotA then
-                for i, id in ipairs(_DK_FALLBACK_IDS) do
-                    local t = _dkLoadAnimFromId(animator, id)
-                    if t then
-                        if not _dkAnimTracks.slotA then
-                            _dkAnimTracks.slotA = t
-                        elseif not _dkAnimTracks.slotB then
-                            _dkAnimTracks.slotB = t
-                            break
-                        end
-                    end
-                end
-            end
-            -- Si solo se cargo slotA, slotB es el mismo (alterna la misma anim)
+            local okB, tB = pcall(function()
+                local a = Instance.new("Animation")
+                a.AnimationId = idB
+                local tr = animator:LoadAnimation(a)
+                tr.Priority = Enum.AnimationPriority.Action4
+                return tr
+            end)
+            if okB and tB then _dkAnimTracks.slotB = tB end
+
+            -- Si fallo alguno, compartir el que cargo
             if _dkAnimTracks.slotA and not _dkAnimTracks.slotB then
                 _dkAnimTracks.slotB = _dkAnimTracks.slotA
+            elseif _dkAnimTracks.slotB and not _dkAnimTracks.slotA then
+                _dkAnimTracks.slotA = _dkAnimTracks.slotB
             end
         end
 
@@ -45862,12 +45853,18 @@ function CreateCombatTab()
             -- FIX: matar nativa en el mismo frame del input (sin yield)
             _dkKillNativeSlash()
 
-            local track = _dkAnimTracks[slot]
-            -- Si el track no existe o ya no es válido (tras respawn), recargar
+            -- Elegir idle o run segun si el jugador se esta moviendo
+            local char = LocalPlayer.Character
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            local isMoving = hum and hum.MoveDirection.Magnitude > 0.1
+            local activeSlot = isMoving and "slotB" or "slotA"
+
+            local track = _dkAnimTracks[activeSlot]
+            -- Si el track no existe o ya no es valido (tras respawn), recargar
             if not _dkIsTrackValid(track) then
                 _dkAnimTracks = {}
                 _dkPreloadTracks()
-                track = _dkAnimTracks[slot]
+                track = _dkAnimTracks[activeSlot]
                 if not _dkIsTrackValid(track) then return end
             end
 
@@ -45875,7 +45872,7 @@ function CreateCombatTab()
                 pcall(function() track:Stop(0) end)
                 _w()
             end
-            -- Segunda pasada post-yield (atrapa lo que el servidor disparó en ese frame)
+            -- Segunda pasada post-yield (atrapa lo que el servidor disparo en ese frame)
             _dkKillNativeSlash()
 
             pcall(function() track:Play(0.05); track:AdjustSpeed(speed) end)
@@ -45932,7 +45929,7 @@ function CreateCombatTab()
                     local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
                     local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
 
-                    -- LMB/Touch -> slash alternado (solo si Knife SA est OFF)
+                    -- LMB/Touch -> animacion personalizada (idle o run segun movimiento)
                     if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
                         and not (KnifeSAState and KnifeSAState.enabled) then
                         if state.isAttacking then return end
@@ -45940,10 +45937,8 @@ function CreateCombatTab()
                         if now - (state._lastStab or -999) < 0.85 then return end
                         state.isAttacking = true
                         state._lastStab   = now
-                        _dkToggle = not _dkToggle
-                        -- Reproducir en este hilo (sin task.spawn) para que
-                        -- _dkKillNativeSlash acte en el mismo frame del input
-                        _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
+                        -- _dkPlaySlot elige idle/run automaticamente segun MoveDirection
+                        _dkPlaySlot("auto", 1.0)
                         if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                         _dl(0.85, function() state.isAttacking = false end)
 
@@ -46233,8 +46228,8 @@ function CreateCombatTab()
                             if now - (ks._lastStab or -999) < 0.85 then return end
                             ks.isAttacking = true
                             ks._lastStab   = now
-                            _dkToggle = not _dkToggle
-                            _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
+                            -- _dkPlaySlot elige idle/run automaticamente segun MoveDirection
+                            _dkPlaySlot("auto", 1.0)
                             if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                             _dl(0.85, function() ks.isAttacking = false end)
                         elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
@@ -46328,6 +46323,54 @@ function CreateCombatTab()
                 end)
             end
         end)
+
+        -- -- INPUTS: cambiar IDs de animacion del Dual Knife desde la UI ---------
+        do
+            local _dkAnimSection = (CreateBorderedSection and rightColumn)
+                and CreateBorderedSection(rightColumn, "  DUAL KNIFE — Animaciones")
+                or Instance.new("Frame")
+
+            -- Helper para normalizar el ID ingresado
+            local function _normalizeAnimId(text)
+                if text == "" then return nil end
+                if text:find("rbxassetid://") or text:find("http") then
+                    return text
+                else
+                    return "rbxassetid://" .. text
+                end
+            end
+
+            -- Input: Animation ID — Quieto (Idle)
+            if CreateAnimInput or CreateTextInputRow or CreateInputRow then
+                -- Intentar crear input con la funcion del hub si existe
+                pcall(function()
+                    local fn = CreateAnimInput or CreateInputRow or CreateTextInputRow
+                    fn(_dkAnimSection, "Anim ID — Quieto (Idle)", "rbxassetid://85267536017874", function(text)
+                        local id = _normalizeAnimId(text)
+                        if id then
+                            _dkAnimConfig.idleAnim = id
+                            _dkAnimTracks = {}   -- invalidar cache para recargar en el proximo click
+                            CreateCustomNotification("DK ANIM", "Idle actualizado", 2)
+                        end
+                    end)
+                end)
+            end
+
+            -- Input: Animation ID — Corriendo (Run)
+            if CreateAnimInput or CreateTextInputRow or CreateInputRow then
+                pcall(function()
+                    local fn = CreateAnimInput or CreateInputRow or CreateTextInputRow
+                    fn(_dkAnimSection, "Anim ID — Corriendo (Run)", "rbxassetid://99847966455703", function(text)
+                        local id = _normalizeAnimId(text)
+                        if id then
+                            _dkAnimConfig.runAnim = id
+                            _dkAnimTracks = {}   -- invalidar cache para recargar en el proximo click
+                            CreateCustomNotification("DK ANIM", "Run actualizado", 2)
+                        end
+                    end)
+                end)
+            end
+        end
     end
 
     -- ======================================================================
