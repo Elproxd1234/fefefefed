@@ -36282,7 +36282,20 @@ function CreatePremiumTab()
                      0.99993062,    0.0117804073,  5.85317612e-05
                 ),
             },
-
+            {
+                name   = "Harvester",
+                meshId = "rbxassetid://7775027413",
+                texId  = "http://www.roblox.com/asset/?id=7775245551",
+                scale  = Vector3.new(0.05999999865889549, 0.05000000074505806, 0.05000000074505806),
+                -- GRIP: mismo agarre que ElderwoodGun
+                grip   = CFrame.new(
+                    -0.567565918, -0.124303818, -0.0424308777,
+                    -0.000212550163, 0.0230092816, -0.999735236,
+                    -0.011778634,   0.999665856,   0.0230101906,
+                     0.99993062,    0.0117804073,  5.85317612e-05
+                ),
+                dualGun = true,
+            },
             {
                 -- Bacon: SpecialMesh, Grip exacto del scanner, GunClient confirmado
                 name   = "Bacon",
@@ -36316,7 +36329,7 @@ function CreatePremiumTab()
                 name   = "GingerScope",
                 meshId = "rbxassetid://15374602183",
                 texId  = "rbxassetid://15409041564",
-                scale  = Vector3.new(1, 1, 1),
+                scale  = Vector3.new(0.08, 0.08, 0.08),
                 -- GRIP: mismo agarre que ElderwoodGun
                 grip   = CFrame.new(
                     -0.567565918, -0.124303818, -0.0424308777,
@@ -36327,32 +36340,34 @@ function CreatePremiumTab()
                 dualGun = true,
             },
         }
-        -- FIX: exponer las listas en _G para que _dualStartArm pueda referenciarlas
+        -- FIX: exponer la lista en _G para que _dualStartArm pueda referenciarla
         _G._SC_GUN_SKINS = _SC_GUN_SKINS
-
-        -- Grip estandar testeado y confirmado para todos los knives (dualKnife)
-        local _KNIFE_GRIP_STD = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0)
 
         local _SC_KNIFE_SKINS = {
             {
-                -- Turkey: SpecialMesh -- IDs capturados via MM2 Skin Analyzer
-                name      = "Turkey",
-                meshId    = "rbxassetid://15320557481",
-                texId     = "rbxassetid://86999625612475",
-                scale     = Vector3.new(0.0560000017285347, 0.0560000017285347, 0.0560000017285347),
-                grip      = _KNIFE_GRIP_STD,
+                name   = "Turkey",
+                meshId = "rbxassetid://15320557481",
+                texId  = "rbxassetid://86999625612475",
+                scale  = Vector3.new(0.0560000017285347, 0.0560000017285347, 0.0560000017285347),
+                -- FIX GRIP: sincronizado con _KNIFE_SKINS (Items Fake) -- grip testeado y confirmado
+                grip   = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0),
                 dualKnife = true,
             },
             {
-                -- Candleflame: MeshPart -- IDs capturados via MM2 Skin Analyzer
-                name      = "Candleflame",
-                meshId    = "rbxassetid://7791364860",
-                texId     = "rbxassetid://7791364988",
-                scale     = Vector3.new(0.056, 0.056, 0.056),
-                grip      = _KNIFE_GRIP_STD,
-                dualKnife = true,
+                name   = "Harvester",
+                meshId = "rbxassetid://7775027413",
+                texId  = "http://www.roblox.com/asset/?id=7775245551",
+                scale  = Vector3.new(0.05, 0.05, 0.05),
+                grip   = CFrame.new(0, -1, 0) * CFrame.Angles(math.rad(-90), 0, 0),
             },
-
+            {
+                name   = " Coming Soon...",
+                meshId = "",
+                texId  = "",
+                scale  = Vector3.new(0.05, 0.05, 0.05),
+                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                comingSoon = true,
+            },
         }
 
         -- Exponer lista de knife skins en _G para que _dualStartArm pueda usarla
@@ -36553,6 +36568,10 @@ function CreatePremiumTab()
             end
 
             -- Recorrer el resto de descendants por partes decorativas adicionales
+            -- FIX HANDLE-ONLY: solo modificar el SpecialMesh que sea hijo directo del Handle,
+            -- NO aplicar la skin a MeshParts o SMs de partes decorativas del tool (evita que
+            -- el selector de knife pise handles de la gun u otras partes no relacionadas).
+            local _handle = tool:FindFirstChild("Handle")
             for _, obj in pairs(tool:GetDescendants()) do
                 if obj.Name ~= "Handle" then
                     -- Forzar visibilidad en todos los BasePart del tool siempre
@@ -36560,33 +36579,40 @@ function CreatePremiumTab()
                         pcall(function() obj.Transparency = 0; obj.LocalTransparencyModifier = 0 end)
                     end
                     if obj:IsA("SpecialMesh") then
-                        -- SM propio de un BasePart: actualizar normalmente
-                        if not _skinState.origData[tool].Elements[obj] then
-                            _skinState.origData[tool].Elements[obj] = {
-                                Mesh = obj.MeshId, Texture = obj.TextureId, Scale = obj.Scale
-                            }
+                        -- FIX: solo modificar SM que sea hijo directo del Handle principal
+                        if obj.Parent == _handle then
+                            if not _skinState.origData[tool].Elements[obj] then
+                                _skinState.origData[tool].Elements[obj] = {
+                                    Mesh = obj.MeshId, Texture = obj.TextureId, Scale = obj.Scale
+                                }
+                            end
+                            pcall(function()
+                                obj.MeshId    = skin.meshId
+                                obj.TextureId = skin.texId
+                                obj.Scale     = skin.scale
+                            end)
                         end
-                        pcall(function()
-                            obj.MeshId    = skin.meshId
-                            obj.TextureId = skin.texId
-                            obj.Scale     = skin.scale
-                        end)
+                        -- SM de otras partes decorativas: no tocar
                     elseif obj:IsA("MeshPart") then
-                        -- FIX INVISIBLE: escribir MeshId+TextureID directo en MeshPart.
-                        -- Nunca inyectar SpecialMesh en MeshPart: lo vuelve invisible.
-                        if not _skinState.origData[tool].Elements[obj] then
-                            _skinState.origData[tool].Elements[obj] = {
-                                Mesh    = obj.MeshId,
-                                Texture = obj.TextureID,
-                            }
+                        -- FIX: solo modificar MeshParts que sean el Handle mismo o hijo directo de el
+                        if obj.Parent == _handle or obj == _handle then
+                            -- FIX INVISIBLE: escribir MeshId+TextureID directo en MeshPart.
+                            -- Nunca inyectar SpecialMesh en MeshPart: lo vuelve invisible.
+                            if not _skinState.origData[tool].Elements[obj] then
+                                _skinState.origData[tool].Elements[obj] = {
+                                    Mesh    = obj.MeshId,
+                                    Texture = obj.TextureID,
+                                }
+                            end
+                            -- Destruir SM inyectados previos si existen
+                            local _existSM = obj:FindFirstChildOfClass("SpecialMesh")
+                            if _existSM then pcall(function() _existSM:Destroy() end) end
+                            pcall(function()
+                                obj.MeshId    = skin.meshId
+                                obj.TextureID = skin.texId
+                            end)
                         end
-                        -- Destruir SM inyectados previos si existen
-                        local _existSM = obj:FindFirstChildOfClass("SpecialMesh")
-                        if _existSM then pcall(function() _existSM:Destroy() end) end
-                        pcall(function()
-                            obj.MeshId    = skin.meshId
-                            obj.TextureID = skin.texId
-                        end)
+                        -- MeshParts decorativos fuera del Handle: no tocar
                     end
                 end
             end
@@ -36666,8 +36692,9 @@ function CreatePremiumTab()
             -- no necesariamente como ChildAdded del char. Usamos DescendantAdded
             -- para capturar cualquier Tool que aparezca (gun en char o en workspace).
             local function _scTryApplyGun()
-                if not _skinState.enabled then return end
+                if not _skinState.enabled or _skinState.mode ~= "gun" then return end  -- FIX: respetar modo
                 task.wait(0.15)
+                if not _skinState.enabled or _skinState.mode ~= "gun" then return end  -- re-check post-wait
                 -- FIX MOBILE: buscar tambien en workspace[playerName] ademas de char/backpack
                 local gun = _findGun and _findGun()
                 if not gun then
@@ -36733,6 +36760,7 @@ function CreatePremiumTab()
             -- Auto-setear modo gun al usar este selector
             if _skinState.mode ~= "gun" then
                 if _skinState.enabled then _scResetAll(); _skinState.enabled = false end
+                _skinState.origData = {}  -- FIX: limpiar cache de tools del modo anterior (knife)
                 _skinState.mode = "gun"
                 _skinState.skinIdx = 1
             end
@@ -36904,6 +36932,7 @@ function CreatePremiumTab()
                 -- Auto-setear modo knife al usar este selector
                 if _skinState.mode ~= "knife" then
                     if _skinState.enabled then _scResetAll(); _skinState.enabled = false end
+                    _skinState.origData = {}  -- FIX: limpiar cache de tools del modo anterior (gun)
                     _skinState.mode = "knife"
                     _skinState.skinIdx = 1
                 end
@@ -45463,9 +45492,27 @@ function CreateCombatTab()
                 if existing then
                     local w = existing:FindFirstChild("MirrorWeld")
                     if w then
-                        local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
-                        w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
-                        w.C1 = grip.C1
+                        -- FIX DUAL GUN GRIP: si hay skin activa con dualGun y grip propio, usarla para el weld
+                        local _usedSkinGrip = false
+                        if keywordList == _dualGunKeywords then
+                            local sc = _G._skinChangerState
+                            if sc and sc.enabled and sc.mode == "gun" then
+                                local _skinList = _G._SC_GUN_SKINS or {}
+                                local _cSkin = _skinList[sc.skinIdx] or _skinList[1]
+                                if _cSkin and _cSkin.dualGun and _cSkin.grip then
+                                    local sg = _cSkin.grip
+                                    local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
+                                    w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                                    w.C1 = CFrame.new()
+                                    _usedSkinGrip = true
+                                end
+                            end
+                        end
+                        if not _usedSkinGrip then
+                            local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
+                            w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                            w.C1 = grip.C1
+                        end
                     end
                     -- FIX DUAL INVISIBLE: mantener el clon visible aunque el handle cambie de transparencia
                     pcall(function() existing.Transparency = 0; existing.LocalTransparencyModifier = 0 end)
@@ -45519,6 +45566,18 @@ function CreateCombatTab()
                         if sc and sc.enabled and sc.mode == "gun" then
                             local _skinList = _G._SC_GUN_SKINS or {}
                             local _cSkin = _skinList[sc.skinIdx] or _skinList[1]
+                            -- FIX DUAL GUN GRIP: si la skin activa tiene dualGun=true y un grip propio,
+                            -- usarlo para el weld del clon en vez del RightGrip crudo del juego.
+                            -- Esto hace que el arma del clon tenga la misma pose que la gun real.
+                            if _cSkin and _cSkin.dualGun and _cSkin.grip then
+                                local w = clon:FindFirstChild("MirrorWeld")
+                                if w then
+                                    local sg = _cSkin.grip
+                                    local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
+                                    w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                                    w.C1 = CFrame.new()
+                                end
+                            end
                             for _, obj in pairs(clon:GetDescendants()) do
                                 if obj:IsA("SpecialMesh") then
                                     pcall(function()
