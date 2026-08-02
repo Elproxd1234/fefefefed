@@ -37308,8 +37308,14 @@ function CreateExclusiveTab()
         ucCount.TextYAlignment = Enum.TextYAlignment.Center
         ucCount.ZIndex = 13
 
-        -- API de contador global (counterapi.dev - gratuita, sin auth)
-        local _UC_BASE = "https://api.counterapi.dev/v1/zerqonhub/users_v1"
+        -- -------------------------------------------------------
+        -- CONTADOR EN VIVO: dos endpoints
+        --   /up   -> sumar 1 al conectar
+        --   /down -> restar 1 al salir/desconectar
+        -- Todos los jugadores leen el mismo valor cada 5s.
+        -- -------------------------------------------------------
+        local _UC_BASE  = "https://api.counterapi.dev/v1/zerqonhub/active_now_v1"
+        local _ucActive = false  -- si ya sumamos, para restar al salir
 
         local function _ucReq(url)
             local ok, res = pcall(function()
@@ -37322,35 +37328,63 @@ function CreateExclusiveTab()
             return jok and data or nil
         end
 
-        -- Incrementar el contador UNA SOLA VEZ por sesion de juego
-        if not _G._hubUserCountIncremented then
-            _G._hubUserCountIncremented = true
-            task.spawn(function()
-                _ucReq(_UC_BASE .. "/up")
+        local function _ucSetLabel(n)
+            pcall(function()
+                if not ucCount or not ucCount.Parent then return end
+                local safe = math.max(0, n)
+                ucCount.Text = tostring(safe)
+                ucCount.TextColor3 = safe >= 50
+                    and Color3.fromRGB(80, 220, 80)
+                    or  safe >= 10
+                    and Color3.fromRGB(255, 200, 0)
+                    or  ThemeColors.Aurora1 or Color3.fromRGB(120, 150, 255)
             end)
         end
 
-        -- Obtener y mostrar el total actual
+        -- Sumar 1 al cargar el hub (una sola vez por sesion)
+        if not _G._hubActiveIncremented then
+            _G._hubActiveIncremented = true
+            _ucActive = true
+            task.spawn(function()
+                local data = _ucReq(_UC_BASE .. "/up")
+                if data then
+                    local n = tonumber(data.count) or tonumber(data.value) or 0
+                    _ucSetLabel(n)
+                end
+            end)
+        end
+
+        -- Restar 1 al cerrar el juego o cuando el player es removido
+        if not _G._hubActiveDownHooked then
+            _G._hubActiveDownHooked = true
+            game:GetService("Players").LocalPlayer.AncestryChanged:Connect(function()
+                if _G._hubActiveIncremented then
+                    _G._hubActiveIncremented = false
+                    pcall(function() _ucReq(_UC_BASE .. "/down") end)
+                end
+            end)
+            game:BindToClose(function()
+                if _G._hubActiveIncremented then
+                    _G._hubActiveIncremented = false
+                    pcall(function() _ucReq(_UC_BASE .. "/down") end)
+                end
+            end)
+        end
+
+        -- Leer el total actual y actualizar el label
         local function _refreshCount()
             task.spawn(function()
                 local data = _ucReq(_UC_BASE)
                 if not data then return end
                 local n = tonumber(data.count) or tonumber(data.value) or tonumber(data.hits) or 0
-                pcall(function()
-                    if not ucCount or not ucCount.Parent then return end
-                    ucCount.Text = tostring(n)
-                    ucCount.TextColor3 = n >= 50
-                        and Color3.fromRGB(80, 220, 80)
-                        or  n >= 10
-                        and Color3.fromRGB(255, 200, 0)
-                        or  ThemeColors.Aurora1 or Color3.fromRGB(120, 150, 255)
-                end)
+                _ucSetLabel(n)
             end)
         end
 
+        -- Primer fetch inmediato + loop cada 5s para estar en vivo
         _refreshCount()
         task.spawn(function()
-            while task.wait(30) do
+            while task.wait(5) do
                 if not userCountRow or not userCountRow.Parent then break end
                 _refreshCount()
             end
