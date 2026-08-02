@@ -52713,14 +52713,15 @@ particles = {}
     -- ================================================================
     _G._hubDragging = false  -- flag global visible por el pulso del borde
 
-    -- dragIcon: boton transparente sobre TODO el mainFrame para capturar drag desde cualquier zona
-    local dragIcon = Instance.new("TextButton", mainFrame)
+    -- dragIcon: boton transparente SOLO sobre el header para capturar drag sin bloquear botones
+    -- FIX MOBILE: ZIndex alto para que el touch llegue aunque haya otros elementos encima
+    local dragIcon = Instance.new("TextButton", header)
     dragIcon.Size = UDim2.new(1, 0, 1, 0)
     dragIcon.Position = UDim2.new(0, 0, 0, 0)
     dragIcon.BackgroundTransparency = 1
     dragIcon.Text = ""
     dragIcon.TextTransparency = 1
-    dragIcon.ZIndex = 1   -- Detras de todos los elementos para no bloquear clicks de botones
+    dragIcon.ZIndex = 5   -- encima del fondo del header pero debajo de los botones (ZIndex 999)
     dragIcon.AutoButtonColor = false
     dragIcon.Active = true
 
@@ -52795,29 +52796,7 @@ particles = {}
         -- Inicio de drag (compartido por mouse y touch)
         local function _startDrag(inputPos2D)
             if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
-            -- Drag habilitado desde cualquier parte del hub
-            -- No arrastrar si hay ScrollingFrame bajo el cursor
-            do
-                local _block = false
-                local _ok, _objs = pcall(function()
-                    return UserInputService:GetGuiObjectsAtPosition(inputPos2D.X, inputPos2D.Y)
-                end)
-                if _ok and _objs then
-                    for _, _obj in ipairs(_objs) do
-                        if _obj:IsA("ScrollingFrame") then _block = true; break end
-                    end
-                end
-                if not _block and leftColumn and leftColumn.ScrollBarThickness > 0 then
-                    local _lcPos = leftColumn.AbsolutePosition
-                    local _lcSiz = leftColumn.AbsoluteSize
-                    local _sbW   = leftColumn.ScrollBarThickness + 6
-                    if inputPos2D.X >= (_lcPos.X + _lcSiz.X - _sbW)
-                    and inputPos2D.Y >= _lcPos.Y and inputPos2D.Y <= (_lcPos.Y + _lcSiz.Y) then
-                        _block = true
-                    end
-                end
-                if _block then return end
-            end
+            -- Drag desde el header: siempre permitido, no hay scroll aqui
             -- Convertir posicion a offset (eliminar AnchorPoint para simplificar calculo)
             local tl = _resolveFrameTopLeft()
             mainFrame.AnchorPoint = Vector2.new(0, 0)
@@ -54951,6 +54930,32 @@ function CreateUpdateTab()
     -- Datos del changelog
     local UPDATES = {
         {
+            version = "v1.02",
+            entries = {
+                {
+                    game = "Murder Mystery 2",
+                    lines = {
+                        "[+] ESP Knife: highlights the knife on the map with a colored box and label — always know where it dropped.",
+                        "[+] ESP Knife: distance counter shown next to the label in real time.",
+                        "[+] ESP Knife: color picker to customize the highlight color.",
+                        "[+] ESP Knife: toggle visibility on/off from the Combat tab.",
+                        "[*] Hub appearance overhaul — new cleaner header layout and smoother sidebar.",
+                        "[*] Tab icons load staggered on startup to reduce CDN pressure and lag.",
+                        "[*] Mobile drag fixed — hub now drags correctly from the header on touch screens.",
+                        "[*] Update tab now fully in English.",
+                        "[*] Single-column layout auto-detected on mobile for better readability.",
+                    }
+                },
+            },
+            whatsnew = {
+                "[+] ESP Knife — see the knife through walls with distance label and custom color.",
+                "[*] Full hub appearance refresh — cleaner look on all devices.",
+                "[*] Mobile drag fixed — grab the header to move the hub on touch screens.",
+                "[*] Staggered icon loading — tabs appear faster on startup.",
+                "[*] Auto single-column on mobile — no more content cut off on small screens.",
+            }
+        },
+        {
             version = "v1.01",
             entries = {
                 {
@@ -54961,7 +54966,7 @@ function CreateUpdateTab()
                         "[+] Font preference remembered per session.",
                         "[+] New background: Aurora — animated northern lights with color pulse.",
                         "[+] New wallpaper: Glitcher — corrupted TV effect with cyan/red scanlines, glitch blocks and screen flashes.",
-                        "[+] Settings: new 'Auto Desactivar Todos los Toggles' button — stops all active features in one click.",
+                        "[+] Settings: new 'Disable All Toggles' button — stops all active features in one click.",
                         "[-] Settings: removed Double Column toggle — caused layout bugs.",
                         "[*] Background animations no longer bleed outside the image bounds.",
                         "[*] Fixed leftover colors when switching between Zerqon and Sunset backgrounds.",
@@ -56180,358 +56185,3 @@ task.spawn(function()
         end)
     end)
 end)
--- ================================================================
--- == BARRA DE PESTANAS CON IMAGEN ================================
--- Nueva imagen de barra proporcionada por el usuario.
--- Botones invisibles clickeables sobre cada icono.
--- Indices internos del hub:
---   1=MAIN  2=WORLD  3=VISUALS  4=PREMIUM  5=SETTINGS
---   6=COMBAT  7=USE  8=EMOTES  9=UPDATE
--- Mapa de iconos (imagen, izq→der) → indice interno:
---   1:casa→1(MAIN)  2:ojo→3(VISUALS)  3:globo→2(WORLD)
---   4:figura→8(EMOTES)  5:espadas→6(COMBAT)  6:dedo→7(USE)
---   7:corona→4(PREMIUM)  8:tuerca→5(SETTINGS)
--- ================================================================
-do
-    -- Limpiar instancias previas para evitar duplicados al re-ejecutar
-    pcall(function()
-        -- Limpiar BarFrame de cualquier parent posible
-        for _, parent in ipairs({
-            mainFrame,
-            game:GetService("Players").LocalPlayer.PlayerGui,
-            pcall(function() return game:GetService("CoreGui") end) and game:GetService("CoreGui") or nil,
-            gethui and gethui() or nil,
-        }) do
-            if parent then
-                local _old = parent:FindFirstChild("BarFrame", true)
-                if _old then pcall(function() _old:Destroy() end) end
-            end
-        end
-        if screenGui then
-            local _oldTip = screenGui:FindFirstChild("BarTooltip")
-            if _oldTip then _oldTip:Destroy() end
-        end
-    end)
-
-    -- Barra DENTRO de mainFrame, en la parte inferior
-    -- ClipsDescendants=true del mainFrame no es problema porque la barra está dentro
-    local BAR_H  = 220
-    -- _getBarPos ya no se usa (barra dentro del hub con posicion relativa)
-    local function _getBarPos(offY) return UDim2.new(0.5, 0, 1, -(BAR_H + (offY or 0))) end
-
-    local barFrame = Instance.new("Frame")
-    barFrame.Name                   = "BarFrame"
-    barFrame.Size                   = UDim2.new(0, 990, 0, BAR_H)  -- 110x9 = 990px ancho, 220px alto
-    barFrame.AnchorPoint            = Vector2.new(0.5, 1)
-    barFrame.Position               = UDim2.new(0.5, 0, 1, 0)        -- centrado, pegado al borde inferior
-    barFrame.BackgroundTransparency = 1
-    barFrame.ZIndex                 = 20
-    barFrame.Visible                = false
-    barFrame.Parent                 = mainFrame                    -- DENTRO del hub
-    _G._hubBarFrame = barFrame
-
-    -- No se necesita loop de seguimiento: barFrame es hijo de mainFrame y se mueve con él
-
-    -- Imagen de la barra centrada dentro del frame
-    local backgroundBar                  = Instance.new("ImageLabel")
-    backgroundBar.Name                   = "FullBarImage"
-    backgroundBar.Size                   = UDim2.new(1, 0, 1, 0)
-    backgroundBar.Position               = UDim2.new(0, 0, 0, 0)
-    backgroundBar.BackgroundTransparency = 1
-    backgroundBar.Image                  = "rbxassetid://130483494855221"
-    backgroundBar.ScaleType              = Enum.ScaleType.Stretch
-    backgroundBar.ZIndex                 = 20
-    backgroundBar.Parent                 = barFrame
-
-    -- Mapa: posicion del icono (1-8) → indice real de SetActiveTab
-    local iconToTabIdx = {
-        [1] = 1,   -- casa     → MAIN
-        [2] = 3,   -- ojo      → VISUALS
-        [3] = 2,   -- globo    → WORLD
-        [4] = 8,   -- figura   → EMOTES
-        [5] = 6,   -- espadas  → COMBAT
-        [6] = 7,   -- dedo     → USE
-        [7] = 4,   -- corona   → PREMIUM
-        [8] = 5,   -- tuerca   → SETTINGS
-        [9] = 9,   -- update   → UPDATE
-    }
-
-    -- Nombres para el tooltip (mismo orden que los iconos)
-    local tooltipNames = {
-        "MAIN", "VISUALS", "WORLD", "EMOTES",
-        "COMBAT", "USE", "PREMIUM", "SETTINGS", "UPDATE",
-    }
-
-    -- Tooltip flotante
-    local tooltip                = Instance.new("TextLabel")
-    tooltip.Name                 = "BarTooltip"
-    tooltip.Size                 = UDim2.new(0, 115, 0, 30)
-    tooltip.BackgroundColor3     = Color3.fromRGB(15, 15, 25)
-    tooltip.TextColor3           = Color3.fromRGB(255, 255, 255)
-    tooltip.TextSize             = 13
-    tooltip.Font                 = Enum.Font.GothamBold
-    tooltip.Visible              = false
-    tooltip.ZIndex               = 99
-    tooltip.Parent               = screenGui
-    local _tipCorner             = Instance.new("UICorner")
-    _tipCorner.CornerRadius      = UDim.new(0, 6)
-    _tipCorner.Parent            = tooltip
-    local _tipStroke             = Instance.new("UIStroke")
-    _tipStroke.Color             = Color3.fromRGB(90, 50, 180)
-    _tipStroke.Thickness         = 1
-    _tipStroke.Parent            = tooltip
-
-    -- Generar botones invisibles sobre cada icono (9 = incluye UPDATE)
-    local totalIconos = 9
-    local itemWidth   = 110  -- 110px fijo por icono
-
-    for i = 1, totalIconos do
-        local btn                   = Instance.new("ImageButton")
-        btn.Name                    = "BarBtn_" .. i
-        btn.Size                    = UDim2.new(0, itemWidth, 1, 0)
-        btn.Position                = UDim2.new(0, (i - 1) * itemWidth, 0, 0)
-        btn.BackgroundTransparency  = 1
-        btn.BackgroundColor3        = Color3.fromRGB(255, 255, 255)
-        btn.Image                   = ""
-        btn.ZIndex                  = 21   -- por encima de la imagen de fondo
-        btn.Active                  = true
-        btn.AutoButtonColor         = false
-        btn.Parent                  = barFrame
-
-        local TweenService2 = game:GetService("TweenService")
-        local tweenIn   = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local tweenOut  = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local tweenSink = TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-
-        -- UIScale: hover = pop-up, click = hundimiento
-        local btnScale = Instance.new("UIScale")
-        btnScale.Scale  = 1
-        btnScale.Parent = btn
-
-        btn.MouseEnter:Connect(function()
-            tooltip.Text    = tooltipNames[i]
-            tooltip.Visible = true
-            -- Hundimiento suave al entrar (baja un poco, efecto press anticipado)
-            TweenService2:Create(btnScale, tweenSink, {Scale = 0.92}):Play()
-        end)
-        btn.MouseMoved:Connect(function(x, y)
-            tooltip.Position = UDim2.new(0, x + 16, 0, y - 32)
-        end)
-        btn.MouseLeave:Connect(function()
-            tooltip.Visible = false
-            -- Vuelve al tamaño original al salir
-            TweenService2:Create(btnScale, tweenOut, {Scale = 1}):Play()
-        end)
-
-        -- Hundimiento mas profundo al presionar
-        btn.MouseButton1Down:Connect(function()
-            TweenService2:Create(btnScale, tweenSink, {Scale = 0.80}):Play()
-        end)
-        btn.MouseButton1Up:Connect(function()
-            TweenService2:Create(btnScale, tweenOut, {Scale = 0.92}):Play()
-        end)
-
-        -- Click: cambiar de pestana + fade-out de la barra
-        local _btnDebounce = false
-        local function _onBtnClick()
-            if _btnDebounce then return end
-            _btnDebounce = true
-            task.delay(0.5, function() _btnDebounce = false end)
-            local tabIdx = iconToTabIdx[i]
-            if not tabIdx then return end
-            -- Sonido via _G (PlayTabSound vive dentro de abrirHub, accedemos via _G)
-            pcall(function() if _G._playTabSound then _G._playTabSound() end end)
-            -- contentContainer y SetActiveTab expuestos en _G desde abrirHub
-            local _cc = _G._contentContainer
-            local _ts2 = game:GetService("TweenService")
-            -- Asegurarse de que el hub (mainFrame) sea visible
-            pcall(function()
-                if mainFrame and not mainFrame.Visible then
-                    mainFrame.Visible = true
-                end
-            end)
-            -- Mostrar el contentContainer con la misma animacion que el sidebar interno
-            if _cc and not _cc.Visible then
-                _cc.Visible  = true
-                if _G._hubSettings and _G._hubSettings.noTabAnimations then
-                    _cc.Position = UDim2.new(0, 0, 0, 36)
-                else
-                    _cc.Position = UDim2.new(0, 0, 1.1, 0)
-                    _ts2:Create(_cc, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                        Position = UDim2.new(0, 0, 0, 36)
-                    }):Play()
-                end
-            end
-            pcall(function() _G._SetActiveTab(tabIdx) end)
-            _G._tabContentActive = true
-
-            -- Slide-down: sale hacia abajo fuera del hub
-            local _ts = game:GetService("TweenService")
-            local _tiFade = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            local _bgImg2 = barFrame:FindFirstChild("FullBarImage")
-            if _bgImg2 then
-                _ts:Create(_bgImg2, _tiFade, {ImageTransparency = 1}):Play()
-            end
-            for _, child in ipairs(barFrame:GetChildren()) do
-                if child:IsA("ImageButton") then
-                    _ts:Create(child, _tiFade, {ImageTransparency = 1}):Play()
-                end
-            end
-            _ts:Create(barFrame, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-                {Position = UDim2.new(0.5, 0, 1, 80)}):Play()
-
-            -- Volver a mostrar la barra si el hub se cierra o cambia de estado
-            task.delay(0.6, function()
-                barFrame.Visible = false
-            end)
-
-            -- Reaparecer cuando el usuario vuelva a ver la barra (hover sobre mainFrame o click derecho)
-            -- Escuchar _G._tabContentActive para re-mostrar
-            task.spawn(function()
-                -- Esperar a que el contenido se oculte, con timeout de 60s
-                local _w = 0
-                repeat task.wait(0.2) _w = _w + 0.2 until not _G._tabContentActive or _w > 60
-                if not mainFrame or not mainFrame.Visible then return end  -- hub cerrado, no mostrar barra
-                -- Resetear posicion relativa dentro del hub
-                barFrame.AnchorPoint = Vector2.new(0.5, 1)
-                barFrame.Position    = UDim2.new(0.5, 0, 1, 0)
-                -- Fade-in sin movimiento
-                local _bgImg3 = barFrame:FindFirstChild("FullBarImage")
-                if _bgImg3 then _bgImg3.ImageTransparency = 1 end
-                for _, child in ipairs(barFrame:GetChildren()) do
-                    if child:IsA("ImageButton") then child.ImageTransparency = 1 end
-                end
-                barFrame.Visible = true
-                local _tiReapp = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-                if _bgImg3 then _ts:Create(_bgImg3, _tiReapp, {ImageTransparency = 0}):Play() end
-                for _, child in ipairs(barFrame:GetChildren()) do
-                    if child:IsA("ImageButton") then
-                        _ts:Create(child, _tiReapp, {ImageTransparency = 0}):Play()
-                    end
-                end
-            end)
-        end
-        btn.Activated:Connect(_onBtnClick)
-        btn.InputBegan:Connect(function(inp)
-            if inp.UserInputType == Enum.UserInputType.Touch then _onBtnClick() end
-        end)
-    end
-
-    -- ================================================================
-    -- Animacion de aparicion: espera a que el hub este listo,
-    -- luego hace fade-in + slide-up suave (duracion 0.6s)
-    -- ================================================================
-    task.spawn(function()
-        -- Esperar hub listo (maximo 15s)
-        local _waited = 0
-        while not _G._hubReady and _waited < 15 do
-            task.wait(0.1)
-            _waited = _waited + 0.1
-        end
-        -- Pequeña pausa extra para que el hub termine de dibujarse
-        task.wait(0.15)
-
-        -- Animacion de entrada: slide-up desde debajo del hub
-        barFrame.AnchorPoint = Vector2.new(0.5, 1)
-        barFrame.Position    = UDim2.new(0.5, 0, 1, 80)  -- empieza 80px abajo
-        barFrame.Visible     = true
-        local _ts = game:GetService("TweenService")
-        local _ti = TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        _ts:Create(barFrame, _ti, {Position = UDim2.new(0.5, 0, 1, 0)}):Play()
-
-        -- Fade-in de la imagen de fondo (de transparente a opaco)
-        local _bgImg = barFrame:FindFirstChild("FullBarImage")
-        if _bgImg then
-            _bgImg.ImageTransparency = 1
-            _ts:Create(_bgImg, _ti, {ImageTransparency = 0}):Play()
-        end
-
-        -- Fade-in de cada boton hijo con pequeño delay escalonado
-        for i, child in ipairs(barFrame:GetChildren()) do
-            if child:IsA("ImageButton") then
-                child.ImageTransparency = 1
-                task.delay((i - 1) * 0.04, function()
-                    _ts:Create(child, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                        {ImageTransparency = 0}):Play()
-                end)
-            end
-        end
-    end)
-end
--- ================================================================
--- == MONITOR DE REAPERTURA DEL HUB ===============================
--- ================================================================
-task.spawn(function()
-    repeat task.wait(0.2) until _G._hubBarFrame and _G._hubReady
-    local _bf = _G._hubBarFrame
-    local _mf = _bf and _bf.Parent
-    if not (_bf and _mf) then return end
-
-    local _ts = game:GetService("TweenService")
-
-    local function _mostrarBarra()
-        _G._tabContentActive = false
-        _bf.AnchorPoint      = Vector2.new(0.5, 1)
-        _bf.Position         = UDim2.new(0.5, 0, 1, 80)
-        _bf.Visible          = true
-        local _ti = TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        _ts:Create(_bf, _ti, {Position = UDim2.new(0.5, 0, 1, 0)}):Play()
-        local _bgImg = _bf:FindFirstChild("FullBarImage")
-        if _bgImg then
-            _bgImg.ImageTransparency = 1
-            _ts:Create(_bgImg, _ti, {ImageTransparency = 0}):Play()
-        end
-        for i, child in ipairs(_bf:GetChildren()) do
-            if child:IsA("ImageButton") then
-                child.ImageTransparency = 1
-                local _idx = i
-                task.delay((_idx - 1) * 0.04, function()
-                    pcall(function()
-                        _ts:Create(child, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                            {ImageTransparency = 0}):Play()
-                    end)
-                end)
-            end
-        end
-    end
-
-    -- Exponer _mostrarBarra globalmente para que los reopeners puedan llamarla
-    _G._mostrarBarraTabs = _mostrarBarra
-
-    -- Si el hub ya esta visible al conectar, mostrar la barra ya
-    if _mf.Visible then
-        task.wait(0.1)
-        _mostrarBarra()
-    end
-
-    -- Escuchar cambios de Visible en mainFrame via evento (no polling)
-    _mf:GetPropertyChangedSignal("Visible"):Connect(function()
-        if _mf.Visible then
-            -- Hub reabierto
-            task.wait(0.05)  -- un frame para que termine el tween de apertura
-            _mostrarBarra()
-        else
-            -- Hub cerrado: ocultar barra
-            _bf.Visible = false
-        end
-    end)
-
-    -- FIX PESTANAS DESAPARECEN AL REABRIR: el hub se cierra/abre con hubGui.Enabled,
-    -- NO con mainFrame.Visible, asi que el evento de arriba no se dispara al reabrir.
-    -- Escuchar tambien Enabled en el ScreenGui padre del mainFrame.
-    task.spawn(function()
-        local _hubGuiRef = _mf and _mf.Parent
-        if not _hubGuiRef then return end
-        _hubGuiRef:GetPropertyChangedSignal("Enabled"):Connect(function()
-            if _hubGuiRef.Enabled then
-                task.wait(0.08)
-                pcall(_mostrarBarra)
-            else
-                pcall(function() _bf.Visible = false end)
-            end
-        end)
-    end)
-end)
--- ================================================================
--- == FIN BARRA DE PESTANAS CON IMAGEN ============================
--- ================================================================
