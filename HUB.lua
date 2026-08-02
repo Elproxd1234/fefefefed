@@ -54525,6 +54525,10 @@ function CreateUpdateTab()
                         "[-] World tab: removed Send To Chat section (SEND TO CHAT, MENSAJES PERSONALIZADOS, AUTO SEND, Auto Announce Murder).",
                         "[+] World tab: added Fling Player selector — pick any player from a live list and fling them instantly.",
                         "[-] Quick Fling: removed Fling Murder and Fling All bindable buttons — not working correctly.",
+                        "[+] ESP: added Knife ESP — highlights dropped and held knives through walls with a colored box and label.",
+                        "[+] ESP Knife: shows knife name, distance and owner name when carried by a player.",
+                        "[+] ESP Knife: color-coded — cyan for dropped knives, red when held by the Murderer.",
+                        "[+] ESP Knife: toggle available in the Visuals tab under the ESP section.",
                     }
                 },
             },
@@ -54542,6 +54546,8 @@ function CreateUpdateTab()
                 "[-] World tab: removed Send To Chat section entirely.",
                 "[+] World tab: new Fling Player selector — pick target from player list and fling them.",
                 "[-] Quick Fling: removed Fling Murder and Fling All bindable buttons — not working correctly.",
+                "[+] NEW: Knife ESP — see knives through walls with box, label, distance and owner.",
+                "[+] Knife ESP: cyan for dropped knives, red when the Murderer is holding it.",
             }
         },
         {
