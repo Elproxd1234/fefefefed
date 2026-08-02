@@ -36539,23 +36539,11 @@ function CreatePremiumTab()
             -- De esta forma tanto gun como knife respetan la animacion nativa del juego.
             local _isDualKnifeActive = _G._dualKnifeEnabled == true
             if not _isDualKnifeActive then
-                -- Leer el grip nativo del tool antes de pisarlo
-                local _nativeGrip = nil
-                pcall(function() _nativeGrip = tool.Grip end)
-                -- Considerar "identidad" si todos los componentes son ~0 / ~1 en diagonal
-                local function _isIdentity(cf)
-                    if not cf then return true end
-                    local p = cf.Position
-                    if math.abs(p.X) > 0.001 or math.abs(p.Y) > 0.001 or math.abs(p.Z) > 0.001 then
-                        return false  -- tiene offset de posicion: es un grip real
-                    end
-                    -- Sin offset de posicion: verificar si hay rotacion
-                    local rx, ry, rz = cf:ToEulerAnglesXYZ()
-                    return math.abs(rx) < 0.001 and math.abs(ry) < 0.001 and math.abs(rz) < 0.001
-                end
-                local _gripToApply = (_nativeGrip and not _isIdentity(_nativeGrip))
-                    and _nativeGrip   -- grip nativo valido: usarlo tal cual
-                    or  skin.grip     -- fallback: grip de la tabla (skin hardcodeado)
+                -- FIX GRIP: usar SIEMPRE el grip de la skin de la tabla.
+                -- El grip nativo del juego se ignoraba cuando era "identidad" pero
+                -- también se usaba cuando era valido, lo cual pisaba el grip correcto
+                -- de la skin y dejaba la gun en posicion incorrecta al equip.
+                local _gripToApply = skin.grip
                 pcall(function() tool.Grip = _gripToApply end)
                 -- Re-aplicar grip en Equipped (mobile puede pisarlo al animar)
                 if not _skinState._equippedConns then _skinState._equippedConns = {} end
@@ -36564,10 +36552,8 @@ function CreatePremiumTab()
                         task.wait(0.016)
                         if _skinState.enabled and _skinState._equippedConns[tool] then
                             if not (_G._dualKnifeEnabled == true) then
-                                -- Re-leer grip nativo en cada Equipped (puede cambiar al respawnear)
-                                local _ng2 = nil
-                                pcall(function() _ng2 = tool.Grip end)
-                                local _g2 = (_ng2 and not _isIdentity(_ng2)) and _ng2 or skin.grip
+                                -- Re-aplicar el grip de la skin en cada Equipped
+                                local _g2 = skin.grip
                                 pcall(function() tool.Grip = _g2 end)
                                 task.wait(0.1)
                                 pcall(function() tool.Grip = _g2 end)
@@ -52793,7 +52779,6 @@ particles = {}
         local _dragStartFrame = nil   -- Vector2 (top-left del frame al iniciar)
 
         -- Helpers
-        local BORDER_DRAG_SIZE = 60
 
         local function _resolveFrameTopLeft()
             local ap  = mainFrame.AnchorPoint
@@ -52815,15 +52800,12 @@ particles = {}
                and p2d.Y >= hPos.Y and p2d.Y <= hPos.Y + hSiz.Y
         end
 
+        -- FIX DRAG ANYWHERE: activa el drag desde cualquier punto dentro del hub
         local function _mouseOverBorder(p2d)
             local fPos = mainFrame.AbsolutePosition
             local fSiz = mainFrame.AbsoluteSize
-            if p2d.X < fPos.X or p2d.X > fPos.X + fSiz.X then return false end
-            if p2d.Y < fPos.Y or p2d.Y > fPos.Y + fSiz.Y then return false end
-            return p2d.X <= fPos.X + BORDER_DRAG_SIZE
-                or p2d.X >= fPos.X + fSiz.X - BORDER_DRAG_SIZE
-                or p2d.Y <= fPos.Y + BORDER_DRAG_SIZE
-                or p2d.Y >= fPos.Y + fSiz.Y - BORDER_DRAG_SIZE
+            return p2d.X >= fPos.X and p2d.X <= fPos.X + fSiz.X
+               and p2d.Y >= fPos.Y and p2d.Y <= fPos.Y + fSiz.Y
         end
 
         -- Efectos visuales al arrastrar / soltar
@@ -52892,7 +52874,18 @@ particles = {}
             _activateDragEffect()
         end
 
-        -- FIX MOBILE v4: InputBegan cubre MouseButton1 y Touch en un solo listener
+        -- FIX DRAG ANYWHERE: escuchar InputBegan global para capturar clicks/touch
+        -- en cualquier parte del hub (no solo el header donde estaba dragIcon)
+        _safeConnect(UserInputService.InputBegan, function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                local mp = UserInputService:GetMouseLocation()
+                _startDrag(Vector2.new(mp.X, mp.Y))
+            elseif inp.UserInputType == Enum.UserInputType.Touch then
+                _startDrag(Vector2.new(inp.Position.X, inp.Position.Y))
+            end
+        end)
+        -- Mantener también el listener del dragIcon para compatibilidad con executors
+        -- que no exponen UserInputService global correctamente
         dragIcon.InputBegan:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseButton1 then
                 local mp = UserInputService:GetMouseLocation()
