@@ -36345,8 +36345,8 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://15320557481",
                 texId  = "rbxassetid://86999625612475",
                 scale  = Vector3.new(0.0560000017285347, 0.0560000017285347, 0.0560000017285347),
-                -- FIX GRIP: sincronizado con _KNIFE_SKINS (Items Fake) -- grip testeado y confirmado
-                grip   = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0),
+                -- GRIP CORREGIDO: identidad + offset Y para que el knife quede parado (no acostado)
+                grip   = CFrame.new(0, -0.1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
                 dualKnife = true,
             },
             {
@@ -36390,11 +36390,15 @@ function CreatePremiumTab()
                     for obj, eData in pairs(data.Elements) do
                         if obj and obj.Parent then
                             pcall(function()
-                                if obj:IsA("SpecialMesh") then
+                                if eData._isFakeSM then
+                                    -- SpecialMesh inyectado como fallback: destruirlo al resetear
+                                    obj:Destroy()
+                                elseif obj:IsA("SpecialMesh") then
                                     obj.MeshId    = eData.Mesh
                                     obj.TextureId = eData.Texture
                                     obj.Scale     = eData.Scale
                                 elseif obj:IsA("MeshPart") then
+                                    if eData.Mesh and eData.Mesh ~= "" then obj.MeshId = eData.Mesh end
                                     obj.TextureID = eData.Texture
                                 end
                             end)
@@ -36422,8 +36426,66 @@ function CreatePremiumTab()
                 _skinState.origData[tool] = { Grip = tool.Grip, Elements = {} }
             end
             pcall(function() tool.Grip = skin.grip end)
+
+            -- PASO 1: manejar el Handle directamente (mismo enfoque que actualizarBomba/GoldBomb)
+            local handle = tool:FindFirstChild("Handle")
+            if handle then
+                local existingSM = handle:FindFirstChildOfClass("SpecialMesh")
+                if existingSM then
+                    -- Handle BasePart con SpecialMesh hijo -> pisar el SM
+                    if not _skinState.origData[tool].Elements[existingSM] then
+                        _skinState.origData[tool].Elements[existingSM] = {
+                            Mesh = existingSM.MeshId, Texture = existingSM.TextureId, Scale = existingSM.Scale
+                        }
+                    end
+                    pcall(function()
+                        existingSM.MeshId    = skin.meshId
+                        existingSM.TextureId = skin.texId
+                        existingSM.Scale     = skin.scale
+                    end)
+                elseif handle:IsA("MeshPart") then
+                    -- Handle MeshPart moderno
+                    if not _skinState.origData[tool].Elements[handle] then
+                        _skinState.origData[tool].Elements[handle] = {
+                            Mesh = handle.MeshId, Texture = handle.TextureID
+                        }
+                    end
+                    -- Intentar escribir MeshId directo
+                    local meshWriteOk = pcall(function()
+                        handle.MeshId    = skin.meshId
+                        handle.TextureID = skin.texId
+                    end)
+                    if not meshWriteOk then
+                        -- Fallback: inyectar SpecialMesh FileMesh cuando el executor bloquea MeshPart.MeshId
+                        local _smFake = handle:FindFirstChild("_SC_FakeSM")
+                        if not _smFake then
+                            _smFake = Instance.new("SpecialMesh", handle)
+                            _smFake.Name     = "_SC_FakeSM"
+                            _smFake.MeshType = Enum.MeshType.FileMesh
+                            _skinState.origData[tool].Elements[_smFake] = {
+                                Mesh = "", Texture = "", Scale = Vector3.new(1,1,1), _isFakeSM = true
+                            }
+                        end
+                        pcall(function()
+                            _smFake.MeshId    = skin.meshId
+                            _smFake.TextureId = skin.texId
+                            _smFake.Scale     = skin.scale
+                        end)
+                    end
+                else
+                    -- Handle BasePart sin SpecialMesh (legacy)
+                    if not _skinState.origData[tool].Elements[handle] then
+                        _skinState.origData[tool].Elements[handle] = { Mesh = "", Texture = "" }
+                    end
+                    pcall(function() handle.TextureID = skin.texId end)
+                end
+            end
+
+            -- PASO 2: descendientes adicionales (modelos multi-parte), saltando el Handle ya procesado
             for _, obj in pairs(tool:GetDescendants()) do
-                if obj:IsA("SpecialMesh") then
+                if obj == handle then
+                    -- ya procesado arriba
+                elseif obj:IsA("SpecialMesh") and obj.Name ~= "_SC_FakeSM" then
                     if not _skinState.origData[tool].Elements[obj] then
                         _skinState.origData[tool].Elements[obj] = {
                             Mesh = obj.MeshId, Texture = obj.TextureId, Scale = obj.Scale
@@ -36434,11 +36496,14 @@ function CreatePremiumTab()
                         obj.TextureId = skin.texId
                         obj.Scale     = skin.scale
                     end)
-                elseif obj:IsA("MeshPart") then
+                elseif obj:IsA("MeshPart") and obj ~= handle then
                     if not _skinState.origData[tool].Elements[obj] then
-                        _skinState.origData[tool].Elements[obj] = { Texture = obj.TextureID }
+                        _skinState.origData[tool].Elements[obj] = { Mesh = obj.MeshId, Texture = obj.TextureID }
                     end
-                    pcall(function() obj.TextureID = skin.texId end)
+                    pcall(function()
+                        if skin.meshId and skin.meshId ~= "" then obj.MeshId = skin.meshId end
+                        obj.TextureID = skin.texId
+                    end)
                 end
             end
             -- Soldar al RightGrip (igual que hub)
@@ -36463,7 +36528,12 @@ function CreatePremiumTab()
                                 obj.Scale     = skin.scale
                             end)
                         elseif obj:IsA("MeshPart") then
-                            pcall(function() obj.TextureID = skin.texId end)
+                            pcall(function()
+                                if skin.meshId and skin.meshId ~= "" then
+                                    obj.MeshId = skin.meshId
+                                end
+                                obj.TextureID = skin.texId
+                            end)
                         end
                     end
                 end
@@ -36746,16 +36816,16 @@ function CreatePremiumTab()
                     for obj, eData in pairs(_data.Elements) do
                         if obj and obj.Parent then
                             pcall(function()
-                                if obj:IsA("SpecialMesh") then
+                                if eData._isFakeSM then
+                                    -- SpecialMesh inyectado como fallback: destruirlo
+                                    obj:Destroy()
+                                elseif obj:IsA("SpecialMesh") then
                                     obj.MeshId    = eData.Mesh
                                     obj.TextureId = eData.Texture
                                     obj.Scale     = eData.Scale
                                 elseif obj:IsA("MeshPart") then
-                                    -- FIX INVISIBLE: restaurar MeshId + TextureID, destruir SM si hay
-                                    if eData.Mesh then obj.MeshId = eData.Mesh end
+                                    if eData.Mesh and eData.Mesh ~= "" then obj.MeshId = eData.Mesh end
                                     obj.TextureID = eData.Texture
-                                    local _sm = obj:FindFirstChildOfClass("SpecialMesh")
-                                    if _sm then pcall(function() _sm:Destroy() end) end
                                 end
                             end)
                         end
@@ -45397,14 +45467,28 @@ function CreateCombatTab()
                 if existing then
                     local w = existing:FindFirstChild("MirrorWeld")
                     if w then
-                        -- FIX DUAL GUN GRIP: si hay skin activa con dualGun y grip propio, usarla para el weld
                         local _usedSkinGrip = false
+                        -- HOOK DUAL GUN: grip de la skin de gun
                         if keywordList == _dualGunKeywords then
                             local sc = _G._skinChangerState
                             if sc and sc.enabled and sc.mode == "gun" then
                                 local _skinList = _G._SC_GUN_SKINS or {}
                                 local _cSkin = _skinList[sc.skinIdx] or _skinList[1]
                                 if _cSkin and _cSkin.dualGun and _cSkin.grip then
+                                    local sg = _cSkin.grip
+                                    local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
+                                    w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                                    w.C1 = CFrame.new()
+                                    _usedSkinGrip = true
+                                end
+                            end
+                        -- HOOK DUAL KNIFE: grip de la skin de knife
+                        elseif keywordList == _dualKnifeKeywords then
+                            local sc = _G._skinChangerState
+                            if sc and sc.enabled and sc.mode == "knife" then
+                                local _skinList = _G._SC_KNIFE_SKINS or {}
+                                local _cSkin = _skinList[sc.skinIdx] or _skinList[1]
+                                if _cSkin and _cSkin.dualKnife and _cSkin.grip then
                                     local sg = _cSkin.grip
                                     local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
                                     w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
@@ -45462,18 +45546,15 @@ function CreateCombatTab()
                 weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
                 weld.C1 = grip.C1
 
-                -- HOOK PREMIUM SKIN: solo aplicar skin al clon si es Dual Gun (no Dual Knife)
-                -- FIX: antes aplicaba siempre la skin de gun incluso al clon del knife
-                local isDualGun = (keywordList == _dualGunKeywords)
+                -- HOOK PREMIUM SKIN: aplicar skin al clon segun el modo activo (gun o knife)
+                local isDualGun   = (keywordList == _dualGunKeywords)
+                local isDualKnife = (keywordList == _dualKnifeKeywords)
                 if isDualGun then
                     pcall(function()
                         local sc = _G._skinChangerState
                         if sc and sc.enabled and sc.mode == "gun" then
                             local _skinList = _G._SC_GUN_SKINS or {}
                             local _cSkin = _skinList[sc.skinIdx] or _skinList[1]
-                            -- FIX DUAL GUN GRIP: si la skin activa tiene dualGun=true y un grip propio,
-                            -- usarlo para el weld del clon en vez del RightGrip crudo del juego.
-                            -- Esto hace que el arma del clon tenga la misma pose que la gun real.
                             if _cSkin and _cSkin.dualGun and _cSkin.grip then
                                 local w = clon:FindFirstChild("MirrorWeld")
                                 if w then
@@ -45492,6 +45573,25 @@ function CreateCombatTab()
                                     end)
                                 elseif obj:IsA("MeshPart") then
                                     pcall(function() obj.TextureID = _cSkin.texId end)
+                                end
+                            end
+                        end
+                    end)
+                elseif isDualKnife then
+                    -- HOOK DUAL KNIFE GRIP: si hay skin de knife activa con dualKnife=true,
+                    -- usar su grip propio para el weld del clon (igual que dualGun)
+                    pcall(function()
+                        local sc = _G._skinChangerState
+                        if sc and sc.enabled and sc.mode == "knife" then
+                            local _skinList = _G._SC_KNIFE_SKINS or {}
+                            local _cSkin = _skinList[sc.skinIdx] or _skinList[1]
+                            if _cSkin and _cSkin.dualKnife and _cSkin.grip then
+                                local w = clon:FindFirstChild("MirrorWeld")
+                                if w then
+                                    local sg = _cSkin.grip
+                                    local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
+                                    w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                                    w.C1 = CFrame.new()
                                 end
                             end
                         end
