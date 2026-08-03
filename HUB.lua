@@ -36326,6 +36326,15 @@ function CreatePremiumTab()
                 grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
                 dualGun = true,
             },
+            {
+                -- XenoShot: Handle MeshPart, GunClient confirmado — IDs capturados en consola
+                name   = "XenoShot",
+                meshId = "rbxassetid://96867436912658",
+                texId  = "rbxassetid://103568875118220",
+                scale  = Vector3.new(0.055, 0.055, 0.055),
+                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                dualGun = true,
+            },
         }
         -- FIX: exponer la lista en _G para que _dualStartArm pueda referenciarla
         _G._SC_GUN_SKINS = _SC_GUN_SKINS
