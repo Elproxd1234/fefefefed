@@ -10947,12 +10947,21 @@ function _makeTwoColumns()
     end)
 
     -- Animacion de entrada
-    lCol.Position = UDim2.new(lCol.Position.X.Scale, lCol.Position.X.Offset, 0, COL_TOP + 14)
+    -- FIX: posicion final aplicada PRIMERO para que el tab sea correcto en el cache.
+    -- Antes: lCol se posicionaba en COL_TOP+14 y quedaba ahi si el tween
+    -- no se ejecutaba (tab cacheado/invisible), cortando todo el contenido debajo.
+    lCol.Position = UDim2.new(lCol.Position.X.Scale, lCol.Position.X.Offset, 0, COL_TOP)
+    if _useDoubleCol and rCol ~= lCol then
+        rCol.Position = UDim2.new(rCol.Position.X.Scale, rCol.Position.X.Offset, 0, COL_TOP)
+    end
     task.spawn(function()
         task.wait(0.03)
         local ti = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        TweenService:Create(lCol, ti, {Position = UDim2.new(lCol.Position.X.Scale, lCol.Position.X.Offset, 0, COL_TOP)}):Play()
-        if _useDoubleCol and rCol ~= lCol then
+        if lCol and lCol.Parent then
+            lCol.Position = UDim2.new(lCol.Position.X.Scale, lCol.Position.X.Offset, 0, COL_TOP + 14)
+            TweenService:Create(lCol, ti, {Position = UDim2.new(lCol.Position.X.Scale, lCol.Position.X.Offset, 0, COL_TOP)}):Play()
+        end
+        if _useDoubleCol and rCol ~= lCol and rCol and rCol.Parent then
             rCol.Position = UDim2.new(rCol.Position.X.Scale, rCol.Position.X.Offset, 0, COL_TOP + 14)
             TweenService:Create(rCol, ti, {Position = UDim2.new(rCol.Position.X.Scale, rCol.Position.X.Offset, 0, COL_TOP)}):Play()
         end
