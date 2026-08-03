@@ -689,13 +689,9 @@ local function _saveConfig()
     if _G._hubBackgrounds then
         toSave["__bgIndex"] = _G._hubBackgrounds.current or 0
     end
-    if _G._hubBgPrevTheme and _G._hubBgPrevTheme ~= "" then
-        toSave["__bgPrevTheme"] = _G._hubBgPrevTheme
-    end
-    -- FIX COLORES REABRIR: guardar el tema activo actual (incluyendo temas de fondo)
-    if currentThemeName and currentThemeName ~= "" then
-        toSave["__currentTheme"] = currentThemeName
-    end
+    -- No guardar bgPrevTheme para evitar restaurar temas viejos
+    -- Siempre guardar tema rosa
+    toSave["__currentTheme"] = "Neon Green"
     local ok, json = pcall(function() return HttpService:JSONEncode(toSave) end)
     if ok and json then
         pcall(writefile, _CONFIG_FILE, json)
@@ -712,6 +708,9 @@ local function _loadConfig()
     if not ok or type(raw) ~= "string" or raw == "" then return end
     local ok2, saved = pcall(function() return HttpService:JSONDecode(raw) end)
     if not ok2 or type(saved) ~= "table" then return end
+    -- Forzar siempre tema rosa antes de procesar el resto
+    saved["__currentTheme"] = "Neon Green"
+    saved["__bgPrevTheme"]  = "Neon Green"
     local _restoredActiveCount = 0
     for k, v in pairs(saved) do
         if k:sub(1, 5) == "__hs_" then
@@ -733,15 +732,11 @@ local function _loadConfig()
             local idx = tonumber(v) or 0
             _G._hubBackgrounds.current = idx
         elseif k == "__bgPrevTheme" then
-            -- FIX FONDOS: restaurar tema previo para que al quitar el fondo vuelvan los colores correctos
-            if type(v) == "string" and v ~= "" then
-                _G._hubBgPrevTheme = v
-            end
+            -- Siempre usar tema rosa, ignorar tema previo guardado
+            _G._hubBgPrevTheme = "Neon Green"
         elseif k == "__currentTheme" then
-            -- FIX COLORES REABRIR: guardar el tema activo para aplicarlo al reabrir
-            if type(v) == "string" and v ~= "" then
-                _G._hubSavedTheme = v
-            end
+            -- Siempre usar tema rosa (Neon Green redefinido como rosa)
+            _G._hubSavedTheme = "Neon Green"
         elseif not (_neverRestoreToggles and _neverRestoreToggles[k]) then
             _G._toggleStates[k] = v
             if v == true then _restoredActiveCount = _restoredActiveCount + 1 end
@@ -1348,12 +1343,12 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
     local savedPT = _G._toggleStates[_ptKey]
     local isToggled = (savedPT ~= nil) and savedPT or (defaultState or false)
 
-    local C_STROKE_OFF  = Color3.fromRGB(0, 80, 160)
-    local C_STROKE_ON   = Color3.fromRGB(100, 80, 215)
+    local C_STROKE_OFF  = Color3.fromRGB(220, 60, 160)
+    local C_STROKE_ON   = Color3.fromRGB(255, 50, 150)
     local C_TRACK_OFF   = Color3.fromRGB(45, 45, 45)
     local C_TRACK_ON    = Color3.fromRGB(0, 220, 0)
-    local C_TRACK_S_OFF = Color3.fromRGB(0, 80, 160)
-    local C_TRACK_S_ON  = Color3.fromRGB(100, 80, 215)
+    local C_TRACK_S_OFF = Color3.fromRGB(220, 60, 160)
+    local C_TRACK_S_ON  = Color3.fromRGB(255, 50, 150)
 
     -- ptStroke eliminado (sin rectangulo)
     local ptStroke = {Color = C_STROKE_OFF}  -- stub para que el resto del codigo no rompa
@@ -1364,9 +1359,9 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
     titleLabel.Position = UDim2.new(0, 12, 0, 0)
     titleLabel.BackgroundTransparency = 1
     titleLabel.Text = titleText
-    titleLabel.TextColor3 = isToggled and Color3.fromRGB(255,255,255) or Color3.fromRGB(230,230,230)
-    titleLabel.TextSize = 12
-    titleLabel.Font = isToggled and Enum.Font.GothamBold or Enum.Font.GothamSemibold
+    titleLabel.TextColor3 = Color3.fromRGB(255,255,255)
+    titleLabel.TextSize = 13
+    titleLabel.Font = Enum.Font.GothamBold
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
     titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
@@ -1445,7 +1440,7 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
                 local thumbColor = Color3.fromRGB(120, 80, 200)
                 TweenService:Create(thumb, TweenInfo.new(0.10, Enum.EasingStyle.Quad), {BackgroundColor3 = thumbColor, BackgroundTransparency = 0}):Play()
                 task.delay(0.12, function()
-                    TweenService:Create(thumb, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(100, 80, 215), BackgroundTransparency = 0}):Play()
+                    TweenService:Create(thumb, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(255, 50, 150), BackgroundTransparency = 0}):Play()
                     -- pulso del stroke: brilla y vuelve
                     -- trackStroke hidden (border removed)
                 end)
@@ -1459,8 +1454,8 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
             numLabel.Position = isToggled and UDim2.new(0, THUMB_PAD, 0, 0) or UDim2.new(0.5, 0, 0, 0)
         end
         numLabel.Text = isToggled and "1" or "0"
-        titleLabel.TextColor3 = isToggled and ThemeColors.TextPrimary or Color3.fromRGB(200, 200, 200)
-        titleLabel.Font = isToggled and Enum.Font.GothamBold or Enum.Font.GothamSemibold
+        titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        titleLabel.Font = Enum.Font.GothamBold
     end
 
     -- FIX MOBILE: Activated funciona en PC y touch; MouseButton1Click no detecta tap en celu
@@ -2813,6 +2808,20 @@ for _, p in ipairs(_cachedPlayers) do
     _hookPlayerHistReset(p)
 end
 
+-- Limpiar datos del jugador al salir del juego
+Players.PlayerRemoving:Connect(function(p)
+    -- Limpiar historial de prediccion
+    if _predHistories then _predHistories[p.UserId] = nil end
+    if _histTimers    then _histTimers[p.UserId]    = nil end
+    -- Limpiar cache de indices de jugadores
+    if _G._playerIndex   then _G._playerIndex[p]       = nil end
+    if _G._playerByName  then _G._playerByName[p.Name] = nil end
+    -- Reconstruir cache de jugadores activos
+    task.defer(function()
+        if _rebuildPlayerCache then _rebuildPlayerCache() end
+    end)
+end)
+
 -- Call this every frame from the main tracking loop
 function updatePredHistoryFor(userId, pos, vel)
     local now  = tick()
@@ -4121,7 +4130,7 @@ local Themes = {
         Aurora1         = Color3.fromRGB(220, 220, 220), -- blanco gris
         Aurora2         = Color3.fromRGB(80, 80, 80),    -- gris medio
         Aurora3         = Color3.fromRGB(140, 140, 140), -- gris plateado
-        Aurora4         = Color3.fromRGB(0, 80, 160),    -- gris muy oscuro
+        Aurora4         = Color3.fromRGB(220, 60, 160),    -- gris muy oscuro
     },
     ["Amoled"] = {
         Primary         = Color3.fromRGB(117, 117, 117),
@@ -4189,17 +4198,17 @@ local Themes = {
         Aurora4         = Color3.fromRGB(58, 58, 58),
     },
     ["Beach"] = {
-        Primary         = Color3.fromRGB(100, 80, 215),    -- Celeste Electrico
-        Secondary       = Color3.fromRGB(0, 100, 200),    -- Azul Oceano
+        Primary         = Color3.fromRGB(255, 50, 150),    -- Celeste Electrico
+        Secondary       = Color3.fromRGB(200, 20, 100),    -- Azul Oceano
         Accent          = Color3.fromRGB(255, 200, 120),  -- Arena Dorada
         Background      = Color3.fromRGB(30, 30, 30),      -- Azul muy oscuro
-        BackgroundLight = Color3.fromRGB(8, 22, 48),      -- Azul noche
+        BackgroundLight = Color3.fromRGB(180, 40, 100),      -- Azul noche
         TextPrimary     = Color3.fromRGB(220, 245, 255),  -- Blanco celeste
         TextSecondary   = Color3.fromRGB(255, 200, 120),  -- Arena dorada
-        Aurora1         = Color3.fromRGB(100, 80, 215),    -- Celeste Electrico
+        Aurora1         = Color3.fromRGB(255, 50, 150),    -- Celeste Electrico
         Aurora2         = Color3.fromRGB(255, 200, 120),  -- Arena Dorada
-        Aurora3         = Color3.fromRGB(0, 100, 200),    -- Azul Oceano
-        Aurora4         = Color3.fromRGB(0, 220, 255),    -- Cyan
+        Aurora3         = Color3.fromRGB(200, 20, 100),    -- Azul Oceano
+        Aurora4         = Color3.fromRGB(255, 50, 150),    -- Cyan
     },
     ["Independence Day"] = {
         Primary         = Color3.fromRGB(20, 5, 45),
@@ -4215,14 +4224,14 @@ local Themes = {
         Aurora4         = Color3.fromRGB(220, 50, 50),
     },
     ["Cyber Cyan"] = {
-        Primary         = Color3.fromRGB(0, 220, 255),    -- Cyan brillante
+        Primary         = Color3.fromRGB(255, 50, 150),    -- Cyan brillante
         Secondary       = Color3.fromRGB(0, 140, 180),    -- Cyan medio
         Accent          = Color3.fromRGB(120, 255, 255),  -- Cyan claro
         Background      = Color3.fromRGB(30, 30, 30),      -- Negro azulado
         BackgroundLight = Color3.fromRGB(30, 30, 30),      -- Gris azulado oscuro
         TextPrimary     = Color3.fromRGB(220, 255, 255),  -- Blanco cyan
         TextSecondary   = Color3.fromRGB(0, 200, 230),    -- Cyan suave
-        Aurora1         = Color3.fromRGB(0, 220, 255),    -- Cyan brillante
+        Aurora1         = Color3.fromRGB(255, 50, 150),    -- Cyan brillante
         Aurora2         = Color3.fromRGB(0, 140, 180),    -- Cyan medio
         Aurora3         = Color3.fromRGB(120, 255, 255),  -- Cyan claro
         Aurora4         = Color3.fromRGB(0, 80, 120),     -- Azul profundo
@@ -4238,11 +4247,11 @@ local Themes = {
         Aurora1         = Color3.fromRGB(92, 92, 92),
         Aurora2         = Color3.fromRGB(46, 46, 46),
         Aurora3         = Color3.fromRGB(159, 159, 159),
-        Aurora4         = Color3.fromRGB(0, 80, 160),
+        Aurora4         = Color3.fromRGB(220, 60, 160),
     },
     ["Neon Purple"] = {
         Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon principal
-        Secondary       = Color3.fromRGB(50, 200, 140),   -- Morado oscuro
+        Secondary       = Color3.fromRGB(255, 130, 190),   -- Morado oscuro
         Accent          = Color3.fromRGB(135, 206, 250),  -- Lila claro
         Background      = Color3.fromRGB(30, 30, 30),       -- Negro violaceo
         BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado muy oscuro
@@ -4268,7 +4277,7 @@ local Themes = {
     },
     ["Purple Blue Glow"] = {
         Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon
-        Secondary       = Color3.fromRGB(50, 200, 140),   -- Morado oscuro
+        Secondary       = Color3.fromRGB(255, 130, 190),   -- Morado oscuro
         Accent          = Color3.fromRGB(135, 206, 250),  -- Lila neon
         Background      = Color3.fromRGB(30, 30, 30),         -- Negro azulado
         BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado oscuro
@@ -4307,7 +4316,7 @@ local Themes = {
     },
     ["Purple Blue Glow"] = {
         Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon
-        Secondary       = Color3.fromRGB(50, 200, 140),   -- Morado oscuro
+        Secondary       = Color3.fromRGB(255, 130, 190),   -- Morado oscuro
         Accent          = Color3.fromRGB(135, 206, 250),  -- Lila neon
         Background      = Color3.fromRGB(30, 30, 30),         -- Negro azulado
         BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado oscuro
@@ -4335,20 +4344,20 @@ local Themes = {
     -- -- TEMA TROPICAL NEON -- Azul profundo + cian vivido --
     ["Teal Dark"] = {
         Primary         = Color3.fromRGB(55, 210, 130),   -- verde esmeralda foto
-        Secondary       = Color3.fromRGB(30, 155, 155),   -- celeste-teal medio
+        Secondary       = Color3.fromRGB(200, 60, 120),   -- celeste-teal medio
         Accent          = Color3.fromRGB(60, 190, 240),   -- celeste claro
-        Background      = Color3.fromRGB(10, 30, 38),     -- fondo azul-verde oscuro
-        BackgroundLight = Color3.fromRGB(15, 50, 60),     -- panel interno celeste oscuro
+        Background      = Color3.fromRGB(180, 40, 100),     -- fondo azul-verde oscuro
+        BackgroundLight = Color3.fromRGB(200, 60, 120),     -- panel interno celeste oscuro
         TextPrimary     = Color3.fromRGB(215, 255, 240),  -- blanco verdoso suave
         TextSecondary   = Color3.fromRGB(200, 200, 200),   -- celeste
-        Aurora1         = Color3.fromRGB(25, 90, 90),     -- teal glassmorphism
-        Aurora2         = Color3.fromRGB(20, 70, 80),     -- cyan oscuro
+        Aurora1         = Color3.fromRGB(200, 60, 120),     -- teal glassmorphism
+        Aurora2         = Color3.fromRGB(180, 40, 100),     -- cyan oscuro
         Aurora3         = Color3.fromRGB(180, 60, 200),   -- aurora magenta titulo
-        Aurora4         = Color3.fromRGB(8, 22, 30),      -- fondo muy oscuro
+        Aurora4         = Color3.fromRGB(180, 40, 100),      -- fondo muy oscuro
     },
     ["Tropical Neon"] = {
     Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon principal
-    Secondary       = Color3.fromRGB(50, 200, 140),   -- Morado oscuro (sliders fondo)
+    Secondary       = Color3.fromRGB(255, 130, 190),   -- Morado oscuro (sliders fondo)
     Accent          = Color3.fromRGB(135, 206, 250),  -- Lila (acentos)
     Background      = Color3.fromRGB(30, 30, 30),       -- Negro violaceo (fondo hub)
     BackgroundLight = Color3.fromRGB(20, 20, 20),      -- Morado oscuro (paneles internos)
@@ -4360,17 +4369,17 @@ local Themes = {
     Aurora4         = Color3.fromRGB(80, 10, 130),    -- Morado profundo
 },
     ["Neon Green"] = {
-    Primary         = Color3.fromRGB(100, 80,  215),  -- azul-violeta (color carga)
-    Secondary       = Color3.fromRGB(50,  60,  160),  -- azul-violeta oscuro
-    Accent          = Color3.fromRGB(50,  200, 140),  -- verde (color carga)
-    Background      = Color3.fromRGB(25,  40,  100),  -- azul oscuro profundo
-    BackgroundLight = Color3.fromRGB(40,  60,  130),  -- azul-violeta oscuro
+    Primary         = Color3.fromRGB(255,   0, 140),  -- rosa neon puro
+    Secondary       = Color3.fromRGB(180,   0,  80),  -- rosa oscuro saturado
+    Accent          = Color3.fromRGB(255, 100, 220),  -- fucsia brillante
+    Background      = Color3.fromRGB( 18,   4,  14),  -- negro profundo
+    BackgroundLight = Color3.fromRGB( 50,  10,  35),  -- oscuro calido
     TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
-    TextSecondary   = Color3.fromRGB(160, 200, 255),  -- azul-violeta suave
-    Aurora1         = Color3.fromRGB(60,  100, 220),  -- azul puro (color carga)
-    Aurora2         = Color3.fromRGB(110, 60,  200),  -- violeta (color carga)
-    Aurora3         = Color3.fromRGB(50,  190, 130),  -- verde (color carga)
-    Aurora4         = Color3.fromRGB(80,  90,  210),  -- azul-violeta (color carga)
+    TextSecondary   = Color3.fromRGB(255, 180, 230),  -- rosa brillante
+    Aurora1         = Color3.fromRGB(255,   0, 160),  -- magenta neon
+    Aurora2         = Color3.fromRGB(255,  50, 200),  -- fucsia neon
+    Aurora3         = Color3.fromRGB(200,   0, 255),  -- violeta neon
+    Aurora4         = Color3.fromRGB(255,  80, 180),  -- rosa electrico
 },
 }
 
@@ -4378,17 +4387,17 @@ local Themes = {
 currentThemeName = "Neon Green"
 
 local ThemeColors = {
-    Primary         = Color3.fromRGB(100, 80,  215),  -- azul-violeta (color carga)
-    Secondary       = Color3.fromRGB(50,  60,  160),  -- azul-violeta oscuro
-    Accent          = Color3.fromRGB(50,  200, 140),  -- verde (color carga)
-    Background      = Color3.fromRGB(25,  40,  100),  -- azul oscuro profundo
-    BackgroundLight = Color3.fromRGB(40,  60,  130),  -- azul-violeta oscuro
+    Primary         = Color3.fromRGB(255,   0, 140),  -- rosa neon puro (más vivo)
+    Secondary       = Color3.fromRGB(180,   0,  80),  -- rosa oscuro saturado
+    Accent          = Color3.fromRGB(255, 100, 220),  -- fucsia brillante
+    Background      = Color3.fromRGB( 18,   4,  14),  -- negro profundo (mejor contraste)
+    BackgroundLight = Color3.fromRGB( 50,  10,  35),  -- oscuro cálido
     TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
-    TextSecondary   = Color3.fromRGB(160, 200, 255),  -- azul-violeta suave
-    Aurora1         = Color3.fromRGB(60,  100, 220),  -- azul puro (color carga)
-    Aurora2         = Color3.fromRGB(110, 60,  200),  -- violeta (color carga)
-    Aurora3         = Color3.fromRGB(50,  190, 130),  -- verde (color carga)
-    Aurora4         = Color3.fromRGB(80,  90,  210),  -- azul-violeta (color carga)
+    TextSecondary   = Color3.fromRGB(255, 180, 230),  -- rosa brillante
+    Aurora1         = Color3.fromRGB(255,   0, 160),  -- magenta neon
+    Aurora2         = Color3.fromRGB(255,  50, 200),  -- fucsia neon
+    Aurora3         = Color3.fromRGB(200,   0, 255),  -- violeta neon
+    Aurora4         = Color3.fromRGB(255,  80, 180),  -- rosa eléctrico
 }
 
 ThemeObjects = {}
@@ -4427,8 +4436,8 @@ local function _remapColor(oldColor, oldTheme, newTheme)
             bestKey = k
         end
     end
-    -- Solo mapear si el color era realmente cercano a alguna clave (evitar colores custom)
-    if bestDist < (25*25 * 3) and bestKey then
+    -- Mapear SIEMPRE al color del nuevo tema más cercano (sin límite de distancia)
+    if bestKey then
         return newTheme[bestKey]
     end
     return nil
@@ -7288,7 +7297,7 @@ function PlaySound()
     if now - _lastPlaySoundTime < 0.08 then return end  -- debounce: no repetir en menos de 80ms
     _lastPlaySoundTime = now
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://9083627113"
+    s.SoundId = "rbxassetid://156286438"
     s.Volume = 0.5
     s.PlaybackSpeed = 1.0
     s.RollOffMaxDistance = 999
@@ -7307,7 +7316,7 @@ function PlayToggleSound(isOn)
     if now - _lastToggleSoundTime < 0.08 then return end
     _lastToggleSoundTime = now
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://9083627113"
+    s.SoundId = "rbxassetid://156286438"
     s.Volume = 0.5
     s.PlaybackSpeed = 1.0
     s.RollOffMaxDistance = 999
@@ -7320,7 +7329,7 @@ end
 function PlayTabSound()
     if _G._hubSettings and _G._hubSettings.disableClickSound then return end
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://9083627113" -- swoosh suave de pestana
+    s.SoundId = "rbxassetid://156286438" -- swoosh suave de pestana
     s.Volume = 0.35
     s.PlaybackSpeed = 1.1
     s.RollOffMaxDistance = 999
@@ -7333,7 +7342,7 @@ end
 function PlayHoverSound()
     if _G._hubSettings and _G._hubSettings.disableClickSound then return end
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://9083627113" -- hover suave
+    s.SoundId = "rbxassetid://156286438" -- hover suave
     s.Volume = 0.18
     s.PlaybackSpeed = 1.2
     s.RollOffMaxDistance = 999
@@ -7344,7 +7353,7 @@ end
 
 function PlayDeathSound()
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://9083627113"
+    s.SoundId = "rbxassetid://156286438"
     s.Volume = 0.5
     s.Parent = workspace
     s:Play()
@@ -7804,9 +7813,9 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
         end)
     end
 
-    -- Tamaño circular
-    BTN_W = _BIND_CS
-    BTN_H = _BIND_CS
+    -- Tamaño tecla estilo SHIFT (cuadrado compacto, sin fondo)
+    BTN_W = 60
+    BTN_H = 60
 
     -- -- CONTENEDOR RAIZ ----------------------------------
     local bg = Instance.new("Frame", _bindSg)
@@ -7823,45 +7832,86 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
     local _bindUiScale = Instance.new("UIScale", bg)
     _bindUiScale.Scale = 0
 
-    -- -- CIRCULO PRINCIPAL (fondo oscuro semi-transparente) --
+    -- -- FONDO: transparente (sin fondo, estilo tecla SHIFT) --
+    local pillBg = Instance.new("Frame", bg)
+    pillBg.Name                   = "PillBg"
+    pillBg.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+    pillBg.AnchorPoint            = Vector2.new(0.5, 0.5)
+    pillBg.Position               = UDim2.fromScale(0.5, 0.5)
+    pillBg.BackgroundColor3       = ThemeColors.Aurora1
+    pillBg.BackgroundTransparency = 1   -- sin fondo por defecto
+    pillBg.BorderSizePixel        = 0
+    pillBg.ZIndex                 = 200
+    Instance.new("UICorner", pillBg).CornerRadius = UDim.new(0, 10)
+
+    -- -- BORDE del color del hub (principal visible, estilo SHIFT) --
+    local borderFrame = Instance.new("Frame", bg)
+    borderFrame.Name                   = "BorderFrame"
+    borderFrame.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+    borderFrame.AnchorPoint            = Vector2.new(0.5, 0.5)
+    borderFrame.Position               = UDim2.fromScale(0.5, 0.5)
+    borderFrame.BackgroundTransparency = 1
+    borderFrame.BorderSizePixel        = 0
+    borderFrame.ZIndex                 = 201
+    Instance.new("UICorner", borderFrame).CornerRadius = UDim.new(0, 10)
+
+    local borderStroke = Instance.new("UIStroke", borderFrame)
+    borderStroke.Color           = ThemeColors.Aurora1
+    borderStroke.Thickness       = 3
+    borderStroke.Transparency    = 0
+    borderStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- Dummy para compatibilidad (no usado en hover/click ahora)
+    local iconLbl = Instance.new("TextLabel", bg)
+    iconLbl.Size = UDim2.fromOffset(0, 0); iconLbl.BackgroundTransparency = 1
+    iconLbl.Text = ""; iconLbl.ZIndex = 199
+
+    local sepLine = Instance.new("Frame", bg)
+    sepLine.Size = UDim2.fromOffset(0, 0); sepLine.BackgroundTransparency = 1
+    sepLine.ZIndex = 199
+
+    -- -- BOTON PRINCIPAL (captura clicks, muestra texto) --
     local fill = Instance.new("TextButton", bg)
     fill.Name                   = "Fill"
     fill.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
     fill.AnchorPoint            = Vector2.new(0.5, 0.5)
     fill.Position               = UDim2.fromScale(0.5, 0.5)
-    fill.BackgroundColor3       = ThemeColors.Aurora3
-    fill.BackgroundTransparency = 0.45
+    fill.BackgroundTransparency = 1
     fill.BorderSizePixel        = 0
     fill.Text                   = ""
     fill.AutoButtonColor        = false
     fill.Active                 = true
-    fill.ZIndex                 = 202
-    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    fill.ZIndex                 = 210
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 10)
 
-    -- Borde gris claro (igual al Shoot Murderer)
+    -- fillStroke (compatibilidad)
     local fillStroke = Instance.new("UIStroke", fill)
-    fillStroke.Color           = ThemeColors.Aurora3
-    fillStroke.Thickness       = 2
-    fillStroke.Transparency    = 0.1
+    fillStroke.Color           = ThemeColors.Aurora1
+    fillStroke.Thickness       = 0
+    fillStroke.Transparency    = 1
     fillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    -- TextLabel centrado en el círculo
-    local textLabel = Instance.new("TextLabel", fill)
-    textLabel.Size                   = UDim2.new(1, -10, 1, 0)
-    textLabel.Position               = UDim2.new(0, 5, 0, 0)
+    -- TextLabel centrado (estilo SHIFT: blanco, bold, centrado)
+    local textLabel = Instance.new("TextLabel", bg)
+    textLabel.Name                   = "TextLabel"
+    textLabel.Size                   = UDim2.fromOffset(BTN_W - 8, BTN_H - 8)
+    textLabel.AnchorPoint            = Vector2.new(0.5, 0.5)
+    textLabel.Position               = UDim2.fromScale(0.5, 0.5)
     textLabel.BackgroundTransparency = 1
     textLabel.Text                   = tostring(labelText)
     textLabel.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-    textLabel.TextSize               = 12
-    textLabel.TextColor3             = Color3.fromRGB(220, 220, 220)
+    textLabel.TextSize               = 11
+    textLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
     textLabel.TextXAlignment         = Enum.TextXAlignment.Center
+    textLabel.TextYAlignment         = Enum.TextYAlignment.Center
     textLabel.TextWrapped            = true
-    textLabel.ZIndex                 = 203
+    textLabel.TextScaled             = false
+    textLabel.ZIndex                 = 204
 
     local textStroke = Instance.new("UIStroke", textLabel)
     textStroke.Color        = Color3.fromRGB(0, 0, 0)
     textStroke.Thickness    = 1
-    textStroke.Transparency = 0.6
+    textStroke.Transparency = 0.5
 
     -- AUTO-REGISTRO de idioma
     if _LangObjects then
@@ -7937,29 +7987,22 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
         end)
     end
 
-    -- Colores del hub (igual que CreateButton)
-    local _C_IDLE_BG    = ThemeColors.Aurora3
-    local _C_HOVER_BG   = ThemeColors.Aurora1
-    local _C_CLICK_BG   = ThemeColors.Primary
+    -- Colores (estilo tecla SHIFT: texto blanco siempre)
     local _C_TEXT_IDLE  = Color3.fromRGB(255, 255, 255)
     local _C_TEXT_WHITE = Color3.fromRGB(255, 255, 255)
 
-    -- Hover
+    -- Hover: fondo sutilmente visible (como tecla iluminada)
     fill.MouseEnter:Connect(function()
-        TweenService:Create(fill,      TweenInfo.new(0.12), {BackgroundColor3=_C_HOVER_BG, BackgroundTransparency=0.2}):Play()
-        TweenService:Create(fillStroke,TweenInfo.new(0.12), {Transparency=0, Thickness=2.5}):Play()
-        TweenService:Create(textLabel, TweenInfo.new(0.12), {TextColor3=_C_TEXT_WHITE}):Play()
+        TweenService:Create(pillBg,       TweenInfo.new(0.12), {BackgroundTransparency=0.75}):Play()
+        TweenService:Create(borderStroke, TweenInfo.new(0.12), {Thickness=3.5}):Play()
     end)
     fill.MouseLeave:Connect(function()
-        TweenService:Create(fill,      TweenInfo.new(0.12), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.35}):Play()
-        TweenService:Create(fillStroke,TweenInfo.new(0.12), {Transparency=0.1, Thickness=2}):Play()
-        TweenService:Create(textLabel, TweenInfo.new(0.12), {TextColor3=_C_TEXT_IDLE}):Play()
+        TweenService:Create(pillBg,       TweenInfo.new(0.15), {BackgroundTransparency=1}):Play()
+        TweenService:Create(borderStroke, TweenInfo.new(0.15), {Thickness=3}):Play()
     end)
 
-    -- -- CLICK --------------------------------------------
+    -- -- CLICK (press = fondo aparece + scale down, release = vuelve) --
     local _capyIsActive = false
-    -- FIX MOBILE: Activated funciona en PC y Touch; MouseButton1Up solo en PC.
-    -- Debounce para evitar doble disparo si ambos eventos se activan juntos.
     local _lastActivatedTick = 0
     local function _doActivate()
         if _moved then return end
@@ -7970,59 +8013,40 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
     end
     fill.MouseButton1Down:Connect(function()
         if _moved then return end
-        TweenService:Create(fill, TweenInfo.new(0.07), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
-        TweenService:Create(fillStroke, TweenInfo.new(0.07), {Color=ThemeColors.Primary}):Play()
+        -- Press: fondo del color del hub, tecla "hundida"
+        TweenService:Create(pillBg,       TweenInfo.new(0.07), {BackgroundTransparency=0.40}):Play()
+        TweenService:Create(borderStroke, TweenInfo.new(0.07), {Thickness=2}):Play()
+        TweenService:Create(_bindUiScale, TweenInfo.new(0.07), {Scale=0.92}):Play()
     end)
     fill.MouseButton1Up:Connect(function()
         if _moved then return end
-        TweenService:Create(fill, TweenInfo.new(0.15), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
-        TweenService:Create(fillStroke, TweenInfo.new(0.15), {Color=ThemeColors.Aurora3}):Play()
+        -- Release: vuelve a transparente
+        TweenService:Create(pillBg,       TweenInfo.new(0.18), {BackgroundTransparency=1}):Play()
+        TweenService:Create(borderStroke, TweenInfo.new(0.18), {Thickness=3}):Play()
+        TweenService:Create(_bindUiScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
         _doActivate()
     end)
-    -- FIX MOBILE TOUCH: Activated cubre TouchTap en dispositivos mobiles
     fill.Activated:Connect(function()
         _doActivate()
     end)
 
-    -- -- SetActiveState ------------------------------------
+    -- -- SetActiveState (toggle ON = fondo visible, OFF = transparente) --
     local function _setActive(on)
         _capyIsActive = on
         if on then
-            TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_CLICK_BG, BackgroundTransparency=0.1}):Play()
-            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0, Thickness=2.5, Color=ThemeColors.Primary}):Play()
+            TweenService:Create(pillBg,       TweenInfo.new(0.18), {BackgroundTransparency=0.50}):Play()
+            TweenService:Create(borderStroke, TweenInfo.new(0.18), {Thickness=3.5}):Play()
         else
-            TweenService:Create(fill,       TweenInfo.new(0.18), {BackgroundColor3=_C_IDLE_BG, BackgroundTransparency=0.45}):Play()
-            TweenService:Create(fillStroke, TweenInfo.new(0.18), {Transparency=0.1, Thickness=2, Color=ThemeColors.Aurora3}):Play()
+            TweenService:Create(pillBg,       TweenInfo.new(0.18), {BackgroundTransparency=1}):Play()
+            TweenService:Create(borderStroke, TweenInfo.new(0.18), {Thickness=3}):Play()
         end
     end
     fill.SetActiveState  = function(self, on) _setActive(on) end
     bg.SetActiveState    = function(self, on) _setActive(on) end
 
-    -- -- Shape system (compatibilidad) ---------------------
-    local function _applyShape(shape)
-        local corner = fill:FindFirstChildOfClass("UICorner")
-        fill.Rotation = 0
-        if shape == "circle" then
-            if corner then corner.CornerRadius = UDim.new(1, 0) end
-        elseif shape == "square" then
-            if corner then corner.CornerRadius = UDim.new(0, 4) end
-        elseif shape == "rounded" then
-            if corner then corner.CornerRadius = UDim.new(0, 22) end
-        elseif shape == "diamond" then
-            if corner then corner.CornerRadius = UDim.new(0, 2) end
-            fill.Rotation = 45
-        end
-    end
-    _applyShape(_G._bindableShape or "circle")
-    task.spawn(function()
-        local last = _G._bindableShape or "circle"
-        while fill and fill.Parent do
-            task.wait(0.3)
-            local gs = _G._bindableShape or "circle"
-            if gs ~= last then last = gs; pcall(_applyShape, gs) end
-        end
-    end)
-    bg.SetShape = function(self, shape) _applyShape(shape) end
+    -- -- Shape system (cuadrado fijo, ignorar selector) ----
+    local function _applyShape(shape) end
+    bg.SetShape = function(self, shape) end
 
     -- -- Alias para compatibilidad (capyButton) ------------
     local capyButton = fill
@@ -8172,25 +8196,26 @@ function createBindableButton(name, color)
     if not gui.Parent then gui.Parent = LocalPlayer.PlayerGui end
 
     -- ==============================================================
-    -- BOTON SA REDISENADO -- moderno, colores del hub, definido
+    -- BOTON SA REDISENADO -- estilo tecla SHIFT: sin fondo, borde hub
     -- ==============================================================
-    local BTN_SIZE = _BIND_CS
-    local vp       = workspace.CurrentCamera.ViewportSize
+    local BTN_W = 60
+    local BTN_H = 60
+    local vp    = workspace.CurrentCamera.ViewportSize
 
     -- POSICION: siempre slot automatico -- no restaurar posicion guardada
     local _posKey  = tostring(name)
     local posX, posY
     do
         local slot = _assignSlot(name)
-        posX, posY  = _getBindablePosition(slot)
-        posX = math.clamp(posX, 4, vp.X - BTN_SIZE - 4)
-        posY = math.clamp(posY, 4, vp.Y - BTN_SIZE - 4)
+        local sx, sy = _getBindablePosition(slot)
+        posX = math.clamp(sx, 4, vp.X - BTN_W - 4)
+        posY = math.clamp(sy, 4, vp.Y - BTN_H - 4)
     end
 
     -- -- CONTENEDOR raiz (invisible, solo para drag) --------------
     local bg = Instance.new("Frame", gui)
     bg.Name                   = "CapyBindBtn"
-    bg.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
+    bg.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
     bg.Position               = UDim2.fromOffset(posX, posY)
     bg.BackgroundTransparency = 1
     bg.BorderSizePixel        = 0
@@ -8200,164 +8225,122 @@ function createBindableButton(name, color)
     local _bgScale = Instance.new("UIScale", bg)
     _bgScale.Scale = 0
 
-    -- -- FONDO CIRCULAR oscuro del hub ----------------------------
-    local circle = Instance.new("Frame", bg)
-    circle.Name                   = "Circle"
-    circle.AnchorPoint            = Vector2.new(0.5, 0.5)
-    circle.Position               = UDim2.fromScale(0.5, 0.5)
-    circle.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
-    circle.BackgroundColor3       = ThemeColors.Background
-    circle.BackgroundTransparency = 0.15
-    circle.BorderSizePixel        = 0
-    circle.ZIndex                 = 201
-    Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
+    -- -- FONDO transparente (sin fondo, estilo tecla SHIFT) --------
+    local pill = Instance.new("Frame", bg)
+    pill.Name                   = "Pill"
+    pill.AnchorPoint            = Vector2.new(0.5, 0.5)
+    pill.Position               = UDim2.fromScale(0.5, 0.5)
+    pill.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+    pill.BackgroundColor3       = ThemeColors.Aurora1
+    pill.BackgroundTransparency = 1   -- sin fondo por defecto
+    pill.BorderSizePixel        = 0
+    pill.ZIndex                 = 201
+    Instance.new("UICorner", pill).CornerRadius = UDim.new(0, 10)
 
-    -- Gradiente del hub en el fondo (mezcla Aurora1 -> Background)
-    local bgGrad = Instance.new("UIGradient", circle)
-    bgGrad.Rotation = 135
-    bgGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,   ThemeColors.Aurora1),
-        ColorSequenceKeypoint.new(0.45, ThemeColors.BackgroundLight),
-        ColorSequenceKeypoint.new(1,   ThemeColors.Background),
-    })
-    bgGrad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0,   0.35),
-        NumberSequenceKeypoint.new(0.5, 0.55),
-        NumberSequenceKeypoint.new(1,   0.75),
-    })
-
-    -- -- ANILLO EXTERIOR -- running lines del hub -------------------
+    -- Borde del color del hub (estilo SHIFT key, solido y visible)
     local outerRing = Instance.new("Frame", bg)
     outerRing.Name                   = "OuterRing"
     outerRing.AnchorPoint            = Vector2.new(0.5, 0.5)
     outerRing.Position               = UDim2.fromScale(0.5, 0.5)
-    outerRing.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
+    outerRing.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
     outerRing.BackgroundTransparency = 1
     outerRing.BorderSizePixel        = 0
     outerRing.ZIndex                 = 202
-    Instance.new("UICorner", outerRing).CornerRadius = UDim.new(1, 0)
+    Instance.new("UICorner", outerRing).CornerRadius = UDim.new(0, 10)
 
     local outerStroke = Instance.new("UIStroke", outerRing)
-    outerStroke.Color           = Color3.new(1, 1, 1)
+    outerStroke.Color           = ThemeColors.Aurora1
     outerStroke.Thickness       = 3
+    outerStroke.Transparency    = 0
     outerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    local outerGrad = nil  -- sin gradiente rotatorio
 
-    -- Gradiente running lines (igual que el hub y los toggles)
-    local outerGrad = Instance.new("UIGradient", outerStroke)
-    outerGrad.Rotation = 135
-    outerGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    ThemeColors.Aurora1),
-        ColorSequenceKeypoint.new(0.15, ThemeColors.Background),
-        ColorSequenceKeypoint.new(0.5,  ThemeColors.Aurora1),
-        ColorSequenceKeypoint.new(0.85, ThemeColors.Background),
-        ColorSequenceKeypoint.new(1,    ThemeColors.Aurora1),
-    })
-
-    -- -- ANILLO INTERIOR -- accent del hub -------------------------
-    local innerRing = Instance.new("Frame", bg)
-    innerRing.Name                   = "InnerRing"
-    innerRing.AnchorPoint            = Vector2.new(0.5, 0.5)
-    innerRing.Position               = UDim2.fromScale(0.5, 0.5)
-    innerRing.Size                   = UDim2.fromOffset(BTN_SIZE - 12, BTN_SIZE - 12)
-    innerRing.BackgroundTransparency = 1
-    innerRing.BorderSizePixel        = 0
-    innerRing.ZIndex                 = 203
-    Instance.new("UICorner", innerRing).CornerRadius = UDim.new(1, 0)
-
-    local innerStroke = Instance.new("UIStroke", innerRing)
-    innerStroke.Color           = ThemeColors.Accent
-    innerStroke.Thickness       = 1.5
-    innerStroke.Transparency    = 0.4
-    innerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-    -- -- ICONO  centrado -----------------------------------------
-    local icon = Instance.new("TextLabel", bg)
-    icon.AnchorPoint            = Vector2.new(0.5, 0.5)
-    icon.Position               = UDim2.fromScale(0.5, 0.38)
-    icon.Size                   = UDim2.fromOffset(BTN_SIZE, 28)
-    icon.BackgroundTransparency = 1
-    icon.Text                   = ""
-    icon.TextSize               = 22
-    icon.Font                   = Enum.Font.GothamBold
-    icon.TextColor3             = ThemeColors.TextPrimary
-    icon.ZIndex                 = 205
-
-    -- -- TEXTO debajo del icono ------------------------------------
+    -- -- TEXTO centrado (estilo SHIFT: blanco, bold, centrado) ------
     local lbl = Instance.new("TextLabel", bg)
     lbl.AnchorPoint            = Vector2.new(0.5, 0.5)
-    lbl.Position               = UDim2.fromScale(0.5, 0.72)
-    lbl.Size                   = UDim2.fromOffset(BTN_SIZE - 6, 20)
+    lbl.Position               = UDim2.fromScale(0.5, 0.5)
+    lbl.Size                   = UDim2.fromOffset(BTN_W - 8, BTN_H - 8)
     lbl.BackgroundTransparency = 1
-    lbl.Text                   = "SHOOT"
-    lbl.TextSize               = 10
+    lbl.Text                   = name
+    lbl.TextSize               = 11
     lbl.Font                   = Enum.Font.GothamBold
-    lbl.TextColor3             = ThemeColors.TextPrimary
+    lbl.TextColor3             = Color3.fromRGB(255, 255, 255)
+    lbl.TextXAlignment         = Enum.TextXAlignment.Center
+    lbl.TextYAlignment         = Enum.TextYAlignment.Center
     lbl.TextWrapped            = true
+    lbl.TextScaled             = false
     lbl.ZIndex                 = 205
+
+    local lblStroke = Instance.new("UIStroke", lbl)
+    lblStroke.Color        = Color3.fromRGB(0, 0, 0)
+    lblStroke.Thickness    = 1
+    lblStroke.Transparency = 0.5
+
+    -- Dummies para compatibilidad
+    local icon = lbl
+    local sep  = Instance.new("Frame", bg)
+    sep.Size = UDim2.fromOffset(0, 0); sep.BackgroundTransparency = 1; sep.ZIndex = 199
 
     -- -- BOTON INVISIBLE encima para capturar clicks ---------------
     local fill = Instance.new("TextButton", bg)
     fill.Name                   = "Fill"
     fill.AnchorPoint            = Vector2.new(0.5, 0.5)
     fill.Position               = UDim2.fromScale(0.5, 0.5)
-    fill.Size                   = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
+    fill.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
     fill.BackgroundTransparency = 1
     fill.Text                   = ""
     fill.AutoButtonColor        = false
     fill.ZIndex                 = 210
-    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 10)
 
     -- -- GLOW de fondo (ImageLabel resplandor) ---------------------
     local glow = Instance.new("ImageLabel", bg)
     glow.AnchorPoint            = Vector2.new(0.5, 0.5)
     glow.Position               = UDim2.fromScale(0.5, 0.5)
-    glow.Size                   = UDim2.fromOffset(BTN_SIZE * 1.4, BTN_SIZE * 1.4)
+    glow.Size                   = UDim2.fromOffset(BTN_W * 1.3, BTN_H * 1.8)
     glow.BackgroundTransparency = 1
     glow.Image                  = "rbxassetid://4970638706"
     glow.ImageColor3            = ThemeColors.Aurora1
-    glow.ImageTransparency      = 0.78
+    glow.ImageTransparency      = 0.82
     glow.ZIndex                 = 199
 
     -- -- ANIMACION DE ENTRADA --------------------------------------
     task.spawn(function()
         task.wait(0.016)
-        TweenService:Create(_bgScale, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
-        task.wait(0.45)
-
-        -- Rotar running lines
-        task.spawn(function()
-            local rot = 135
-            while outerGrad and outerGrad.Parent do
-                rot = (rot + 0.5) % 360
-                outerGrad.Rotation = rot
-                task.wait(0.03)
-            end
-        end)
-
-        -- Pulso del glow
-        task.spawn(function()
-            while glow and glow.Parent do
-                TweenService:Create(glow, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                    {ImageTransparency = 0.58}):Play()
-                task.wait(1.6)
-                if not (glow and glow.Parent) then break end
-                TweenService:Create(glow, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                    {ImageTransparency = 0.82}):Play()
-                task.wait(1.6)
-            end
-        end)
+        TweenService:Create(_bgScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
     end)
 
-    -- -- FEEDBACK DE CLICK -----------------------------------------
+    -- Hover: fondo aparece sutilmente
+    fill.MouseEnter:Connect(function()
+        TweenService:Create(pill,       TweenInfo.new(0.12), {BackgroundTransparency=0.75}):Play()
+        TweenService:Create(outerStroke,TweenInfo.new(0.12), {Thickness=3.5}):Play()
+    end)
+    fill.MouseLeave:Connect(function()
+        TweenService:Create(pill,       TweenInfo.new(0.15), {BackgroundTransparency=1}):Play()
+        TweenService:Create(outerStroke,TweenInfo.new(0.15), {Thickness=3}):Play()
+    end)
+
+    -- -- FEEDBACK DE CLICK (press = hundido + fondo, release = vuelve) --
+    fill.MouseButton1Down:Connect(function()
+        if _moved then return end
+        TweenService:Create(pill,       TweenInfo.new(0.07), {BackgroundTransparency=0.40}):Play()
+        TweenService:Create(outerStroke,TweenInfo.new(0.07), {Thickness=2}):Play()
+        TweenService:Create(_bgScale,   TweenInfo.new(0.07), {Scale=0.92}):Play()
+        TweenService:Create(glow,       TweenInfo.new(0.07), {ImageTransparency=0.55}):Play()
+    end)
+    fill.MouseButton1Up:Connect(function()
+        if _moved then return end
+        TweenService:Create(pill,       TweenInfo.new(0.18), {BackgroundTransparency=1}):Play()
+        TweenService:Create(outerStroke,TweenInfo.new(0.18), {Thickness=3}):Play()
+        TweenService:Create(_bgScale,   TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
+        TweenService:Create(glow,       TweenInfo.new(0.25), {ImageTransparency=0.82}):Play()
+    end)
     fill.Activated:Connect(function()
-        if _moved then return end  -- FIX: no disparar click-feedback si se arrastró
-        TweenService:Create(_bgScale, TweenInfo.new(0.08), {Scale = 0.88}):Play()
-        TweenService:Create(circle, TweenInfo.new(0.08), {BackgroundTransparency = 0}):Play()
-        TweenService:Create(glow, TweenInfo.new(0.08), {ImageTransparency = 0.38}):Play()
-        task.delay(0.1, function()
-            TweenService:Create(_bgScale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
-            TweenService:Create(circle, TweenInfo.new(0.2), {BackgroundTransparency = 0.15}):Play()
-            TweenService:Create(glow, TweenInfo.new(0.25), {ImageTransparency = 0.78}):Play()
+        if _moved then return end
+        -- feedback flash en glow
+        TweenService:Create(glow, TweenInfo.new(0.08), {ImageTransparency=0.42}):Play()
+        task.delay(0.12, function()
+            TweenService:Create(glow, TweenInfo.new(0.25), {ImageTransparency=0.82}):Play()
         end)
     end)
 
@@ -8375,8 +8358,8 @@ function createBindableButton(name, color)
             _moved = true
             local vpN = workspace.CurrentCamera.ViewportSize
             bg.Position = UDim2.fromOffset(
-                math.clamp(bg.Position.X.Offset, 0, vpN.X - BTN_SIZE),
-                math.clamp(bg.Position.Y.Offset, 0, vpN.Y - BTN_SIZE))
+                math.clamp(bg.Position.X.Offset, 0, vpN.X - BTN_W),
+                math.clamp(bg.Position.Y.Offset, 0, vpN.Y - BTN_H))
             _G._bindablePosSave = _G._bindablePosSave or {}
             _G._bindablePosSave[_posKey] = {x = bg.Position.X.Offset, y = bg.Position.Y.Offset}
         end)
@@ -8407,8 +8390,8 @@ function createBindableButton(name, color)
             if delta.Magnitude > 4 then _moved = true end
             local vpN = workspace.CurrentCamera.ViewportSize
             bg.Position = UDim2.fromOffset(
-                math.clamp(_startPos.X.Offset + delta.X, 0, vpN.X - BTN_SIZE),
-                math.clamp(_startPos.Y.Offset + delta.Y, 0, vpN.Y - BTN_SIZE))
+                math.clamp(_startPos.X.Offset + delta.X, 0, vpN.X - BTN_W),
+                math.clamp(_startPos.Y.Offset + delta.Y, 0, vpN.Y - BTN_H))
         end)
         fill.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -8443,26 +8426,206 @@ function updateBindables()
         if not shootBtnGui then
             shootBtnGui = createBindableButton("SHOOT MURDERER", ThemeColors.Primary)
             local function _doShootMurderer()
-                local gun = LocalPlayer.Character and _findGunIn(LocalPlayer.Character)
-                if gun then
-                    local murderer = findMurderer()
-                    if murderer and murderer.Character then
-                        local predictedPos = getPredictedPos()
-                        if predictedPos then
-                            local cam = workspace.CurrentCamera
-                            -- FIX: sin redireccion de camara en tracking
-                        end
-                        for i = 1, 8 do
-                            _fireGunMM2(gun)
-                            task.wait(0.06)
-                        end
-                    else
-                        for i = 1, 8 do
-                            _fireGunMM2(gun)
-                            task.wait(0.06)
+                task.spawn(function()
+                    -- ================================================================
+                    -- LOGICA BASADA EN EL GUNCLIENT ORIGINAL DE MM2
+                    -- GunClient firma: gun.Shoot:FireServer(
+                    --   GunRaycastAttachment.WorldCFrame,   <- origen del disparo
+                    --   WeaponService:GetMouseTargetCFrame() <- CFrame del impacto
+                    -- )
+                    -- ================================================================
+                    local myChar = LocalPlayer.Character
+                    if not myChar then return end
+                    local myHum = myChar:FindFirstChildOfClass("Humanoid")
+                    if not myHum or myHum.Health <= 0 then return end
+                    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+                    if not myHRP then return end
+
+                    -- Detectar murderer (target)
+                    local target = findMurderer and findMurderer()
+                    if not target or not target.Character then
+                        CreateCustomNotification("SHOOT", "No hay Murder detectado", 1.5)
+                        return
+                    end
+                    local tChar = target.Character
+                    local tHum  = tChar:FindFirstChildOfClass("Humanoid")
+                    if not tHum or tHum.Health <= 0 then
+                        CreateCustomNotification("SHOOT", "Murder sin vida", 1.5)
+                        return
+                    end
+                    local tHRP = tChar:FindFirstChild("HumanoidRootPart")
+                    if not tHRP then return end
+
+                    -- ── 1. Buscar DefaultGun (igual que GunClient: script.Parent) ──
+                    -- Prioridad: mano del player -> backpack
+                    local gun = nil
+                    -- a) En mano: buscar tool con GunClient o nombre DefaultGun
+                    for _, tool in ipairs(myChar:GetChildren()) do
+                        if tool:IsA("Tool") then
+                            if tool.Name == "DefaultGun"
+                            or tool:FindFirstChild("GunClient")
+                            or tool:FindFirstChild("GunServer") then
+                                gun = tool; break
+                            end
                         end
                     end
-                end
+                    -- b) En backpack si no esta equipada
+                    local _wasInBackpack = false
+                    if not gun then
+                        for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+                            if tool:IsA("Tool") then
+                                if tool.Name == "DefaultGun"
+                                or tool:FindFirstChild("GunClient")
+                                or tool:FindFirstChild("GunServer") then
+                                    gun = tool; _wasInBackpack = true; break
+                                end
+                            end
+                        end
+                        if gun then
+                            -- Equipar igual que GunClient: myHum:EquipTool
+                            pcall(function() myHum:EquipTool(gun) end)
+                            task.wait(0.06)
+                            -- Re-buscar ahora que esta en mano
+                            for _, tool in ipairs(myChar:GetChildren()) do
+                                if tool == gun or (tool:IsA("Tool") and (
+                                    tool.Name == "DefaultGun"
+                                    or tool:FindFirstChild("GunClient")
+                                    or tool:FindFirstChild("GunServer"))) then
+                                    gun = tool; break
+                                end
+                            end
+                        end
+                    end
+                    -- c) Fallback generico
+                    if not gun then
+                        gun = _findGunIn and (_findGunIn(myChar) or _findGunIn(LocalPlayer.Backpack))
+                    end
+                    if not gun then
+                        CreateCustomNotification("SHOOT", "No hay DefaultGun disponible", 1.5)
+                        return
+                    end
+
+                    -- ── 2. GunRaycastAttachment — exactamente como EnsureGunRaycastAttachment ──
+                    -- GunClient busca en HumanoidRootPart; si no existe, lo crea en (0,1.35,-1)
+                    local gra = myHRP:FindFirstChild("GunRaycastAttachment")
+                    if not gra then
+                        gra = Instance.new("Attachment")
+                        gra.Name     = "GunRaycastAttachment"
+                        gra.Position = Vector3.new(0, 1.35, -1)
+                        gra.Parent   = myHRP
+                    end
+                    -- WorldCFrame del attachment (p1 en GunClient = GunRaycastAttachment.WorldCFrame)
+                    local graCF = gra.WorldCFrame
+
+                    -- ── 3. Calcular targetPos con prediccion SA ──────────────────────────
+                    local partName = (CombatTabState and CombatTabState.saTargetPart) or "Head"
+                    local tPart    = tChar:FindFirstChild(partName)
+                                  or tChar:FindFirstChild("Head")
+                                  or tHRP
+
+                    -- Intentar _saGetTargetCF primero (usa toda la logica de prediccion del SA)
+                    local finalGraCF, finalTargetCF = nil, nil
+                    if _saGetTargetCF then
+                        local ok3, gCF3, tCF3 = pcall(_saGetTargetCF)
+                        if ok3 and gCF3 and tCF3 then
+                            finalGraCF, finalTargetCF = gCF3, tCF3
+                        end
+                    end
+
+                    -- Si _saGetTargetCF no retorno nada, construir manualmente
+                    if not (finalGraCF and finalTargetCF) then
+                        -- Calcular targetPos
+                        local targetPos
+                        if CombatTabState and CombatTabState.saUsePrediction and _getCachedPrediction then
+                            targetPos = _getCachedPrediction(target) or tPart.Position
+                        elseif _unifiedBalisticSolver then
+                            local solved = _unifiedBalisticSolver(tPart, tHRP, {usePrediction = true}, target)
+                            targetPos = solved or tPart.Position
+                        else
+                            targetPos = tPart.Position
+                        end
+
+                        local originPos = graCF.Position
+
+                        -- ── 4. Construir CFrames exactamente como _buildSACFrames / GunClient ──
+                        -- graCF: posicion del attachment, LookVector apunta al target
+                        -- targetCF: replica WeaponService:GetMouseTargetCFrame()
+                        --   -> CFrame en la posicion del impacto, LookVector de vuelta al shooter
+                        local dir = targetPos - originPos
+                        if dir.Magnitude < 0.01 then return end
+                        local dirU = dir.Unit
+                        local upV  = math.abs(dirU.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
+
+                        -- graCF corregido: mantener posicion exacta del attachment, reorientar hacia target
+                        finalGraCF = CFrame.new(graCF.Position) * CFrame.lookAt(Vector3.zero, dirU, upV)
+
+                        -- targetCF: CFrame en targetPos mirando de vuelta al shooter (replica GetMouseTargetCFrame)
+                        local backDir = originPos - targetPos
+                        local backU   = backDir.Magnitude > 0.01 and backDir.Unit or -dirU
+                        local bkUp    = math.abs(backU.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
+                        finalTargetCF = CFrame.lookAt(targetPos, targetPos + backU, bkUp)
+                    end
+
+                    if not (finalGraCF and finalTargetCF) then
+                        CreateCustomNotification("SHOOT", "Error calculando CFrames", 1.5)
+                        return
+                    end
+
+                    -- ── 5. Flash handle (invisible durante el disparo) ──────────────────
+                    local _flashHandle = gun:FindFirstChild("Handle")
+                    local _flashOrigTrans = _flashHandle and _flashHandle.Transparency or 0
+                    if _flashHandle then
+                        pcall(function() _flashHandle.Transparency = 1 end)
+                    end
+
+                    -- ── 6. FireServer exactamente como GunClient: gun.Shoot:FireServer(graCF, targetCF) ──
+                    -- El RemoteEvent "Shoot" esta directamente en la gun (v1.Shoot en el GunClient)
+                    local shootRem = gun:FindFirstChild("Shoot")
+                    -- Fallback: buscar en GunServer o GetDescendants
+                    if not (shootRem and shootRem:IsA("RemoteEvent")) then
+                        local gs = gun:FindFirstChild("GunServer")
+                        if gs then
+                            local gsShoot = gs:FindFirstChild("Shoot")
+                            if gsShoot and gsShoot:IsA("RemoteEvent") then
+                                shootRem = gsShoot
+                            end
+                        end
+                    end
+                    if not (shootRem and shootRem:IsA("RemoteEvent")) and getShootRemote then
+                        shootRem = getShootRemote(gun)
+                    end
+
+                    if shootRem and shootRem:IsA("RemoteEvent") then
+                        -- Bypass hook del SA para no double-redirect
+                        if CombatTabState then CombatTabState._saBypassHook = true end
+                        -- Disparo con la misma firma que el GunClient original:
+                        -- v1.Shoot:FireServer(GunRaycastAttachment.WorldCFrame, GetMouseTargetCFrame())
+                        pcall(function() shootRem:FireServer(finalGraCF, finalTargetCF) end)
+                        if CombatTabState then CombatTabState._saBypassHook = false end
+                        CreateCustomNotification("SILENT AIM", "-> " .. target.Name, 1.2)
+                    else
+                        -- Fallback: _fireGunMM2 con targetCF correcto
+                        if _fireGunMM2 then
+                            if CombatTabState then CombatTabState._saBypassHook = true end
+                            _fireGunMM2(gun, finalTargetCF)
+                            if CombatTabState then CombatTabState._saBypassHook = false end
+                        end
+                    end
+
+                    -- ── 7. Restaurar handle y desequipar si vino del backpack ──────────
+                    task.delay(0.12, function()
+                        pcall(function()
+                            if _flashHandle and _flashHandle.Parent then
+                                _flashHandle.Transparency = _flashOrigTrans
+                            end
+                        end)
+                        if _wasInBackpack and myHum and myHum.Parent then
+                            task.delay(0.05, function()
+                                pcall(function() myHum:UnequipTools() end)
+                            end)
+                        end
+                    end)
+                end)
             end
             -- FIX MOBILE v4: Activated cubre PC (MouseButton1Click) y touch en un solo evento
             shootBtnGui.Frame.Activated:Connect(_doShootMurderer)
@@ -10021,7 +10184,7 @@ function CreateCustomNotification(titleRaw, message, duration)
         descLbl.BackgroundTransparency = 1
         descLbl.RichText = true
         descLbl.Text = tostring(message)
-        descLbl.TextColor3 = Color3.fromRGB(190, 190, 190)
+        descLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
         descLbl.TextSize = 10
         descLbl.Font = Enum.Font.Gotham
         descLbl.TextWrapped = true
@@ -10602,7 +10765,7 @@ function _makeTwoColumns()
     wrapper.Name = "TwoColumnWrapper"
     wrapper.Size = UDim2.new(1, 0, 1, 0)
     wrapper.Position = UDim2.new(0, 0, 0, 0)
-    wrapper.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    wrapper.BackgroundColor3 = Color3.fromRGB(220, 80, 140)
     wrapper.BackgroundTransparency = 1
     wrapper.BorderSizePixel = 0
 
@@ -10672,7 +10835,7 @@ function _makeTwoColumns()
     searchInput2.BackgroundTransparency = 1
     searchInput2.Text = ""
     searchInput2.PlaceholderText = ""
-    searchInput2.PlaceholderColor3 = Color3.fromRGB(50, 60, 160)
+    searchInput2.PlaceholderColor3 = Color3.fromRGB(200, 20, 100)
     searchInput2.TextColor3 = ThemeColors.Primary
     searchInput2.TextSize = 14
     searchInput2.FontFace = Font.fromEnum(Enum.Font.GothamBold)
@@ -10974,25 +11137,7 @@ function _makeTwoColumns()
 end
 
 function AnimateColumnsEntry()
-    if not leftColumn then return end
-    local function animateCol(col)
-        if not col then return end
-        -- Quitar UIScale residual si existe (ya no se usa)
-        local sc = col:FindFirstChildOfClass("UIScale")
-        if sc then sc:Destroy() end
-        -- Fade-in + subida suave desde abajo
-        col.Position = UDim2.new(col.Position.X.Scale, col.Position.X.Offset,
-                                  col.Position.Y.Scale, col.Position.Y.Offset + 14)
-        task.spawn(function()
-            local ti = TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            TweenService:Create(col, ti, {
-                Position = UDim2.new(col.Position.X.Scale, col.Position.X.Offset,
-                                      col.Position.Y.Scale, col.Position.Y.Offset - 14)
-            }):Play()
-        end)
-    end
-    animateCol(leftColumn)
-    if rightColumn ~= leftColumn then animateCol(rightColumn) end
+    -- Animación de entrada eliminada (instantáneo)
 end
 
 -- Auto-balanceo de columnas por altura estimada
@@ -11228,12 +11373,12 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     --  Track gris delgado con fill blanco y thumb circular blanco
     -- ==============================================================
 
-    local C_BG       = Color3.fromRGB(25, 40, 100)
-    local C_STROKE   = Color3.fromRGB(100, 80, 215)
+    local C_BG       = Color3.fromRGB(200, 60, 120)
+    local C_STROKE   = Color3.fromRGB(255, 50, 150)
     local C_TEXT     = Color3.fromRGB(255, 255, 255)
     local C_NUM      = Color3.fromRGB(160, 220, 255)
-    local C_TRACK_BG = Color3.fromRGB(0, 80, 160)
-    local C_TRACK_FG = Color3.fromRGB(100, 80, 215)
+    local C_TRACK_BG = Color3.fromRGB(220, 60, 160)
+    local C_TRACK_FG = Color3.fromRGB(255, 50, 150)
     local C_THUMB    = Color3.fromRGB(255, 255, 255)
 
     local CONTAINER_H = 52
@@ -11496,7 +11641,7 @@ function CreateGroupedToggles(parent, groupName, subtitle, toggleDefs)
     -- -- Contenedor externo con borde gradiente ----------------------
     local outerFrame = Instance.new("Frame", actualParent)
     outerFrame.Name                   = "GroupedToggles_" .. groupName
-    outerFrame.BackgroundColor3       = Color3.fromRGB(30, 30, 30)
+    outerFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
     outerFrame.BackgroundTransparency = 0.85
     outerFrame.BorderSizePixel        = 0
     outerFrame.ClipsDescendants       = false
@@ -12000,7 +12145,7 @@ MainSystem = {
  titleLabel.Text = convertirFuenteCursor(" INFORMATION PANEL")
         titleLabel.FontFace = Font.fromEnum(Enum.Font.Arimo)
         titleLabel.TextSize = 15
-        titleLabel.TextColor3 = ThemeColors.TextPrimary
+        titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
         titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 
         local dragIcon = Instance.new("TextLabel", headerBar)
@@ -13305,9 +13450,11 @@ function CreateInfoPanel()
     titleLbl.Position = UDim2.new(0, 10, 0, 0)
     titleLbl.BackgroundTransparency = 1
  titleLbl.Text = convertirFuenteCursor(" INFORMATION PANEL")
-    titleLbl.FontFace = Font.fromEnum(Enum.Font.Arimo)
-    titleLbl.TextSize = 14
-    titleLbl.TextColor3 = ThemeColors.TextPrimary
+    titleLbl.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+    titleLbl.TextSize = 15
+    titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    titleLbl.TextStrokeTransparency = 0.3
     titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     -- FIX SCROLL+DRAG: drag conectado al header (barra de titulo)
@@ -14426,7 +14573,7 @@ function CreateMainUI_SwimFlyGithub()
     -- Status bar
     local statusF = Instance.new("Frame", sec)
     statusF.Size = UDim2.new(1, -10, 0, 32)
-    statusF.BackgroundColor3 = Color3.fromRGB(10, 10, 25)
+    statusF.BackgroundColor3 = Color3.fromRGB(180, 40, 100)
     statusF.BackgroundTransparency = 0.75
     statusF.BorderSizePixel = 0
     Instance.new("UICorner", statusF).CornerRadius = UDim.new(0, 8)
@@ -14462,7 +14609,7 @@ function CreateMainUI_SwimFlyGithub()
     local function startAutoJump()
         AJ.enabled = true
         statusL.Text = "Auto Jump: ON  cada " .. string.format("%.1f", AJ.jumpInterval) .. "s"
-        statusL.TextColor3 = Color3.fromRGB(90, 120, 255)
+        statusL.TextColor3 = Color3.fromRGB(255, 50, 150)
         if AJ.conn then pcall(function() pcall(function() coroutine.close(AJ.conn) end) end); AJ.conn = nil end
         AJ.conn = _sp(function()
             while AJ.enabled do
@@ -14565,7 +14712,7 @@ function CreateMainUI_SwimFlyGithub()
             local frame = Instance.new("Frame", sg)
             frame.Name = "AJBindFrame"; frame.Size = UDim2.new(0, BTN, 0, BTN)
             frame.Position = UDim2.new(0, 80, 0.5, -35)
-            frame.BackgroundColor3 = Color3.fromRGB(35, 35, 95)
+            frame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
             frame.BackgroundTransparency = 0.75; frame.BorderSizePixel = 0
             frame.Active = true; frame.ZIndex = 200
             -- FIX: Draggable legacy removido; UIDragDetector + fallback UIS se agrega abajo
@@ -14632,14 +14779,14 @@ function CreateMainUI_SwimFlyGithub()
             dot.BackgroundColor3 = Color3.fromRGB(180, 180, 185); dot.BorderSizePixel = 0; dot.ZIndex = 202
             Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
             local function updateDot()
-                dot.BackgroundColor3 = AJ.enabled and Color3.fromRGB(90, 120, 255) or Color3.fromRGB(200, 60, 60)
+                dot.BackgroundColor3 = AJ.enabled and Color3.fromRGB(255, 50, 150) or Color3.fromRGB(200, 60, 60)
             end
             updateDot()
             frame.InputBegan:Connect(function(inp)
                 if inp.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
                 TweenService:Create(frame, TweenInfo.new(0.08), {BackgroundColor3 = Color3.fromRGB(55, 55, 130)}):Play()
                 _w(0.1)
-                TweenService:Create(frame, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(35, 35, 95), BackgroundTransparency = 0.75}):Play()
+                TweenService:Create(frame, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(200, 60, 120), BackgroundTransparency = 0.75}):Play()
                 if AJ.enabled then stopAutoJump()
                 else startAutoJump() end
                 updateDot()
@@ -14773,7 +14920,7 @@ function CreateMainUI_SwimFlyGithub()
             local burst = Instance.new("ParticleEmitter", att)
             burst.Lifetime = NumberRange.new(0.2, 0.5)
             burst.Speed = NumberRange.new(10, 20)
-            burst.Color = ColorSequence.new(Color3.fromRGB(90, 120, 255))
+            burst.Color = ColorSequence.new(Color3.fromRGB(255, 50, 150))
             burst.Size = NumberSequence.new(0.3, 0)
             burst.Rate = 0; burst.Enabled = false
             burst:Emit(18)
@@ -14801,7 +14948,7 @@ function CreateMainUI_SwimFlyGithub()
                 end
             end)
             jbStatusL.Text = "Jump Booster: ON  tecla [" .. tostring(JB.keybind):gsub("Enum.KeyCode.", "") .. "]"
-            jbStatusL.TextColor3 = Color3.fromRGB(90, 120, 255)
+            jbStatusL.TextColor3 = Color3.fromRGB(255, 50, 150)
             -- [notif removed]
         else
             jbStatusL.Text = "Jump Booster: OFF"
@@ -16247,7 +16394,7 @@ function CreateMainUI_ThemeSelector()
     titleLbl.Size = UDim2.new(1, -20, 0, 22); titleLbl.Position = UDim2.new(0, 10, 0, 4)
  titleLbl.BackgroundTransparency = 1; titleLbl.Text = "Select Theme" -- color del hub
     titleLbl.FontFace = Font.fromEnum(Enum.Font.Arimo); titleLbl.TextSize = 12
-    titleLbl.TextColor3 = ThemeColors.TextPrimary; titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255); titleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     local selFrame = Instance.new("Frame", container)
     selFrame.Size = UDim2.new(1, -20, 0, 46); selFrame.Position = UDim2.new(0, 10, 0, 32)
@@ -16466,12 +16613,10 @@ hubDecorationIds = {
 }
 hubDecorationNames = {"Sin decoracion", "[H] Gorra", "[X] Marco Calavera", " Accesorio 3"}
 
-hubBackgroundId = "rbxassetid://102666112826646"
+hubBackgroundId = nil  -- fondo rbxassetid eliminado; se usa fondo rosa solido
 hubBackgroundIndex = 1
-hubBackgroundIds = {
-    "rbxassetid://88333392034069",    -- 1: Dark Circuit (circuito oscuro)
-}
-hubBackgroundNames = {"! Dark Circuit"}
+hubBackgroundIds = {}
+hubBackgroundNames = {}
 
 _auroraBackgroundRef = nil
 _reopenDecoRef = nil  -- referencia a la decoracion del cuadrado minimizado
@@ -16712,7 +16857,7 @@ function CreateMainUI_BackgroundSelector()
             -- Sonido
             pcall(function()
                 local snd = Instance.new("Sound")
-                snd.SoundId = "rbxassetid://9083627113"
+                snd.SoundId = "rbxassetid://156286438"
                 snd.Volume = 0.8; snd.Parent = hrp; snd:Play()
                 Debris:AddItem(snd, 2)
             end)
@@ -17653,7 +17798,7 @@ function CreateMainUI_GameInfo()
         local _notifyRolState = { enabled = false, lastRole = "", conn = nil, cbId = nil }
         local function _playMurderSound()
             local s = Instance.new("Sound")
-            s.SoundId = "rbxassetid://9083627113" -- sonido de muerte/alerta
+            s.SoundId = "rbxassetid://156286438" -- sonido de muerte/alerta
             s.Volume  = 0.9
             s.Parent  = workspace
             s:Play()
@@ -17661,7 +17806,7 @@ function CreateMainUI_GameInfo()
         end
         local function _playSheriffSound()
             local s = Instance.new("Sound")
-            s.SoundId = "rbxassetid://9083627113" -- sonido de click/accion
+            s.SoundId = "rbxassetid://156286438" -- sonido de click/accion
             s.Volume  = 0.9
             s.Parent  = workspace
             s:Play()
@@ -17899,7 +18044,7 @@ function CreateMainUI_GameInfo()
                     lbl.TextColor3 = Color3.fromRGB(236, 140, 32)
                 end
             else
-                lbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+                lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
             end
         end)
         _origPctDisable = _gameInfoState.pctConn
@@ -19477,7 +19622,7 @@ function CreateBorderedSection(parent, title)
         titleLbl.Text = title
         titleLbl.Font = Enum.Font.GothamBold
         titleLbl.TextSize = 16
-        titleLbl.TextColor3 = ThemeColors.TextPrimary
+        titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
         titleLbl.TextXAlignment = Enum.TextXAlignment.Left
         titleLbl.ZIndex = 14
 
@@ -19488,7 +19633,7 @@ function CreateBorderedSection(parent, title)
         txtStroke.Transparency = 0.3
 
         -- Color fijo del hub (sin loop RGB animado)
-        titleLbl.TextColor3 = ThemeColors.TextPrimary
+        titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
         txtStroke.Color     = ThemeColors.Primary
         txtStroke.Transparency = 0.3
     end
@@ -19543,6 +19688,144 @@ function CreateMainTab()
     local RunService    = RunService
     local UserInput     = UserInputService
     local Lighting      = Lighting
+
+    -- ============================================
+    -- BOTON RESET ALL TOGGLES
+    -- ============================================
+    do
+        local _resetAllContainer = Instance.new("Frame", leftColumn)
+        _resetAllContainer.Size = UDim2.new(1, -6, 0, 46)
+        _resetAllContainer.BackgroundTransparency = 1
+        _resetAllContainer.BorderSizePixel = 0
+        _resetAllContainer.ZIndex = 12
+
+        local _resetAllBtn = Instance.new("TextButton", _resetAllContainer)
+        _resetAllBtn.Size = UDim2.new(1, -8, 1, -8)
+        _resetAllBtn.Position = UDim2.new(0, 4, 0, 4)
+        _resetAllBtn.BackgroundColor3 = Color3.fromRGB(120, 0, 60)
+        _resetAllBtn.BackgroundTransparency = 0.1
+        _resetAllBtn.BorderSizePixel = 0
+        _resetAllBtn.AutoButtonColor = false
+        _resetAllBtn.ZIndex = 13
+        Instance.new("UICorner", _resetAllBtn).CornerRadius = UDim.new(0, 8)
+
+        -- Borde neon animado
+        local _rabStroke = Instance.new("UIStroke", _resetAllBtn)
+        _rabStroke.Color = Color3.fromRGB(255, 0, 140)
+        _rabStroke.Thickness = 2
+        _rabStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+        -- Gradiente de fondo del boton
+        local _rabGrad = Instance.new("UIGradient", _resetAllBtn)
+        _rabGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,   Color3.fromRGB(180,  0,  80)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255,  0, 120)),
+            ColorSequenceKeypoint.new(1,   Color3.fromRGB(180,  0,  80)),
+        })
+        _rabGrad.Rotation = 90
+
+        -- Icono + texto
+        local _rabLbl = Instance.new("TextLabel", _resetAllBtn)
+        _rabLbl.Size = UDim2.new(1, 0, 1, 0)
+        _rabLbl.BackgroundTransparency = 1
+        _rabLbl.Text = "⛔  RESET ALL TOGGLES"
+        _rabLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        _rabLbl.Font = Enum.Font.GothamBold
+        _rabLbl.TextSize = 13
+        _rabLbl.ZIndex = 14
+
+        -- UIStroke en texto (glow)
+        local _rabTxtStroke = Instance.new("UIStroke", _rabLbl)
+        _rabTxtStroke.Color = Color3.fromRGB(255, 50, 180)
+        _rabTxtStroke.Thickness = 1.5
+        _rabTxtStroke.Transparency = 0.2
+
+        -- Hover
+        _resetAllBtn.MouseEnter:Connect(function()
+            TweenService:Create(_resetAllBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(200, 0, 90)}):Play()
+            TweenService:Create(_rabStroke, TweenInfo.new(0.12), {Color = Color3.fromRGB(255, 100, 220), Thickness = 2.5}):Play()
+        end)
+        _resetAllBtn.MouseLeave:Connect(function()
+            TweenService:Create(_resetAllBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(120, 0, 60)}):Play()
+            TweenService:Create(_rabStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(255, 0, 140), Thickness = 2}):Play()
+        end)
+
+        -- Click: apagar todos los toggles y cortar sus conexiones
+        _resetAllBtn.Activated:Connect(function()
+            -- Flash visual
+            TweenService:Create(_resetAllBtn, TweenInfo.new(0.07), {BackgroundColor3 = Color3.fromRGB(255, 30, 100)}):Play()
+            task.wait(0.1)
+            TweenService:Create(_resetAllBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(120, 0, 60), BackgroundTransparency = 0.1}):Play()
+
+            local _count = 0
+            local _ts = _G._toggleStates or {}
+            local _tc = _G._toggleCallbacks or {}
+
+            -- 1) Apagar todos los toggles via callback
+            for nombre, estado in pairs(_ts) do
+                if estado == true then
+                    _count = _count + 1
+                    _G._toggleStates[nombre] = false
+                    if _tc[nombre] then pcall(_tc[nombre], false) end
+                end
+            end
+
+            -- 2) Cortar conexiones de combat
+            if CombatState then
+                pcall(function() if CombatState.autoShootConnection  then CombatState.autoShootConnection:Disconnect();  CombatState.autoShootConnection  = nil end end)
+                pcall(function() if CombatState.autoReloadConnection then CombatState.autoReloadConnection:Disconnect(); CombatState.autoReloadConnection = nil end end)
+                pcall(function() if CombatState.gunConnection        then CombatState.gunConnection:Disconnect();        CombatState.gunConnection        = nil end end)
+                pcall(function() if CombatState.trackingConnection   then CombatState.trackingConnection:Disconnect();   CombatState.trackingConnection   = nil end end)
+                CombatState.autoShootEnabled = false; CombatState.autoReloadEnabled = false
+                CombatState.autoEquipEnabled = false; CombatState.knifeShootEnabled = false
+            end
+            if CombatTabState then
+                pcall(function() if CombatTabState.shootPickConn then CombatTabState.shootPickConn:Disconnect(); CombatTabState.shootPickConn = nil end end)
+                pcall(function() if CombatTabState.autoShootMurderConn then CombatTabState.autoShootMurderConn:Disconnect(); CombatTabState.autoShootMurderConn = nil end end)
+                CombatTabState.shootPickEnabled = false; CombatTabState.autoShootMurderEnabled = false
+                CombatTabState.silentAimEnabled = false; CombatTabState.knifeShootEnabled = false
+            end
+            if AimlockState then pcall(function() if AimlockState.conn then AimlockState.conn:Disconnect(); AimlockState.conn = nil end end); AimlockState.enabled = false end
+            if KnifeSAState then pcall(_KnifeSA_deactivate); KnifeSAState.enabled = false end
+            pcall(_TK_stopAll)
+            pcall(StopFlying); pcall(DisableNoclip)
+            pcall(StopAutoFarm); pcall(StopShootSheriff); pcall(StopShootMurder)
+            pcall(StopKillAtKnife); pcall(StopFarmXPSheriff)
+            pcall(StopAFKFarmLobby); pcall(StopAFKXPLobby)
+            pcall(StopKillAllMurder); pcall(StopFlingSystem)
+            if Settings and Settings.connections then
+                pcall(function() if Settings.connections.fly then Settings.connections.fly:Disconnect(); Settings.connections.fly = nil end end)
+                pcall(function() if Settings.connections.noclip then Settings.connections.noclip:Disconnect(); Settings.connections.noclip = nil end end)
+            end
+
+            -- 3) Actualizar visuals de knobs
+            if _G._toggleApplyStates then
+                for nombre, applyFn in pairs(_G._toggleApplyStates) do
+                    if _G._toggleStates[nombre] == false then pcall(applyFn, false, false) end
+                end
+            end
+
+            -- 4) Guardar estado limpio
+            pcall(_saveConfig)
+            _G._forceInstanceTick = true
+            if _vcRefreshAll then task.defer(_vcRefreshAll) end
+
+            local msg = _count > 0
+                and ("⛔ " .. _count .. " toggle" .. (_count == 1 and "" or "s") .. " desactivado" .. (_count == 1 and "" or "s"))
+                or  "⛔ Sin toggles activos"
+            CreateCustomNotification("RESET", msg, 2.5)
+        end)
+
+        -- Animacion de pulso del borde (neon glow loop)
+        task.spawn(function()
+            while _resetAllBtn and _resetAllBtn.Parent do
+                TweenService:Create(_rabStroke, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.6}):Play()
+                task.wait(0.8)
+                TweenService:Create(_rabStroke, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0}):Play()
+                task.wait(0.8)
+            end
+        end)
+    end
 
     -- ============================================
     -- PROTECTIONS
@@ -19700,7 +19983,7 @@ function CreateMainTab()
             end
             -- Actualizar color del boton flotante si existe
             if _ncBtnRef and _ncBtnRef.Parent then
-                _ncBtnRef.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+                _ncBtnRef.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
                 _ncBtnRef.BackgroundTransparency = 0.75
                 _ncBtnRef.Text = "NC"
             end
@@ -19743,7 +20026,7 @@ function CreateMainTab()
             end)
             -- Actualizar color del boton flotante
             if _ncBtnRef and _ncBtnRef.Parent then
-                _ncBtnRef.BackgroundColor3 = Color3.fromRGB(90, 120, 255)
+                _ncBtnRef.BackgroundColor3 = Color3.fromRGB(255, 50, 150)
                 _ncBtnRef.Text = "NC "
             end
         end
@@ -22800,6 +23083,62 @@ for _, player in ipairs(_cachedPlayers) do
 end
 startPlayerESPLoop()
 
+-- ================================================================
+-- == STUCKNIFE ESP AUTO-HIDE: hides all ESP boards while StucKnife
+--    is present in workspace (anti-detection measure).
+--    ESP is automatically restored once StucKnife is removed.
+-- ================================================================
+do
+    local _stucKnifeCount = 0  -- track how many StucKnife instances are present
+    local _espWasHidden   = false
+
+    local function _hideAllESP(hide)
+        if hide == _espWasHidden then return end
+        _espWasHidden = hide
+        pcall(function()
+            local gui = getESPGui and getESPGui()
+            if gui then gui.Enabled = not hide end
+        end)
+        -- Also hide individual billboards directly
+        pcall(function()
+            for _, bb in pairs(espBoards) do
+                if bb and bb.Parent then
+                    bb.Enabled = not hide
+                end
+            end
+        end)
+    end
+
+    workspace.DescendantAdded:Connect(function(obj)
+        if obj.Name == "StucKnife" and obj:IsA("BasePart") then
+            _stucKnifeCount = _stucKnifeCount + 1
+            _hideAllESP(true)
+        end
+    end)
+
+    workspace.DescendantRemoving:Connect(function(obj)
+        if obj.Name == "StucKnife" and obj:IsA("BasePart") then
+            _stucKnifeCount = math.max(0, _stucKnifeCount - 1)
+            if _stucKnifeCount == 0 then
+                _hideAllESP(false)
+            end
+        end
+    end)
+
+    -- Check for any StucKnife already in workspace at load time
+    task.spawn(function()
+        local count = 0
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "StucKnife" and obj:IsA("BasePart") then
+                count = count + 1
+            end
+        end
+        _stucKnifeCount = count
+        if count > 0 then _hideAllESP(true) end
+    end)
+end
+-- ================================================================
+
 coinESPTask = nil
 -- Coin ESP -- usa _farmCoinSet para reutilizar el cache del sistema de farm
 -- Cham dorado en cada moneda visible, sin BillboardGui (sin lag)
@@ -22918,7 +23257,7 @@ VisualState = {
                  assassin=false, dead=false, survivor=false, zombie=false, knife=false },
     tracer   = { everyone=false, murderer=false, sheriff=false, hero=false,
                  assassin=false, dead=false, survivor=false, zombie=false,
-                 knife=false, gun=false, droppedknife=false },
+                 knife=false, gun=false, droppedknife=false, throwknife=false },
     coins    = { esp=false },
 }
 
@@ -25630,7 +25969,7 @@ RunService.Heartbeat:Connect(function()
     local vt = VisualState.tracer
     local anyTracer = vt.everyone or vt.murderer or vt.sheriff or vt.hero
         or vt.assassin or vt.dead or vt.survivor or vt.zombie
-        or vt.knife or vt.droppedknife
+        or vt.knife or vt.droppedknife or vt.throwknife
     if not anyTracer then resetLinePool(); return end
 
     resetLinePool()
@@ -25681,6 +26020,26 @@ RunService.Heartbeat:Connect(function()
                         line.From = center; line.To = Vector2.new(sp.X, sp.Y)
                         line.Color = Color3.fromRGB(58, 58, 58)
                         line.Thickness = 2.2; line.Transparency = 1; line.Visible = true
+                    end
+                end
+            end
+        end
+    end
+
+    -- TRACER THROWINGKNIFE: draws a line to the flying ThrowingKnife in workspace
+    if vt.throwknife then
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj.Name == "ThrowingKnife" and obj:IsA("Model") then
+                local kv = obj:FindFirstChild("KnifeVisual")
+                local part = (kv and kv:IsA("BasePart") and kv.Transparency < 0.95 and kv)
+                    or obj:FindFirstChildOfClass("BasePart")
+                if part then
+                    local sp, onScreen = cam:WorldToViewportPoint(part.Position)
+                    if onScreen then
+                        local line = getLine()
+                        line.From = center; line.To = Vector2.new(sp.X, sp.Y)
+                        line.Color = Color3.fromRGB(255, 60, 0)
+                        line.Thickness = 2.5; line.Transparency = 1; line.Visible = true
                     end
                 end
             end
@@ -25833,7 +26192,7 @@ function CreateVisualsTab()
     local function MiniHeader(parent, text, color)
         local lbl = Instance.new("TextLabel", parent)
         lbl.Size = UDim2.new(1, -6, 0, 18)
-        lbl.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+        lbl.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
         lbl.BackgroundTransparency = 1
         lbl.Text = text
         lbl.FontFace = Font.fromEnum(Enum.Font.Montserrat)
@@ -25857,7 +26216,7 @@ function CreateVisualsTab()
     -- Crea un selector de jugador para "pinear" un jugador especifico en un ESP.
     -- flags.pinPlayer = Player | nil  (nil = sin pin, aplica filtros normales)
     local function makeESPPlayerPin(parent, flags, accentColor)
-        local PIN_COLOR = accentColor or Color3.fromRGB(90, 120, 255)
+        local PIN_COLOR = accentColor or Color3.fromRGB(255, 50, 150)
         MiniHeader(parent, "PINEAR JUGADOR ESPECIFICO", PIN_COLOR)
 
         -- Contenedor del selector
@@ -25879,7 +26238,7 @@ function CreateVisualsTab()
         pinLbl.BackgroundTransparency = 0.4
         pinLbl.BorderSizePixel = 0
         pinLbl.Text = "  Ninguno (todos)"
-        pinLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+        pinLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
         pinLbl.FontFace = Font.fromEnum(Enum.Font.Montserrat)
         pinLbl.TextSize = 11
         pinLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -25906,7 +26265,7 @@ function CreateVisualsTab()
         clearBtn.Activated:Connect(function()
             flags.pinPlayer = nil
             pinLbl.Text = "  Ninguno (todos)"
-            pinLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+            pinLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
             pinStroke.Transparency = 0.6
             if _vcRefreshAll then _vcRefreshAll() end
             CreateCustomNotification("ESP PIN", "Pin eliminado -- filtros normales", 2)
@@ -26279,7 +26638,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "ESP Assassin Only", function(v) ve.assassin=v end, ve.assassin)
         MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "ESP Survivor Only", function(v) ve.survivor=v end, ve.survivor)
-        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(90, 120, 255))
+        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(255, 50, 150))
         CreateAuroraToggle(inner, "ESP Zombie Only", function(v) ve.zombie=v end, ve.zombie)
         MiniHeader(inner, "BY OBJECT", Color3.fromRGB(255,220,100))
         CreateAuroraToggle(inner, "ESP Dropped Gun", function(v)
@@ -26475,7 +26834,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Highlight Murderer Only", function(v)
             vh.murderer=v; _recalcHL()
         end, vh.murderer)
-        MiniHeader(inner, "SHERIFF", Color3.fromRGB(75, 100, 230))
+        MiniHeader(inner, "SHERIFF", Color3.fromRGB(255, 50, 150))
         CreateAuroraToggle(inner, "Highlight Sheriff Only", function(v)
             vh.sheriff=v; _recalcHL()
         end, vh.sheriff)
@@ -26487,7 +26846,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Highlight Assassin Only", function(v)
             vh.assassin=v; _recalcHL()
         end, vh.assassin)
-        MiniHeader(inner, "INNOCENT", Color3.fromRGB(90, 120, 255))
+        MiniHeader(inner, "INNOCENT", Color3.fromRGB(255, 50, 150))
         CreateAuroraToggle(inner, "Highlight Innocent Only", function(v)
             vh.innocent=v; _recalcHL()
         end, vh.innocent or false)
@@ -26495,7 +26854,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Highlight Survivor Only", function(v)
             vh.survivor=v; _recalcHL()
         end, vh.survivor)
-        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(90, 120, 255))
+        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(255, 50, 150))
         CreateAuroraToggle(inner, "Highlight Zombie Only", function(v)
             vh.zombie=v; _recalcHL()
         end, vh.zombie)
@@ -26850,7 +27209,7 @@ end, _G._chamDropGun or false)
 
         local inner = CreateVisualCard(leftColumn, "", "VIEW TRAP", Color3.fromRGB(255, 100, 60))
 
-        MiniHeader(inner, " ESP DE TRAMPAS (visible + invisible)", Color3.fromRGB(80, 100, 230))
+        MiniHeader(inner, " ESP DE TRAMPAS (visible + invisible)", Color3.fromRGB(255, 50, 150))
  CreateAuroraToggle(inner, "View Trap ESP", function(v)
             _trapEnabled = v
             if _trapWSConn then _trapWSConn:Disconnect(); _trapWSConn = nil end
@@ -26897,7 +27256,7 @@ end, _G._chamDropGun or false)
         MiniHeader(inner, " SCAN MANUAL", Color3.fromRGB(195, 195, 200))
         local scanBtn = Instance.new("TextButton", inner)
         scanBtn.Size = UDim2.new(1, 0, 0, 36)
-        scanBtn.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+        scanBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
         scanBtn.BackgroundTransparency = 0.75
         scanBtn.BorderSizePixel = 0
  scanBtn.Text = " Scan Todas las Trampas"
@@ -26947,12 +27306,14 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Tracer Dead Only", function(v) vt.dead=v end, vt.dead)
         MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Tracer Survivor Only", function(v) vt.survivor=v end, vt.survivor)
-        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(90, 120, 255))
+        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(255, 50, 150))
         CreateAuroraToggle(inner, "Tracer Zombie Only", function(v) vt.zombie=v end, vt.zombie)
         MiniHeader(inner, "ORIGIN", Color3.fromRGB(200,200,200))
         CreateAuroraToggle(inner, "Tracer from Head (sale de la cabeza)", function(v)
             _G._tracerFromHead=v
         end, _G._tracerFromHead or false)
+        MiniHeader(inner, "THROWING KNIFE", Color3.fromRGB(255, 120, 0))
+        CreateAuroraToggle(inner, "Tracer ThrowingKnife", function(v) vt.throwknife=v end, vt.throwknife)
     end
 
     do
@@ -26973,7 +27334,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Skeleton Dead Only", function(v) vs2.dead=v end, vs2.dead)
         MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Skeleton Survivor Only", function(v) vs2.survivor=v end, vs2.survivor)
-        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(90, 120, 255))
+        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(255, 50, 150))
         CreateAuroraToggle(inner, "Skeleton Zombie Only", function(v) vs2.zombie=v end, vs2.zombie)
     end
 
@@ -27720,15 +28081,15 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     label.Position         = UDim2.new(0, 8, 0, 0)
     label.BackgroundTransparency = 1
     label.Text             = nombre
-    label.TextSize         = _labelTxtSz
-    label.FontFace         = Font.fromEnum(Enum.Font.GothamMedium)
-    label.TextColor3       = ThemeColors.TextPrimary
+    label.TextSize         = _labelTxtSz + 2
+    label.FontFace         = Font.fromEnum(Enum.Font.GothamBold)
+    label.TextColor3       = Color3.fromRGB(255, 255, 255)
     label.TextXAlignment   = Enum.TextXAlignment.Left
     label.TextYAlignment   = Enum.TextYAlignment.Center
     label.TextTruncate     = Enum.TextTruncate.AtEnd
     label.ZIndex           = 22
-    label.TextStrokeColor3       = ThemeColors.Background
-    label.TextStrokeTransparency = 0.7
+    label.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
+    label.TextStrokeTransparency = 0.4
 
     -- Registro de traduccion
     if _LangObjects then
@@ -32884,7 +33245,7 @@ function CreateWorldUI_ProximityPromptSection()
     subLbl2.Text = "UNIVERSAL"
     subLbl2.Font = Enum.Font.Montserrat
     subLbl2.TextSize = 10
-    subLbl2.TextColor3 = Color3.fromRGB(100, 80, 215)
+    subLbl2.TextColor3 = Color3.fromRGB(255, 50, 150)
     subLbl2.TextXAlignment = Enum.TextXAlignment.Left
 
     _G._proxState = _G._proxState or { instant = false, noLimit = false, hookConn = nil }
@@ -33085,7 +33446,7 @@ function CreateWorldUI_SpinSection()
     subLbl.Text = "UNIVERSAL"
     subLbl.Font = Enum.Font.Montserrat
     subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(100, 80, 215)
+    subLbl.TextColor3 = Color3.fromRGB(255, 50, 150)
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     -- FIX AUTO-ACTIVAR: resetear enabled/bindEnabled al abrir el tab para que
@@ -33381,7 +33742,7 @@ function CreateWorldUI_VoidTeleport()
     subLbl.Text = "MM2 / MMV"
     subLbl.Font = Enum.Font.Montserrat
     subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(100, 80, 215)
+    subLbl.TextColor3 = Color3.fromRGB(255, 50, 150)
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     _G._tpVoid = _G._tpVoid or {
@@ -33488,7 +33849,7 @@ function CreateWorldUI_ExposeRoles()
     local subLbl = Instance.new("TextLabel", sec)
     subLbl.Size = UDim2.new(1,-12,0,14); subLbl.BackgroundTransparency = 1
     subLbl.Text = "UNIVERSAL"; subLbl.Font = Enum.Font.Montserrat; subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(100, 80, 215); subLbl.TextXAlignment = Enum.TextXAlignment.Left
+    subLbl.TextColor3 = Color3.fromRGB(255, 50, 150); subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     -- Usa _roleCache (mas confiable) con fallback a busqueda por herramienta
     local function getRoles()
@@ -33674,7 +34035,7 @@ function CreateWorldUI_TeleportLobby()
     local subLbl = Instance.new("TextLabel", sec)
     subLbl.Size = UDim2.new(1,-12,0,14); subLbl.BackgroundTransparency = 1
     subLbl.Text = "MM2 / MMV"; subLbl.Font = Enum.Font.Montserrat; subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(100, 80, 215); subLbl.TextXAlignment = Enum.TextXAlignment.Left
+    subLbl.TextColor3 = Color3.fromRGB(255, 50, 150); subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     _G._tpLobby = _G._tpLobby or { enabled=false, conn=nil, fontSize=10, sizeX=38 }
     _G._tpLobby.enabled = false
@@ -33754,7 +34115,7 @@ function CreateWorldUI_TeleportToMap()
     local subLbl = Instance.new("TextLabel", sec)
     subLbl.Size = UDim2.new(1,-12,0,14); subLbl.BackgroundTransparency = 1
     subLbl.Text = "MM2 / MMV"; subLbl.Font = Enum.Font.Montserrat; subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(100, 80, 215); subLbl.TextXAlignment = Enum.TextXAlignment.Left
+    subLbl.TextColor3 = Color3.fromRGB(255, 50, 150); subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     _G._tpToMap = _G._tpToMap or { enabled=false, conn=nil, fontSize=10, sizeX=38 }
     local M = _G._tpToMap
@@ -34388,7 +34749,7 @@ function CreateWorldUI_FlingPlayer()
     listFrame.BackgroundTransparency = 0.3
     listFrame.BorderSizePixel = 0
     listFrame.ScrollBarThickness = 3
-    listFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 80, 215)
+    listFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 50, 150)
     listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
     listFrame.ZIndex = 15
@@ -34468,7 +34829,7 @@ function CreateWorldUI_FlingPlayer()
     refreshBtn.ZIndex = 15
     Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 7)
     local _rfStroke = Instance.new("UIStroke", refreshBtn)
-    _rfStroke.Color = Color3.fromRGB(100, 80, 215)
+    _rfStroke.Color = Color3.fromRGB(255, 50, 150)
     _rfStroke.Thickness = 1
     _rfStroke.Transparency = 0.4
     refreshBtn.Activated:Connect(function()
@@ -35569,7 +35930,7 @@ function CreatePremiumTab()
         copyBtn.Position = UDim2.new(0, 20, 0, 100)
         copyBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 75)
         copyBtn.Text = "📋  Copy login link"
-        copyBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+        copyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         copyBtn.Font = Enum.Font.GothamBold
         copyBtn.TextSize = 13
         copyBtn.BorderSizePixel = 0
@@ -35689,7 +36050,7 @@ function CreatePremiumTab()
     local function CreateLockedToggle(parent, label, desc)
         local lockFrame = Instance.new("Frame", parent)
         lockFrame.Size = UDim2.new(1, -10, 0, 58)
-        lockFrame.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+        lockFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
         lockFrame.BackgroundTransparency = 0.85
         lockFrame.BorderSizePixel = 0
         Instance.new("UICorner", lockFrame).CornerRadius = UDim.new(0, 10)
@@ -36706,6 +37067,16 @@ function CreatePremiumTab()
                 _skinState.enabled = true
                 _scApply(tool, _scGetSkin(), true)
             end
+            -- FIX DUAL GUN POSE: si Dual Gun esta activo, destruir el clon actual
+            -- para que RenderStepped lo recree con el grip correcto del nuevo skin.
+            if _G._dualGunState and _G._dualGunState.enabled then
+                local _dgChar = LocalPlayer.Character
+                if _dgChar then
+                    for _, obj in ipairs(_dgChar:GetChildren()) do
+                        if obj.Name == "DK_Clone" then obj:Destroy() end
+                    end
+                end
+            end
         end)
 
         -- ── SELECTOR KNIFE SKINS (funcional, mismo patron que Gun) ───────────
@@ -37008,552 +37379,7 @@ function CreateExclusiveTab()
         end
     end)
 
-    -- ============================================================
-    -- COLUMNA IZQUIERDA
-    -- ============================================================
-
-    -- -- IDENTITY --------------------------------------------------
-    local idSec = CreateBorderedSectionGlobal(leftColumn, " IDENTITY")
-
-    local function _addInfoRow(parent, label, value, valueColor)
-        local row = Instance.new("Frame", parent)
-        row.Size = UDim2.new(1, -8, 0, 22)
-        row.BackgroundTransparency = 1; row.BorderSizePixel = 0
-        local lbl = Instance.new("TextLabel", row)
-        lbl.Size = UDim2.new(0.45, 0, 1, 0); lbl.Position = UDim2.new(0, 8, 0, 0)
-        lbl.BackgroundTransparency = 1; lbl.Text = label
-        lbl.TextColor3 = Color3.fromRGB(255, 200, 200); lbl.FontFace = Font.fromEnum(Enum.Font.Code)
-        lbl.TextSize = 11; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.ZIndex = 13
-        local val = Instance.new("TextLabel", row)
-        val.Size = UDim2.new(0.55, -8, 1, 0); val.Position = UDim2.new(0.45, 0, 0, 0)
-        val.BackgroundTransparency = 1; val.Text = value
-        val.TextColor3 = valueColor or Color3.fromRGB(80, 110, 230); val.FontFace = Font.fromEnum(Enum.Font.Code)
-        val.TextSize = 11; val.TextXAlignment = Enum.TextXAlignment.Left
-        val.TextTruncate = Enum.TextTruncate.AtEnd; val.ZIndex = 13
-        return row, val
-    end
-
-    local idTitle = Instance.new("TextLabel", idSec)
-    idTitle.Size = UDim2.new(1, -16, 0, 30); idTitle.BackgroundTransparency = 1
-    idTitle.Text = "IDENTITY"; idTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    idTitle.FontFace = Font.fromEnum(Enum.Font.Code); idTitle.TextSize = 18; idTitle.ZIndex = 13
-    local idSubtitle = Instance.new("TextLabel", idSec)
-    idSubtitle.Size = UDim2.new(1, -16, 0, 14); idSubtitle.BackgroundTransparency = 1
-    idSubtitle.Text = "UNIVERSAL"; idSubtitle.TextColor3 = Color3.fromRGB(90, 120, 255)
-    idSubtitle.FontFace = Font.fromEnum(Enum.Font.Code); idSubtitle.TextSize = 10; idSubtitle.ZIndex = 13
-
-    local execName = "Unknown"
-    pcall(function()
-        if identifyexecutor then execName = identifyexecutor()
-        elseif getexecutorname then execName = getexecutorname() end
-    end)
-    _addInfoRow(idSec, "Executor:", execName, Color3.fromRGB(255, 255, 255))
-
-    local hwid = "N/A"
-    pcall(function()
-        if gethwid then hwid = gethwid()
-        else
-            local h = tostring(game:GetService("RbxAnalyticsService"):GetClientId())
-            if h and #h > 8 then hwid = h end
-        end
-    end)
-    _addInfoRow(idSec, "HWID:", hwid, Color3.fromRGB(80, 110, 230))
-
-    local rblxVer = "Unknown"
-    pcall(function() rblxVer = tostring(version()) end)
-    _addInfoRow(idSec, "Roblox Ver:", rblxVer, Color3.fromRGB(80, 110, 230))
-
-    -- Ping en tiempo real
-    local _, pingVal = _addInfoRow(idSec, "Ping:", "calculando...", Color3.fromRGB(80, 220, 80))
-    local _pingConn
-    _pingConn = RunService.Heartbeat:Connect(function()
-        pcall(function()
-            local s = game:GetService("Stats")
-            if s then
-                local p = math.floor(s.Network.ServerStatsItem["Data Ping"]:GetValue())
-                pingVal.Text = p .. " ms"
-                pingVal.TextColor3 = p < 80 and Color3.fromRGB(80,220,80)
-                    or p < 150 and Color3.fromRGB(255,200,0)
-                    or Color3.fromRGB(255,80,80)
-            end
-        end)
-    end)
-    RegisterTabConn(_pingConn)
-
-    -- FPS en tiempo real
-    local _, fpsVal = _addInfoRow(idSec, "FPS:", "calculando...", Color3.fromRGB(80, 220, 255))
-    local _fpsLast, _fpsTick = 0, 0
-    local _fpsMon = RunService.Heartbeat:Connect(function(dt)
-        _fpsLast = _fpsLast + 1
-        local now = tick()
-        if now - _fpsTick >= 0.5 then
-            local fps = math.floor(_fpsLast / (now - _fpsTick))
-            _fpsTick = now; _fpsLast = 0
-            pcall(function()
-                fpsVal.Text = fps .. " fps"
-                fpsVal.TextColor3 = fps >= 55 and Color3.fromRGB(80,220,80)
-                    or fps >= 30 and Color3.fromRGB(255,200,0)
-                    or Color3.fromRGB(255,80,80)
-            end)
-        end
-    end)
-    RegisterTabConn(_fpsMon)
-
-    -- Nombre de usuario y userId
-    _addInfoRow(idSec, "User:", LocalPlayer.Name, Color3.fromRGB(255, 255, 255))
-    _addInfoRow(idSec, "UserId:", tostring(LocalPlayer.UserId), Color3.fromRGB(180, 180, 255))
-
-    -- -- CONTADOR DE USUARIOS DEL HUB (real: counterapi.dev) --------
-    do
-        local userCountRow = Instance.new("Frame", idSec)
-        userCountRow.Size = UDim2.new(1, -8, 0, 36)
-        userCountRow.BackgroundColor3 = Color3.fromRGB(28, 30, 60)
-        userCountRow.BackgroundTransparency = 0.3
-        userCountRow.BorderSizePixel = 0
-        Instance.new("UICorner", userCountRow).CornerRadius = UDim.new(0, 7)
-        local ucStroke = Instance.new("UIStroke", userCountRow)
-        ucStroke.Color = ThemeColors.Aurora1 or Color3.fromRGB(80, 100, 255)
-        ucStroke.Thickness = 1
-        ucStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-        -- Emoji avatar
-        local avatarLbl = Instance.new("TextLabel", userCountRow)
-        avatarLbl.Size = UDim2.new(0, 32, 1, 0)
-        avatarLbl.Position = UDim2.new(0, 6, 0, 0)
-        avatarLbl.BackgroundTransparency = 1
-        avatarLbl.Text = "👤"
-        avatarLbl.TextSize = 18
-        avatarLbl.Font = Enum.Font.GothamBold
-        avatarLbl.TextXAlignment = Enum.TextXAlignment.Center
-        avatarLbl.TextYAlignment = Enum.TextYAlignment.Center
-        avatarLbl.ZIndex = 13
-
-        -- Texto descriptivo
-        local ucLabel = Instance.new("TextLabel", userCountRow)
-        ucLabel.Size = UDim2.new(0, 130, 1, 0)
-        ucLabel.Position = UDim2.new(0, 40, 0, 0)
-        ucLabel.BackgroundTransparency = 1
-        ucLabel.Text = "Personas usando el hub"
-        ucLabel.TextSize = 9
-        ucLabel.Font = Enum.Font.Code
-        ucLabel.TextColor3 = Color3.fromRGB(170, 180, 220)
-        ucLabel.TextXAlignment = Enum.TextXAlignment.Left
-        ucLabel.TextYAlignment = Enum.TextYAlignment.Center
-        ucLabel.ZIndex = 13
-
-        -- Numero en tiempo real
-        local ucCount = Instance.new("TextLabel", userCountRow)
-        ucCount.Size = UDim2.new(0, 46, 1, 0)
-        ucCount.Position = UDim2.new(1, -52, 0, 0)
-        ucCount.BackgroundTransparency = 1
-        ucCount.Text = "..."
-        ucCount.TextSize = 14
-        ucCount.Font = Enum.Font.GothamBold
-        ucCount.TextColor3 = ThemeColors.Aurora1 or Color3.fromRGB(120, 150, 255)
-        ucCount.TextXAlignment = Enum.TextXAlignment.Right
-        ucCount.TextYAlignment = Enum.TextYAlignment.Center
-        ucCount.ZIndex = 13
-
-        -- -------------------------------------------------------
-        -- CONTADOR EN VIVO: dos endpoints
-        --   /up   -> sumar 1 al conectar
-        --   /down -> restar 1 al salir/desconectar
-        -- Todos los jugadores leen el mismo valor cada 5s.
-        -- -------------------------------------------------------
-        local _UC_BASE  = "https://api.counterapi.dev/v1/zerqonhub/active_now_v1"
-        local _ucActive = false  -- si ya sumamos, para restar al salir
-
-        local function _ucReq(url)
-            local ok, res = pcall(function()
-                return request({ Url = url, Method = "GET" })
-            end)
-            if not ok or not res or not res.Body then return nil end
-            local jok, data = pcall(function()
-                return game:GetService("HttpService"):JSONDecode(res.Body)
-            end)
-            return jok and data or nil
-        end
-
-        local function _ucSetLabel(n)
-            pcall(function()
-                if not ucCount or not ucCount.Parent then return end
-                local safe = math.max(0, n)
-                ucCount.Text = tostring(safe)
-                ucCount.TextColor3 = safe >= 50
-                    and Color3.fromRGB(80, 220, 80)
-                    or  safe >= 10
-                    and Color3.fromRGB(255, 200, 0)
-                    or  ThemeColors.Aurora1 or Color3.fromRGB(120, 150, 255)
-            end)
-        end
-
-        -- Sumar 1 al cargar el hub (una sola vez por sesion)
-        if not _G._hubActiveIncremented then
-            _G._hubActiveIncremented = true
-            _ucActive = true
-            task.spawn(function()
-                local data = _ucReq(_UC_BASE .. "/up")
-                if data then
-                    local n = tonumber(data.count) or tonumber(data.value) or 0
-                    _ucSetLabel(n)
-                end
-            end)
-        end
-
-        -- Restar 1 al cerrar el juego o cuando el player es removido
-        if not _G._hubActiveDownHooked then
-            _G._hubActiveDownHooked = true
-            game:GetService("Players").LocalPlayer.AncestryChanged:Connect(function()
-                if _G._hubActiveIncremented then
-                    _G._hubActiveIncremented = false
-                    pcall(function() _ucReq(_UC_BASE .. "/down") end)
-                end
-            end)
-            game:BindToClose(function()
-                if _G._hubActiveIncremented then
-                    _G._hubActiveIncremented = false
-                    pcall(function() _ucReq(_UC_BASE .. "/down") end)
-                end
-            end)
-        end
-
-        -- Leer el total actual y actualizar el label
-        local function _refreshCount()
-            task.spawn(function()
-                local data = _ucReq(_UC_BASE)
-                if not data then return end
-                local n = tonumber(data.count) or tonumber(data.value) or tonumber(data.hits) or 0
-                _ucSetLabel(n)
-            end)
-        end
-
-        -- Primer fetch inmediato + loop cada 5s para estar en vivo
-        _refreshCount()
-        task.spawn(function()
-            while task.wait(5) do
-                if not userCountRow or not userCountRow.Parent then break end
-                _refreshCount()
-            end
-        end)
-    end
-
-    -- -- SETTINGS GENERALES (izquierda) ----------------------------
-    local settSec = CreateBorderedSectionGlobal(leftColumn, " SETTINGS")
-
-    -- Reset
-    local resetBtn = Instance.new("TextButton", settSec)
-    resetBtn.Size = UDim2.new(1, -8, 0, 34); resetBtn.BackgroundColor3 = Color3.fromRGB(38, 42, 115)
-    resetBtn.BackgroundTransparency = 0.05; resetBtn.BorderSizePixel = 0
-    resetBtn.Text = " Reset Configurations"; resetBtn.TextColor3 = Color3.fromRGB(200, 210, 230)
-    resetBtn.FontFace = Font.fromEnum(Enum.Font.Code); resetBtn.TextSize = 12
-    resetBtn.AutoButtonColor = false; resetBtn.ZIndex = 13
-    Instance.new("UICorner", resetBtn).CornerRadius = UDim.new(0, 6)
-    local rsStroke = Instance.new("UIStroke", resetBtn)
-    rsStroke.Color = ThemeColors.Primary; rsStroke.Thickness = 1; rsStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    resetBtn.MouseEnter:Connect(function() TweenService:Create(resetBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0}):Play() end)
-    resetBtn.MouseLeave:Connect(function() TweenService:Create(resetBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.05}):Play() end)
-    resetBtn.Activated:Connect(function()
-        _G._toggleStates        = {}
-        local _hsr              = _G._hubSettings
-        _hsr.disableClickSound  = false
-        _hsr.disableKeybinds    = false
-        _hsr.undraggableButtons = false
-        _hsr.noTabAnimations    = false
-        _hsr.noMinMaxAnimations = false
-        _hsr.allowHubDrag       = true
-        _hsr.hubOpacity         = 15
-        _hsr.hubLayoutMode      = 1
-        _hsr.notifMuted         = false
-        _hsr.notifDuration      = 3
-        _hsr.fpsLimit           = 0
-        _hsr.hubScale           = 100
-        _hsr.crosshairHidden    = false
-        _hsr.hudHidden          = false
-        _hsr.chatHidden         = false
-        _hsr.lowRenderQuality   = false
-        _hsr.disableShadows     = false
-        _hsr.fullbright         = false
-        -- Resetear optimizaciones
-        _hsr.noParticles        = false
-        _hsr.noDecals           = false
-        _hsr.noDecoration       = false
-        _hsr.noSounds           = false
-        _hsr.noPostFX           = false
-        _hsr.renderDistance     = 0
-        _hsr.noBillboards       = false
-        _hsr.doubleColumn       = false
-        _G._hubDoubleColumn       = false
-        _G._hubDisableKeybinds    = false
-        _G._hubUndraggableButtons = false
-        _G._hubDisableAnimations  = false
-        _G._hubNoMinMaxAnim       = false
-        _G._hubAllowDrag          = true
-        -- Detener FPS cap si estaba activo
-        _G._fpsCap = nil
-        if _G._fpsCapConn then _G._fpsCapConn:Disconnect(); _G._fpsCapConn = nil end
-        -- Restaurar escala del hub (usar escala de dispositivo, no 1 fijo)
-        pcall(function()
-            local sc = mainFrame:FindFirstChildOfClass("UIScale")
-            if sc then sc.Scale = _getTargetScale and _getTargetScale() or 1 end
-        end)
-        -- Restaurar opacidad del hub
-        pcall(function() mainFrame.BackgroundTransparency = 1 end)
-        pcall(function() if contentContainer then contentContainer.BackgroundTransparency = 1 end end)
-        -- Restaurar HUD/crosshair
-        pcall(function()
-            local sg = game:GetService("StarterGui")
-            sg:SetCoreGuiEnabled(Enum.CoreGuiType.All, true)
-        end)
-        CreateCustomNotification("SETTINGS", "Configuraciones reseteadas", 2)
-    end)
-
-    -- -- DESACTIVAR TODOS LOS TOGGLES ---------------------------------
-    local disableAllBtn = Instance.new("TextButton", settSec)
-    disableAllBtn.Size = UDim2.new(1, -8, 0, 34)
-    disableAllBtn.BackgroundColor3 = Color3.fromRGB(100, 15, 15)
-    disableAllBtn.BackgroundTransparency = 0.05
-    disableAllBtn.BorderSizePixel = 0
-    disableAllBtn.Text = "⛔  Auto Desactivar Todos los Toggles"
-    disableAllBtn.TextColor3 = Color3.fromRGB(255, 160, 160)
-    disableAllBtn.FontFace = Font.fromEnum(Enum.Font.Code)
-    disableAllBtn.TextSize = 11
-    disableAllBtn.AutoButtonColor = false
-    disableAllBtn.ZIndex = 13
-    Instance.new("UICorner", disableAllBtn).CornerRadius = UDim.new(0, 6)
-    local daStroke = Instance.new("UIStroke", disableAllBtn)
-    daStroke.Color = Color3.fromRGB(200, 50, 50); daStroke.Thickness = 1
-    daStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    disableAllBtn.MouseEnter:Connect(function()
-        TweenService:Create(disableAllBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0}):Play()
-    end)
-    disableAllBtn.MouseLeave:Connect(function()
-        TweenService:Create(disableAllBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0.05}):Play()
-    end)
-    disableAllBtn.Activated:Connect(function()
-        -- Contar cuantos toggles estaban activos antes de apagarlos
-        local _count = 0
-        local _ts = _G._toggleStates or {}
-        local _tc = _G._toggleCallbacks or {}
-
-        -- 1) Iterar todos los toggles registrados y apagarlos via callback
-        for nombre, estado in pairs(_ts) do
-            if estado == true then
-                _count = _count + 1
-                _G._toggleStates[nombre] = false
-                if _tc[nombre] then
-                    pcall(_tc[nombre], false)
-                end
-                -- Actualizar visual del knob si el toggle esta visible en el hub
-                pcall(function()
-                    local lp = game:GetService("Players").LocalPlayer
-                    local pg = lp and lp:FindFirstChild("PlayerGui")
-                    local hg = (game:GetService("CoreGui"):FindFirstChild("f"))
-                          or (pg and pg:FindFirstChild("f"))
-                    if not hg then return end
-                    local row = hg:FindFirstChild("AuroraToggleRow_" .. nombre, true)
-                    if not row then return end
-                    for _, c in ipairs(row:GetDescendants()) do
-                        if c:IsA("Frame") and c.Name ~= "AuroraToggleRow_" .. nombre
-                        and c.BackgroundColor3 == Color3.fromRGB(0, 200, 80) then
-                            TweenService:Create(c,
-                                TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                                {BackgroundColor3 = Color3.fromRGB(255, 0, 0),
-                                 Position = UDim2.new(0, 4, 0.5, 0)}):Play()
-                            break
-                        end
-                    end
-                end)
-            end
-        end
-
-        -- ══════════════════════════════════════════════════════════════
-        -- 2) KILL DIRECTO de todas las conexiones / loops en tiempo real
-        --    Los callbacks de toggle a veces no alcanzan a desconectar
-        --    todo (e.g. estados internos, bindables, loops anidados).
-        -- ══════════════════════════════════════════════════════════════
-        local function _safeDisc(conn)
-            if conn and type(conn) == "userdata" then
-                pcall(function() conn:Disconnect() end)
-            end
-        end
-
-        -- Combat: auto shoot, reload, gun monitor, camera tracking
-        if CombatState then
-            _safeDisc(CombatState.autoShootConnection);   CombatState.autoShootConnection  = nil
-            _safeDisc(CombatState.autoReloadConnection);  CombatState.autoReloadConnection = nil
-            _safeDisc(CombatState.gunConnection);         CombatState.gunConnection        = nil
-            _safeDisc(CombatState.gunConnectionChild);    CombatState.gunConnectionChild   = nil
-            _safeDisc(CombatState.trackingConnection);    CombatState.trackingConnection   = nil
-            CombatState.autoShootEnabled    = false
-            CombatState.autoReloadEnabled   = false
-            CombatState.autoEquipEnabled    = false
-            CombatState.knifeShootEnabled   = false
-            CombatState.shootPickEnabled    = false
-            CombatState.autoShootMurderEnabled = false
-        end
-
-        -- CombatTabState: shoot pick, auto shoot murder, instant throw, knife shoot
-        if CombatTabState then
-            _safeDisc(CombatTabState.shootPickConn);       CombatTabState.shootPickConn       = nil
-            _safeDisc(CombatTabState.autoShootMurderConn); CombatTabState.autoShootMurderConn = nil
-            _safeDisc(CombatTabState.knifeShootConn);      CombatTabState.knifeShootConn      = nil
-            if CombatTabState.instantThrow then
-                _safeDisc(CombatTabState.instantThrow.conn)
-                CombatTabState.instantThrow.conn    = nil
-                CombatTabState.instantThrow.enabled = false
-            end
-            CombatTabState.shootPickEnabled     = false
-            CombatTabState.autoShootMurderEnabled = false
-            CombatTabState.knifeShootEnabled    = false
-            CombatTabState.silentAimEnabled     = false
-        end
-
-        -- Aimlock
-        if AimlockState then
-            _safeDisc(AimlockState.conn); AimlockState.conn = nil
-            AimlockState.enabled = false
-        end
-
-        -- Knife Silent Aim
-        if KnifeSAState then
-            pcall(_KnifeSA_deactivate)
-            KnifeSAState.enabled = false
-        end
-
-        -- Throwing Knife
-        pcall(_TK_stopAll)
-
-        -- Knife Aura + Auto Click
-        if Settings and Settings.premium and Settings.premium.knifeAura then
-            _safeDisc(Settings.premium.knifeAura.connection);    Settings.premium.knifeAura.connection    = nil
-            _safeDisc(Settings.premium.knifeAura.autoClickConn); Settings.premium.knifeAura.autoClickConn = nil
-            Settings.premium.knifeAura.enabled   = false
-            Settings.premium.knifeAura.autoClick  = false
-        end
-
-        -- Kill All Murder (Farm tab)
-        pcall(StopKillAllMurder)
-        _safeDisc(_killAllConn); _killAllConn = nil
-
-        -- Auto Farm y variantes
-        pcall(StopAutoFarm)
-        pcall(StopShootSheriff)
-        pcall(StopShootMurder)
-        pcall(StopKillAtKnife)
-        pcall(StopFarmXPSheriff)
-        pcall(StopAFKFarmLobby)
-        pcall(StopAFKXPLobby)
-
-        -- FarmToggles: marcar todos como inactivos
-        if FarmToggles then
-            for k, _ in pairs(FarmToggles) do
-                if type(FarmToggles[k]) == "boolean" then
-                    FarmToggles[k] = false
-                end
-            end
-        end
-
-        -- Fly
-        pcall(StopFlying)
-        if Settings and Settings.connections then
-            _safeDisc(Settings.connections.fly);      Settings.connections.fly = nil
-            _safeDisc(Settings.connections.noclip);   Settings.connections.noclip = nil
-            _safeDisc(Settings.connections.noclipCharConn); Settings.connections.noclipCharConn = nil
-        end
-
-        -- Noclip
-        pcall(DisableNoclip)
-
-        -- Fling
-        pcall(StopFlingSystem)
-        pcall(_stopFlingPosTracking)
-        pcall(_flingStopLoop)
-
-        -- WallHop
-        pcall(WallHop_Stop)
-
-        -- Bang (todas las variantes)
-        if _bang and _bang.conns then
-            for role, conn in pairs(_bang.conns) do
-                _safeDisc(conn); _bang.conns[role] = nil
-            end
-            if _bang.animTrack then pcall(function() _bang.animTrack:Stop(0.05) end); _bang.animTrack = nil end
-            for k, _ in pairs(_bang.enabled or {}) do _bang.enabled[k] = false end
-        end
-
-        -- _G._toggleApplyStates: usar las funciones ApplyState registradas para
-        -- actualizar visualmente todos los knobs que pudieran estar fuera de la tab activa
-        if _G._toggleApplyStates then
-            for nombre, applyFn in pairs(_G._toggleApplyStates) do
-                if _G._toggleStates[nombre] == false then
-                    pcall(applyFn, false, false)
-                end
-            end
-        end
-
-        -- 3) Guardar estado limpio en disco
-        pcall(_saveConfig)
-
-        -- 4) Forzar refresh de visuals (ESP, chams, etc.)
-        _G._forceInstanceTick = true
-        if _vcRefreshAll then task.defer(_vcRefreshAll) end
-
-        local msg = _count > 0
-            and ("⛔ " .. _count .. " toggle" .. (_count == 1 and "" or "s") .. " desactivado" .. (_count == 1 and "" or "s") .. " + conexiones cortadas")
-            or  "⛔ Conexiones y loops detenidos"
-        CreateCustomNotification("SETTINGS", msg, 3)
-    end)
-    CreateAuroraToggle(settSec, "No Tab Animations", function(on)
-        _hs().noTabAnimations = on
-        _G._hubDisableAnimations = on
-        CreateCustomNotification("SETTINGS", on and "Tab anims OFF" or "Tab anims ON", 1.5)
-    end, HS.noTabAnimations)
-
-    CreateAuroraToggle(settSec, "No Minimize/Maximize Anim", function(on)
-        _hs().noMinMaxAnimations = on
-        _G._hubNoMinMaxAnim = on
-        CreateCustomNotification("SETTINGS", on and "Min/Max anim OFF" or "Min/Max anim ON", 1.5)
-    end, HS.noMinMaxAnimations)
-
-    -- -- SONIDO & INPUT --------------------------------------------
-    CreateAuroraToggle(settSec, "Mute Click SFX", function(on)
-        _hs().disableClickSound = on
-        CreateCustomNotification("SETTINGS", on and "Click SFX OFF" or "Click SFX ON", 1.5)
-    end, HS.disableClickSound)
-
-    CreateAuroraToggle(settSec, "Disable Keybinds", function(on)
-        _hs().disableKeybinds = on
-        _G._hubDisableKeybinds = on
-        if not UserInputService.TouchEnabled then CreateCustomNotification("SETTINGS", on and "Keybinds OFF" or "Keybinds ON", 1.5) end
-    end, HS.disableKeybinds)
-
-    CreateAuroraToggle(settSec, "Undraggable Bindable Buttons", function(on)
-        _hs().undraggableButtons = on
-        _G._hubUndraggableButtons = on
-        CreateCustomNotification("SETTINGS", on and "Bindable buttons fijos" or "Bindable buttons arrastrables", 1.5)
-    end, HS.undraggableButtons)
-
-    -- -- HUB DRAG --------------------------------------------------
-    CreateAuroraToggle(settSec, "Allow Hub Drag", function(on)
-        _hs().allowHubDrag = on
-        _G._hubAllowDrag = on
-        CreateCustomNotification("SETTINGS", on and "Hub drag ON" or "Hub drag OFF (posicion fija)", 1.5)
-    end, HS.allowHubDrag)
-
-    -- -- AUTO SAVE CONFIG -----------------------------------------
-    -- initialValue viene de _G._autoSaveEnabled que _loadConfig() ya restauro del disco
-    -- La config se guarda POR JUGADOR (archivo unico por UserId)
-    CreateAuroraToggle(settSec, "Auto Save Config", function(on)
-        _G._autoSaveEnabled = on
-        if on then
-            -- Guardar inmediatamente con el estado actual de todos los toggles
-            _saveConfig()
-            local _pName = Players.LocalPlayer and Players.LocalPlayer.Name or "?"
-            CreateCustomNotification("SETTINGS", "Auto Save ON — config guardada para " .. _pName, 3)
-        else
-            CreateCustomNotification("SETTINGS", "Auto Save OFF — los toggles no se recordaran", 2)
-        end
-    end, _G._autoSaveEnabled)
+    -- SETTINGS
 
 
 
@@ -37573,7 +37399,7 @@ function CreateExclusiveTab()
         layoutDesc.Size = UDim2.new(1, -12, 0, 22)
         layoutDesc.BackgroundTransparency = 1
         layoutDesc.Text = "Choose how the hub tabs are organized"
-        layoutDesc.TextColor3 = Color3.fromRGB(140, 175, 210)
+        layoutDesc.TextColor3 = Color3.fromRGB(255, 182, 193)
         layoutDesc.FontFace = Font.fromEnum(Enum.Font.Gotham)
         layoutDesc.TextSize = 11
         layoutDesc.TextWrapped = true
@@ -37600,42 +37426,37 @@ function CreateExclusiveTab()
 
                 local ti = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
-                if mode == 1 then
-                    -- LAYOUT 1: Sidebar izquierda (200px, vertical) — clasico
-                    -- El dock ya inicia en 200px, solo asegurar posicion correcta sin Tween
-                    dock.Position = UDim2.new(0, 0, 0, 36)
-                    dock.Size     = UDim2.new(0, 200, 1, -36)
-                    contentContainer.Position = UDim2.new(0, 200, 0, 36)
-                    contentContainer.Size     = UDim2.new(1, -200, 1, -36)
+                -- Todos los modos usan el layout de referencia: panel derecho con botones grandes
+                do
+                    dock.Position = UDim2.new(0.70, 0, 0.14, 0)
+                    dock.Size = UDim2.new(0.30, 0, 0.86, 0)
+                    contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
+                    contentContainer.Size = UDim2.new(0.70, 0, 0.86, 0)
                     if dockLayout then
                         dockLayout.FillDirection       = Enum.FillDirection.Vertical
                         dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
                         dockLayout.VerticalAlignment   = Enum.VerticalAlignment.Top
-                        dockLayout.Padding             = UDim.new(0, 2)
-                    end
-                    if dockList then
-                        dockList.ScrollingDirection   = Enum.ScrollingDirection.Y
-                        dockList.AutomaticCanvasSize  = Enum.AutomaticSize.Y
-                        dockList.CanvasSize           = UDim2.new(0, 0, 0, 0)
+                        dockLayout.Padding             = UDim.new(0.02, 0)
                     end
                     if dockPad then
-                        dockPad.PaddingTop    = UDim.new(0, 6)
+                        dockPad.PaddingTop    = UDim.new(0, 0)
                         dockPad.PaddingBottom = UDim.new(0, 0)
-                        dockPad.PaddingLeft   = UDim.new(0, 4)
-                        dockPad.PaddingRight  = UDim.new(0, 4)
+                        dockPad.PaddingLeft   = UDim.new(0, 0)
+                        dockPad.PaddingRight  = UDim.new(0, 0)
                     end
                     for _, btn in ipairs(dockList:GetChildren()) do
                         if btn:IsA("TextButton") then
-                            btn.Size = UDim2.new(1, -8, 0, 52)
+                            btn.Size = UDim2.new(1, 0, 0.10, 0)
                             local lbl = btn:FindFirstChild("TabLabel")
                             if lbl then
-                                lbl.TextSize     = 15
-                                lbl.TextTruncate = Enum.TextTruncate.AtEnd
+                                lbl.TextScaled   = true
                                 local fullName = btn.Name:gsub("SideBtn$", "")
                                 lbl.Text = fullName
                             end
                         end
                     end
+                end
+                if false then  -- bloque legacy desactivado
 
                 elseif mode == 2 then
                     -- LAYOUT 2: Barra superior horizontal (44px de alto)
@@ -37757,46 +37578,7 @@ function CreateExclusiveTab()
                         end
                     end
 
-                elseif mode == 5 then
-                    -- LAYOUT 5: Mini sidebar izquierda (60px, iconos compactos)
-                    TweenService:Create(dock, ti, {
-                        Position = UDim2.new(0, 0, 0, 36),
-                        Size     = UDim2.new(0, 60, 1, -36)
-                    }):Play()
-                    TweenService:Create(contentContainer, ti, {
-                        Position = UDim2.new(0, 60, 0, 36),
-                        Size     = UDim2.new(1, -60, 1, -36)
-                    }):Play()
-                    if dockLayout then
-                        dockLayout.FillDirection       = Enum.FillDirection.Vertical
-                        dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-                        dockLayout.VerticalAlignment   = Enum.VerticalAlignment.Top
-                        dockLayout.Padding             = UDim.new(0, 2)
-                    end
-                    if dockList then
-                        dockList.ScrollingDirection   = Enum.ScrollingDirection.Y
-                        dockList.AutomaticCanvasSize  = Enum.AutomaticSize.Y
-                        dockList.CanvasSize           = UDim2.new(0, 0, 0, 0)
-                    end
-                    if dockPad then
-                        dockPad.PaddingTop    = UDim.new(0, 4)
-                        dockPad.PaddingBottom = UDim.new(0, 0)
-                        dockPad.PaddingLeft   = UDim.new(0, 2)
-                        dockPad.PaddingRight  = UDim.new(0, 2)
-                    end
-                    for _, btn in ipairs(dockList:GetChildren()) do
-                        if btn:IsA("TextButton") then
-                            btn.Size = UDim2.new(1, -4, 0, 38)
-                            local lbl = btn:FindFirstChild("TabLabel")
-                            if lbl then
-                                lbl.TextSize     = 9
-                                lbl.TextTruncate = Enum.TextTruncate.AtEnd
-                                local fullName = btn.Name:gsub("SideBtn$", "")
-                                lbl.Text = fullName:sub(1, 4)
-                            end
-                        end
-                    end
-                end
+                end  -- fin if false (modos legacy desactivados)
             end)
             local _layoutNames = {"Sidebar Izq", "Barra Top", "Sidebar Der", "Barra Bot", "Mini Izq"}
             CreateCustomNotification("LAYOUT", "Layout: " .. (_layoutNames[mode] or "?") .. " aplicado", 2)
@@ -37851,7 +37633,7 @@ function CreateExclusiveTab()
         -- Definicion de los 5 layouts
         -- ============================================================
         local _layouts = {
-            { label="SIDEBAR IZQ", desc="Tabs verticales izquierda",  color=Color3.fromRGB(18, 55, 155),  accent=Color3.fromRGB(80, 145, 255), mode=1 },
+            { label="SIDEBAR IZQ", desc="Tabs verticales izquierda",  color=Color3.fromRGB(200, 60, 120),  accent=Color3.fromRGB(255, 80, 180), mode=1 },
             { label="BARRA TOP",   desc="Tabs horizontales arriba",   color=Color3.fromRGB(18,  95,  65),  accent=Color3.fromRGB(55, 210, 135), mode=2 },
             { label="SIDEBAR DER", desc="Tabs verticales derecha",    color=Color3.fromRGB(95,  25, 135),  accent=Color3.fromRGB(175,  75, 255), mode=3 },
             { label="BARRA BOT",   desc="Tabs horizontales abajo",    color=Color3.fromRGB(135,  60, 15),  accent=Color3.fromRGB(255, 155,  55), mode=4 },
@@ -37953,7 +37735,7 @@ function CreateExclusiveTab()
             descLbl.Position = UDim2.new(0, 2, 1, -17)
             descLbl.BackgroundTransparency = 1
             descLbl.Text = layout.desc
-            descLbl.TextColor3 = Color3.fromRGB(125, 145, 175)
+            descLbl.TextColor3 = Color3.fromRGB(255, 182, 193)
             descLbl.FontFace = Font.fromEnum(Enum.Font.Gotham)
             descLbl.TextSize = 7
             descLbl.TextWrapped = true
@@ -38138,7 +37920,7 @@ function CreateExclusiveTab()
         previewLbl.TextXAlignment       = Enum.TextXAlignment.Center
         previewLbl.ZIndex               = 14
         Instance.new("UICorner", previewLbl).CornerRadius = UDim.new(0, 8)
-        Instance.new("UIStroke", previewLbl).Color        = Color3.fromRGB(50, 200, 140)
+        Instance.new("UIStroke", previewLbl).Color        = Color3.fromRGB(255, 130, 190)
 
         local function _refreshPreview(modeIdx)
             local fd = _FONTS[modeIdx]
@@ -38166,7 +37948,7 @@ function CreateExclusiveTab()
             for i, btn in ipairs(_fontBtns) do
                 local isActive = (i == activeIdx)
                 TweenService:Create(btn, _tiFont, {
-                    BackgroundColor3     = isActive and Color3.fromRGB(50, 200, 140) or Color3.fromRGB(20, 30, 70),
+                    BackgroundColor3     = isActive and Color3.fromRGB(255, 130, 190) or Color3.fromRGB(20, 30, 70),
                     BackgroundTransparency = isActive and 0.15 or 0.55,
                 }):Play()
                 local st = btn:FindFirstChildOfClass("UIStroke")
@@ -38190,7 +37972,7 @@ function CreateExclusiveTab()
             btn.ZIndex                 = 14
             Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
             local st = Instance.new("UIStroke", btn)
-            st.Color       = Color3.fromRGB(100, 80, 215)
+            st.Color       = Color3.fromRGB(255, 50, 150)
             st.Thickness   = 1.5
             st.Transparency = 0.5
             st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -38723,7 +38505,7 @@ function CreateExclusiveTab()
         purgeBtn.ZIndex = 13
         Instance.new("UICorner", purgeBtn).CornerRadius = UDim.new(0, 8)
         local purgeStroke = Instance.new("UIStroke", purgeBtn)
-        purgeStroke.Color = Color3.fromRGB(100, 80, 215)
+        purgeStroke.Color = Color3.fromRGB(255, 50, 150)
         purgeStroke.Thickness = 1
         purgeStroke.Transparency = 0.3
         purgeBtn.MouseEnter:Connect(function()
@@ -38904,7 +38686,7 @@ function CreateCombatTab()
             titleLbl.Text = title
             titleLbl.Font = Enum.Font.GothamBold
             titleLbl.TextSize = 11
-            titleLbl.TextColor3 = ThemeColors.TextPrimary
+            titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
             titleLbl.TextXAlignment = Enum.TextXAlignment.Left
             titleLbl.ZIndex = 14
 
@@ -39625,7 +39407,7 @@ function CreateCombatTab()
             local row = Instance.new("Frame", parent)
             row.Size = UDim2.new(1, -8, 0, 0)
             row.AutomaticSize = Enum.AutomaticSize.Y
-            row.BackgroundColor3 = Color3.fromRGB(10, 28, 22)
+            row.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
             row.BackgroundTransparency = 0.5
             row.BorderSizePixel = 0
             row.ZIndex = 13
@@ -39711,6 +39493,13 @@ function CreateCombatTab()
 
         local function _doSilentAimShoot()
             task.spawn(function()
+                -- ================================================================
+                -- LOGICA BASADA EN EL GUNCLIENT ORIGINAL DE MM2
+                -- Firma exacta: gun.Shoot:FireServer(
+                --   GunRaycastAttachment.WorldCFrame,    <- graCF reorientado al target
+                --   WeaponService:GetMouseTargetCFrame() <- targetCF (impacto -> shooter)
+                -- )
+                -- ================================================================
                 local myChar = LocalPlayer.Character
                 if not myChar then return end
                 local myHum = myChar:FindFirstChildOfClass("Humanoid")
@@ -39733,126 +39522,162 @@ function CreateCombatTab()
                 local tHRP = tChar:FindFirstChild("HumanoidRootPart")
                 if not tHRP then return end
 
-                -- Buscar gun en mano o backpack
-                local gun = _findGunIn and _findGunIn(myChar)
+                -- ── 1. Buscar DefaultGun (igual que GunClient: script.Parent) ──
+                local gun = nil
+                for _, tool in ipairs(myChar:GetChildren()) do
+                    if tool:IsA("Tool") then
+                        if tool.Name == "DefaultGun"
+                        or tool:FindFirstChild("GunClient")
+                        or tool:FindFirstChild("GunServer") then
+                            gun = tool; break
+                        end
+                    end
+                end
                 local _wasInBackpack = false
                 if not gun then
-                    local gunBP = _findGunIn and _findGunIn(LocalPlayer.Backpack)
-                    if gunBP then
-                        _wasInBackpack = true
-                        pcall(function() myHum:EquipTool(gunBP) end)
+                    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+                        if tool:IsA("Tool") then
+                            if tool.Name == "DefaultGun"
+                            or tool:FindFirstChild("GunClient")
+                            or tool:FindFirstChild("GunServer") then
+                                gun = tool; _wasInBackpack = true; break
+                            end
+                        end
+                    end
+                    if gun then
+                        pcall(function() myHum:EquipTool(gun) end)
                         task.wait(0.06)
-                        gun = _findGunIn and _findGunIn(myChar)
+                        for _, tool in ipairs(myChar:GetChildren()) do
+                            if tool:IsA("Tool") and (
+                                tool.Name == "DefaultGun"
+                                or tool:FindFirstChild("GunClient")
+                                or tool:FindFirstChild("GunServer")) then
+                                gun = tool; break
+                            end
+                        end
                     end
                 end
                 if not gun then
-                    CreateCustomNotification("SILENT AIM", "No hay Gun disponible", 1.5)
+                    gun = _findGunIn and (_findGunIn(myChar) or _findGunIn(LocalPlayer.Backpack))
+                end
+                if not gun then
+                    CreateCustomNotification("SILENT AIM", "No hay DefaultGun disponible", 1.5)
                     return
                 end
 
-                -- FLASH: ocultar handle de la gun brevemente
+                -- ── 2. GunRaycastAttachment — igual que EnsureGunRaycastAttachment del GunClient ──
+                local gra = myHRP:FindFirstChild("GunRaycastAttachment")
+                if not gra then
+                    gra = Instance.new("Attachment")
+                    gra.Name     = "GunRaycastAttachment"
+                    gra.Position = Vector3.new(0, 1.35, -1)
+                    gra.Parent   = myHRP
+                end
+                local graCF_world = gra.WorldCFrame
+
+                -- ── 3. CFrames: intentar _saGetTargetCF primero (mayor precision) ──
+                local finalOCF, finalTCF = nil, nil
+                if _saGetTargetCF then
+                    local ok2, newGraCF, newTargetCF = pcall(_saGetTargetCF)
+                    if ok2 and newGraCF and newTargetCF then
+                        finalOCF, finalTCF = newGraCF, newTargetCF
+                    end
+                end
+
+                -- Si no, construir manualmente desde GunRaycastAttachment y targetPos
+                if not (finalOCF and finalTCF) then
+                    local partName = (CombatTabState and CombatTabState.saTargetPart) or "Head"
+                    local tPart    = tChar:FindFirstChild(partName)
+                                  or tChar:FindFirstChild("Head")
+                                  or tHRP
+
+                    local targetPos
+                    if CombatTabState and CombatTabState.saUsePrediction and _getCachedPrediction then
+                        targetPos = _getCachedPrediction(target) or tPart.Position
+                    elseif _unifiedBalisticSolver then
+                        local solved = _unifiedBalisticSolver(tPart, tHRP, {usePrediction = true}, target)
+                        targetPos = solved or tPart.Position
+                    else
+                        targetPos = tPart.Position
+                    end
+
+                    local originPos = graCF_world.Position
+                    local dir = targetPos - originPos
+                    if dir.Magnitude < 0.01 then return end
+                    local dirU = dir.Unit
+                    local upV  = math.abs(dirU.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
+
+                    -- graCF: posicion del attachment, LookVector hacia el target
+                    finalOCF = CFrame.new(graCF_world.Position) * CFrame.lookAt(Vector3.zero, dirU, upV)
+
+                    -- targetCF: replica WeaponService:GetMouseTargetCFrame()
+                    local backDir = originPos - targetPos
+                    local backU   = backDir.Magnitude > 0.01 and backDir.Unit or -dirU
+                    local bkUp    = math.abs(backU.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
+                    finalTCF = CFrame.lookAt(targetPos, targetPos + backU, bkUp)
+                end
+
+                if not (finalOCF and finalTCF) then return end
+
+                -- ── 4. Flash handle ─────────────────────────────────────────────────
                 local _flashHandle = gun:FindFirstChild("Handle")
                 local _flashOrigTrans = _flashHandle and _flashHandle.Transparency or 0
                 if _flashHandle then
                     pcall(function() _flashHandle.Transparency = 1 end)
                 end
 
-                -- Calcular posición objetivo usando la lógica del Silent Aim existente
-                local partName = (CombatTabState and CombatTabState.saTargetPart) or "Head"
-                local tPart    = tChar:FindFirstChild(partName) or tChar:FindFirstChild("Head") or tHRP
+                -- ── 5. FireServer: gun.Shoot:FireServer(graCF, targetCF) ────────────
+                -- Exactamente la misma firma que el GunClient original:
+                -- v1.Shoot:FireServer(GunRaycastAttachment.WorldCFrame, GetMouseTargetCFrame())
+                local shootRem = gun:FindFirstChild("Shoot")
+                if not (shootRem and shootRem:IsA("RemoteEvent")) then
+                    local gs = gun:FindFirstChild("GunServer")
+                    if gs then
+                        local gsShoot = gs:FindFirstChild("Shoot")
+                        if gsShoot and gsShoot:IsA("RemoteEvent") then shootRem = gsShoot end
+                    end
+                end
+                if not (shootRem and shootRem:IsA("RemoteEvent")) and getShootRemote then
+                    shootRem = getShootRemote(gun)
+                end
 
-                -- Determinar targetPos con predicción si está activa
-                local targetPos
-                if CombatTabState and CombatTabState.saUsePrediction and _getCachedPrediction then
-                    local predPos = _getCachedPrediction(target)
-                    targetPos = predPos or tPart.Position
+                if shootRem and shootRem:IsA("RemoteEvent") then
+                    CombatTabState._saBypassHook = true
+                    pcall(function() shootRem:FireServer(finalOCF, finalTCF) end)
+                    CombatTabState._saBypassHook = false
                 else
-                    targetPos = tPart.Position
+                    if _fireGunMM2 then
+                        CombatTabState._saBypassHook = true
+                        _fireGunMM2(gun, finalTCF)
+                        CombatTabState._saBypassHook = false
+                    end
                 end
 
-                -- Obtener origen del disparo (GunRaycastAttachment o HRP)
-                local barrelAtt = getGunAttachment and getGunAttachment(gun, myHRP)
-                local graWorldCF = barrelAtt and barrelAtt.WorldCFrame
-                local originPos = (barrelAtt and barrelAtt.WorldPosition)
-                    or (myHRP.Position + Vector3.new(0, 1.5, 0))
-
-                -- Construir los CFrames de disparo (igual que _buildSACFrames)
-                local function _buildCF(orig, tgtPos, graWCF)
-                    local dir = tgtPos - orig
-                    if dir.Magnitude < 0.01 then return nil, nil end
-                    local dirU = dir.Unit
-                    local upV  = math.abs(dirU.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
-                    local graCF_new
-                    if graWCF then
-                        graCF_new = CFrame.new(graWCF.Position) * CFrame.lookAt(Vector3.zero, dirU, upV)
-                    else
-                        graCF_new = CFrame.lookAt(orig, tgtPos, upV)
-                    end
-                    local backDir = (orig - tgtPos)
-                    local backU   = backDir.Magnitude > 0.01 and backDir.Unit or -dirU
-                    local bkUp    = math.abs(backU.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
-                    local tgtCF   = CFrame.lookAt(tgtPos, tgtPos + backU, bkUp)
-                    return graCF_new, tgtCF
-                end
-
-                local oCF, tCF = _buildCF(originPos, targetPos, graWorldCF)
-
-                if oCF and tCF then
-                    -- Intentar disparo via remote "Shoot" (método principal MM2)
-                    local shootRem = gun:FindFirstChild("Shoot")
-                    if not shootRem then
-                        for _, v in ipairs(gun:GetDescendants()) do
-                            if v:IsA("RemoteEvent") then shootRem = v; break end
-                        end
-                    end
-                    if not shootRem and getShootRemote then
-                        shootRem = getShootRemote(gun)
-                    end
-
-                    if shootRem and shootRem:IsA("RemoteEvent") then
-                        pcall(function() shootRem:FireServer(oCF, tCF) end)
-                        task.wait(0.016)
-                        pcall(function() shootRem:FireServer(oCF, tCF) end)
-                    else
-                        -- Fallback: _fireGunMM2
-                        if _fireGunMM2 then
-                            _fireGunMM2(gun, tCF)
-                            task.wait(0.016)
-                            _fireGunMM2(gun, tCF)
-                        end
-                    end
-                    -- Restaurar handle visible
-                    task.delay(0.12, function()
-                        pcall(function()
-                            if _flashHandle and _flashHandle.Parent then
-                                _flashHandle.Transparency = _flashOrigTrans
-                            end
-                        end)
-                        if _wasInBackpack and myHum and myHum.Parent then
-                            task.delay(0.05, function()
-                                pcall(function() myHum:UnequipTools() end)
-                            end)
+                -- Restaurar handle visible
+                task.delay(0.12, function()
+                    pcall(function()
+                        if _flashHandle and _flashHandle.Parent then
+                            _flashHandle.Transparency = _flashOrigTrans
                         end
                     end)
-                    CreateCustomNotification("SILENT AIM", "Bala redirigida -> " .. target.Name, 1.5)
-                else
-                    -- Fallback sin CFrame válido
-                    if _fireGunMM2 then _fireGunMM2(gun) end
-                    task.delay(0.12, function()
-                        pcall(function()
-                            if _flashHandle and _flashHandle.Parent then
-                                _flashHandle.Transparency = _flashOrigTrans
-                            end
+                    if _wasInBackpack and myHum and myHum.Parent then
+                        task.delay(0.05, function()
+                            pcall(function() myHum:UnequipTools() end)
                         end)
-                    end)
-                end
+                    end
+                end)
+                CreateCustomNotification("SILENT AIM", "-> " .. target.Name, 1.2)
             end)
         end
 
         local function _createSASMButton()
             _destroySASMGui()
 
-            local W, H = 220, 80
+            local BTN_W, BTN_H = 75, 75
+            local vp = workspace.CurrentCamera.ViewportSize
+            local posX = math.clamp(vp.X * 0.85 - BTN_W / 2, 4, vp.X - BTN_W - 4)
+            local posY = math.clamp(vp.Y * 0.80 - BTN_H / 2, 4, vp.Y - BTN_H - 4)
+
             local sg = Instance.new("ScreenGui")
             sg.Name           = "SilentAimShootMurderGui"
             sg.ResetOnSpawn   = false
@@ -39863,148 +39688,194 @@ function CreateCombatTab()
             if not sg.Parent then sg.Parent = LocalPlayer.PlayerGui end
             _saSMState.gui = sg
 
-            -- Frame principal: sin fondo (transparente), solo borde gris visible
+            -- Contenedor raiz
             local btnRoot = Instance.new("Frame", sg)
             btnRoot.Name                   = "ShootMurderBtn"
-            btnRoot.Size                   = UDim2.fromOffset(W, H)
-            btnRoot.AnchorPoint            = Vector2.new(0.5, 0.5)
-            btnRoot.Position               = UDim2.new(0.5, 0, 0.8, 0)
-            btnRoot.BackgroundColor3       = Color3.fromRGB(120, 120, 120)
-            btnRoot.BackgroundTransparency = 1  -- SIN FONDO
+            btnRoot.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+            btnRoot.Position               = UDim2.fromOffset(posX, posY)
+            btnRoot.AnchorPoint            = Vector2.new(0, 0)
+            btnRoot.BackgroundTransparency = 1
             btnRoot.BorderSizePixel        = 0
             btnRoot.ZIndex                 = 200
-            Instance.new("UICorner", btnRoot).CornerRadius = UDim.new(0, 14)
+            btnRoot.Active                 = true
 
-            -- Borde gris con pulso sutil
-            local btnStroke = Instance.new("UIStroke", btnRoot)
-            btnStroke.Color       = Color3.fromRGB(120, 120, 120)
-            btnStroke.Thickness   = 2.5
-            btnStroke.Transparency = 0.15
+            -- UIScale para animacion
+            local sc = Instance.new("UIScale", btnRoot)
+            sc.Scale = 0
 
-            task.spawn(function()
-                while btnStroke and btnStroke.Parent do
-                    TweenService:Create(btnStroke, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.6}):Play()
-                    task.wait(1.2)
-                    if not (btnStroke and btnStroke.Parent) then break end
-                    TweenService:Create(btnStroke, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.15}):Play()
-                    task.wait(1.2)
-                end
-            end)
+            -- Fondo transparente (sin fondo, igual que bindable)
+            local pillBg = Instance.new("Frame", btnRoot)
+            pillBg.Name                   = "PillBg"
+            pillBg.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+            pillBg.AnchorPoint            = Vector2.new(0.5, 0.5)
+            pillBg.Position               = UDim2.fromScale(0.5, 0.5)
+            pillBg.BackgroundColor3       = ThemeColors.Aurora1
+            pillBg.BackgroundTransparency = 1
+            pillBg.BorderSizePixel        = 0
+            pillBg.ZIndex                 = 200
+            Instance.new("UICorner", pillBg).CornerRadius = UDim.new(0, 10)
 
-            -- Barra acento izquierda (gris, proporcional al nuevo tamaño)
-            local accent = Instance.new("Frame", btnRoot)
-            accent.Size            = UDim2.new(0, 4, 0.6, 0)
-            accent.Position        = UDim2.new(0, 12, 0.2, 0)
-            accent.BackgroundColor3 = Color3.fromRGB(120, 120, 120)
-            accent.BorderSizePixel = 0
-            accent.ZIndex          = 202
-            Instance.new("UICorner", accent).CornerRadius = UDim.new(0, 2)
+            -- Borde del color del hub (principal visible)
+            local borderFrame = Instance.new("Frame", btnRoot)
+            borderFrame.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+            borderFrame.AnchorPoint            = Vector2.new(0.5, 0.5)
+            borderFrame.Position               = UDim2.fromScale(0.5, 0.5)
+            borderFrame.BackgroundTransparency = 1
+            borderFrame.BorderSizePixel        = 0
+            borderFrame.ZIndex                 = 201
+            Instance.new("UICorner", borderFrame).CornerRadius = UDim.new(0, 10)
 
-            -- Texto principal (más grande)
+            local borderStroke = Instance.new("UIStroke", borderFrame)
+            borderStroke.Color           = ThemeColors.Aurora1
+            borderStroke.Thickness       = 3
+            borderStroke.Transparency    = 0
+            borderStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+            -- Glow sutil
+            local glow = Instance.new("ImageLabel", btnRoot)
+            glow.AnchorPoint            = Vector2.new(0.5, 0.5)
+            glow.Position               = UDim2.fromScale(0.5, 0.5)
+            glow.Size                   = UDim2.fromOffset(BTN_W * 1.4, BTN_H * 1.4)
+            glow.BackgroundTransparency = 1
+            glow.Image                  = "rbxassetid://4970638706"
+            glow.ImageColor3            = ThemeColors.Aurora1
+            glow.ImageTransparency      = 0.82
+            glow.ZIndex                 = 199
+
+            -- Texto "SHOOT" centrado (estilo bindable)
             local lbl = Instance.new("TextLabel", btnRoot)
-            lbl.Size                 = UDim2.new(1, -30, 0, 36)
-            lbl.Position             = UDim2.new(0, 26, 0, 10)
+            lbl.Size                   = UDim2.fromOffset(BTN_W - 8, BTN_H - 8)
+            lbl.AnchorPoint            = Vector2.new(0.5, 0.5)
+            lbl.Position               = UDim2.fromScale(0.5, 0.5)
             lbl.BackgroundTransparency = 1
-            lbl.Text                 = "Shoot Murderer"
-            lbl.FontFace             = Font.fromEnum(Enum.Font.GothamBold)
-            lbl.TextSize             = 22
-            lbl.TextColor3           = Color3.fromRGB(220, 220, 220)
-            lbl.TextXAlignment       = Enum.TextXAlignment.Left
-            lbl.ZIndex               = 203
+            lbl.Text                   = "SHOOT"
+            lbl.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
+            lbl.TextSize               = 13
+            lbl.TextColor3             = Color3.fromRGB(255, 255, 255)
+            lbl.TextXAlignment         = Enum.TextXAlignment.Center
+            lbl.TextYAlignment         = Enum.TextYAlignment.Center
+            lbl.TextWrapped            = true
+            lbl.ZIndex                 = 204
+            local lblStroke = Instance.new("UIStroke", lbl)
+            lblStroke.Color = Color3.fromRGB(0,0,0); lblStroke.Thickness = 1; lblStroke.Transparency = 0.5
 
-            -- Subtítulo
-            local subLbl = Instance.new("TextLabel", btnRoot)
-            subLbl.Size                 = UDim2.new(1, -30, 0, 18)
-            subLbl.Position             = UDim2.new(0, 26, 0, 48)
-            subLbl.BackgroundTransparency = 1
-            subLbl.Text                 = "Silent Aim active"
-            subLbl.FontFace             = Font.fromEnum(Enum.Font.Montserrat)
-            subLbl.TextSize             = 13
-            subLbl.TextColor3           = Color3.fromRGB(160, 160, 170)
-            subLbl.TextXAlignment       = Enum.TextXAlignment.Left
-            subLbl.ZIndex               = 203
-
-            -- Botón clickeable (transparente, encima)
+            -- Boton clickeable encima
             local clickBtn = Instance.new("TextButton", btnRoot)
-            clickBtn.Size                 = UDim2.new(1, 0, 1, 0)
+            clickBtn.Size                 = UDim2.fromOffset(BTN_W, BTN_H)
+            clickBtn.AnchorPoint          = Vector2.new(0.5, 0.5)
+            clickBtn.Position             = UDim2.fromScale(0.5, 0.5)
             clickBtn.BackgroundTransparency = 1
             clickBtn.Text                 = ""
             clickBtn.ZIndex               = 210
             clickBtn.AutoButtonColor      = false
+            Instance.new("UICorner", clickBtn).CornerRadius = UDim.new(0, 10)
 
-            -- Lógica de arrastre
-            local _dragStart, _startAbsX, _startAbsY, _isDragging = nil, 0, 0, false
-            local _lastClick = 0
-
-            clickBtn.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1
-                or inp.UserInputType == Enum.UserInputType.Touch then
-                    -- Normalizar AnchorPoint a (0,0) en offset puro ANTES de guardar la posición base
-                    local vp = workspace.CurrentCamera.ViewportSize
-                    local absPos = btnRoot.AbsolutePosition
-                    btnRoot.AnchorPoint = Vector2.new(0, 0)
-                    btnRoot.Position = UDim2.fromOffset(absPos.X, absPos.Y)
-                    _dragStart  = inp.Position
-                    _startAbsX  = absPos.X
-                    _startAbsY  = absPos.Y
-                    _isDragging = false
-                end
+            -- Animacion entrada
+            task.spawn(function()
+                task.wait(0.016)
+                TweenService:Create(sc, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
             end)
 
-            UserInputService.InputChanged:Connect(function(inp)
-                if not _dragStart then return end
-                if inp.UserInputType ~= Enum.UserInputType.MouseMovement
-                and inp.UserInputType ~= Enum.UserInputType.Touch then return end
-                local d = inp.Position - _dragStart
-                if d.Magnitude > 5 then _isDragging = true end
-                if _isDragging then
-                    local vp = workspace.CurrentCamera.ViewportSize
+            -- Drag
+            local _moved = false
+            local _dragging = false
+            local _dragStart, _startPos = nil, nil
+
+            if pcall(function()
+                local dd = Instance.new("UIDragDetector", btnRoot)
+                dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
+                dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
+                dd.Dragged:Connect(function()
+                    _moved = true
+                    local vpN = workspace.CurrentCamera.ViewportSize
                     btnRoot.Position = UDim2.fromOffset(
-                        math.clamp(_startAbsX + d.X, 0, vp.X - W),
-                        math.clamp(_startAbsY + d.Y, 0, vp.Y - H)
-                    )
-                end
-            end)
-
-            clickBtn.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1
-                or inp.UserInputType == Enum.UserInputType.Touch then
-                    local wasDragging = _isDragging
-                    _dragStart = nil
-                    _isDragging = false
-                    if not wasDragging then
-                        -- Click: flash visual + disparar con Silent Aim
-                        local now = tick()
-                        if now - _lastClick < 0.3 then return end
-                        _lastClick = now
-                        -- Flash de click: solo anima el borde (sin fondo)
-                        TweenService:Create(btnStroke, TweenInfo.new(0.07), {Color = Color3.fromRGB(220, 220, 220), Transparency = 0}):Play()
-                        task.delay(0.14, function()
-                            pcall(function()
-                                TweenService:Create(btnStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(120, 120, 120), Transparency = 0.15}):Play()
-                            end)
-                        end)
-                        -- Ejecutar el disparo con Silent Aim
-                        if _saSMState.enabled then
-                            _doSilentAimShoot()
-                        end
+                        math.clamp(btnRoot.Position.X.Offset, 0, vpN.X - BTN_W),
+                        math.clamp(btnRoot.Position.Y.Offset, 0, vpN.Y - BTN_H))
+                end)
+                dd.DragEnd:Connect(function() task.defer(function() _moved = false end) end)
+            end) then
+                -- UIDragDetector OK
+            else
+                clickBtn.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.MouseButton1
+                    or inp.UserInputType == Enum.UserInputType.Touch then
+                        _dragging = true; _moved = false
+                        _dragStart = inp.Position; _startPos = btnRoot.Position
                     end
-                end
+                end)
+                UserInputService.InputChanged:Connect(function(inp)
+                    if not _dragging then return end
+                    if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+                    and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+                    local d = inp.Position - _dragStart
+                    if d.Magnitude > 4 then _moved = true end
+                    local vpN = workspace.CurrentCamera.ViewportSize
+                    btnRoot.Position = UDim2.fromOffset(
+                        math.clamp(_startPos.X.Offset + d.X, 0, vpN.X - BTN_W),
+                        math.clamp(_startPos.Y.Offset + d.Y, 0, vpN.Y - BTN_H))
+                end)
+                clickBtn.InputEnded:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.MouseButton1
+                    or inp.UserInputType == Enum.UserInputType.Touch then
+                        _dragging = false
+                        task.defer(function() _moved = false end)
+                    end
+                end)
+            end
+
+            -- Hover
+            clickBtn.MouseEnter:Connect(function()
+                TweenService:Create(pillBg,      TweenInfo.new(0.12), {BackgroundTransparency=0.75}):Play()
+                TweenService:Create(borderStroke,TweenInfo.new(0.12), {Thickness=3.5}):Play()
+            end)
+            clickBtn.MouseLeave:Connect(function()
+                TweenService:Create(pillBg,      TweenInfo.new(0.15), {BackgroundTransparency=1}):Play()
+                TweenService:Create(borderStroke,TweenInfo.new(0.15), {Thickness=3}):Play()
             end)
 
-            -- Animación de entrada (más lenta, aparece desde el centro)
-            local sc = Instance.new("UIScale", btnRoot)
-            sc.Scale = 0
-            TweenService:Create(sc, TweenInfo.new(0.85, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = 1}):Play()
+            -- Press / Release + OCULTAR GUN AL DISPARAR
+            local _lastClick = 0
+            clickBtn.MouseButton1Down:Connect(function()
+                if _moved then return end
+                TweenService:Create(pillBg,      TweenInfo.new(0.07), {BackgroundTransparency=0.40}):Play()
+                TweenService:Create(borderStroke,TweenInfo.new(0.07), {Thickness=2}):Play()
+                TweenService:Create(sc,          TweenInfo.new(0.07), {Scale=0.92}):Play()
+                TweenService:Create(glow,        TweenInfo.new(0.07), {ImageTransparency=0.50}):Play()
+            end)
+            clickBtn.MouseButton1Up:Connect(function()
+                if _moved then return end
+                TweenService:Create(pillBg,      TweenInfo.new(0.18), {BackgroundTransparency=1}):Play()
+                TweenService:Create(borderStroke,TweenInfo.new(0.18), {Thickness=3}):Play()
+                TweenService:Create(sc,          TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
+                TweenService:Create(glow,        TweenInfo.new(0.25), {ImageTransparency=0.82}):Play()
+            end)
+            clickBtn.Activated:Connect(function()
+                if _moved then return end
+                local now = tick()
+                if now - _lastClick < 0.25 then return end
+                _lastClick = now
+                if not _saSMState.enabled then return end
+                -- Disparar directamente (sin ocultar la gun: _doSilentAimShoot
+                -- ya maneja el flash del Handle internamente con timing correcto)
+                _doSilentAimShoot()
+            end)
         end
 
         -- Toggle principal: SILENT AIM (Shoot Murderer)
         CreateBorderedToggle(silentAimSection, "Silent Aim (Shoot Murderer Btn)", function(enabled)
             _saSMState.enabled = enabled
+            -- FIX v8: sincronizar silentAimEnabled para que el __namecall hook
+            -- y el resto del sistema SA reconozcan el estado del boton
+            CombatTabState.silentAimEnabled = enabled
             if enabled then
+                -- Activar el hook __namecall para que las llamadas FireServer
+                -- que vengan del cliente normal tambien queden redirigidas
+                if _saApplyHook then pcall(_saApplyHook) end
                 _createSASMButton()
                 CreateCustomNotification("SILENT AIM", "Botón 'Shoot Murderer' activado — presionalo para disparar al murder", 3)
             else
+                -- Desactivar hook si no hay otros sistemas SA activos
+                if _saRemoveHook then pcall(_saRemoveHook) end
                 -- Animación de salida antes de destruir
                 if _saSMState.gui then
                     local root = _saSMState.gui:FindFirstChild("ShootMurderBtn")
@@ -40157,7 +40028,7 @@ function CreateCombatTab()
                 return
             end
 
-            -- Crear botón circular igual al nuevo sistema de bindables
+            -- Crear botón estilo bindable del hub (sin fondo, borde Aurora1)
             local bsaGui = Instance.new("ScreenGui")
             bsaGui.Name           = "BypasBSA"
             bsaGui.ResetOnSpawn   = false
@@ -40168,14 +40039,14 @@ function CreateCombatTab()
             if not bsaGui.Parent then bsaGui.Parent = LocalPlayer.PlayerGui end
             _bsaState.gui = bsaGui
 
-            local CS = _BIND_CS  -- tamaño del circulo (igual al sistema de slots)
+            local BTN_W, BTN_H = 60, 60
             local mySlot = _assignSlot("BSA_SilentAim")
             local posX, posY = _getBindablePosition(mySlot)
 
-            -- Contenedor raíz (invisible, para drag)
+            -- Contenedor raíz
             local bsaRoot = Instance.new("Frame", bsaGui)
             bsaRoot.Name                   = "CapyBindBtn"
-            bsaRoot.Size                   = UDim2.fromOffset(CS, CS)
+            bsaRoot.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
             bsaRoot.Position               = UDim2.fromOffset(posX, posY)
             bsaRoot.BackgroundTransparency = 1
             bsaRoot.BorderSizePixel        = 0
@@ -40185,102 +40056,153 @@ function CreateCombatTab()
             local bsaScale = Instance.new("UIScale", bsaRoot)
             bsaScale.Scale = 0
 
-            -- Círculo principal (igual al estilo imagen)
-            local bsaFill = Instance.new("TextButton", bsaRoot)
-            bsaFill.Name                   = "Fill"
-            bsaFill.Size                   = UDim2.fromOffset(CS, CS)
-            bsaFill.AnchorPoint            = Vector2.new(0.5, 0.5)
-            bsaFill.Position               = UDim2.fromScale(0.5, 0.5)
-            bsaFill.BackgroundColor3       = Color3.fromRGB(30, 30, 30)
-            bsaFill.BackgroundTransparency = 0.35
-            bsaFill.BorderSizePixel        = 0
-            bsaFill.Text                   = ""
-            bsaFill.AutoButtonColor        = false
-            bsaFill.ZIndex                 = 202
-            Instance.new("UICorner", bsaFill).CornerRadius = UDim.new(1, 0)
+            -- Fondo transparente (sin fondo)
+            local bsaPillBg = Instance.new("Frame", bsaRoot)
+            bsaPillBg.Name                   = "PillBg"
+            bsaPillBg.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+            bsaPillBg.AnchorPoint            = Vector2.new(0.5, 0.5)
+            bsaPillBg.Position               = UDim2.fromScale(0.5, 0.5)
+            bsaPillBg.BackgroundColor3       = ThemeColors.Aurora1
+            bsaPillBg.BackgroundTransparency = 1
+            bsaPillBg.BorderSizePixel        = 0
+            bsaPillBg.ZIndex                 = 200
+            Instance.new("UICorner", bsaPillBg).CornerRadius = UDim.new(0, 10)
 
-            local bsaStroke = Instance.new("UIStroke", bsaFill)
-            bsaStroke.Color           = Color3.fromRGB(160, 160, 160)
-            bsaStroke.Thickness       = 2
-            bsaStroke.Transparency    = 0.1
+            -- Borde del color del hub
+            local bsaBorderFrame = Instance.new("Frame", bsaRoot)
+            bsaBorderFrame.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+            bsaBorderFrame.AnchorPoint            = Vector2.new(0.5, 0.5)
+            bsaBorderFrame.Position               = UDim2.fromScale(0.5, 0.5)
+            bsaBorderFrame.BackgroundTransparency = 1
+            bsaBorderFrame.BorderSizePixel        = 0
+            bsaBorderFrame.ZIndex                 = 201
+            Instance.new("UICorner", bsaBorderFrame).CornerRadius = UDim.new(0, 10)
+
+            local bsaStroke = Instance.new("UIStroke", bsaBorderFrame)
+            bsaStroke.Color           = ThemeColors.Aurora1
+            bsaStroke.Thickness       = 3
+            bsaStroke.Transparency    = 0
             bsaStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-            local bsaLabel = Instance.new("TextLabel", bsaFill)
-            bsaLabel.Size                   = UDim2.new(1, -10, 1, 0)
-            bsaLabel.Position               = UDim2.new(0, 5, 0, 0)
+            -- Texto centrado
+            local bsaLabel = Instance.new("TextLabel", bsaRoot)
+            bsaLabel.Size                   = UDim2.fromOffset(BTN_W - 8, BTN_H - 8)
+            bsaLabel.AnchorPoint            = Vector2.new(0.5, 0.5)
+            bsaLabel.Position               = UDim2.fromScale(0.5, 0.5)
             bsaLabel.BackgroundTransparency = 1
             bsaLabel.Text                   = "SILENT\nAIM"
             bsaLabel.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-            bsaLabel.TextSize               = 12
-            bsaLabel.TextColor3             = Color3.fromRGB(220, 220, 220)
+            bsaLabel.TextSize               = 11
+            bsaLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
             bsaLabel.TextXAlignment         = Enum.TextXAlignment.Center
+            bsaLabel.TextYAlignment         = Enum.TextYAlignment.Center
             bsaLabel.TextWrapped            = true
-            bsaLabel.ZIndex                 = 203
+            bsaLabel.ZIndex                 = 204
+            local bsaLblStroke = Instance.new("UIStroke", bsaLabel)
+            bsaLblStroke.Color = Color3.fromRGB(0,0,0); bsaLblStroke.Thickness = 1; bsaLblStroke.Transparency = 0.5
 
-            -- Animación de entrada
+            -- Botón clickeable encima
+            local bsaFill = Instance.new("TextButton", bsaRoot)
+            bsaFill.Name                   = "Fill"
+            bsaFill.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+            bsaFill.AnchorPoint            = Vector2.new(0.5, 0.5)
+            bsaFill.Position               = UDim2.fromScale(0.5, 0.5)
+            bsaFill.BackgroundTransparency = 1
+            bsaFill.BorderSizePixel        = 0
+            bsaFill.Text                   = ""
+            bsaFill.AutoButtonColor        = false
+            bsaFill.ZIndex                 = 210
+            Instance.new("UICorner", bsaFill).CornerRadius = UDim.new(0, 10)
+
+            -- Animación entrada
             task.spawn(function()
                 task.wait(0.016)
-                TweenService:Create(bsaScale, TweenInfo.new(0.85, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale=1}):Play()
+                TweenService:Create(bsaScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
             end)
 
             -- Drag
+            local _bMoved = false
             local _bDragStart, _bRootStart, _bDragging = nil, nil, false
-            bsaFill.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1
-                or inp.UserInputType == Enum.UserInputType.Touch then
-                    _bDragStart = inp.Position; _bRootStart = bsaRoot.Position; _bDragging = false
-                end
-            end)
-            RegisterTabConn(UserInputService.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1
-                or inp.UserInputType == Enum.UserInputType.Touch then
-                    _bDragStart = nil; _bDragging = false
-                end
-            end))
-            RegisterTabConn(UserInputService.InputChanged:Connect(function(inp)
-                if not _bDragStart then return end
-                if inp.UserInputType ~= Enum.UserInputType.MouseMovement
-                and inp.UserInputType ~= Enum.UserInputType.Touch then return end
-                local delta = inp.Position - _bDragStart
-                if not _bDragging then
-                    if delta.Magnitude > 6 then _bDragging = true else return end
-                end
-                local vp = workspace.CurrentCamera.ViewportSize
-                bsaRoot.Position = UDim2.fromOffset(
-                    math.clamp(_bRootStart.X.Offset + delta.X, 0, vp.X - CS),
-                    math.clamp(_bRootStart.Y.Offset + delta.Y, 0, vp.Y - CS)
-                )
-            end))
+            if pcall(function()
+                local dd = Instance.new("UIDragDetector", bsaRoot)
+                dd.DragStyle     = Enum.UIDragDetectorDragStyle.TranslatePlane
+                dd.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomWithFallback
+                dd.Dragged:Connect(function()
+                    _bMoved = true
+                    local vpN = workspace.CurrentCamera.ViewportSize
+                    bsaRoot.Position = UDim2.fromOffset(
+                        math.clamp(bsaRoot.Position.X.Offset, 0, vpN.X - BTN_W),
+                        math.clamp(bsaRoot.Position.Y.Offset, 0, vpN.Y - BTN_H))
+                end)
+                dd.DragEnd:Connect(function() task.defer(function() _bMoved = false end) end)
+            end) then
+                -- UIDragDetector OK
+            else
+                bsaFill.InputBegan:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.MouseButton1
+                    or inp.UserInputType == Enum.UserInputType.Touch then
+                        _bDragStart = inp.Position; _bRootStart = bsaRoot.Position; _bDragging = false; _bMoved = false
+                    end
+                end)
+                RegisterTabConn(UserInputService.InputChanged:Connect(function(inp)
+                    if not _bDragStart then return end
+                    if inp.UserInputType ~= Enum.UserInputType.MouseMovement
+                    and inp.UserInputType ~= Enum.UserInputType.Touch then return end
+                    local delta = inp.Position - _bDragStart
+                    if delta.Magnitude > 6 then _bDragging = true; _bMoved = true end
+                    if _bDragging then
+                        local vp = workspace.CurrentCamera.ViewportSize
+                        bsaRoot.Position = UDim2.fromOffset(
+                            math.clamp(_bRootStart.X.Offset + delta.X, 0, vp.X - BTN_W),
+                            math.clamp(_bRootStart.Y.Offset + delta.Y, 0, vp.Y - BTN_H))
+                    end
+                end))
+                RegisterTabConn(UserInputService.InputEnded:Connect(function(inp)
+                    if inp.UserInputType == Enum.UserInputType.MouseButton1
+                    or inp.UserInputType == Enum.UserInputType.Touch then
+                        _bDragStart = nil; _bDragging = false
+                        task.defer(function() _bMoved = false end)
+                    end
+                end))
+            end
 
             -- Hover
             bsaFill.MouseEnter:Connect(function()
-                TweenService:Create(bsaFill,   TweenInfo.new(0.12), {BackgroundColor3=Color3.fromRGB(60,60,60), BackgroundTransparency=0.2}):Play()
-                TweenService:Create(bsaStroke, TweenInfo.new(0.12), {Transparency=0, Thickness=2.5}):Play()
+                TweenService:Create(bsaPillBg, TweenInfo.new(0.12), {BackgroundTransparency=0.75}):Play()
+                TweenService:Create(bsaStroke, TweenInfo.new(0.12), {Thickness=3.5}):Play()
             end)
             bsaFill.MouseLeave:Connect(function()
-                TweenService:Create(bsaFill,   TweenInfo.new(0.12), {BackgroundColor3=Color3.fromRGB(30,30,30), BackgroundTransparency=0.35}):Play()
-                TweenService:Create(bsaStroke, TweenInfo.new(0.12), {Transparency=0.1, Thickness=2}):Play()
+                TweenService:Create(bsaPillBg, TweenInfo.new(0.15), {BackgroundTransparency=1}):Play()
+                TweenService:Create(bsaStroke, TweenInfo.new(0.15), {Thickness=3}):Play()
             end)
 
-            -- FIX MOBILE v4: Activated cubre MouseButton1Up en PC y TouchTap en mobile
+            -- Press / Release
+            bsaFill.MouseButton1Down:Connect(function()
+                if _bMoved then return end
+                TweenService:Create(bsaPillBg, TweenInfo.new(0.07), {BackgroundTransparency=0.40}):Play()
+                TweenService:Create(bsaStroke, TweenInfo.new(0.07), {Thickness=2}):Play()
+                TweenService:Create(bsaScale,  TweenInfo.new(0.07), {Scale=0.92}):Play()
+            end)
+            bsaFill.MouseButton1Up:Connect(function()
+                if _bMoved then return end
+                TweenService:Create(bsaPillBg, TweenInfo.new(0.18), {BackgroundTransparency=1}):Play()
+                TweenService:Create(bsaStroke, TweenInfo.new(0.18), {Thickness=3}):Play()
+                TweenService:Create(bsaScale,  TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
+            end)
+
+            -- Click: disparar
             local _bsaLastShot = 0
             bsaFill.Activated:Connect(function()
-                if _bDragging then return end
+                if _bMoved or _bDragging then return end
                 if not _bsaState.enabled then return end
                 local now = tick()
                 if now - _bsaLastShot < 0.22 then return end
                 _bsaLastShot = now
-
-                -- Flash visual del botón
-                TweenService:Create(bsaFill,   TweenInfo.new(0.07), {BackgroundColor3=Color3.fromRGB(100,100,100), BackgroundTransparency=0.1}):Play()
-                TweenService:Create(bsaStroke, TweenInfo.new(0.07), {Color=Color3.fromRGB(220,220,220)}):Play()
+                -- Flash borde al disparar
+                TweenService:Create(bsaStroke, TweenInfo.new(0.07), {Thickness=2}):Play()
                 task.delay(0.15, function()
-                    pcall(function()
-                        TweenService:Create(bsaFill,   TweenInfo.new(0.2), {BackgroundColor3=Color3.fromRGB(30,30,30), BackgroundTransparency=0.35}):Play()
-                        TweenService:Create(bsaStroke, TweenInfo.new(0.2), {Color=Color3.fromRGB(160,160,160)}):Play()
-                    end)
+                    pcall(function() TweenService:Create(bsaStroke, TweenInfo.new(0.2), {Thickness=3}):Play() end)
                 end)
-
                 _sp(_bsaGunFlashAndShoot)
             end)
 
@@ -40291,7 +40213,7 @@ function CreateCombatTab()
                 end
             end)
 
-            CreateCustomNotification("BINDABLE SA", "Activado — botón circular en pantalla", 2)
+            CreateCustomNotification("BINDABLE SA", "Activado", 2)
         end, false)
     end
     CombatState.saButtonSize = CombatState.saButtonSize or 240
@@ -45498,23 +45420,17 @@ function CreateCombatTab()
                 if existing then
                     local w = existing:FindFirstChild("MirrorWeld")
                     if w then
-                        local _usedSkinGrip = false
-                        -- HOOK DUAL GUN: grip de la skin de gun
                         if keywordList == _dualGunKeywords then
-                            local sc = _G._skinChangerState
-                            if sc and sc.enabled and sc.mode == "gun" then
-                                local _skinList = _G._SC_GUN_SKINS or {}
-                                local _cSkin = _skinList[sc.skinIdx] or _skinList[1]
-                                if _cSkin and _cSkin.dualGun and _cSkin.grip then
-                                    local sg = _cSkin.grip
-                                    local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
-                                    w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
-                                    w.C1 = CFrame.new()
-                                    _usedSkinGrip = true
-                                end
-                            end
-                        -- HOOK DUAL KNIFE: grip de la skin de knife
-                        elseif keywordList == _dualKnifeKeywords then
+                            -- DUAL GUN: detección de agarre del HUB_celeste.
+                            -- grip.C0/C1 del RightGrip ya refleja el skin aplicado
+                            -- por _scApply (tool.Grip = skin.grip -> Roblox propaga al Motor6D).
+                            local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
+                            w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                            w.C1 = grip.C1
+                        else
+                            -- DUAL KNIFE: lógica original — skin knife override si aplica,
+                            -- fallback a grip.C0 espejado + C1 identidad.
+                            local _usedSkinGrip = false
                             local sc = _G._skinChangerState
                             if sc and sc.enabled and sc.mode == "knife" then
                                 local _skinList = _G._SC_KNIFE_SKINS or {}
@@ -45527,11 +45443,11 @@ function CreateCombatTab()
                                     _usedSkinGrip = true
                                 end
                             end
-                        end
-                        if not _usedSkinGrip then
-                            local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
-                            w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
-                            w.C1 = CFrame.new()
+                            if not _usedSkinGrip then
+                                local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
+                                w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                                w.C1 = CFrame.new()
+                            end
                         end
                     end
                     -- FIX DUAL INVISIBLE: mantener el clon visible aunque el handle cambie de transparencia
@@ -45573,60 +45489,60 @@ function CreateCombatTab()
                 weld.Name  = "MirrorWeld"
                 weld.Part0 = lHand
                 weld.Part1 = clon
-                local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
-                weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
-                weld.C1 = CFrame.new()
 
-                -- HOOK PREMIUM SKIN: aplicar skin al clon segun el modo activo (gun o knife)
                 local isDualGun   = (keywordList == _dualGunKeywords)
                 local isDualKnife = (keywordList == _dualKnifeKeywords)
+
                 if isDualGun then
+                    -- DUAL GUN: detección de agarre del HUB_celeste.
+                    -- grip.C0/C1 del RightGrip ya tiene el grip del skin activo.
+                    local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
+                    weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                    weld.C1 = grip.C1
+                    -- Aplicar mesh/texture del skin al clon
                     pcall(function()
                         local sc = _G._skinChangerState
                         if sc and sc.enabled and sc.mode == "gun" then
                             local _skinList = _G._SC_GUN_SKINS or {}
                             local _cSkin = _skinList[sc.skinIdx] or _skinList[1]
-                            if _cSkin and _cSkin.dualGun and _cSkin.grip then
-                                local w = clon:FindFirstChild("MirrorWeld")
-                                if w then
-                                    local sg = _cSkin.grip
-                                    local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
-                                    w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
-                                    w.C1 = CFrame.new()
-                                end
-                            end
-                            for _, obj in pairs(clon:GetDescendants()) do
-                                if obj:IsA("SpecialMesh") then
-                                    pcall(function()
-                                        obj.MeshId    = _cSkin.meshId
-                                        obj.TextureId = _cSkin.texId
-                                        obj.Scale     = _cSkin.scale
-                                    end)
-                                elseif obj:IsA("MeshPart") then
-                                    pcall(function() obj.TextureID = _cSkin.texId end)
+                            if _cSkin then
+                                for _, obj in pairs(clon:GetDescendants()) do
+                                    if obj:IsA("SpecialMesh") then
+                                        pcall(function()
+                                            obj.MeshId    = _cSkin.meshId
+                                            obj.TextureId = _cSkin.texId
+                                            obj.Scale     = _cSkin.scale
+                                        end)
+                                    elseif obj:IsA("MeshPart") then
+                                        pcall(function() obj.TextureID = _cSkin.texId end)
+                                    end
                                 end
                             end
                         end
                     end)
-                elseif isDualKnife then
-                    -- HOOK DUAL KNIFE GRIP: si hay skin de knife activa con dualKnife=true,
-                    -- usar su grip propio para el weld del clon (igual que dualGun)
-                    pcall(function()
+                else
+                    -- DUAL KNIFE: lógica original — skin knife override si aplica,
+                    -- fallback a grip.C0 espejado + C1 identidad.
+                    local _usedSkinGrip = false
+                    if isDualKnife then
                         local sc = _G._skinChangerState
                         if sc and sc.enabled and sc.mode == "knife" then
                             local _skinList = _G._SC_KNIFE_SKINS or {}
                             local _cSkin = _skinList[sc.skinIdx] or _skinList[1]
                             if _cSkin and _cSkin.dualKnife and _cSkin.grip then
-                                local w = clon:FindFirstChild("MirrorWeld")
-                                if w then
-                                    local sg = _cSkin.grip
-                                    local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
-                                    w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
-                                    w.C1 = CFrame.new()
-                                end
+                                local sg = _cSkin.grip
+                                local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
+                                weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                                weld.C1 = CFrame.new()
+                                _usedSkinGrip = true
                             end
                         end
-                    end)
+                    end
+                    if not _usedSkinGrip then
+                        local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
+                        weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                        weld.C1 = CFrame.new()
+                    end
                 end
             end)
 
@@ -47235,33 +47151,168 @@ function CreateCombatTab()
             if CombatTabState then CombatTabState._saBypassHook = false end
         end
 
-        -- Botn SHOOT flotante
+        -- Boton SHOOT flotante -- estilo identico al boton bindable del hub
         local _pGui = nil
         local function _pCreateBtn()
             if _G._pGuiRef and _G._pGuiRef.Parent then pcall(function() _G._pGuiRef:Destroy() end) end
-            local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui"); if not pg then return end
-            local gui = Instance.new("ScreenGui"); gui.Name="PierceBulletGui"; gui.ResetOnSpawn=false
-            gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; gui.DisplayOrder=9900; gui.Parent=pg; _G._pGuiRef=gui
-            local btn = Instance.new("TextButton", gui)
-            btn.Size=UDim2.new(0,120,0,48); btn.Position=UDim2.new(0.5,-60,1,-180)
-            btn.BackgroundColor3=Color3.fromRGB(11,16,42); btn.BackgroundTransparency=0.25
-            btn.BorderSizePixel=0; btn.Text=" SHOOT"; btn.TextColor3=Color3.fromRGB(220,235,255)
-            btn.FontFace=Font.fromEnum(Enum.Font.Arcade); btn.TextSize=16; btn.AutoButtonColor=false; btn.ZIndex=9901
-            Instance.new("UICorner",btn).CornerRadius=UDim.new(0,12)
-            local bS=Instance.new("UIStroke",btn); bS.Thickness=2; bS.ApplyStrokeMode=Enum.ApplyStrokeMode.Border
-            local bG=Instance.new("UIGradient",bS); bG.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(90, 120, 255)),ColorSequenceKeypoint.new(0.5,Color3.fromRGB(0,120,255)),ColorSequenceKeypoint.new(1,Color3.fromRGB(90, 120, 255))})
-            local bgG=Instance.new("UIGradient",btn); bgG.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(160, 20, 35)),ColorSequenceKeypoint.new(1,Color3.fromRGB(0,60,200))}); bgG.Rotation=90
-            _sp(function() local t=0; while btn and btn.Parent do t=t+(_w(0.03) or 0.03); bG.Rotation=(t*60)%360; bS.Thickness=1.8+math.sin(t*2)*0.5 end end)
-            btn.MouseEnter:Connect(function() TweenService:Create(btn,TweenInfo.new(0.15),{BackgroundTransparency=0.05}):Play() end)
-            btn.MouseLeave:Connect(function() TweenService:Create(btn,TweenInfo.new(0.15),{BackgroundTransparency=0.25}):Play() end)
-            local dr,ds,sp=false,nil,nil
-            btn.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dr=true;ds=i.Position;sp=btn.Position; i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dr=false end end) end end)
-            UserInputService.InputChanged:Connect(function(i) if dr and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then local d=i.Position-ds; btn.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y) end end)
-            btn.Activated:Connect(function()
+            local _BTN_W = 60
+            local _BTN_H = 60
+            local _vp    = workspace.CurrentCamera.ViewportSize
+            local gui = Instance.new("ScreenGui")
+            gui.Name="PierceBulletGui"; gui.ResetOnSpawn=false
+            gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; gui.DisplayOrder=9900; gui.IgnoreGuiInset=true
+            pcall(function() gui.Parent = game:GetService("CoreGui") end)
+            if not gui.Parent then
+                local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+                if not pg then return end
+                gui.Parent = pg
+            end
+            _G._pGuiRef = gui
+
+            -- Contenedor raiz (drag)
+            local bg = Instance.new("Frame", gui)
+            bg.Name = "CapyBindBtn"
+            bg.Size = UDim2.fromOffset(_BTN_W, _BTN_H)
+            bg.Position = UDim2.fromOffset(
+                math.clamp(_vp.X/2 - _BTN_W/2, 4, _vp.X - _BTN_W - 4),
+                math.clamp(_vp.Y - 180, 4, _vp.Y - _BTN_H - 4))
+            bg.BackgroundTransparency = 1
+            bg.BorderSizePixel = 0
+            bg.ZIndex = 200
+            bg.Active = true
+
+            local _bgScale = Instance.new("UIScale", bg)
+            _bgScale.Scale = 0
+
+            -- Fondo interno (pill)
+            local pill = Instance.new("Frame", bg)
+            pill.Name = "Pill"
+            pill.AnchorPoint = Vector2.new(0.5, 0.5)
+            pill.Position = UDim2.fromScale(0.5, 0.5)
+            pill.Size = UDim2.fromOffset(_BTN_W, _BTN_H)
+            pill.BackgroundColor3 = ThemeColors.Aurora1
+            pill.BackgroundTransparency = 1
+            pill.BorderSizePixel = 0
+            pill.ZIndex = 201
+            Instance.new("UICorner", pill).CornerRadius = UDim.new(0, 10)
+
+            -- Borde exterior estilo hub
+            local outerRing = Instance.new("Frame", bg)
+            outerRing.Name = "OuterRing"
+            outerRing.AnchorPoint = Vector2.new(0.5, 0.5)
+            outerRing.Position = UDim2.fromScale(0.5, 0.5)
+            outerRing.Size = UDim2.fromOffset(_BTN_W, _BTN_H)
+            outerRing.BackgroundTransparency = 1
+            outerRing.BorderSizePixel = 0
+            outerRing.ZIndex = 202
+            Instance.new("UICorner", outerRing).CornerRadius = UDim.new(0, 10)
+            local outerStroke = Instance.new("UIStroke", outerRing)
+            outerStroke.Color = ThemeColors.Aurora1
+            outerStroke.Thickness = 3
+            outerStroke.Transparency = 0
+            outerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+            -- Label centrado estilo hub
+            local lbl = Instance.new("TextLabel", bg)
+            lbl.AnchorPoint = Vector2.new(0.5, 0.5)
+            lbl.Position = UDim2.fromScale(0.5, 0.5)
+            lbl.Size = UDim2.fromOffset(_BTN_W - 8, _BTN_H - 8)
+            lbl.BackgroundTransparency = 1
+            lbl.Text = "SHOOT"
+            lbl.TextSize = 11
+            lbl.Font = Enum.Font.GothamBold
+            lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+            lbl.TextXAlignment = Enum.TextXAlignment.Center
+            lbl.TextYAlignment = Enum.TextYAlignment.Center
+            lbl.TextWrapped = true
+            lbl.TextScaled = false
+            lbl.ZIndex = 205
+            local lblStroke = Instance.new("UIStroke", lbl)
+            lblStroke.Color = Color3.fromRGB(0,0,0); lblStroke.Thickness = 1; lblStroke.Transparency = 0.5
+
+            -- Glow
+            local glow = Instance.new("ImageLabel", bg)
+            glow.AnchorPoint = Vector2.new(0.5, 0.5)
+            glow.Position = UDim2.fromScale(0.5, 0.5)
+            glow.Size = UDim2.fromOffset(_BTN_W * 1.3, _BTN_H * 1.8)
+            glow.BackgroundTransparency = 1
+            glow.Image = "rbxassetid://4970638706"
+            glow.ImageColor3 = ThemeColors.Aurora1
+            glow.ImageTransparency = 0.82
+            glow.ZIndex = 199
+
+            -- Boton invisible encima
+            local fill = Instance.new("TextButton", bg)
+            fill.Name = "Fill"
+            fill.AnchorPoint = Vector2.new(0.5, 0.5)
+            fill.Position = UDim2.fromScale(0.5, 0.5)
+            fill.Size = UDim2.fromOffset(_BTN_W, _BTN_H)
+            fill.BackgroundTransparency = 1
+            fill.Text = ""
+            fill.AutoButtonColor = false
+            fill.ZIndex = 210
+            Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 10)
+
+            -- Entrada animada
+            _sp(function()
+                _w(0.016)
+                TweenService:Create(_bgScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
+            end)
+
+            -- Hover
+            fill.MouseEnter:Connect(function()
+                TweenService:Create(pill, TweenInfo.new(0.12), {BackgroundTransparency=0.75}):Play()
+                TweenService:Create(outerStroke, TweenInfo.new(0.12), {Thickness=3.5}):Play()
+            end)
+            fill.MouseLeave:Connect(function()
+                TweenService:Create(pill, TweenInfo.new(0.15), {BackgroundTransparency=1}):Play()
+                TweenService:Create(outerStroke, TweenInfo.new(0.15), {Thickness=3}):Play()
+            end)
+            -- Press / release
+            fill.MouseButton1Down:Connect(function()
+                TweenService:Create(pill, TweenInfo.new(0.07), {BackgroundTransparency=0.40}):Play()
+                TweenService:Create(outerStroke, TweenInfo.new(0.07), {Thickness=2}):Play()
+                TweenService:Create(_bgScale, TweenInfo.new(0.07), {Scale=0.92}):Play()
+                TweenService:Create(glow, TweenInfo.new(0.07), {ImageTransparency=0.55}):Play()
+            end)
+            fill.MouseButton1Up:Connect(function()
+                TweenService:Create(pill, TweenInfo.new(0.18), {BackgroundTransparency=1}):Play()
+                TweenService:Create(outerStroke, TweenInfo.new(0.18), {Thickness=3}):Play()
+                TweenService:Create(_bgScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
+                TweenService:Create(glow, TweenInfo.new(0.25), {ImageTransparency=0.82}):Play()
+            end)
+
+            -- Drag manual
+            local _moved2, _dragging2, _dragStart2, _startPos2 = false, false, nil, nil
+            fill.InputBegan:Connect(function(i)
+                if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                    _dragging2=true; _moved2=false; _dragStart2=i.Position; _startPos2=bg.Position
+                end
+            end)
+            UserInputService.InputChanged:Connect(function(i)
+                if not _dragging2 then return end
+                if i.UserInputType~=Enum.UserInputType.MouseMovement and i.UserInputType~=Enum.UserInputType.Touch then return end
+                local d=i.Position-_dragStart2
+                if d.Magnitude>4 then _moved2=true end
+                local vpN=workspace.CurrentCamera.ViewportSize
+                bg.Position=UDim2.fromOffset(
+                    math.clamp(_startPos2.X.Offset+d.X, 0, vpN.X-_BTN_W),
+                    math.clamp(_startPos2.Y.Offset+d.Y, 0, vpN.Y-_BTN_H))
+            end)
+            fill.InputEnded:Connect(function(i)
+                if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                    _dragging2=false
+                    task.defer(function() _moved2=false end)
+                end
+            end)
+
+            -- Click
+            fill.Activated:Connect(function()
+                if _moved2 then return end
                 if not _pEnabled then return end
                 local now=tick(); if now-_pLastShot<_pCooldown then return end; _pLastShot=now
-                TweenService:Create(btn,TweenInfo.new(0.08),{BackgroundTransparency=0}):Play()
-                _dl(0.1,function() TweenService:Create(btn,TweenInfo.new(0.15),{BackgroundTransparency=0.25}):Play() end)
+                TweenService:Create(glow, TweenInfo.new(0.08), {ImageTransparency=0.42}):Play()
+                _dl(0.12, function() TweenService:Create(glow, TweenInfo.new(0.25), {ImageTransparency=0.82}):Play() end)
                 _sp(function() _doPierce(true) end)
             end)
         end
@@ -47494,7 +47545,7 @@ function CreateCombatTab()
             plb.BackgroundTransparency = 0.4
             plb.BorderSizePixel = 0; plb.ZIndex = 13
             plb.Text = "Ping: -- ms"
-            plb.TextColor3 = Color3.fromRGB(90, 120, 255)
+            plb.TextColor3 = Color3.fromRGB(255, 50, 150)
             plb.FontFace = Font.fromEnum(Enum.Font.GothamBold)
             plb.TextSize = 13; plb.TextXAlignment = Enum.TextXAlignment.Center
             Instance.new("UICorner", plb).CornerRadius = UDim.new(0,6)
@@ -47506,7 +47557,7 @@ function CreateCombatTab()
                     pcall(function()
                         local ping = math.floor(statsService.Network.ServerStatsItem["Data Ping"]:GetValue())
                         _apcLastPing = ping
-                        local color = ping < 80 and Color3.fromRGB(90, 120, 255)
+                        local color = ping < 80 and Color3.fromRGB(255, 50, 150)
                                    or ping < 150 and Color3.fromRGB(255,200,0)
                                    or Color3.fromRGB(255,60,60)
                         plb.TextColor3 = color
@@ -47698,7 +47749,7 @@ function CreateCombatTab()
             kfBtn.ZIndex = 14
             Instance.new("UICorner", kfBtn).CornerRadius = UDim.new(0, 6)
             local kbStroke = Instance.new("UIStroke", kfBtn)
-            kbStroke.Color = Color3.fromRGB(90, 120, 255)
+            kbStroke.Color = Color3.fromRGB(255, 50, 150)
             kbStroke.Thickness = 1.5
             kbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
@@ -47723,14 +47774,14 @@ function CreateCombatTab()
                             _listening = false
                             kfBtn.Text = tostring(_skbKey):gsub("Enum.KeyCode.", "")
                             kfBtn.BackgroundColor3 = Color3.fromRGB(160, 20, 35)
-                            kbStroke.Color = Color3.fromRGB(90, 120, 255)
+                            kbStroke.Color = Color3.fromRGB(255, 50, 150)
                             pcall(function() _listenConn:Disconnect() end)
                             return
                         end
                         _skbKey = inp.KeyCode
                         kfBtn.Text = keyName
                         kfBtn.BackgroundColor3 = Color3.fromRGB(160, 20, 35)
-                        kbStroke.Color = Color3.fromRGB(90, 120, 255)
+                        kbStroke.Color = Color3.fromRGB(255, 50, 150)
                         _listening = false
                         pcall(function() _listenConn:Disconnect() end)
                         if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "Tecla -> " .. keyName, 2) end
@@ -48135,7 +48186,7 @@ function CreateCombatTab()
                             d.TextColor3 = Color3.fromRGB(255, 215, 0)
                             d.Font = Enum.Font.GothamBold
                         elseif d.Text == "Predeterminado" then
-                            d.TextColor3 = Color3.fromRGB(220, 220, 220)
+                            d.TextColor3 = Color3.fromRGB(255, 255, 255)
                             d.Font = Enum.Font.Gotham
                         end
                     end
@@ -49570,7 +49621,7 @@ function CreateCombatTab()
         _skPanel.BorderSizePixel = 0
         Instance.new("UICorner", _skPanel).CornerRadius = UDim.new(0, 8)
         local _skStroke = Instance.new("UIStroke", _skPanel)
-        _skStroke.Color = Color3.fromRGB(90, 120, 255)
+        _skStroke.Color = Color3.fromRGB(255, 50, 150)
         _skStroke.Thickness = 1.5
         _skStroke.Transparency = 0.3
 
@@ -49902,7 +49953,7 @@ function CreateCombatTab()
         _scHdr.Size = UDim2.new(1, -8, 0, 16)
         _scHdr.BackgroundTransparency = 1
         _scHdr.Text = " SHOOT CONDITION"
-        _scHdr.TextColor3 = Color3.fromRGB(90, 120, 255)
+        _scHdr.TextColor3 = Color3.fromRGB(255, 50, 150)
         _scHdr.Font = Enum.Font.GothamBold
         _scHdr.TextSize = 10
         _scHdr.TextXAlignment = Enum.TextXAlignment.Left
@@ -49919,7 +49970,7 @@ function CreateCombatTab()
         _scRow.ZIndex = 13
         Instance.new("UICorner", _scRow).CornerRadius = UDim.new(0, 8)
         local _scRowStroke = Instance.new("UIStroke", _scRow)
-        _scRowStroke.Color = Color3.fromRGB(90, 120, 255)
+        _scRowStroke.Color = Color3.fromRGB(255, 50, 150)
         _scRowStroke.Thickness = 1.2
         _scRowStroke.Transparency = 0.4
 
@@ -49930,7 +49981,7 @@ function CreateCombatTab()
         _scPrev.BackgroundTransparency = 0.4
         _scPrev.BorderSizePixel = 0
         _scPrev.Text = ""
-        _scPrev.TextColor3 = Color3.fromRGB(90, 120, 255)
+        _scPrev.TextColor3 = Color3.fromRGB(255, 50, 150)
         _scPrev.Font = Enum.Font.GothamBold
         _scPrev.TextSize = 18
         _scPrev.ZIndex = 14
@@ -49944,7 +49995,7 @@ function CreateCombatTab()
         _scNext.BackgroundTransparency = 0.4
         _scNext.BorderSizePixel = 0
         _scNext.Text = ""
-        _scNext.TextColor3 = Color3.fromRGB(90, 120, 255)
+        _scNext.TextColor3 = Color3.fromRGB(255, 50, 150)
         _scNext.Font = Enum.Font.GothamBold
         _scNext.TextSize = 18
         _scNext.ZIndex = 14
@@ -49977,7 +50028,7 @@ function CreateCombatTab()
         _scDescLabel.TextSize = 10
         Instance.new("UICorner", _scDescLabel).CornerRadius = UDim.new(0, 6)
         local _scDescStroke = Instance.new("UIStroke", _scDescLabel)
-        _scDescStroke.Color = Color3.fromRGB(90, 120, 255)
+        _scDescStroke.Color = Color3.fromRGB(255, 50, 150)
         _scDescStroke.Thickness = 1
         _scDescStroke.Transparency = 0.5
         local _scDescPad = Instance.new("UIPadding", _scDescLabel)
@@ -50086,8 +50137,8 @@ end
 
 function CreateMinimizeButton(header, mainFrame, hubGui)
 minimizeBtn = Instance.new("TextButton", header)
-minimizeBtn.Size = UDim2.new(0, 28, 0, 28)
-minimizeBtn.Position = UDim2.new(1, -36, 0.5, -14)
+minimizeBtn.Size = UDim2.new(0, 38, 0, 38)
+minimizeBtn.Position = UDim2.new(1, -52, 0.5, -19)
 minimizeBtn.AnchorPoint = Vector2.new(0, 0.5)
 minimizeBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 minimizeBtn.BackgroundTransparency = 1
@@ -50120,23 +50171,9 @@ minimizeBtn.MouseLeave:Connect(function()
 end)
 
 minimizeBtn.Activated:Connect(function()
-    -- FIX: respetar "No Minimize/Maximize Anim" de Settings
-    if _G._hubSettings and _G._hubSettings.noMinMaxAnimations then
-        hubGui.Enabled = false
-        _G._hubHidden  = true
-    else
-        local uiScaleClose = mainFrame:FindFirstChildOfClass("UIScale")
-        if uiScaleClose then
-            -- Animacion de cierre lenta y suave: escala baja con Quint + fade
-            TweenService:Create(uiScaleClose, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Scale = 0}):Play()
-        end
-        TweenService:Create(mainFrame, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
-        -- FIX MOBILE: task.wait bloquea el hilo en celu; usar task.delay para no bloquear
-        task.delay(0.58, function()
-            hubGui.Enabled = false
-            _G._hubHidden  = true
-        end)
-    end
+    -- Cierre instantáneo (animación eliminada)
+    hubGui.Enabled = false
+    _G._hubHidden  = true
 
     local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
     if not pg then return end
@@ -50211,12 +50248,9 @@ minimizeBtn.Activated:Connect(function()
             if existingHub and _G._hubHidden then
                 existingHub.Enabled = true
                 _G._hubHidden = false
-                -- Animar entrada
+                -- Reapertura instantánea (animación eliminada)
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
-                if uiScale then
-                    uiScale.Scale = 0
-                    TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
-                end
+                if uiScale then uiScale.Scale = (_getTargetScale and _getTargetScale() or 0.70) end
                 -- NO llamar _reloadActiveTab: no es necesario y disparaba
                 -- la pantalla de disculpas del premium al reconstruir el tab.
             else
@@ -50262,7 +50296,7 @@ infoBtn.Activated:Connect(function()
     local function addRow(icon, key, value)
         local row = Instance.new("Frame", infoFrame)
         row.Size = UDim2.new(1, 0, 0, 32)
-        row.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        row.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
         row.BackgroundTransparency = 0.9
         row.BorderSizePixel = 0
         row.ZIndex = 101
@@ -50481,8 +50515,7 @@ closeBtn.Activated:Connect(function()
                 _G._hubHidden = false
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
-                    uiScale.Scale = 0
-                    TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                    uiScale.Scale = (_getTargetScale and _getTargetScale() or 0.70)  -- apertura instantánea
                 end
                 -- NO llamar _reloadActiveTab: causaba el popup de premium
             else
@@ -50516,7 +50549,7 @@ Instance.new("UICorner", spinGlow).CornerRadius = UDim.new(0, 16)
 spinIconFrame = Instance.new("Frame", serverPanel)
 spinIconFrame.Size = UDim2.new(0, 60, 0, 60)
 spinIconFrame.Position = UDim2.new(0, 0, 0, 0)
-spinIconFrame.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+spinIconFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
 spinIconFrame.BackgroundTransparency = 1
 spinIconFrame.BorderSizePixel = 0
 spinIconFrame.ZIndex = 21
@@ -50563,7 +50596,7 @@ do
     local DA = _G._discordAuth or { loggedIn = false, hasPremium = false, username = nil }
     local tierName  = DA.hasPremium and "Premium" or "Free User"
     local tierColor = DA.hasPremium
-        and Color3.fromRGB(90, 120, 255)
+        and Color3.fromRGB(255, 50, 150)
         or  Color3.fromRGB(80, 255, 140)
 
     -- Card principal  debajo del serverInfoBox, ancho completo del serverPanel
@@ -50669,7 +50702,7 @@ do
             newColor = Color3.fromRGB(255, 210,   0)
         elseif isPrem then
             newTier  = "* Premium"
-            newColor = Color3.fromRGB(90, 120, 255)
+            newColor = Color3.fromRGB(255, 50, 150)
         else
             newTier  = "* Free User"
             newColor = Color3.fromRGB(80, 255, 140)
@@ -50706,7 +50739,7 @@ do
     wlFrame.ZIndex = 22
     Instance.new("UICorner", wlFrame).CornerRadius = UDim.new(0, 8)
     local wlStroke = Instance.new("UIStroke", wlFrame)
-    wlStroke.Color = Color3.fromRGB(90, 120, 255)
+    wlStroke.Color = Color3.fromRGB(255, 50, 150)
     wlStroke.Thickness = 1
     wlStroke.Transparency = 0.5
 
@@ -50757,7 +50790,7 @@ do
     wlFillGrad.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0,   Color3.fromRGB(80, 100, 240)),
         ColorSequenceKeypoint.new(0.5, Color3.fromRGB(80, 255, 140)),
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(100, 80, 215)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(255, 50, 150)),
     })
 
     -- Actualizar la barra y el tiempo
@@ -50830,7 +50863,7 @@ end)
 serverInfoBox = Instance.new("Frame", serverPanel)
 serverInfoBox.Size = UDim2.new(1, -80, 0, 115)
 serverInfoBox.Position = UDim2.new(0, 75, 0, 0)
-serverInfoBox.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+serverInfoBox.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
 serverInfoBox.BackgroundTransparency = 0.75
 serverInfoBox.BorderSizePixel = 0
 serverInfoBox.ZIndex = 21
@@ -50913,7 +50946,7 @@ for idx, info in ipairs(siData) do
     local cell = Instance.new("Frame", siGrid)
     cell.Size = UDim2.new(0.5, -6, 0, 34)
     cell.Position = UDim2.new(col * 0.5, col == 0 and 0 or 6, 0, row * 38)
-    cell.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+    cell.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
     cell.BackgroundTransparency = 1
     cell.BorderSizePixel = 0
     cell.ZIndex = 23
@@ -50998,7 +51031,7 @@ rolesLayout.SortOrder = Enum.SortOrder.LayoutOrder
 statsBar = Instance.new("Frame", serverPanel)
 statsBar.Size = UDim2.new(1, 0, 0, 36)
 statsBar.Position = UDim2.new(0, 0, 0, 270)
-statsBar.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+statsBar.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
 statsBar.BackgroundTransparency = 0.75
 statsBar.BorderSizePixel = 0
 statsBar.ZIndex = 21
@@ -51123,7 +51156,7 @@ function RefreshRoles()
 
         local card = Instance.new("Frame", rolesScroll)
         card.Size = UDim2.new(0, 90, 0, 84)
-        card.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+        card.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
         card.BackgroundTransparency = 1
         card.BorderSizePixel = 0
         card.ZIndex = 23
@@ -51145,7 +51178,7 @@ function RefreshRoles()
         local avatarFrame = Instance.new("Frame", card)
         avatarFrame.Size = UDim2.new(0, 44, 0, 44)
         avatarFrame.Position = UDim2.new(0.5, -22, 0, 7)
-        avatarFrame.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+        avatarFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
         avatarFrame.BackgroundTransparency = 1
         avatarFrame.BorderSizePixel = 0
         avatarFrame.ZIndex = 24
@@ -51846,136 +51879,40 @@ function abrirHub()
 
 mainFrame = Instance.new("Frame", hubGui)
 print("3: mainFrame creado")
--- Centrado directo con AnchorPoint para que siempre aparezca en el medio
+-- Layout relativo: 80% ancho x 82% alto, centrado en pantalla
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
--- == ESTILO: fondo mezclado con colores de carga (violeta + verde) ==
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 40, 100)
-mainFrame.BackgroundTransparency = 0.12
+-- mainFrame completamente transparente — los paneles internos tienen su propio fondo
+mainFrame.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+mainFrame.BackgroundTransparency = 1
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
-Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 14)
--- [GRADIENTE DIAGONAL ELIMINADO]
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 
--- -- TAMAÑO: siempre 730x430 (apariencia PC idéntica en todos los dispositivos)
--- El UIScale que se aplica abajo se encarga de que entre en pantalla.
-mainFrame.Size = UDim2.new(0, 920, 0, 490)
+-- TAMAÑO: relativo a la pantalla (80% x 82%)
+mainFrame.Size = UDim2.new(0.72, 0, 0.74, 0)
 
--- ==============================================================
--- FONDO AURORA - imagen rbxassetid://139776066876209 animada
--- ==============================================================
+-- Fondo: sin imagen rbxassetid, fondo rosa limpio
+_G._hubBgMainImageRef = nil
+_G._applyHubBackground = function(id) end  -- stub de compatibilidad
+_G._hubWaveContainer = nil
 
--- Imagen de fondo Aurora principal (dentro del rectangulo del hub)
-local _auroraMainBg = Instance.new("ImageLabel", mainFrame)
-_auroraMainBg.Name                   = "AuroraBgMain"
-_auroraMainBg.Size                   = UDim2.new(1, 0, 1, 0)
-_auroraMainBg.Position               = UDim2.new(0, 0, 0, 0)
-_auroraMainBg.BackgroundTransparency = 1
-_auroraMainBg.Image                  = "rbxassetid://139776066876209"
-_auroraMainBg.ScaleType              = Enum.ScaleType.Crop
-_auroraMainBg.ImageTransparency      = 0.18
-_auroraMainBg.ZIndex                 = 1
-_auroraMainBg.BorderSizePixel        = 0
-Instance.new("UICorner", _auroraMainBg).CornerRadius = UDim.new(0, 14)
-
--- Referencias globales de compatibilidad
-_G._hubBgMainImageRef = _auroraMainBg
-_G._applyHubBackground = function(id)
-    if _auroraMainBg and _auroraMainBg.Parent then
-        _auroraMainBg.Image = id or "rbxassetid://139776066876209"
-    end
-end
-
--- [ANIMACION AURORA ELIMINADA - bandas diagonales removidas]
-
--- ================================================================
--- ANIMACION AURORA -- desplazamiento y pulso del ImageLabel principal
--- Anima el propio fondo rbxassetid://139776066876209:
---   capa1 (ya creada): desplazamiento lento diagonal + zoom suave
---   capa2: segunda copia del mismo id, offset, transparencia mayor
---   capa3: overlay de color tintado giratorio (UIGradient sobre capa1)
--- ZIndex 1/1.5 -- todo dentro del rectangulo del hub
--- ================================================================
-do
-    -- ── Capa 1: el _auroraMainBg ya existe, solo animamos su Position/Size ──
-    -- Configurar para acepta desplazamiento (ScaleType.Tile permite mover la imagen)
-    _auroraMainBg.ScaleType = Enum.ScaleType.Stretch   -- stretch para poder agrandar y mover
-    _auroraMainBg.Size     = UDim2.new(1.08, 0, 1.08, 0)
-    _auroraMainBg.Position = UDim2.new(-0.04, 0, -0.04, 0)
-
-    -- ── Capa 2: segunda copia del aurora, mas transparente, desplazada al reves ──
-    local _auroraLayer2 = Instance.new("ImageLabel", mainFrame)
-    _auroraLayer2.Name                   = "AuroraBgLayer2"
-    _auroraLayer2.Size                   = UDim2.new(1.12, 0, 1.12, 0)
-    _auroraLayer2.Position               = UDim2.new(-0.06, 0, -0.06, 0)
-    _auroraLayer2.BackgroundTransparency = 1
-    _auroraLayer2.Image                  = "rbxassetid://139776066876209"
-    _auroraLayer2.ScaleType              = Enum.ScaleType.Stretch
-    _auroraLayer2.ImageTransparency      = 0.55
-    _auroraLayer2.ZIndex                 = 1
-    _auroraLayer2.BorderSizePixel        = 0
-    Instance.new("UICorner", _auroraLayer2).CornerRadius = UDim.new(0, 14)
-
-    -- Tinte de capa2 (ligeramente violeta para contrastar con la capa1)
-    local _l2Grad = Instance.new("UIGradient", _auroraLayer2)
-    _l2Grad.Rotation = 45
-    _l2Grad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,   Color3.fromRGB(80,  60, 200)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0,  180, 255)),
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(40, 220, 160)),
-    })
-    _l2Grad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.6),
-        NumberSequenceKeypoint.new(1, 0.6),
-    })
-
-    -- ── Overlay de shimmer: gradiente giratorio sobre _auroraMainBg ──
-    local _shimmerOverlay = Instance.new("Frame", mainFrame)
-    _shimmerOverlay.Name                   = "AuroraShimmerOverlay"
-    _shimmerOverlay.Size                   = UDim2.new(1, 0, 1, 0)
-    _shimmerOverlay.Position               = UDim2.new(0, 0, 0, 0)
-    _shimmerOverlay.BackgroundTransparency = 1
-    _shimmerOverlay.BorderSizePixel        = 0
-    _shimmerOverlay.ZIndex                 = 1
-    Instance.new("UICorner", _shimmerOverlay).CornerRadius = UDim.new(0, 14)
-    local _shimGrad = Instance.new("UIGradient", _shimmerOverlay)
-    _shimGrad.Rotation = 0
-    _shimGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    Color3.fromRGB(0,   220, 255)),
-        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(100,  80, 215)),
-        ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(50,  200, 140)),
-        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0,   180, 255)),
-        ColorSequenceKeypoint.new(1,    Color3.fromRGB(0,   220, 255)),
-    })
-    _shimGrad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0,    0.92),
-        NumberSequenceKeypoint.new(0.45, 0.78),
-        NumberSequenceKeypoint.new(0.5,  0.72),
-        NumberSequenceKeypoint.new(0.55, 0.78),
-        NumberSequenceKeypoint.new(1,    0.92),
-    })
-
-    -- [ANIMACION DE MOVIMIENTO ELIMINADA - imagenes estaticas]
-
-    _G._hubWaveContainer = _shimmerOverlay
-end
-
--- Borde animado estilo aurora
+-- Borde eliminado
 glowBorder = Instance.new("UIStroke", mainFrame)
-glowBorder.Color = Color3.fromRGB(100, 80, 215)
-glowBorder.Thickness = 2.0
-glowBorder.Transparency = 0.10
+glowBorder.Color = Color3.fromRGB(255, 50, 150)
+glowBorder.Thickness = 0
+glowBorder.Transparency = 1.0
 glowBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 -- ANIMACION DE BORDE: gradiente giratorio con los colores del tema
 do
     local _borderGrad = Instance.new("UIGradient", glowBorder)
     _borderGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    Color3.fromRGB(100,  80, 215)),  -- Primary (violeta)
-        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(50,  200, 140)),  -- Accent  (verde)
-        ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(60,  100, 220)),  -- Aurora1 (azul)
-        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(110,  60, 200)),  -- Aurora2 (violeta claro)
-        ColorSequenceKeypoint.new(1,    Color3.fromRGB(100,  80, 215)),  -- Primary (cierra el loop)
+        ColorSequenceKeypoint.new(0,    Color3.fromRGB(255,  50, 150)),  -- Rosa oscuro
+        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 105, 180)),  -- Rosa base
+        ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(255, 182, 193)),  -- Rosa claro
+        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255,  20, 147)),  -- Rosa intenso
+        ColorSequenceKeypoint.new(1,    Color3.fromRGB(255,  50, 150)),  -- Rosa oscuro (cierra el loop)
     })
     _borderGrad.Rotation = 0
     -- Pulso de grosor suave en paralelo al shimmer de rotacion
@@ -51986,52 +51923,23 @@ do
     local _pulseTick = 0
     -- Paleta de colores para el ciclo rapido del borde
     local _borderColors = {
-        Color3.fromRGB(100,  80, 215),  -- violeta
-        Color3.fromRGB( 60, 160, 255),  -- azul brillante
-        Color3.fromRGB( 50, 220, 160),  -- verde aurora
-        Color3.fromRGB(180,  60, 255),  -- morado neon
-        Color3.fromRGB( 80, 200, 255),  -- cyan
-        Color3.fromRGB(255,  80, 200),  -- pink neon
-        Color3.fromRGB(100, 255, 120),  -- verde neon
-        Color3.fromRGB(255, 140,  60),  -- naranja
+        Color3.fromRGB(255,  50, 150),  -- rosa oscuro
+        Color3.fromRGB(255, 105, 180),  -- rosa base
+        Color3.fromRGB(255, 182, 193),  -- rosa claro pastel
+        Color3.fromRGB(255,  20, 147),  -- rosa intenso (deep pink)
+        Color3.fromRGB(255, 153, 204),  -- rosa suave
+        Color3.fromRGB(219,  51, 115),  -- rosa brillante
+        Color3.fromRGB(255, 130, 170),  -- rosa medio
+        Color3.fromRGB(200,  40, 130),  -- rosa fucsia
     }
     local _colorIdx = 1
     local _colorTick = 0
     task.spawn(function()
         while glowBorder and glowBorder.Parent do
             task.wait(0.016)  -- ~60fps ultra rapido
-            _pulseTick  = _pulseTick  + 0.016
-            _colorTick  = _colorTick  + 0.016
-            -- Oscila grosor entre 1.8 y 2.8 con una onda suave
-            local _pulse = 2.3 + math.sin(_pulseTick * 8.0) * 1.2
-            -- Solo animar si no hay drag activo
-            if glowBorder and glowBorder.Parent and not _G._hubDragging then
-                glowBorder.Thickness = _pulse
-            end
-            -- Ciclo rapido de colores: cambia cada ~0.22 segundos
-            if _colorTick >= 0.05 then
-                _colorTick = 0
-                local nextIdx = (_colorIdx % #_borderColors) + 1
-                local c1 = _borderColors[_colorIdx]
-                local c2 = _borderColors[nextIdx]
-                local c3 = _borderColors[(nextIdx % #_borderColors) + 1]
-                -- Actualizar gradiente del borde con los colores actuales
-                if _borderGrad and _borderGrad.Parent then
-                    pcall(function()
-                        _borderGrad.Color = ColorSequence.new({
-                            ColorSequenceKeypoint.new(0,    c1),
-                            ColorSequenceKeypoint.new(0.33, c2),
-                            ColorSequenceKeypoint.new(0.66, c3),
-                            ColorSequenceKeypoint.new(1,    c1),
-                        })
-                    end)
-                end
-                -- Tambien actualizar el color base del borde para ejecutores sin gradiente
-                if glowBorder and glowBorder.Parent and not _G._hubDragging then
-                    glowBorder.Color = c1
-                end
-                _colorIdx = nextIdx
-            end
+            -- Borde desactivado: no animar
+            glowBorder.Thickness = 0
+            glowBorder.Transparency = 1.0
         end
     end)
 end
@@ -52040,106 +51948,22 @@ uiScale = Instance.new("UIScale", mainFrame)
 uiScale.Scale = 1
 
 -- ================================================================
--- == AUTO SCALE SEGÚN DISPOSITIVO
--- El hub siempre es 730x430 (apariencia PC idéntica).
--- En móvil se escala para que entre completo en pantalla.
+-- == ESCALA FIJA (layout relativo, no necesita UIScale dinámico)
 -- ================================================================
-do
-    local HUB_W = 920
-    local HUB_H = 490
-
-    -- HELPER GLOBAL: devuelve la escala correcta según viewport actual.
-    -- Todos los reopeners/animaciones deben animar HASTA este valor, no hasta 1.
-    _getTargetScale = function()
-        local vp = workspace.CurrentCamera.ViewportSize
-        local isMobile = UserInputService.TouchEnabled
-        local marginX = isMobile and 20 or 10
-        local marginY = isMobile and 30 or 10
-        local scaleX = (vp.X - marginX) / HUB_W
-        local scaleY = (vp.Y - marginY) / HUB_H
-        local scale  = math.min(scaleX, scaleY)
-        local minScale = isMobile and 0.30 or 0.5
-        return math.clamp(scale, minScale, isMobile and 0.85 or 1.0)
+_getTargetScale = function() return 1 end
+uiScale.Scale = 1
+mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+print("[ZerqonHUB] Layout relativo 80%x82% aplicado")
+-- Limpiar orbs de ejecuciones previas
+pcall(function()
+    for _, n in ipairs({"_HubSatOrb", "_HubSatOrbBot", "_HubSatGrad"}) do
+        local o = mainFrame:FindFirstChild(n)
+        if o then o:Destroy() end
     end
-
-    local function _applyScale()
-        local s = _getTargetScale()
-        uiScale.Scale = s
-        -- Mantener el hub centrado en pantalla siempre
-        mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-        mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
-    end
-
-    -- Aplicar escala inicial
-    _applyScale()
-
-    -- Reajustar si el usuario rota el dispositivo
-    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(_applyScale)
-
-    print("[ZerqonHUB] Escala aplicada: " .. tostring(uiScale.Scale))
-
-    -- == COLOR SATURACION HUB (igual en PC y mobile) ==
-    -- Aplica el mismo tinte purpura/violeta al fondo del hub
-    -- para que la saturacion se vea igual en celular que en PC.
-    pcall(function()
-        local _isMobileColor = UserInputService.TouchEnabled
-
-        -- Eliminar gradiente anterior si existe (evita duplicados al re-ejecutar)
-        local _oldGrad = mainFrame:FindFirstChild("_HubSatGrad")
-        if _oldGrad then _oldGrad:Destroy() end
-        local _oldOrb = mainFrame:FindFirstChild("_HubSatOrb")
-        if _oldOrb then _oldOrb:Destroy() end
-        local _oldOrbBot = mainFrame:FindFirstChild("_HubSatOrbBot")
-        if _oldOrbBot then _oldOrbBot:Destroy() end
-
-        -- [GRADIENTE DIAGONAL ELIMINADO]
-
-        -- Capa de brillo purpura superior (orb ambient) - DENTRO del hub para mobile
-        -- En mobile el orb va dentro del frame (position 0.5, 0.05) para no quedar cortado
-        local satOrb = Instance.new("ImageLabel", mainFrame)
-        satOrb.Name          = "_HubSatOrb"
-        satOrb.Size          = UDim2.new(_isMobileColor and 1.0 or 0.8, 0, _isMobileColor and 0.7 or 0.8, 0)
-        satOrb.AnchorPoint   = Vector2.new(0.5, 0)
-        satOrb.Position      = UDim2.new(0.5, 0, _isMobileColor and 0.0 or -0.2, 0)
-        satOrb.BackgroundTransparency = 1
-        satOrb.Image         = "rbxassetid://4996318945"  -- radial glow
-        satOrb.ImageColor3   = Color3.fromRGB(_isMobileColor and 90 or 80, _isMobileColor and 45 or 40, _isMobileColor and 200 or 180)
-        satOrb.ImageTransparency = _isMobileColor and 0.60 or 0.72
-        satOrb.ScaleType     = Enum.ScaleType.Fit
-        satOrb.ZIndex        = 2
-        satOrb.BorderSizePixel = 0
-
-        -- Orb inferior sutil (solo mobile, da profundidad en pantalla pequena)
-        if _isMobileColor then
-            local satOrbBot = Instance.new("ImageLabel", mainFrame)
-            satOrbBot.Name          = "_HubSatOrbBot"
-            satOrbBot.Size          = UDim2.new(0.7, 0, 0.5, 0)
-            satOrbBot.AnchorPoint   = Vector2.new(0.5, 1)
-            satOrbBot.Position      = UDim2.new(0.5, 0, 1.0, 0)
-            satOrbBot.BackgroundTransparency = 1
-            satOrbBot.Image         = "rbxassetid://4996318945"
-            satOrbBot.ImageColor3   = Color3.fromRGB(60, 20, 140)
-            satOrbBot.ImageTransparency = 0.75
-            satOrbBot.ScaleType     = Enum.ScaleType.Fit
-            satOrbBot.ZIndex        = 2
-            satOrbBot.BorderSizePixel = 0
-        end
-
-        -- Stroke del borde ya existente: asegurar que siempre sea purpura neon
-        if glowBorder then
-            glowBorder.Color     = Color3.fromRGB(100, 80, 215)
-            glowBorder.Thickness = _isMobileColor and 2.5 or 2.0
-            glowBorder.Transparency = 0.05
-        end
-
-        -- En mobile: color base del mainFrame ligeramente mas saturado
-        if _isMobileColor then
-            mainFrame.BackgroundColor3 = Color3.fromRGB(25, 100, 145)
-        end
-    end)
-end
+end)
 -- ================================================================
--- == FIN AUTO SCALE
+-- == FIN ESCALA
 -- ================================================================
 
 -- FONDO SIMPLE: rbxassetid://93899674926078 dentro del hub
@@ -52394,9 +52218,7 @@ _auroraContainer.ClipsDescendants       = true
     end)
 end) --]]
 
--- Stub de compatibilidad: _hubBgMainImageRef ya fue asignado arriba (en AuroraBgMain)
--- NO redefinir _applyHubBackground aqui para no pisar la referencia real
--- _G._hubBgMainImageRef = nil   -- comentado: ya esta asignado
+-- Stubs de compatibilidad (fondo imagen eliminado)
 
 -- [CAPAS AURORA ELIMINADAS]
 -- ===============================================================
@@ -52557,41 +52379,16 @@ end
 -- |   Mezcla: teal, cian, morado, magenta, azul profundo  |
 -- +======================================================+
 do
-    -- Capa base oscura del fondo
+    -- Capa base: completamente transparente (sin fondo oscuro)
     local _auroraBase = Instance.new("Frame", _auroraContainer)
     _auroraBase.Name = "AuroraBase"
     _auroraBase.Size = UDim2.new(1, 0, 1, 0)
-    _auroraBase.BackgroundColor3 = Color3.fromRGB(6, 38, 34)
-    _auroraBase.BackgroundTransparency = 1
+    _auroraBase.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+    _auroraBase.BackgroundTransparency = 1  -- invisible: el fondo del juego se ve detras
     _auroraBase.BorderSizePixel = 0
     _auroraBase.ZIndex = 2
 
-    -- Gradiente principal animado (toda la superficie)
-    local _mainGrad = Instance.new("UIGradient", _auroraBase)
-    _mainGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    Color3.fromRGB(10, 60, 100)),
-        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(0, 120, 180)),
-        ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(0,  150, 140)),
-        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(50, 200, 140)),
-        ColorSequenceKeypoint.new(1,    Color3.fromRGB(10, 60, 100)),
-    })
-    _mainGrad.Rotation = 120
-    _mainGrad.Transparency = NumberSequence.new(0)
-
-    -- [PARTICULAS CELESTES ELIMINADAS]
-
-    -- Animacion lenta: rotar el gradiente aurora de fondo continuamente
-    task.spawn(function()
-        local _rot = 120
-        local _dir = 1
-        while _mainGrad and _mainGrad.Parent do
-            _rot = _rot + _dir * 0.15  -- velocidad muy lenta
-            if _rot >= 200 then _dir = -1 end
-            if _rot <= 40  then _dir =  1 end
-            _mainGrad.Rotation = _rot
-            task.wait(0.016)
-        end
-    end)
+    -- Sin gradiente de fondo oscuro: removido para apariencia rosa pura
 end
 -- +======================================================+
 
@@ -52704,50 +52501,39 @@ particles = {}
 
 
     -- ============================================================
-    -- HEADER ESTILO IMAGEN: barra superior oscura, título izq, X der
+    -- TOPBAR: barra superior compacta estilo referencia
     -- ============================================================
     header = Instance.new("Frame", mainFrame)
     header.Name = "TopBar"
-    header.Size = UDim2.new(1, 0, 0, 36)
+    header.Size = UDim2.new(1, 0, 0.14, 0)
     header.Position = UDim2.new(0, 0, 0, 0)
-    header.BackgroundColor3 = Color3.fromRGB(25, 40, 100)
-    header.BackgroundTransparency = 0.1
+    header.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+    header.BackgroundTransparency = 0.55
     header.BorderSizePixel = 0
     header.ZIndex = 10
     header.Active = true
+    header.ClipsDescendants = true
     local _hdrCorner = Instance.new("UICorner", header)
-    _hdrCorner.CornerRadius = UDim.new(0, 14)
-    -- Gradiente header: violeta izq -> verde der (colores de carga)
-    local _hdrGrad = Instance.new("UIGradient", header)
-    _hdrGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    Color3.fromRGB(70,  45, 170)),  -- violeta carga
-        ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(25,  40, 100)),  -- azul base
-        ColorSequenceKeypoint.new(1,    Color3.fromRGB(25,  90,  70)),  -- verde carga oscuro
-    })
-    _hdrGrad.Rotation = 0
+    _hdrCorner.CornerRadius = UDim.new(0, 8)
+    local _hdrStroke = Instance.new("UIStroke", header)
+    _hdrStroke.Color = Color3.fromRGB(255, 50, 150)
+    _hdrStroke.Thickness = 0
+    _hdrStroke.Transparency = 1.0
+    _hdrStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    -- Línea separadora inferior del topbar
-    local _hdrLine = Instance.new("Frame", header)
-    _hdrLine.Size = UDim2.new(1, 0, 0, 1)
-    _hdrLine.Position = UDim2.new(0, 0, 1, -1)
-    _hdrLine.BackgroundColor3 = Color3.fromRGB(100, 80, 215)
-    _hdrLine.BackgroundTransparency = 0.3
-    _hdrLine.BorderSizePixel = 0
-    _hdrLine.ZIndex = 11
-
-    -- Título del hub a la izquierda — "Zerqon Hub" más grande y legible
+    -- Título del hub a la izquierda — estilo referencia
     local _hdLabel = Instance.new("TextLabel", header)
-    _hdLabel.Size = UDim2.new(0, 220, 1, 0)
-    _hdLabel.Position = UDim2.new(0, 10, 0, 0)
+    _hdLabel.Size = UDim2.new(0.7, 0, 0.75, 0)
+    _hdLabel.Position = UDim2.new(0, 10, 0.125, 0)
     _hdLabel.BackgroundTransparency = 1
     _hdLabel.Text = "✦ ZERQON HUB"
-    _hdLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    _hdLabel.TextColor3 = Color3.fromRGB(130, 0, 60)
     _hdLabel.FontFace = Font.fromEnum(Enum.Font.GothamBold)
-    _hdLabel.TextSize = 17
+    _hdLabel.TextScaled = true
     _hdLabel.TextXAlignment = Enum.TextXAlignment.Left
     _hdLabel.TextYAlignment = Enum.TextYAlignment.Center
     _hdLabel.TextStrokeTransparency = 0.4
-    _hdLabel.TextStrokeColor3 = Color3.fromRGB(0, 220, 255)
+    _hdLabel.TextStrokeColor3 = Color3.fromRGB(130, 0, 60)
     _hdLabel.ZIndex = 12
 
     -- Animacion lenta de brillo del titulo (pulso de stroke)
@@ -52755,7 +52541,7 @@ particles = {}
         while _hdLabel and _hdLabel.Parent do
             TweenService:Create(_hdLabel, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
                 TextStrokeTransparency = 0.0,
-                TextColor3 = Color3.fromRGB(180, 240, 255),
+                TextColor3 = Color3.fromRGB(255, 200, 220),
             }):Play()
             task.wait(2.2)
             TweenService:Create(_hdLabel, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
@@ -52766,18 +52552,15 @@ particles = {}
         end
     end)
 
-    -- Subtítulo "by zerqon" al lado
-    local _hdSub = Instance.new("TextLabel", header)
-    _hdSub.Size = UDim2.new(0, 160, 1, 0)
-    _hdSub.Position = UDim2.new(0, 234, 0, 0)
-    _hdSub.BackgroundTransparency = 1
-    _hdSub.Text = "by zerqon"
-    _hdSub.TextColor3 = Color3.fromRGB(140, 210, 255)
-    _hdSub.FontFace = Font.fromEnum(Enum.Font.Gotham)
-    _hdSub.TextSize = 11
-    _hdSub.TextXAlignment = Enum.TextXAlignment.Left
-    _hdSub.TextYAlignment = Enum.TextYAlignment.Center
-    _hdSub.ZIndex = 12
+    -- Subtítulo "by zerqon" eliminado
+
+    -- FLECHA en la esquina superior izquierda del header (imagen 2)
+    -- (ArrowCornerBtn eliminado por pedido del usuario)
+    -- Titulo en posicion izquierda sin offset de flecha
+    if _hdLabel then
+        _hdLabel.Position = UDim2.new(0, 10, 0.125, 0)
+    end
+    -- _hdSub eliminado
 
     -- ================================================================
     -- DRAG DEL HUB — sistema único consolidado (v-fix)
@@ -52825,12 +52608,10 @@ particles = {}
                and p2d.Y >= hPos.Y and p2d.Y <= hPos.Y + hSiz.Y
         end
 
-        -- FIX DRAG ANYWHERE: activa el drag desde cualquier punto dentro del hub
+        -- Drag solo desde el header — borde del frame no activa drag
         local function _mouseOverBorder(p2d)
-            local fPos = mainFrame.AbsolutePosition
-            local fSiz = mainFrame.AbsoluteSize
-            return p2d.X >= fPos.X and p2d.X <= fPos.X + fSiz.X
-               and p2d.Y >= fPos.Y and p2d.Y <= fPos.Y + fSiz.Y
+            -- Desactivado: drag solo desde header, no desde contenido del hub
+            return false
         end
 
         -- Efectos visuales al arrastrar / soltar
@@ -52842,8 +52623,8 @@ particles = {}
                     {CornerRadius = UDim.new(0, 28)}):Play()
             end
             TweenService:Create(glowBorder, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Thickness    = 7,
-                Transparency = 0.0,
+                Thickness    = 0,
+                Transparency = 1.0,
             }):Play()
         end
 
@@ -52854,41 +52635,26 @@ particles = {}
                 TweenService:Create(_hubCorner, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
                     {CornerRadius = UDim.new(0, 14)}):Play()
             end
-            -- Grosor vuelve al rango del pulso; el loop de pulso lo retoma automaticamente
             TweenService:Create(glowBorder, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Thickness    = 2.3,
-                Transparency = 0.10,
+                Thickness    = 0,
+                Transparency = 1.0,
             }):Play()
         end
 
-        -- Inicio de drag (compartido por mouse y touch)
+        -- Estado de hold (el drag requiere mantener presionado en el header)
+        local _holdPending   = false   -- mouse/touch está presionado en el header
+        local _holdStartPos  = nil     -- posicion al presionar
+        local _holdThread    = nil     -- coroutine del delay de hold
+
+        local HOLD_THRESHOLD = 0.18    -- segundos manteniendo antes de activar drag
+        local MOVE_THRESHOLD = 6       -- pixeles de movimiento para activar drag inmediato
+
+        -- Inicio de drag — solo desde el header, con hold o movimiento suficiente
         local function _startDrag(inputPos2D)
             if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
-            -- Verificar zona valida (header o borde)
-            if not _mouseOverHeader(inputPos2D) and not _mouseOverBorder(inputPos2D) then return end
-            -- No arrastrar si hay ScrollingFrame bajo el cursor
-            do
-                local _block = false
-                local _ok, _objs = pcall(function()
-                    return UserInputService:GetGuiObjectsAtPosition(inputPos2D.X, inputPos2D.Y)
-                end)
-                if _ok and _objs then
-                    for _, _obj in ipairs(_objs) do
-                        if _obj:IsA("ScrollingFrame") then _block = true; break end
-                    end
-                end
-                if not _block and leftColumn and leftColumn.ScrollBarThickness > 0 then
-                    local _lcPos = leftColumn.AbsolutePosition
-                    local _lcSiz = leftColumn.AbsoluteSize
-                    local _sbW   = leftColumn.ScrollBarThickness + 6
-                    if inputPos2D.X >= (_lcPos.X + _lcSiz.X - _sbW)
-                    and inputPos2D.Y >= _lcPos.Y and inputPos2D.Y <= (_lcPos.Y + _lcSiz.Y) then
-                        _block = true
-                    end
-                end
-                if _block then return end
-            end
-            -- Convertir posicion a offset (eliminar AnchorPoint para simplificar calculo)
+            -- Solo activar desde el header
+            if not _mouseOverHeader(inputPos2D) then return end
+            -- Convertir posicion a offset
             local tl = _resolveFrameTopLeft()
             mainFrame.AnchorPoint = Vector2.new(0, 0)
             mainFrame.Position    = UDim2.new(0, tl.X, 0, tl.Y)
@@ -52899,24 +52665,78 @@ particles = {}
             _activateDragEffect()
         end
 
-        -- FIX DRAG ANYWHERE: escuchar InputBegan global para capturar clicks/touch
-        -- en cualquier parte del hub (no solo el header donde estaba dragIcon)
+        -- Presionar en header: esperar hold o movimiento para iniciar drag
+        local function _onHeaderPress(inputPos2D)
+            if _G._hubSettings and _G._hubSettings.allowHubDrag == false then return end
+            if not _mouseOverHeader(inputPos2D) then return end
+            _holdPending  = true
+            _holdStartPos = Vector2.new(inputPos2D.X, inputPos2D.Y)
+            -- Cancelar thread anterior si existia
+            if _holdThread then
+                pcall(function() task.cancel(_holdThread) end)
+                _holdThread = nil
+            end
+            -- Activar drag tras mantener HOLD_THRESHOLD segundos
+            _holdThread = task.delay(HOLD_THRESHOLD, function()
+                if _holdPending then
+                    _holdPending = false
+                    _startDrag(inputPos2D)
+                end
+            end)
+        end
+
+        -- Soltar: cancelar hold pendiente y terminar drag si estaba activo
+        local function _onRelease()
+            _holdPending = false
+            if _holdThread then
+                pcall(function() task.cancel(_holdThread) end)
+                _holdThread = nil
+            end
+        end
+
+        -- InputBegan: solo activar hold si es sobre el header
         _safeConnect(UserInputService.InputBegan, function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseButton1 then
                 local mp = UserInputService:GetMouseLocation()
-                _startDrag(Vector2.new(mp.X, mp.Y))
+                _onHeaderPress(Vector2.new(mp.X, mp.Y))
             elseif inp.UserInputType == Enum.UserInputType.Touch then
-                _startDrag(Vector2.new(inp.Position.X, inp.Position.Y))
+                _onHeaderPress(Vector2.new(inp.Position.X, inp.Position.Y))
             end
         end)
-        -- Mantener también el listener del dragIcon para compatibilidad con executors
-        -- que no exponen UserInputService global correctamente
+
+        -- InputChanged: si el usuario mueve el mouse/touch mas de MOVE_THRESHOLD
+        -- mientras tiene el header presionado, activar drag inmediatamente
+        _safeConnect(UserInputService.InputChanged, function(inp)
+            if _holdPending and _holdStartPos then
+                local curPos
+                if inp.UserInputType == Enum.UserInputType.MouseMovement then
+                    local mp = UserInputService:GetMouseLocation()
+                    curPos = Vector2.new(mp.X, mp.Y)
+                elseif inp.UserInputType == Enum.UserInputType.Touch then
+                    curPos = Vector2.new(inp.Position.X, inp.Position.Y)
+                end
+                if curPos then
+                    local dist = (curPos - _holdStartPos).Magnitude
+                    if dist >= MOVE_THRESHOLD then
+                        -- Movimiento suficiente: activar drag inmediatamente
+                        _holdPending = false
+                        if _holdThread then
+                            pcall(function() task.cancel(_holdThread) end)
+                            _holdThread = nil
+                        end
+                        _startDrag(Vector2.new(_holdStartPos.X, _holdStartPos.Y))
+                    end
+                end
+            end
+        end)
+
+        -- dragIcon mantiene compatibilidad para executors que no exponen UIS correctamente
         dragIcon.InputBegan:Connect(function(inp)
             if inp.UserInputType == Enum.UserInputType.MouseButton1 then
                 local mp = UserInputService:GetMouseLocation()
-                _startDrag(Vector2.new(mp.X, mp.Y))
+                _onHeaderPress(Vector2.new(mp.X, mp.Y))
             elseif inp.UserInputType == Enum.UserInputType.Touch then
-                _startDrag(Vector2.new(inp.Position.X, inp.Position.Y))
+                _onHeaderPress(Vector2.new(inp.Position.X, inp.Position.Y))
             end
         end)
 
@@ -52947,6 +52767,7 @@ particles = {}
         _safeConnect(UserInputService.InputEnded, function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
+                _onRelease()  -- cancelar hold pendiente siempre
                 if _dragActive then
                     _dragActive = false
                     if leftColumn then pcall(function() leftColumn.ScrollingEnabled = true end) end
@@ -52961,8 +52782,8 @@ particles = {}
         header.MouseEnter:Connect(function()
             if not _dragActive then
                 TweenService:Create(glowBorder, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                    Thickness    = 5,
-                    Transparency = 0.0,
+                    Thickness    = 0,
+                    Transparency = 1.0,
                 }):Play()
             end
         end)
@@ -52970,8 +52791,8 @@ particles = {}
             if not _dragActive then
                 -- FIX DRAG: NO desactivar header.Active en MouseLeave (rompe drag en algunos ejecutores)
                 TweenService:Create(glowBorder, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                    Thickness    = 2.3,
-                    Transparency = 0.10,
+                    Thickness    = 0,
+                    Transparency = 1.0,
                 }):Play()
             end
         end)
@@ -52979,9 +52800,9 @@ particles = {}
 
     -- -- BOTN CERRAR (flecha)  esquina superior derecha, fondo transparente --
     local arrowToggleBtn = Instance.new("TextButton", header)
-    arrowToggleBtn.Size = UDim2.new(0, 54, 0, 54)
+    arrowToggleBtn.Size = UDim2.new(0, 44, 0, 44)
     arrowToggleBtn.AnchorPoint = Vector2.new(1, 0.5)
-    arrowToggleBtn.Position = UDim2.new(1, -8, 0.5, 0)
+    arrowToggleBtn.Position = UDim2.new(1, -10, 0.5, 0)
     arrowToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     arrowToggleBtn.BackgroundTransparency = 1
     arrowToggleBtn.Text = ""
@@ -52990,18 +52811,18 @@ particles = {}
     arrowToggleBtn.ZIndex = 999  -- FIX MOBILE: ZIndex alto para que no quede debajo de otros elementos
     arrowToggleBtn.Active = true  -- FIX MOBILE: necesario para recibir inputs touch
     local arrowLabel = Instance.new("ImageLabel", arrowToggleBtn)
-    arrowLabel.Size = UDim2.new(0, 54, 0, 54)
-    arrowLabel.Position = UDim2.new(0.5, -27, 0.5, -27)
+    arrowLabel.Size = UDim2.new(0, 44, 0, 44)
+    arrowLabel.Position = UDim2.new(0.5, -22, 0.5, -22)
     arrowLabel.BackgroundTransparency = 1
     arrowLabel.Image = "rbxassetid://76748646858995"
     arrowLabel.ScaleType = Enum.ScaleType.Fit
     arrowLabel.ZIndex = 13
 
     arrowToggleBtn.MouseEnter:Connect(function()
-        TweenService:Create(arrowLabel, TweenInfo.new(0.15), {Size = UDim2.new(0, 60, 0, 60), Position = UDim2.new(0.5, -30, 0.5, -30)}):Play()
+        TweenService:Create(arrowLabel, TweenInfo.new(0.15), {Size = UDim2.new(0, 50, 0, 50), Position = UDim2.new(0.5, -25, 0.5, -25)}):Play()
     end)
     arrowToggleBtn.MouseLeave:Connect(function()
-        TweenService:Create(arrowLabel, TweenInfo.new(0.18), {Size = UDim2.new(0, 54, 0, 54), Position = UDim2.new(0.5, -27, 0.5, -27)}):Play()
+        TweenService:Create(arrowLabel, TweenInfo.new(0.18), {Size = UDim2.new(0, 44, 0, 44), Position = UDim2.new(0.5, -22, 0.5, -22)}):Play()
     end)
 
     -- FIX DUPLICADO: el handler de cierre real esta mas abajo (arrowToggleBtn segundo handler).
@@ -53016,73 +52837,40 @@ particles = {}
     local SIDE_W = 0  -- sin sidebar lateral
     local TAB_BAR_H = 44  -- altura usada en ShowTabs/ShowServerPanel
 
-    -- ContentContainer: ocupa todo el espacio debajo del header
+    -- ContentContainer: panel izquierdo del hub (contenido de tabs)
     contentContainer = Instance.new("Frame", mainFrame)
     contentContainer.Name = "ContentContainer"
-    contentContainer.Size = UDim2.new(1, 0, 1, -36)
-    contentContainer.Position = UDim2.new(0, 0, 0, 34)
-    contentContainer.BackgroundTransparency = 1
+    contentContainer.Size = UDim2.new(0.70, 0, 0.86, 0)
+    contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
+    contentContainer.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+    contentContainer.BackgroundTransparency = 0.55
     contentContainer.BorderSizePixel = 0
     contentContainer.ClipsDescendants = true
-    contentContainer.ZIndex = 50   -- FIX FRAME AZUL: ZIndex alto para estar SIEMPRE encima de _contentBg (ZIndex 2)
+    contentContainer.ZIndex = 50
     contentContainer.Visible = false  -- empieza cerrado, se abre al clickear tab
+    local _ccCorner = Instance.new("UICorner", contentContainer)
+    _ccCorner.CornerRadius = UDim.new(0, 8)
+    local _ccStroke = Instance.new("UIStroke", contentContainer)
+    _ccStroke.Color = Color3.fromRGB(255, 50, 150)
+    _ccStroke.Thickness = 0
+    _ccStroke.Transparency = 1.0
+    _ccStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     local _ccPad = Instance.new("UIPadding", contentContainer)
 
-    -- FIX FONDO: capa oscura que bloquea la imagen de fondo del hub
-    -- ZIndex 2: debajo de contentContainer (50) y debajo de HubBackground (6)
-    -- Con ZIndexBehavior=Global: efectivo = mainFrame(1) + 2 = 3, bien debajo de contentContainer (1+50=51)
-    local _contentBg = Instance.new("Frame", mainFrame)
-    _contentBg.Name = "ContentBackground"
-    _contentBg.Size = UDim2.new(1, 0, 1, -36)
-    _contentBg.Position = UDim2.new(0, 0, 0, 34)
-    _contentBg.BackgroundColor3 = Color3.fromRGB(25, 40, 100)
-    _contentBg.BackgroundTransparency = 0.15
-    _contentBg.BorderSizePixel = 0
-    _contentBg.ZIndex = 0   -- FIX: ZIndex=0, debajo de todo contenido (Global mode). Actua como dim layer cuando hay fondo personalizado.
-    _contentBg.Visible = true
-    -- Gradiente de contenido: mezcla diagonal violeta -> azul -> verde (colores de carga)
-    local _cbGrad = Instance.new("UIGradient", _contentBg)
-    _cbGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    Color3.fromRGB(60,  35, 150)),  -- violeta carga
-        ColorSequenceKeypoint.new(0.45, Color3.fromRGB(25,  40, 100)),  -- azul base
-        ColorSequenceKeypoint.new(1,    Color3.fromRGB(20,  90,  65)),  -- verde carga oscuro
-    })
-    _cbGrad.Rotation = 135
-    -- Exponer globalmente para que _applyBackground pueda ajustar la transparencia
-    _G._hubContentBg = _contentBg
-    -- Sincronizar visibilidad con contentContainer
-    contentContainer:GetPropertyChangedSignal("Visible"):Connect(function()
-        _contentBg.Visible = true  -- siempre visible para cubrir el fondo
-    end)
+    -- ContentBackground eliminado: sin capa oscura encima del contenido
+    _G._hubContentBg = nil
 
-    -- Aurora effect (igual que antes)
+    -- Aurora effect: desactivado completamente para fondo transparente puro
     local _auroraFrame = Instance.new("Frame", contentContainer)
     _auroraFrame.Name = "AuroraEffect"
     _auroraFrame.Size = UDim2.new(1, 0, 1, 0)
-    _auroraFrame.BackgroundColor3 = Color3.fromRGB(4, 6, 14)
-    _auroraFrame.BackgroundTransparency = 1   -- FIX: era 0.25, tapaba las opciones de los tabs
+    _auroraFrame.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+    _auroraFrame.BackgroundTransparency = 1  -- completamente invisible
     _auroraFrame.BorderSizePixel = 0
     _auroraFrame.ZIndex = 1
     _auroraFrame.Active = false
     _auroraFrame.ClipsDescendants = false
-    local _auroraGrad = Instance.new("UIGradient", _auroraFrame)
-    _auroraGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    ThemeColors.Background),
-        ColorSequenceKeypoint.new(0.2,  ThemeColors.Aurora2),
-        ColorSequenceKeypoint.new(0.4,  ThemeColors.Primary),
-        ColorSequenceKeypoint.new(0.6,  ThemeColors.Aurora3),
-        ColorSequenceKeypoint.new(0.8,  ThemeColors.Accent),
-        ColorSequenceKeypoint.new(1,    ThemeColors.Background),
-    })
-    _auroraGrad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0,   1),
-        NumberSequenceKeypoint.new(0.3, 0.92),
-        NumberSequenceKeypoint.new(0.5, 0.88),
-        NumberSequenceKeypoint.new(0.7, 0.92),
-        NumberSequenceKeypoint.new(1,   1),
-    })
-    _auroraGrad.Rotation = 0
-    RegisterShimmer(_auroraGrad, 8, 0)
+    -- Sin gradiente: fondo limpio para ver el juego detras
 
     local _auroraBloom = Instance.new("Frame", contentContainer)
     _auroraBloom.Name = "AuroraBloom"
@@ -53090,25 +52878,14 @@ particles = {}
     _auroraBloom.Position = UDim2.new(0.5, 0, 0.5, 0)
     _auroraBloom.Size = UDim2.new(0.7, 0, 0.5, 0)
     _auroraBloom.BackgroundColor3 = ThemeColors.Primary
-    _auroraBloom.BackgroundTransparency = 0.97
+    _auroraBloom.BackgroundTransparency = 1  -- completamente invisible
     _auroraBloom.BorderSizePixel = 0
     _auroraBloom.ZIndex = 1
     _auroraBloom.Active = false
     Instance.new("UICorner", _auroraBloom).CornerRadius = UDim.new(1, 0)
-    task.spawn(function()
-        while _auroraBloom and _auroraBloom.Parent do
-            TweenService:Create(_auroraBloom, TweenInfo.new(2.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                {BackgroundTransparency = 0.93, Size = UDim2.new(0.85, 0, 0.6, 0)}):Play()
-            task.wait(2.5)
-            if not _auroraBloom.Parent then break end
-            TweenService:Create(_auroraBloom, TweenInfo.new(2.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                {BackgroundTransparency = 0.97, Size = UDim2.new(0.7, 0, 0.5, 0)}):Play()
-            task.wait(2.5)
-        end
-    end)
     _ccPad.PaddingLeft   = UDim.new(0, 0)
-    _ccPad.PaddingRight  = UDim.new(0, 4)
-    _ccPad.PaddingBottom = UDim.new(0, 8)
+    _ccPad.PaddingRight  = UDim.new(0, 0)
+    _ccPad.PaddingBottom = UDim.new(0, 0)
 
     -- -- SIDEBAR DUMMY (requerido internamente, invisible) ------------------
     local sidebar = Instance.new("Frame", mainFrame)
@@ -53270,17 +53047,23 @@ particles = {}
         local activeBar = r and r.activeBar
         local lbl2      = r and r.lbl2
         if isActive then
-            -- Tab activa: SIN fondo, solo borde cyan brillante y texto blanco
-            btn.BackgroundTransparency = 1
-            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(0, 230, 170)}):Play() end
-            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(0, 230, 170)}):Play() end
-            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(255, 255, 255)}):Play() end
+            -- Tab activa: fondo rosa más sólido, borde fucsia, texto oscuro
+            btn.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+            btn.BackgroundTransparency = 0.25
+            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(255, 50, 150)}):Play() end
+            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(255, 50, 150)}):Play() end
+            if lbl2      then
+                TweenService:Create(lbl2, _ti_tab, {TextColor3 = Color3.fromRGB(130, 0, 60), TextStrokeTransparency = 0.6}):Play()
+            end
         else
-            -- Tab inactiva: SIN fondo, borde cyan suave, texto cyan
-            btn.BackgroundTransparency = 1
-            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0.25, Color = Color3.fromRGB(0, 200, 150)}):Play() end
+            -- Tab inactiva: fondo semitransparente rosa, borde fucsia, texto oscuro
+            btn.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+            btn.BackgroundTransparency = 0.55
+            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0.0, Color = Color3.fromRGB(255, 50, 150)}):Play() end
             if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 1}):Play() end
-            if lbl2      then TweenService:Create(lbl2,      _ti_tab, {TextColor3   = Color3.fromRGB(0, 210, 150)}):Play() end
+            if lbl2      then
+                TweenService:Create(lbl2, _ti_tab, {TextColor3 = Color3.fromRGB(130, 0, 60), TextStrokeTransparency = 0.8}):Play()
+            end
         end
     end
 
@@ -53370,14 +53153,8 @@ particles = {}
                 _tc.Visible  = true
                 local si = _tc:FindFirstChild("SearchInput", true)
                 if si then si.Text = "" end
-                -- Respetar la preferencia "No Tab Animations"
-                if _G._hubSettings and _G._hubSettings.noTabAnimations then
-                    _tc.Position = UDim2.new(0, 0, 0, 0)
-                else
-                    _tc.Position = UDim2.new(0, 0, 0, 12)
-                    -- OPT: TweenInfo compartido, sin task.spawn extra
-                    TweenService:Create(_tc, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
-                end
+                -- Entrada instantánea (animación eliminada)
+                _tc.Position = UDim2.new(0, 0, 0, 0)
                 -- FIX DOUBLE COLUMN INVISIBLE: forzar refresh de columnas tras hacerse visible
                 -- Evita que Main aparezca en blanco cuando Double Column esta ON al iniciar
                 task.defer(function()
@@ -53423,13 +53200,11 @@ particles = {}
     tabDockGui.IgnoreGuiInset = true
     tabDockGui.Parent = playerGui
 
-    -- SIDEBAR: panel izquierdo en desktop, barra inferior en móvil
-    local _vpNow = workspace.CurrentCamera.ViewportSize
-    -- SIEMPRE usar layout de PC (sidebar vertical) — el auto-scale se encarga
-    -- de que el hub entre completo en pantalla, tanto en PC como en móvil.
+    -- ============================================================
+    -- PANEL DERECHO: botones de tabs — estilo imagen de referencia
+    -- ============================================================
     local _isMobileLayout = false
-    local SIDEBAR_W = 200  -- ancho igual al layout modo 1 (_applyHubLayout)
-    local TAB_BAR_BOTTOM_H = 0
+    local SIDEBAR_W = 0  -- sin sidebar separada, el rightPanel ocupa 27% del mainFrame
 
     local tabDockFrame = Instance.new("Frame", mainFrame)
     _G._hubTabDockFrame = tabDockFrame
@@ -53437,28 +53212,16 @@ particles = {}
     tabDockFrame.AnchorPoint = Vector2.new(0, 0)
     tabDockFrame.BorderSizePixel = 0
     tabDockFrame.ZIndex = 12
-    tabDockFrame.ClipsDescendants = true
-    tabDockFrame.BackgroundColor3 = Color3.fromRGB(25, 40, 100)
-
-    if _isMobileLayout then
-        -- Móvil: barra horizontal en la parte inferior del hub
-        tabDockFrame.Position = UDim2.new(0, 0, 1, -TAB_BAR_BOTTOM_H)
-        tabDockFrame.Size = UDim2.new(1, 0, 0, TAB_BAR_BOTTOM_H)
-        tabDockFrame.BackgroundTransparency = 1
-        tabDockFrame.Visible = false
-    else
-        -- Desktop: sidebar vertical izquierda — SIEMPRE VISIBLE
-        tabDockFrame.Position               = UDim2.new(0, 0, 0, 36)
-        tabDockFrame.Size                   = UDim2.new(0, SIDEBAR_W, 1, -36)
-        tabDockFrame.BackgroundColor3       = Color3.fromRGB(6, 14, 24)
-        tabDockFrame.BackgroundTransparency = 1
-        tabDockFrame.Visible                = true
-    end
+    tabDockFrame.ClipsDescendants = false
+    tabDockFrame.BackgroundTransparency = 1
+    tabDockFrame.Position = UDim2.new(0.70, 0, 0.14, 0)
+    tabDockFrame.Size = UDim2.new(0.30, 0, 0.86, 0)
+    tabDockFrame.Visible  = true
 
     local _dockStroke = Instance.new("UIStroke", tabDockFrame)
-    _dockStroke.Color           = Color3.fromRGB(0, 200, 150)
-    _dockStroke.Thickness       = 2
-    _dockStroke.Transparency    = 1
+    _dockStroke.Color           = Color3.fromRGB(255, 50, 150)
+    _dockStroke.Thickness       = 0
+    _dockStroke.Transparency    = 1.0
     _dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local tabDockList = Instance.new("ScrollingFrame", tabDockFrame)
@@ -53468,63 +53231,44 @@ particles = {}
     tabDockList.BackgroundTransparency = 1
     tabDockList.ZIndex = 13
     tabDockList.ScrollBarThickness = 0
+    tabDockList.ScrollingDirection = Enum.ScrollingDirection.Y
+    tabDockList.CanvasSize = UDim2.new(0, 0, 0, 0)
+    tabDockList.AutomaticCanvasSize = Enum.AutomaticSize.Y
     tabDockList.ClipsDescendants = true
+    tabDockList.ElasticBehavior = Enum.ElasticBehavior.Always
+    tabDockList.ScrollBarImageTransparency = 1
     local dockLayout = Instance.new("UIListLayout", tabDockList)
-
+    dockLayout.FillDirection = Enum.FillDirection.Vertical
+    dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    dockLayout.Padding = UDim.new(0, 0)
+    dockLayout.SortOrder = Enum.SortOrder.LayoutOrder
     local dockPad = Instance.new("UIPadding", tabDockList)
+    dockPad.PaddingTop    = UDim.new(0, 0)
+    dockPad.PaddingBottom = UDim.new(0, 0)
+    dockPad.PaddingLeft   = UDim.new(0, 0)
+    dockPad.PaddingRight  = UDim.new(0, 0)
 
-    if _isMobileLayout then
-        -- Móvil: tabs horizontales con scroll
-        tabDockList.ScrollingDirection = Enum.ScrollingDirection.X
-        tabDockList.CanvasSize = UDim2.new(0, 0, 0, 0)
-        tabDockList.AutomaticCanvasSize = Enum.AutomaticSize.X
-        dockLayout.FillDirection = Enum.FillDirection.Horizontal
-        dockLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-        dockLayout.Padding = UDim.new(0, 2)
-        dockPad.PaddingTop    = UDim.new(0, 2)
-        dockPad.PaddingBottom = UDim.new(0, 2)
-        dockPad.PaddingLeft   = UDim.new(0, 2)
-        dockPad.PaddingRight  = UDim.new(0, 2)
-    else
-        -- Desktop: tabs verticales compactas (icono + nombre)
-        tabDockList.ScrollingDirection = Enum.ScrollingDirection.Y
-        tabDockList.CanvasSize = UDim2.new(0, 0, 0, 0)
-        tabDockList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        dockLayout.FillDirection = Enum.FillDirection.Vertical
-        dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-        dockLayout.Padding = UDim.new(0, 5)
-        dockPad.PaddingTop    = UDim.new(0, 8)
-        dockPad.PaddingBottom = UDim.new(0, 8)
-        dockPad.PaddingLeft   = UDim.new(0, 5)
-        dockPad.PaddingRight  = UDim.new(0, 5)
-    end
+    -- Panel izquierdo: contentContainer (área de contenido de tabs)
+    contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
+    contentContainer.Size = UDim2.new(0.70, 0, 0.86, 0)
+    contentContainer.Visible  = false
 
-    -- Sidebar visible a la izquierda: contentContainer empieza despues de la sidebar
-    contentContainer.Position = UDim2.new(0, SIDEBAR_W, 0, 36)
-    contentContainer.Size     = UDim2.new(1, -SIDEBAR_W, 1, -36)
-    contentContainer.Visible  = false  -- Hub inicia sin ninguna pestana abierta
+    local C_TAB_IDLE   = Color3.fromRGB(255, 105, 180)
+    local C_TAB_ACTIVE = Color3.fromRGB(255, 105, 180)
+    local C_TAB_HOVER  = Color3.fromRGB(255, 105, 180)
+    local C_NEON       = Color3.fromRGB(255, 50, 150)
 
-    local C_TAB_IDLE   = Color3.fromRGB(255, 255, 255)
-    local C_TAB_ACTIVE = Color3.fromRGB(255, 255, 255)
-    local C_TAB_HOVER  = Color3.fromRGB(255, 255, 255)
-    local C_NEON       = Color3.fromRGB(255, 255, 255)
+    local BTN_H = 52
 
-    local BTN_W = _isMobileLayout and 48 or 110
-    local BTN_H = _isMobileLayout and 36 or 52  -- altura compacta: icono + nombre
+    local function _syncDockPos() end  -- no-op
 
-    -- Sin iconos rbxassetid: los botones muestran solo texto centrado (sin carga de assets)
-
-    local function _syncDockPos() end  -- no-op, dock es parte del mainFrame
-
-    -- Crear botones verticales en la sidebar — estilo icono + nombre, borde cyan
+    -- Crear botones en el panel derecho — estilo referencia: grandes, rosa, texto oscuro
     for i = 1, #tabNames do
-        -- Contenedor del boton
         local btn = Instance.new("TextButton", tabDockList)
         btn.Name             = tabNames[i] .. "SideBtn"
-        btn.Size             = _isMobileLayout and UDim2.new(0, BTN_W, 1, -4)
-                                               or  UDim2.new(1, -8, 0, BTN_H)
-        btn.BackgroundColor3        = Color3.fromRGB(10, 22, 36)
-        btn.BackgroundTransparency  = 1
+        btn.Size             = UDim2.new(1, 0, 0.10, 0)
+        btn.BackgroundColor3        = Color3.fromRGB(255, 105, 180)
+        btn.BackgroundTransparency  = 0.55
         btn.BorderSizePixel         = 0
         btn.Text                    = ""
         btn.AutoButtonColor         = false
@@ -53535,16 +53279,18 @@ particles = {}
         _tabTag.Name        = "TAB_BTN_PROTECTED"
         _tabTag.Value       = "1"
 
-        -- Esquinas redondeadas
         local btnCorner         = Instance.new("UICorner", btn)
-        btnCorner.CornerRadius  = UDim.new(0, 12)
+        btnCorner.CornerRadius  = UDim.new(0, 8)
 
-        -- Borde cyan permanente
         local btnStroke             = Instance.new("UIStroke", btn)
-        btnStroke.Color             = Color3.fromRGB(0, 200, 150)
-        btnStroke.Thickness         = 1.8
-        btnStroke.Transparency      = 0.25
+        btnStroke.Color             = Color3.fromRGB(255, 50, 150)
+        btnStroke.Thickness         = 0
+        btnStroke.Transparency      = 1.0
         btnStroke.ApplyStrokeMode   = Enum.ApplyStrokeMode.Border
+
+        local btnPad = Instance.new("UIPadding", btn)
+        btnPad.PaddingTop    = UDim.new(0.05, 0)
+        btnPad.PaddingBottom = UDim.new(0.05, 0)
 
         -- Indicador de activo (barra izquierda)
         local activeBar                 = Instance.new("Frame", btn)
@@ -53552,28 +53298,45 @@ particles = {}
         activeBar.Size                  = UDim2.new(0, 3, 0.7, 0)
         activeBar.AnchorPoint           = Vector2.new(0, 0.5)
         activeBar.Position              = UDim2.new(0, 0, 0.5, 0)
-        activeBar.BackgroundColor3      = Color3.fromRGB(0, 220, 160)
+        activeBar.BackgroundColor3      = Color3.fromRGB(255, 50, 150)
         activeBar.BackgroundTransparency= 1
         activeBar.BorderSizePixel       = 0
         activeBar.ZIndex                = 16
         Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
 
-        -- Label centrado en el boton (sin icono rbxassetid)
+        -- Label del botón: texto grande, escalado, color oscuro rosa
         local lbl                   = Instance.new("TextLabel", btn)
         lbl.Name                    = "TabLabel"
-        lbl.Size                    = UDim2.new(1, -4, 1, 0)
+        lbl.Size                    = UDim2.new(1, 0, 1, 0)
         lbl.AnchorPoint             = Vector2.new(0.5, 0.5)
         lbl.Position                = UDim2.new(0.5, 0, 0.5, 0)
         lbl.BackgroundTransparency  = 1
         lbl.Text                    = tabNames[i]
-        lbl.FontFace                = Font.fromEnum(Enum.Font.GothamMedium)
-        lbl.TextSize                = 12
-        lbl.TextColor3              = Color3.fromRGB(0, 210, 150)
+        lbl.FontFace                = Font.fromEnum(Enum.Font.GothamBold)
+        lbl.TextScaled              = true
+        lbl.TextColor3              = Color3.fromRGB(130, 0, 60)
         lbl.TextXAlignment          = Enum.TextXAlignment.Center
         lbl.TextYAlignment          = Enum.TextYAlignment.Center
         lbl.TextWrapped             = false
-        lbl.TextStrokeTransparency  = 1
+        lbl.TextStrokeTransparency  = 0.8
+        lbl.TextStrokeColor3        = Color3.fromRGB(130, 0, 60)
         lbl.ZIndex                  = 14
+        -- Brillo blanco pulsante en el nombre de la pestana (glow blanco)
+        local _lblCaptured = lbl
+        local _iCaptured = i
+        task.spawn(function()
+            local _phaseOffset = _iCaptured * 0.55
+            while _lblCaptured and _lblCaptured.Parent do
+                local _t = tick() + _phaseOffset
+                local _pulse = (math.sin(_t * 1.2) + 1) * 0.5
+                if activeTabIdx ~= _iCaptured then
+                    _lblCaptured.TextStrokeTransparency = 0.25 + (1 - _pulse) * 0.60
+                    local _v = math.floor(190 + _pulse * 65)
+                    _lblCaptured.TextColor3 = Color3.fromRGB(_v, _v, _v)
+                end
+                task.wait(0.05)
+            end
+        end)
         do
             local _tabKey = tabNames[i]:lower():gsub(" ", "_")
             table.insert(_LangObjects, {obj=lbl, key=_tabKey, prefix="", suffix=""})
@@ -53593,7 +53356,7 @@ particles = {}
         end)
         btn.MouseLeave:Connect(function()
             if activeTabIdx ~= i then
-                TweenService:Create(lbl, ti, {TextColor3 = Color3.fromRGB(0, 210, 150)}):Play()
+                TweenService:Create(lbl, ti, {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
             end
         end)
 
@@ -53602,14 +53365,8 @@ particles = {}
             local wasVisible = contentContainer.Visible
             if not wasVisible then
                 contentContainer.Visible = true
-                if _G._hubSettings and _G._hubSettings.noTabAnimations then
-                    contentContainer.Position = UDim2.new(0, SIDEBAR_W, 0, 36)
-                else
-                    contentContainer.Position = UDim2.new(0, SIDEBAR_W, 1.1, 0)
-                    TweenService:Create(contentContainer, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                        Position = UDim2.new(0, SIDEBAR_W, 0, 36)
-                    }):Play()
-                end
+                -- Entrada instantánea (animación de pestaña eliminada)
+                contentContainer.Position = UDim2.new(0.02, 0, 0.16, 0)
             end
             SetActiveTab(i)
             _G._tabContentActive = true
@@ -53623,6 +53380,38 @@ particles = {}
             lbl2      = lbl,
         }
     end
+
+    -- ============================================================
+    -- ELEMENTOS SETTINGS FIJOS (avatar + barras info) en mainFrame
+    -- Se muestran solo cuando se activa la pestaña SETTINGS (idx 5)
+    -- ============================================================
+    local function _makeSettingsFixedFrame(name, size, pos)
+        local f = Instance.new("Frame", mainFrame)
+        f.Name = name
+        f.Size = size
+        f.Position = pos
+        f.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+        f.BackgroundTransparency = 0.55
+        f.BorderSizePixel = 0
+        f.ZIndex = 20
+        f.Visible = false
+        Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
+        local st = Instance.new("UIStroke", f)
+        st.Color = Color3.fromRGB(255, 50, 150)
+        st.Thickness = 2
+        st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        return f
+    end
+
+    -- Caja de avatar del jugador
+    local _sfFixedElements = {}
+
+    -- Hook: al cambiar de pestaña (avatar removido, hook simplificado)
+    local _origSetActiveTab = SetActiveTab
+    SetActiveTab = function(idx)
+        _origSetActiveTab(idx)
+    end
+    -- ============================================================
 
     local serverPanel, restoreBtn = CreateServerPanel(mainFrame)
 
@@ -53659,7 +53448,7 @@ particles = {}
             if fpsConn then fpsConn:Disconnect(); fpsConn = nil end
             if tabDockFrame then tabDockFrame.BackgroundTransparency = 1 end
             if contentContainer.Visible then
-                contentContainer.Position = UDim2.new(0, 0, 0, 36)
+                contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
             end
         else
             TweenService:Create(serverPanel, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Position = UDim2.new(0, 20, 1.5, 0)}):Play()
@@ -53669,7 +53458,7 @@ particles = {}
             -- Restaurar dock de tabs
             if tabDockFrame then TweenService:Create(tabDockFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.55}):Play() end
             if contentContainer.Visible then
-                TweenService:Create(contentContainer, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 36)}):Play()
+                TweenService:Create(contentContainer, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = UDim2.new(0.02, 0, 0.16, 0)}):Play()
             end
         end
     end
@@ -53813,7 +53602,7 @@ particles = {}
     homePanel.ZIndex = 5
     homePanel.ClipsDescendants = false
 
-    -- HOME PANEL limpio: sin avatar, sin FPS, sin Ping (eliminados por solicitud)
+    -- HOME PANEL: avatar del jugador grande + info del hub abajo
     local hpCard = Instance.new("Frame", homePanel)  -- dummy para compatibilidad
     hpCard.Name = "HomeUserCard"
     hpCard.Size = UDim2.new(0, 0, 0, 0)
@@ -53829,6 +53618,9 @@ particles = {}
     hpPremiumLbl.BackgroundTransparency = 1
     local function _updateHomePremiumStatus() end
     _updateHomePremiumStatus()
+
+    -- === PANEL AVATAR (cuadro grande, imagen 3) ===
+    -- (barras de info eliminadas)
 
     -- Mostrar/ocultar homePanel segun si hay tab activa
     -- FIX LAG: solo un loop activo a la vez. Cada vez que abrirHub() reconstruye
@@ -53865,6 +53657,7 @@ particles = {}
             end)
             _G._hubReady = true
             _G._hubAlreadyBuilt = true
+            pcall(ApplyTheme, "Neon Green")
             task.defer(function()
                 _G._tabContentActive = false
                 -- FIX: hub inicia SIN pestana abierta; el usuario elige al clickear
@@ -53875,19 +53668,8 @@ particles = {}
                 -- Si no existe (tab Use aun no buildeado), aplicar tema guardado directamente.
                 if _savedBg > 0 and _G._restoreBackground then
                     pcall(_G._restoreBackground, _savedBg)
-                elseif _G._hubSavedTheme and _G._hubSavedTheme ~= "" then
-                    pcall(ApplyTheme, _G._hubSavedTheme)
-                    if _savedBg > 0 then
-                        task.delay(4.0, function()
-                            if _G._restoreBackground then
-                                pcall(_G._restoreBackground, _savedBg)
-                            end
-                        end)
-                    end
                 else
-                    task.delay(4.5, function()
-                        -- (auto glitch bg removed)
-                    end)
+                    pcall(ApplyTheme, "Neon Green")
                 end
             end)
             end)
@@ -53905,23 +53687,16 @@ particles = {}
         if _G._hubAlreadyBuilt then
             -- Reaper sin animacion: mostrar directo con pop-in suave
             mainFrame.Visible = true
-            mainFrame.BackgroundTransparency = 1  -- fondo real lo da AuroraBgMain (ImageLabel)
-            -- FIX: asegurar que la imagen Aurora sea visible al reabrir
-            pcall(function()
-                local _auroraBg = mainFrame:FindFirstChild("AuroraBgMain")
-                if _auroraBg then
-                    _auroraBg.ImageTransparency = 0.18
-                    _auroraBg.Visible = true
-                end
-            end)
+            mainFrame.BackgroundTransparency = 1  -- fondo transparente, sin imagen
+            -- (imagen Aurora eliminada, nada que restaurar aqui)
             local _uiSR = mainFrame:FindFirstChildOfClass("UIScale")
             if _uiSR then _uiSR.Scale = 0 end
             if _uiSR then
                 TweenService:Create(_uiSR, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
             end
-            header.Position  = UDim2.new(0, 0, 0, 0)
+            header.Position  = UDim2.new(0.02, 0, 0.02, 0)
             sidebar.Position = UDim2.new(0, 0, 0, 32)
-            TweenService:Create(glowBorder, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Thickness = 2.5}):Play()
+            TweenService:Create(glowBorder, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Thickness = 0, Transparency = 1.0}):Play()
             _G._hubReady = true
             mainFrame.BackgroundTransparency = 1
             if mainFrame:FindFirstChildOfClass("UIScale") then
@@ -53931,7 +53706,7 @@ particles = {}
                 _G._tabContentActive = false
                 -- AUTO-ABRIR MAIN al iniciar
                 contentContainer.Visible = true
-                contentContainer.Position = UDim2.new(0, 200, 0, 36)
+                contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
                 pcall(function() SetActiveTab(1) end)  -- 1 = MAIN
             -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
             task.delay(0.6, function()
@@ -53940,15 +53715,8 @@ particles = {}
                 -- Si no existe (tab Use aun no buildeado), aplicar tema guardado directamente.
                 if _savedBg > 0 and _G._restoreBackground then
                     pcall(_G._restoreBackground, _savedBg)
-                elseif _G._hubSavedTheme and _G._hubSavedTheme ~= "" then
-                    pcall(ApplyTheme, _G._hubSavedTheme)
-                    if _savedBg > 0 then
-                        task.delay(4.0, function()
-                            if _G._restoreBackground then
-                                pcall(_G._restoreBackground, _savedBg)
-                            end
-                        end)
-                    end
+                else
+                    pcall(ApplyTheme, "Neon Green")
                 end
             end)
             end)
@@ -54020,10 +53788,10 @@ particles = {}
         -- Los tres colores se entremezclan suavemente sin que ninguno domine
         local _ovalGrad = Instance.new("UIGradient", _oval)
         _ovalGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(60,  100, 220)),  -- azul puro
-            ColorSequenceKeypoint.new(0.25, Color3.fromRGB(110, 60,  200)),  -- violeta
-            ColorSequenceKeypoint.new(0.50, Color3.fromRGB(50,  190, 130)),  -- verde
-            ColorSequenceKeypoint.new(0.75, Color3.fromRGB(100, 80,  215)),  -- azul-violeta
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(255, 50, 150)),  -- azul puro
+            ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 50, 150)),  -- violeta
+            ColorSequenceKeypoint.new(0.50, Color3.fromRGB(255, 182, 193)),  -- verde
+            ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 50, 150)),  -- azul-violeta
             ColorSequenceKeypoint.new(1,    Color3.fromRGB(60,  160, 200)),  -- azul-verde
         })
         _ovalGrad.Rotation = 135
@@ -54138,7 +53906,7 @@ particles = {}
         _barContainer.ZIndex = 21
         Instance.new("UICorner", _barContainer).CornerRadius = UDim.new(0, 5)
         local _barStroke = Instance.new("UIStroke", _barContainer)
-        _barStroke.Color = Color3.fromRGB(100, 80, 215)  -- azul-violeta
+        _barStroke.Color = Color3.fromRGB(255, 50, 150)  -- azul-violeta
         _barStroke.Thickness = 1.2
         _barStroke.Transparency = 0.25
 
@@ -54152,10 +53920,10 @@ particles = {}
         -- Gradiente horizontal: azul -> violeta -> verde -> azul bien mezclados
         local _barGrad = Instance.new("UIGradient", _barFill)
         _barGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(60,  100, 220)),  -- azul puro
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(255, 50, 150)),  -- azul puro
             ColorSequenceKeypoint.new(0.33, Color3.fromRGB(120, 60,  205)),  -- violeta
-            ColorSequenceKeypoint.new(0.66, Color3.fromRGB(50,  200, 140)),  -- verde
-            ColorSequenceKeypoint.new(1,    Color3.fromRGB(80,  90,  210)),  -- azul-violeta
+            ColorSequenceKeypoint.new(0.66, Color3.fromRGB(255, 130, 190)),  -- verde
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(220, 60, 160)),  -- azul-violeta
         })
         _barGrad.Rotation = 0
 
@@ -54172,10 +53940,10 @@ particles = {}
             local o = _barGradOffset
             -- Interpolar colores ciclicamente para simular movimiento del verde
             local function lerpC(a, b, t) return Color3.new(a.R+(b.R-a.R)*t, a.G+(b.G-a.G)*t, a.B+(b.B-a.B)*t) end
-            local cBlue   = Color3.fromRGB(60,  100, 220)
+            local cBlue   = Color3.fromRGB(255, 50, 150)
             local cViolet = Color3.fromRGB(120, 60,  205)
-            local cGreen  = Color3.fromRGB(50,  200, 140)
-            local cBluePurple = Color3.fromRGB(80, 90, 210)
+            local cGreen  = Color3.fromRGB(255, 130, 190)
+            local cBluePurple = Color3.fromRGB(220, 60, 160)
             -- Desplazar los 4 keypoints con el offset para crear efecto de flujo
             local k0 = ((0    + o) % 1)
             local k1 = ((0.33 + o) % 1)
@@ -54286,15 +54054,17 @@ particles = {}
         end
         task.wait(0)
 
-        header.Position  = UDim2.new(0, 0, 0, 0)
+        header.Position  = UDim2.new(0.02, 0, 0.02, 0)
         sidebar.Position = UDim2.new(0, 0, 0, 32)
 
         TweenService:Create(glowBorder, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
-            Thickness = 2.5
+            Thickness = 0,
+            Transparency = 1.0
         }):Play()
 
         _G._hubReady = true
         _G._hubAlreadyBuilt = true  -- FIX: marcar que el hub ya fue construido una vez
+        pcall(ApplyTheme, "Neon Green")
         mainFrame.Visible = true
         mainFrame.BackgroundTransparency = 1
         if mainFrame:FindFirstChildOfClass("UIScale") then
@@ -54305,7 +54075,7 @@ particles = {}
         task.defer(function()
             _G._tabContentActive = false
             contentContainer.Visible = true
-            contentContainer.Position = UDim2.new(0, 200, 0, 36)
+            contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
             pcall(function() SetActiveTab(1) end)  -- 1 = MAIN
             -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo.
             -- Si no habia ninguno guardado, aplicar Glitch (index 1) por defecto.
@@ -54313,25 +54083,7 @@ particles = {}
                 local _savedBg = _G._hubBackgrounds and _G._hubBackgrounds.current or 0
                 -- FIX COLORES REABRIR: si _restoreBackground ya existe, usarlo.
                 -- Si no existe (tab Use aun no buildeado), aplicar tema guardado directamente.
-                if _savedBg and _savedBg > 0 and _G._restoreBackground then
-                    pcall(_G._restoreBackground, _savedBg)
-                elseif _G._hubSavedTheme and _G._hubSavedTheme ~= "" then
-                    pcall(ApplyTheme, _G._hubSavedTheme)
-                    if _savedBg and _savedBg > 0 then
-                        task.delay(4.0, function()
-                            if _G._restoreBackground then
-                                pcall(_G._restoreBackground, _savedBg)
-                            end
-                        end)
-                    end
-                else
-                    -- Primera ejecucion: aplicar fondo Glitch (idx=1) por defecto
-                    task.delay(4.5, function()
-                        if _G._restoreBackground then
-                            -- (auto glitch bg removed)
-                        end
-                    end)
-                end
+                pcall(ApplyTheme, "Neon Green")
             end)
         end)
         -- FIX AUTO SAVE: pre-buildear el tab Settings (idx=5) en background
@@ -54384,11 +54136,12 @@ particles = {}
             end)
             _G._hubReady = true
             _G._hubAlreadyBuilt = true
+            pcall(ApplyTheme, "Neon Green")
             task.defer(function()
                 _G._tabContentActive = false
                 -- AUTO-ABRIR MAIN al iniciar
                 contentContainer.Visible = true
-                contentContainer.Position = UDim2.new(0, 200, 0, 36)
+                contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
                 pcall(function() SetActiveTab(1) end)  -- 1 = MAIN
             -- FIX FONDO: restaurar el fondo seleccionado si habia uno activo
             task.delay(0.6, function()
@@ -54397,19 +54150,8 @@ particles = {}
                 -- Si no existe (tab Use aun no buildeado), aplicar tema guardado directamente.
                 if _savedBg > 0 and _G._restoreBackground then
                     pcall(_G._restoreBackground, _savedBg)
-                elseif _G._hubSavedTheme and _G._hubSavedTheme ~= "" then
-                    pcall(ApplyTheme, _G._hubSavedTheme)
-                    if _savedBg > 0 then
-                        task.delay(4.0, function()
-                            if _G._restoreBackground then
-                                pcall(_G._restoreBackground, _savedBg)
-                            end
-                        end)
-                    end
                 else
-                    task.delay(4.5, function()
-                        -- (auto glitch bg removed)
-                    end)
+                    pcall(ApplyTheme, "Neon Green")
                 end
             end)
             end)
@@ -54721,6 +54463,40 @@ function CreateUpdateTab()
     -- Datos del changelog
     local UPDATES = {
         {
+            version = "v1.02",
+            entries = {
+                {
+                    game = "Universal",
+                    lines = {
+                        "[+] Hub Customization changed — new layout and improved color theme options.",
+                        "[*] Dual Gun fixed — no longer desyncs or breaks when switching weapons.",
+                        "[*] Fixed Weapons (Premium) fixed — weapon skins no longer reset after round end.",
+                        "[*] Silent Aim fixed — prediction accuracy improved, no more missed shots on moving targets.",
+                        "[+] Visuals: added Tracer ThrowingKnife — draws a tracer line to the knife while it is in flight.",
+                        "[+] ESP auto-hides when StucKnife is detected in workspace — prevents detection.",
+                    }
+                },
+                {
+                    game = "Murder Mystery 2",
+                    lines = {
+                        "[*] Dual Gun: fixed fire-rate desync when equipping skin mid-round.",
+                        "[*] Fixed Weapons (Premium): skins now persist correctly across rounds.",
+                        "[*] Silent Aim: improved target lock on fast-moving players.",
+                        "[+] Tracer ThrowingKnife: toggle added in Visuals > Tracer section.",
+                        "[+] ESP: all boards now hide automatically when StucKnife appears in workspace.",
+                    }
+                },
+            },
+            whatsnew = {
+                "[+] Hub Customization changed — refreshed layout and theme.",
+                "[*] Dual Gun fixed — no more desync or weapon break.",
+                "[*] Fixed Weapons (Premium) fixed — skins persist through rounds.",
+                "[*] Silent Aim fixed — better accuracy on moving targets.",
+                "[+] NEW: Tracer ThrowingKnife — tracer line to flying knife.",
+                "[+] NEW: ESP auto-hides on StucKnife detected (anti-detection).",
+            }
+        },
+        {
             version = "v1.01",
             entries = {
                 {
@@ -54818,7 +54594,7 @@ function CreateUpdateTab()
         card.LayoutOrder = lo or 0
         Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
         local stroke = Instance.new("UIStroke", card)
-        stroke.Color = Color3.fromRGB(100, 80, 215)
+        stroke.Color = Color3.fromRGB(255, 50, 150)
         stroke.Thickness = 1.5
         stroke.Transparency = 0.35
         local pad = Instance.new("UIPadding", card)
@@ -54853,7 +54629,7 @@ function CreateUpdateTab()
     local function _makeDivider(parent, lo)
         local div = Instance.new("Frame", parent)
         div.Size = UDim2.new(1, 0, 0, 1)
-        div.BackgroundColor3 = Color3.fromRGB(50, 200, 140)
+        div.BackgroundColor3 = Color3.fromRGB(255, 130, 190)
         div.BackgroundTransparency = 0.6
         div.BorderSizePixel = 0
         div.LayoutOrder = lo or 0
@@ -54870,7 +54646,7 @@ function CreateUpdateTab()
         sc.LayoutOrder = lo or 0
         Instance.new("UICorner", sc).CornerRadius = UDim.new(0, 7)
         local stroke = Instance.new("UIStroke", sc)
-        stroke.Color = Color3.fromRGB(50, 200, 140)
+        stroke.Color = Color3.fromRGB(255, 130, 190)
         stroke.Thickness = 1
         stroke.Transparency = 0.55
         local pad = Instance.new("UIPadding", sc)
@@ -55184,7 +54960,7 @@ function CreateEmotesTab()
         inputBox.ZIndex = 14
         Instance.new("UICorner", inputBox).CornerRadius = UDim.new(0, 8)
         local _is = Instance.new("UIStroke", inputBox)
-        _is.Color = Color3.fromRGB(50, 200, 140)
+        _is.Color = Color3.fromRGB(255, 130, 190)
         _is.Thickness = 1
         _is.Transparency = 0.4
         local _ip2 = Instance.new("UIPadding", inputBox)
@@ -55201,7 +54977,7 @@ function CreateEmotesTab()
         playBtn.ZIndex = 14
         Instance.new("UICorner", playBtn).CornerRadius = UDim.new(0, 8)
         local _pbs = Instance.new("UIStroke", playBtn)
-        _pbs.Color = Color3.fromRGB(100, 80, 215)
+        _pbs.Color = Color3.fromRGB(255, 50, 150)
         _pbs.Thickness = 1.5
         _pbs.Transparency = 0.3
 
@@ -55224,7 +55000,7 @@ function CreateEmotesTab()
     for _, emote in ipairs(EMOTES) do
         local row = Instance.new("TextButton", emoteSec)
         row.Size = UDim2.new(1, -8, 0, 30)
-        row.BackgroundColor3 = Color3.fromRGB(25, 40, 100)
+        row.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
         row.BackgroundTransparency = 0.4
         row.BorderSizePixel = 0
         row.Text = "  " .. emote.name
@@ -55237,7 +55013,7 @@ function CreateEmotesTab()
         _rp.PaddingLeft = UDim.new(0, 10)
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
         local _rs = Instance.new("UIStroke", row)
-        _rs.Color = Color3.fromRGB(50, 200, 140)
+        _rs.Color = Color3.fromRGB(255, 130, 190)
         _rs.Thickness = 1
         _rs.Transparency = 0.5
         local _tiE = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -55260,7 +55036,7 @@ function CreateEmotesTab()
     for _, pose in ipairs(POSES) do
         local row = Instance.new("TextButton", posesSec)
         row.Size = UDim2.new(1, -8, 0, 30)
-        row.BackgroundColor3 = Color3.fromRGB(8, 14, 42)
+        row.BackgroundColor3 = Color3.fromRGB(180, 40, 100)
         row.BackgroundTransparency = 0.4
         row.BorderSizePixel = 0
         row.Text = "  " .. pose.name
@@ -55273,7 +55049,7 @@ function CreateEmotesTab()
         _rp2.PaddingLeft = UDim.new(0, 10)
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
         local _rs2 = Instance.new("UIStroke", row)
-        _rs2.Color = Color3.fromRGB(50, 200, 140)
+        _rs2.Color = Color3.fromRGB(255, 130, 190)
         _rs2.Thickness = 1
         _rs2.Transparency = 0.5
         local _tiP = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -55590,7 +55366,7 @@ function CreateUseTab()
 
     local rolesPanel = Instance.new("Frame", infoRolesSec)
     rolesPanel.Size = UDim2.new(1,0,0,108)
-    rolesPanel.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+    rolesPanel.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
     rolesPanel.BackgroundTransparency = 0.85; rolesPanel.BorderSizePixel = 0
     Instance.new("UICorner", rolesPanel).CornerRadius = UDim.new(0,10)
     local rpStroke = Instance.new("UIStroke", rolesPanel)
@@ -55629,7 +55405,7 @@ function CreateUseTab()
 
     local allPlayersFrame = Instance.new("ScrollingFrame", infoRolesSec)
     allPlayersFrame.Size = UDim2.new(1,0,0,140)
-    allPlayersFrame.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+    allPlayersFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
     allPlayersFrame.BackgroundTransparency = 0.85
     allPlayersFrame.BorderSizePixel = 0
     allPlayersFrame.ScrollBarThickness = 3
@@ -55650,7 +55426,7 @@ function CreateUseTab()
         for _, p in ipairs(_cachedPlayers) do
             local row = Instance.new("Frame", allPlayersFrame)
             row.Size = UDim2.new(1,0,0,38)
-            row.BackgroundColor3 = Color3.fromRGB(35, 40, 110)
+            row.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
             row.BackgroundTransparency = 0.75
             row.BorderSizePixel = 0
             Instance.new("UICorner", row).CornerRadius = UDim.new(0,6)
@@ -55728,7 +55504,7 @@ function CreateUseTab()
     local infoDeadSec = CreateBorderedSectionGlobal(rightColumn, " INFORMATION DEAD")
     local deadLogFrame = Instance.new("ScrollingFrame", infoDeadSec)
     deadLogFrame.Size = UDim2.new(1,0,0,140)
-    deadLogFrame.BackgroundColor3 = Color3.fromRGB(35, 40, 110); deadLogFrame.BackgroundTransparency = 0.85; deadLogFrame.BorderSizePixel = 0
+    deadLogFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120); deadLogFrame.BackgroundTransparency = 0.85; deadLogFrame.BorderSizePixel = 0
     deadLogFrame.BackgroundTransparency = 0.75
     deadLogFrame.ScrollBarThickness = 3; deadLogFrame.ScrollBarImageColor3 = Color3.fromRGB(200,50,50)
     deadLogFrame.CanvasSize = UDim2.new(0,0,0,0); deadLogFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -55843,12 +55619,12 @@ function CreateUseTab()
         rfBtn.Text                   = "->  Actualizar lista de jugadores"
         rfBtn.FontFace               = Font.fromEnum(Enum.Font.Montserrat)
         rfBtn.TextSize               = 11
-        rfBtn.TextColor3             = Color3.fromRGB(90, 120, 255)
+        rfBtn.TextColor3             = Color3.fromRGB(255, 50, 150)
         rfBtn.AutoButtonColor        = false
         rfBtn.ZIndex                 = 13
         Instance.new("UICorner", rfBtn).CornerRadius = UDim.new(0, 8)
         local rfStroke = Instance.new("UIStroke", rfBtn)
-        rfStroke.Color = Color3.fromRGB(90, 120, 255); rfStroke.Thickness = 1.2; rfStroke.Transparency = 0.20
+        rfStroke.Color = Color3.fromRGB(255, 50, 150); rfStroke.Thickness = 1.2; rfStroke.Transparency = 0.20
         rfStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         rfBtn.MouseEnter:Connect(function()
             TweenService:Create(rfBtn, TweenInfo.new(0.10), {BackgroundTransparency = 0.20}):Play()
