@@ -36350,13 +36350,6 @@ function CreatePremiumTab()
                 dualKnife = true,
             },
             {
-                name   = "Harvester",
-                meshId = "rbxassetid://7775027413",
-                texId  = "http://www.roblox.com/asset/?id=7775245551",
-                scale  = Vector3.new(0.05, 0.05, 0.05),
-                grip   = CFrame.new(0, -1, 0) * CFrame.Angles(math.rad(-90), 0, 0),
-            },
-            {
                 name   = " Coming Soon...",
                 meshId = "",
                 texId  = "",
