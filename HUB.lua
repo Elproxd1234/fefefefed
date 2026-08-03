@@ -36318,10 +36318,10 @@ function CreatePremiumTab()
                 dualGun = true,
             },
             {
-                -- GingerScope: Handle + Scope (MeshPart), GunClient confirmado
+                -- GingerScope: Handle + Scope (MeshPart), GunClient confirmado — IDs capturados en consola
                 name   = "GingerScope",
                 meshId = "rbxassetid://15374602183",
-                texId  = "rbxassetid://15409041564",
+                texId  = "rbxassetid://107224776622554",
                 scale  = Vector3.new(0.08, 0.08, 0.08),
                 grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
                 dualGun = true,
