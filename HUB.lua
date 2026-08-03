@@ -50123,16 +50123,6 @@ end  -- close CreateCombatTab
 
 function CreateDiscordFloatingBtn(hubGui, arrowToggleBtn, arrowLabel)
 -- (circulo y glow eliminados -- el boton de reapertura es ahora la calavera)
-
-arrowToggleBtn.MouseEnter:Connect(function()
-    TweenService:Create(arrowToggleBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0.4}):Play()
-    TweenService:Create(arrowLabel, TweenInfo.new(0.2), {Size = UDim2.new(0, 60, 0, 60), Position = UDim2.new(0.5, -30, 0.5, -30)}):Play()
-end)
-arrowToggleBtn.MouseLeave:Connect(function()
-    TweenService:Create(arrowToggleBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0.25}):Play()
-    TweenService:Create(arrowLabel, TweenInfo.new(0.2), {Size = UDim2.new(0, 54, 0, 54), Position = UDim2.new(0.5, -27, 0.5, -27)}):Play()
-end)
-
 end
 
 function CreateMinimizeButton(header, mainFrame, hubGui)
@@ -52798,31 +52788,30 @@ particles = {}
         end)
     end -- cierra do drag
 
-    -- -- BOTN CERRAR (flecha)  esquina superior derecha, fondo transparente --
+    -- -- BOTON CERRAR (imagen) — esquina superior derecha del header --
     local arrowToggleBtn = Instance.new("TextButton", header)
-    arrowToggleBtn.Size = UDim2.new(0, 44, 0, 44)
+    arrowToggleBtn.Size = UDim2.new(0, 52, 0, 52)
     arrowToggleBtn.AnchorPoint = Vector2.new(1, 0.5)
-    arrowToggleBtn.Position = UDim2.new(1, -10, 0.5, 0)
-    arrowToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    arrowToggleBtn.Position = UDim2.new(1, -60, 0.5, 0)
     arrowToggleBtn.BackgroundTransparency = 1
     arrowToggleBtn.Text = ""
     arrowToggleBtn.AutoButtonColor = false
     arrowToggleBtn.BorderSizePixel = 0
-    arrowToggleBtn.ZIndex = 999  -- FIX MOBILE: ZIndex alto para que no quede debajo de otros elementos
-    arrowToggleBtn.Active = true  -- FIX MOBILE: necesario para recibir inputs touch
+    arrowToggleBtn.ZIndex = 999
+    arrowToggleBtn.Active = true
     local arrowLabel = Instance.new("ImageLabel", arrowToggleBtn)
-    arrowLabel.Size = UDim2.new(0, 44, 0, 44)
-    arrowLabel.Position = UDim2.new(0.5, -22, 0.5, -22)
+    arrowLabel.Size = UDim2.new(1, 0, 1, 0)
+    arrowLabel.Position = UDim2.new(0, 0, 0, 0)
     arrowLabel.BackgroundTransparency = 1
-    arrowLabel.Image = "rbxassetid://76748646858995"
+    arrowLabel.Image = "rbxassetid://116873331460663"
     arrowLabel.ScaleType = Enum.ScaleType.Fit
     arrowLabel.ZIndex = 13
 
     arrowToggleBtn.MouseEnter:Connect(function()
-        TweenService:Create(arrowLabel, TweenInfo.new(0.15), {Size = UDim2.new(0, 50, 0, 50), Position = UDim2.new(0.5, -25, 0.5, -25)}):Play()
+        TweenService:Create(arrowLabel, TweenInfo.new(0.12), {ImageTransparency = 0.2}):Play()
     end)
     arrowToggleBtn.MouseLeave:Connect(function()
-        TweenService:Create(arrowLabel, TweenInfo.new(0.18), {Size = UDim2.new(0, 44, 0, 44), Position = UDim2.new(0.5, -22, 0.5, -22)}):Play()
+        TweenService:Create(arrowLabel, TweenInfo.new(0.15), {ImageTransparency = 0}):Play()
     end)
 
     -- FIX DUPLICADO: el handler de cierre real esta mas abajo (arrowToggleBtn segundo handler).
@@ -53419,7 +53408,7 @@ particles = {}
 
     function ShowServerPanel()
         tabsVisible = false
-        TweenService:Create(arrowLabel, TweenInfo.new(0.25), {ImageColor3 = Color3.fromRGB(55, 55, 55)}):Play()
+        TweenService:Create(arrowLabel, TweenInfo.new(0.25), {ImageTransparency = 0.5}):Play()
         TweenService:Create(arrowToggleBtn, TweenInfo.new(0.25), {BackgroundColor3 = Color3.fromRGB(255, 180, 0), BackgroundTransparency = 0.5}):Play()
         -- Ocultar dock de tabs al mostrar server panel
         if _G._hubSettings and _G._hubSettings.noMinMaxAnimations then
@@ -53441,7 +53430,7 @@ particles = {}
     local fpsConn
     function ShowTabs()
         tabsVisible = true
-        TweenService:Create(arrowLabel, TweenInfo.new(0.25), {ImageColor3 = Color3.fromRGB(255, 50, 50)}):Play()
+        TweenService:Create(arrowLabel, TweenInfo.new(0.25), {ImageTransparency = 0}):Play()
         TweenService:Create(arrowToggleBtn, TweenInfo.new(0.25), {BackgroundColor3 = ThemeColors.Primary, BackgroundTransparency = 0.25}):Play()
         if _G._hubSettings and _G._hubSettings.noMinMaxAnimations then
             serverPanel.Visible = false
