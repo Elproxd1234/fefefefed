@@ -36937,6 +36937,19 @@ function CreateExclusiveTab()
     ClearContent()
     _makeTwoColumns()
 
+    -- FIX SETTINGS SCROLL: forzar columna unica para que todas las secciones
+    -- (izquierda y derecha) vayan al mismo ScrollingFrame y sean visibles
+    rightColumn = leftColumn
+    -- Asegurar que el scroll este habilitado al entrar a Settings
+    if leftColumn then
+        pcall(function()
+            leftColumn.ScrollingEnabled = true
+            leftColumn.AutomaticCanvasSize = Enum.AutomaticSize.Y
+            leftColumn.CanvasSize = UDim2.new(0, 0, 0, 0)
+            leftColumn.CanvasPosition = Vector2.new(0, 0)
+        end)
+    end
+
     -- ==============================================================
     --  SETTINGS - estado persistente
     -- ==============================================================
@@ -37966,7 +37979,16 @@ function CreateExclusiveTab()
         -- SIEMPRE aplicar layout 1 (Sidebar izquierda) al iniciar, ignorar valor guardado
         _G._hubSettings.hubLayoutMode = 1
         _curLayoutMode = 1
-        task.defer(function() _applyHubLayout(1) end)
+        task.defer(function()
+            _applyHubLayout(1)
+            -- FIX SETTINGS SCROLL: re-habilitar scroll tras aplicar layout
+            if leftColumn then
+                pcall(function()
+                    leftColumn.ScrollingEnabled = true
+                    leftColumn.AutomaticCanvasSize = Enum.AutomaticSize.Y
+                end)
+            end
+        end)
     end
 
     -- -- OPACIDAD Y VISUAL DEL HUB --------------------------------
@@ -45500,7 +45522,7 @@ function CreateCombatTab()
                         if not _usedSkinGrip then
                             local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
                             w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
-                            w.C1 = grip.C1
+                            w.C1 = CFrame.new()
                         end
                     end
                     -- FIX DUAL INVISIBLE: mantener el clon visible aunque el handle cambie de transparencia
@@ -45544,7 +45566,7 @@ function CreateCombatTab()
                 weld.Part1 = clon
                 local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
                 weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
-                weld.C1 = grip.C1
+                weld.C1 = CFrame.new()
 
                 -- HOOK PREMIUM SKIN: aplicar skin al clon segun el modo activo (gun o knife)
                 local isDualGun   = (keywordList == _dualGunKeywords)
