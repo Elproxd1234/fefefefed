@@ -53776,23 +53776,19 @@ particles = {}
         _oval.AnchorPoint = Vector2.new(0.5, 0.5)
         _oval.Position = UDim2.new(0.5, 0, 0.5, 0)
         _oval.Size = UDim2.new(0, 0, 0, 0)
-        -- Mezcla real: azul (60,100,220) + violeta (140,70,210) + verde (50,200,140)
-        -- Color base del ovalo: punto medio entre los tres
-        local _loaderAccent = Color3.fromRGB(85, 120, 195)
+        local _loaderAccent = Color3.fromRGB(255, 50, 150)
         _oval.BackgroundColor3 = _loaderAccent
-        _oval.BackgroundTransparency = 0.30
+        _oval.BackgroundTransparency = 0.10
         _oval.BorderSizePixel = 0
         _oval.ZIndex = 5
 
-        -- Gradiente diagonal: azul puro -> violeta -> verde -> azul-violeta
-        -- Los tres colores se entremezclan suavemente sin que ninguno domine
+        -- Gradiente del hub: morado oscuro -> rosa/magenta
         local _ovalGrad = Instance.new("UIGradient", _oval)
         _ovalGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(255, 50, 150)),  -- azul puro
-            ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 50, 150)),  -- violeta
-            ColorSequenceKeypoint.new(0.50, Color3.fromRGB(255, 182, 193)),  -- verde
-            ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 50, 150)),  -- azul-violeta
-            ColorSequenceKeypoint.new(1,    Color3.fromRGB(60,  160, 200)),  -- azul-verde
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(15,  3,  25)),
+            ColorSequenceKeypoint.new(0.35, Color3.fromRGB(80,  8,  70)),
+            ColorSequenceKeypoint.new(0.65, Color3.fromRGB(200, 35, 130)),
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(255, 50, 150)),
         })
         _ovalGrad.Rotation = 135
 
@@ -53812,27 +53808,34 @@ particles = {}
         -- Parent = _oval con ClipsDescendants=true para que queden recortadas al borde.
         _oval.ClipsDescendants = true
 
-        -- ── IMAGEN AURORA DE FONDO dentro del rectangulo de carga ──
-        local _loadAuroraBg = Instance.new("ImageLabel", _oval)
+        -- ── FONDO DEL RECTANGULO DE CARGA: color del hub (sin imagen externa) ──
+        local _loadAuroraBg = Instance.new("Frame", _oval)
         _loadAuroraBg.Name                   = "LoadAuroraBg"
         _loadAuroraBg.Size                   = UDim2.new(1, 0, 1, 0)
         _loadAuroraBg.Position               = UDim2.new(0, 0, 0, 0)
-        _loadAuroraBg.BackgroundTransparency = 1
-        _loadAuroraBg.Image                  = "rbxassetid://139776066876209"
-        _loadAuroraBg.ScaleType              = Enum.ScaleType.Crop
-        _loadAuroraBg.ImageTransparency      = 0.25
-        _loadAuroraBg.ZIndex                 = 5  -- debajo de las bandas (ZIndex 6)
+        _loadAuroraBg.BackgroundColor3       = Color3.fromRGB(20, 5, 30)
+        _loadAuroraBg.BackgroundTransparency = 0
         _loadAuroraBg.BorderSizePixel        = 0
+        _loadAuroraBg.ZIndex                 = 5
+        -- Gradiente del hub: fondo oscuro con toque rosa/magenta
+        local _loadBgGrad = Instance.new("UIGradient", _loadAuroraBg)
+        _loadBgGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(40,  5,  55)),
+            ColorSequenceKeypoint.new(0.35, Color3.fromRGB(90,  10, 80)),
+            ColorSequenceKeypoint.new(0.65, Color3.fromRGB(180, 30, 120)),
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(255, 50, 150)),
+        })
+        _loadBgGrad.Rotation = 135
 
-        -- Pulso lento de la imagen aurora durante la carga
+        -- Pulso suave de opacidad del gradiente
         task.spawn(function()
             while _loadAuroraBg and _loadAuroraBg.Parent do
                 TweenService:Create(_loadAuroraBg, TweenInfo.new(3.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    ImageTransparency = 0.08
+                    BackgroundTransparency = 0.15
                 }):Play()
                 task.wait(3.0)
                 TweenService:Create(_loadAuroraBg, TweenInfo.new(3.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    ImageTransparency = 0.35
+                    BackgroundTransparency = 0
                 }):Play()
                 task.wait(3.0)
             end
@@ -53848,15 +53851,38 @@ particles = {}
         task.wait(0.6)
 
         -- ── FASE 2: Bordes cambian de ovalo a rectangulo ──
-        local _titleLbl = Instance.new("ImageLabel", _loadSG)
+        local _titleLbl = Instance.new("Frame", _loadSG)
         _titleLbl.AnchorPoint = Vector2.new(0.5, 0.5)
         _titleLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
         _titleLbl.Size = UDim2.new(0, 520, 0, 260)
+        _titleLbl.BackgroundColor3 = Color3.fromRGB(255, 50, 150)
         _titleLbl.BackgroundTransparency = 1
-        _titleLbl.Image = "rbxassetid://79318526231460"
-        _titleLbl.ImageTransparency = 1
-        _titleLbl.ScaleType = Enum.ScaleType.Fit
+        _titleLbl.BorderSizePixel = 0
         _titleLbl.ZIndex = 20
+        -- Hub color gradient (matches the hub pink/magenta theme)
+        local _titleGrad = Instance.new("UIGradient", _titleLbl)
+        _titleGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(255, 50, 150)),
+            ColorSequenceKeypoint.new(0.40, Color3.fromRGB(200, 40, 120)),
+            ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 130, 190)),
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(255, 50, 150)),
+        })
+        _titleGrad.Rotation = 135
+        Instance.new("UICorner", _titleLbl).CornerRadius = UDim.new(0, 14)
+        local _titleStroke = Instance.new("UIStroke", _titleLbl)
+        _titleStroke.Color = Color3.fromRGB(255, 180, 220)
+        _titleStroke.Thickness = 2.5
+        _titleStroke.Transparency = 0.3
+        -- Hub name text label inside the colored frame
+        local _titleText = Instance.new("TextLabel", _titleLbl)
+        _titleText.Size = UDim2.new(1, 0, 1, 0)
+        _titleText.BackgroundTransparency = 1
+        _titleText.Text = "Zerqon Hub"
+        _titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+        _titleText.TextSize = 36
+        _titleText.Font = Enum.Font.GothamBold
+        _titleText.TextTransparency = 1
+        _titleText.ZIndex = 21
 
         local _cornerDur  = 1.2
         local _cornerElapsed = 0
@@ -53874,7 +53900,7 @@ particles = {}
         end)
         TweenService:Create(_oval, TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
             BackgroundColor3 = _loaderAccent,
-            BackgroundTransparency = 0.35,
+            BackgroundTransparency = 0.05,
         }):Play()
         TweenService:Create(_ovalStroke, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
             Color = _loaderAccent,
@@ -53884,7 +53910,10 @@ particles = {}
 
         task.delay(0.4, function()
             TweenService:Create(_titleLbl, TweenInfo.new(0.65, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
-                ImageTransparency = 0.45
+                BackgroundTransparency = 0.10
+            }):Play()
+            TweenService:Create(_titleText, TweenInfo.new(0.65, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+                TextTransparency = 0
             }):Play()
         end)
         task.wait(1.3)
@@ -54032,7 +54061,8 @@ particles = {}
         local _ft = 0.4
         TweenService:Create(_bg,           TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
         TweenService:Create(_oval,         TweenInfo.new(_ft), {BackgroundTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
-        TweenService:Create(_titleLbl,     TweenInfo.new(_ft), {ImageTransparency = 1}):Play()
+        TweenService:Create(_titleLbl,     TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(_titleText,    TweenInfo.new(_ft), {TextTransparency = 1}):Play()
         TweenService:Create(_pctLbl,       TweenInfo.new(_ft), {TextTransparency = 1}):Play()
         TweenService:Create(_barContainer, TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
         TweenService:Create(_barFill,      TweenInfo.new(_ft), {BackgroundTransparency = 1}):Play()
