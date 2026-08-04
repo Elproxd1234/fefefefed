@@ -37732,93 +37732,159 @@ function CreateExclusiveTab()
             _updateCounter()
         end
 
-        local function _removeRow(player)
+        -- _leaving: marca jugadores que ya salieron del juego para evitar
+        -- que _removeRow trate de animar un frame de un jugador inexistente.
+        local _leaving = {}  -- [UserId] = true
+
+        -- _removeRow: elimina la fila de la lista.
+        -- Si instant=true, destruye inmediatamente (usado en PlayerRemoving).
+        -- Si instant=false (default), hace la animación de fade-out.
+        local function _removeRow(player, instant)
             local r = _userRows[player.UserId]
             if not r then return end
-            -- Marcar como offline visualmente
-            pcall(function() r.dot.BackgroundColor3 = Color3.fromRGB(180, 60, 60) end)
-            pcall(function()
-                r.nameLbl.Text = "❌ " .. player.DisplayName
-                r.nameLbl.TextColor3 = Color3.fromRGB(180, 80, 80)
-            end)
-            TweenService:Create(r.frame, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
-            task.delay(0.55, function()
-                pcall(function() r.frame:Destroy() end)
-            end)
-            _userRows[player.UserId] = nil
+            _userRows[player.UserId] = nil  -- quitar del indice ANTES del delay
             _updateCounter()
+
+            if instant or _leaving[player.UserId] then
+                -- Eliminar inmediatamente, sin animación
+                pcall(function() r.frame:Destroy() end)
+            else
+                -- Animación de salida: dot rojo + fade
+                pcall(function() r.dot.BackgroundColor3 = Color3.fromRGB(180, 60, 60) end)
+                pcall(function()
+                    r.nameLbl.Text = "❌ " .. player.DisplayName
+                    r.nameLbl.TextColor3 = Color3.fromRGB(180, 80, 80)
+                end)
+                TweenService:Create(r.frame, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+                task.delay(0.55, function()
+                    pcall(function() r.frame:Destroy() end)
+                end)
+            end
         end
 
-        -- Escucha cambios de atributo en el HRP de un jugador
+        -- Escucha cambios de atributo en el HRP de un jugador.
+        -- Se llama al entrar al juego y también al re-spawnear (CharacterAdded).
+        -- Desconecta automáticamente las conexiones anteriores del HRP viejo
+        -- antes de registrar las del nuevo HRP.
         local function _watchPlayer(player)
             if _charConns[player.UserId] then return end
             local conns = {}
             _charConns[player.UserId] = conns
 
-            local function _checkHRP(char)
-                if not char then return end
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if not hrp then
-                    -- Esperar a que aparezca el HRP
-                    local addConn = char.ChildAdded:Connect(function(child)
-                        if child.Name == "HumanoidRootPart" then
-                            task.wait(0.1)
-                            local ok, v = pcall(function() return child:GetAttribute(_ATTR) end)
-                            if ok and v == 1 then _addRow(player) end
-                            -- Escuchar cambios futuros del atributo
-                            pcall(function()
-                                local attrConn = child.AttributeChanged:Connect(function(attrName)
-                                    if attrName ~= _ATTR then return end
-                                    local ok2, v2 = pcall(function() return child:GetAttribute(_ATTR) end)
-                                    if ok2 and v2 == 1 then
-                                        _addRow(player)
-                                    else
-                                        _removeRow(player)
-                                    end
-                                end)
-                                table.insert(conns, attrConn)
-                            end)
-                        end
-                    end)
-                    table.insert(conns, addConn)
-                    return
-                end
-                -- HRP ya existe: verificar atributo ahora
-                local ok, v = pcall(function() return hrp:GetAttribute(_ATTR) end)
-                if ok and v == 1 then _addRow(player) end
-                -- Escuchar cambios futuros
-                pcall(function()
-                    local attrConn = hrp.AttributeChanged:Connect(function(attrName)
-                        if attrName ~= _ATTR then return end
-                        local ok2, v2 = pcall(function() return hrp:GetAttribute(_ATTR) end)
-                        if ok2 and v2 == 1 then
-                            _addRow(player)
-                        else
-                            _removeRow(player)
-                        end
-                    end)
-                    table.insert(conns, attrConn)
-                end)
+            -- Tabla local para las conexiones del HRP actual (se reemplaza en cada respawn)
+            local hrpConns = {}
+
+            local function _disconnectHRPConns()
+                for _, c in ipairs(hrpConns) do pcall(function() c:Disconnect() end) end
+                hrpConns = {}
             end
 
-            -- Observar el personaje actual y los futuros
+            local function _bindHRP(hrp)
+                -- Verificar atributo inmediatamente
+                local ok, v = pcall(function() return hrp:GetAttribute(_ATTR) end)
+                if ok and v == 1 then _addRow(player) end
+
+                -- Escuchar cambios futuros del atributo en este HRP
+                local ok2, attrConn = pcall(function()
+                    return hrp.AttributeChanged:Connect(function(attrName)
+                        if attrName ~= _ATTR then return end
+                        -- Ignorar si el jugador ya está saliendo del juego
+                        if _leaving[player.UserId] then return end
+                        local ok3, v3 = pcall(function() return hrp:GetAttribute(_ATTR) end)
+                        if ok3 and v3 == 1 then
+                            _addRow(player)
+                        else
+                            _removeRow(player, false)
+                        end
+                    end)
+                end)
+                if ok2 and attrConn then
+                    table.insert(hrpConns, attrConn)
+                    table.insert(conns, attrConn)
+                end
+
+                -- Si el HRP es destruido (p.ej. al morir antes de respawnear),
+                -- quitar la fila temporalmente hasta que CharacterAdded la restaure.
+                local ok4, destroyConn = pcall(function()
+                    return hrp.AncestryChanged:Connect(function(_, newParent)
+                        if not newParent and not _leaving[player.UserId] then
+                            -- El HRP desapareció: limpiar fila y conexiones del HRP
+                            _disconnectHRPConns()
+                            if _userRows[player.UserId] then
+                                _removeRow(player, false)
+                            end
+                        end
+                    end)
+                end)
+                if ok4 and destroyConn then
+                    table.insert(hrpConns, destroyConn)
+                    table.insert(conns, destroyConn)
+                end
+            end
+
+            local function _checkHRP(char)
+                if not char then return end
+                -- Limpiar conexiones del HRP anterior antes de procesar el nuevo
+                _disconnectHRPConns()
+
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    _bindHRP(hrp)
+                else
+                    -- El HRP aún no existe: esperar a que aparezca
+                    local addConn = char.ChildAdded:Connect(function(child)
+                        if child.Name ~= "HumanoidRootPart" then return end
+                        -- Desconectar el listener de ChildAdded (ya encontramos el HRP)
+                        pcall(function() addConn:Disconnect() end)
+                        task.wait(0.1)  -- pequeño delay para que el hub setee _ZH
+                        if not _leaving[player.UserId] then
+                            _bindHRP(child)
+                        end
+                    end)
+                    table.insert(hrpConns, addConn)
+                    table.insert(conns, addConn)
+                end
+            end
+
+            -- Observar el personaje actual
             if player.Character then
                 _checkHRP(player.Character)
             end
+
+            -- Re-chequear en cada respawn (CharacterAdded se llama al morir y al entrar)
             local caConn = player.CharacterAdded:Connect(function(char)
-                task.wait(0.3)
-                _checkHRP(char)
+                if _leaving[player.UserId] then return end
+                -- Quitar la fila del personaje anterior (si estaba) antes de re-añadir
+                if _userRows[player.UserId] then
+                    _removeRow(player, true)
+                end
+                task.wait(0.3)  -- dar tiempo al hub del otro jugador de setear _ZH
+                if not _leaving[player.UserId] then
+                    _checkHRP(char)
+                end
             end)
             table.insert(conns, caConn)
         end
 
+        -- _cleanPlayer: limpieza COMPLETA al salir del juego.
+        -- Elimina la fila instantáneamente y desconecta todo.
         local function _cleanPlayer(player)
-            _removeRow(player)
+            _leaving[player.UserId] = true  -- marcar como "saliendo" para bloquear animaciones
+            -- Quitar la fila de golpe (sin animación, el jugador ya no está)
+            local r = _userRows[player.UserId]
+            if r then
+                _userRows[player.UserId] = nil
+                pcall(function() r.frame:Destroy() end)
+                _updateCounter()
+            end
+            -- Desconectar todas las conexiones del jugador
             local conns = _charConns[player.UserId]
             if conns then
                 for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
                 _charConns[player.UserId] = nil
             end
+            -- Limpiar la marca de _leaving después de un frame
+            task.defer(function() _leaving[player.UserId] = nil end)
         end
 
         -- Inicializar con los jugadores actuales
@@ -37827,12 +37893,12 @@ function CreateExclusiveTab()
         end
         _updateCounter()
 
-        -- Nuevos jugadores
+        -- Nuevos jugadores que entran al servidor
         local _paConn = Players.PlayerAdded:Connect(function(p)
             _watchPlayer(p)
         end)
 
-        -- Jugadores que se van
+        -- Jugadores que salen del servidor → limpieza inmediata
         local _prConn = Players.PlayerRemoving:Connect(function(p)
             _cleanPlayer(p)
         end)
@@ -53563,38 +53629,57 @@ particles = {}
     end
 
     -- OPT: TweenInfo compartido fuera de SetActiveTab (una sola instancia, nunca se recrea)
-    local _ti_tab = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    -- OPT: colores precacheados como constantes (evita recrear Color3 en cada llamada)
-    local _C_ACTIVE_BG    = Color3.fromRGB(255, 255, 255)
-    local _C_IDLE_BG      = Color3.fromRGB(255, 255, 255)
-    local _C_IDLE_ICON    = Color3.fromRGB(255, 255, 255)
-    local _C_IDLE_STROKE  = Color3.fromRGB(255, 255, 255)
+    local _ti_tab = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+    -- Colores del estilo toggle — misma paleta que CreateAuroraToggle
+    local _C_TOG_BG_IDLE   = Color3.fromRGB(135, 206, 235)  -- celeste (igual que toggle idle)
+    local _C_TOG_BG_ACTIVE = Color3.fromRGB(135, 206, 235)  -- mismo fondo, el knob lo diferencia
+    local _C_TOG_STROKE    = Color3.fromRGB(40, 60, 180)     -- borde azul toggle
+    local _C_KNOB_ON       = Color3.fromRGB(0, 200, 80)      -- verde (tab activa)
+    local _C_KNOB_OFF      = Color3.fromRGB(255, 0, 0)       -- rojo (tab inactiva)
+    local _C_LBL_ACTIVE    = Color3.fromRGB(255, 255, 255)
+    local _C_LBL_IDLE      = Color3.fromRGB(255, 255, 255)
 
     local function _applyBtnState(i, isActive)
         local btn = sideButtons[i]
         if not btn then return end
-        local r         = _G._tabBtnRefs[i]
-        local stroke    = r and r.stroke
-        local activeBar = r and r.activeBar
-        local lbl2      = r and r.lbl2
+        local r      = _G._tabBtnRefs[i]
+        local stroke = r and r.stroke
+        local knob   = r and r.knob    -- indicador rojo/verde (reemplaza activeBar)
+        local knobBg = r and r.knobBg  -- fondo del área del knob
+        local lbl2   = r and r.lbl2
+        -- Calcular offsets del knob (misma lógica que CreateAuroraToggle)
+        local _isMob    = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
+        local _kSz      = _isMob and 18 or 24
+        local _kOffR    = _isMob and -(_kSz + 5) or -28  -- posición ON (derecha)
+        local _kOffL    = 4                               -- posición OFF (izquierda)
+
         if isActive then
-            -- Tab activa: igual al topBar del CustomBlueGui (60,80,190 / transparency 0.1)
+            -- Tab activa: fondo más opaco + knob VERDE a la DERECHA (igual que toggle ON)
             TweenService:Create(btn, _ti_tab, {
-                BackgroundColor3 = Color3.fromRGB(60, 80, 190),
-                BackgroundTransparency = 0.1
+                BackgroundColor3       = _C_TOG_BG_ACTIVE,
+                BackgroundTransparency = 0.25,
             }):Play()
-            if stroke    then TweenService:Create(stroke, _ti_tab, {Transparency = 0, Color = Color3.fromRGB(40, 60, 180)}):Play() end
-            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(40, 60, 180)}):Play() end
-            if lbl2      then TweenService:Create(lbl2, _ti_tab, {TextColor3 = Color3.fromRGB(255, 255, 255), TextStrokeTransparency = 0.4}):Play() end
+            if stroke  then TweenService:Create(stroke,  _ti_tab, {Transparency = 0, Color = _C_TOG_STROKE}):Play() end
+            if knob    then TweenService:Create(knob,    _ti_tab, {
+                BackgroundColor3 = _C_KNOB_ON,
+                Position         = UDim2.new(1, _kOffR, 0.5, 0),
+            }):Play() end
+            if knobBg  then TweenService:Create(knobBg,  _ti_tab, {BackgroundTransparency = 0.3}):Play() end
+            if lbl2    then TweenService:Create(lbl2,    _ti_tab, {TextColor3 = _C_LBL_ACTIVE, TextStrokeTransparency = 0.4}):Play() end
         else
-            -- Tab inactiva: igual a las cajas vacías del CustomBlueGui (150,180,255 / 0.5)
+            -- Tab inactiva: fondo más transparente + knob ROJO a la IZQUIERDA (igual que toggle OFF)
             TweenService:Create(btn, _ti_tab, {
-                BackgroundColor3 = Color3.fromRGB(150, 180, 255),
-                BackgroundTransparency = 0.5
+                BackgroundColor3       = _C_TOG_BG_IDLE,
+                BackgroundTransparency = 0.78,
             }):Play()
-            if stroke    then TweenService:Create(stroke, _ti_tab, {Transparency = 0, Color = Color3.fromRGB(40, 60, 180)}):Play() end
-            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 1}):Play() end
-            if lbl2      then TweenService:Create(lbl2, _ti_tab, {TextColor3 = Color3.fromRGB(240, 245, 255), TextStrokeTransparency = 0.6}):Play() end
+            if stroke  then TweenService:Create(stroke,  _ti_tab, {Transparency = 0, Color = _C_TOG_STROKE}):Play() end
+            if knob    then TweenService:Create(knob,    _ti_tab, {
+                BackgroundColor3 = _C_KNOB_OFF,
+                Position         = UDim2.new(0, _kOffL, 0.5, 0),
+            }):Play() end
+            if knobBg  then TweenService:Create(knobBg,  _ti_tab, {BackgroundTransparency = 0.3}):Play() end
+            if lbl2    then TweenService:Create(lbl2,    _ti_tab, {TextColor3 = _C_LBL_IDLE,   TextStrokeTransparency = 0.6}):Play() end
         end
     end
 
@@ -53771,36 +53856,44 @@ particles = {}
     local dockLayout = Instance.new("UIListLayout", tabDockList)
     dockLayout.FillDirection = Enum.FillDirection.Vertical
     dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    dockLayout.Padding = UDim.new(0, 0)  -- MÓVIL: sin separación entre pestañas
+    dockLayout.Padding = UDim.new(0, 4)  -- espacio entre pestañas redondeadas
     dockLayout.SortOrder = Enum.SortOrder.LayoutOrder
     local dockPad = Instance.new("UIPadding", tabDockList)
-    dockPad.PaddingTop    = UDim.new(0, 0)
-    dockPad.PaddingBottom = UDim.new(0, 0)
-    dockPad.PaddingLeft   = UDim.new(0, 0)
-    dockPad.PaddingRight  = UDim.new(0, 0)
+    dockPad.PaddingTop    = UDim.new(0, 4)
+    dockPad.PaddingBottom = UDim.new(0, 4)
+    dockPad.PaddingLeft   = UDim.new(0, 4)
+    dockPad.PaddingRight  = UDim.new(0, 4)
 
     -- Panel izquierdo: contentContainer (área de contenido de tabs)
     contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
     contentContainer.Size = UDim2.new(0.73, 0, 0.86, 0)
     contentContainer.Visible  = false
 
-    local C_TAB_IDLE   = Color3.fromRGB(150, 180, 255)
-    local C_TAB_ACTIVE = Color3.fromRGB(60, 80, 190)
-    local C_TAB_HOVER  = Color3.fromRGB(100, 140, 230)
-    local C_NEON       = Color3.fromRGB(40, 60, 180)
+    -- Mismos colores que CreateAuroraToggle
+    local C_TOG_BG      = Color3.fromRGB(135, 206, 235)  -- celeste igual que toggle
+    local C_TOG_STROKE  = Color3.fromRGB(40, 60, 180)    -- borde azul
+    local C_KNOB_BG     = Color3.fromRGB(60, 80, 190)    -- fondo del área del knob
+    local C_KNOB_ON     = Color3.fromRGB(0, 200, 80)     -- verde = tab activa
+    local C_KNOB_OFF    = Color3.fromRGB(255, 0, 0)      -- rojo = tab inactiva
 
-    local BTN_H = 52
+    -- Tamaños del knob (igual que en CreateAuroraToggle)
+    local _isMobileTog  = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
+    local _knobBgW      = _isMobileTog and 52 or 65
+    local _knobBgH      = _isMobileTog and 26 or 32
+    local _knobSz       = _isMobileTog and 18 or 24
+    local _knobOffR     = _isMobileTog and -(_knobSz + 5) or -28
+    local _lblTxtSz     = _isMobileTog and 13 or 14
+    local _rowH         = _isMobileTog and 52 or 60   -- altura de cada pestaña
 
     local function _syncDockPos() end  -- no-op
 
-    -- Crear botones de tabs — diseño CustomBlueGui (cajas con borde azul, fondo translúcido)
+    -- Crear botones de tabs — estilo AuroraToggle: celeste + borde azul + knob rojo/verde
     for i = 1, #tabNames do
         local btn = Instance.new("TextButton", tabDockList)
         btn.Name                    = tabNames[i] .. "SideBtn"
-        btn.Size                    = UDim2.new(1, 0, 0, 0)  -- MÓVIL: ancho completo, sin hueco lateral
-        btn.AutomaticSize           = Enum.AutomaticSize.Y
-        btn.BackgroundColor3        = Color3.fromRGB(150, 180, 255)
-        btn.BackgroundTransparency  = 0.5
+        btn.Size                    = UDim2.new(1, -8, 0, _rowH)
+        btn.BackgroundColor3        = C_TOG_BG
+        btn.BackgroundTransparency  = 0.78   -- idle: casi transparente, igual que toggle OFF
         btn.BorderSizePixel         = 0
         btn.Text                    = ""
         btn.AutoButtonColor         = false
@@ -53808,55 +53901,45 @@ particles = {}
         btn.ZIndex                  = 13
         btn.LayoutOrder             = i
 
-        local _tabTag       = Instance.new("StringValue", btn)
-        _tabTag.Name        = "TAB_BTN_PROTECTED"
-        _tabTag.Value       = "1"
+        local _tabTag   = Instance.new("StringValue", btn)
+        _tabTag.Name    = "TAB_BTN_PROTECTED"
+        _tabTag.Value   = "1"
 
-        -- Sin corner radius: pestañas pegadas sin huecos
-        -- local btnCorner = Instance.new("UICorner", btn)
+        -- Esquinas redondeadas (8px igual que toggle)
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
 
-        local btnStroke             = Instance.new("UIStroke", btn)
-        btnStroke.Color             = Color3.fromRGB(40, 60, 180)
-        btnStroke.Thickness         = 2
-        btnStroke.Transparency      = 0
-        btnStroke.ApplyStrokeMode   = Enum.ApplyStrokeMode.Border
+        -- Borde azul (igual que toggle)
+        local btnStroke           = Instance.new("UIStroke", btn)
+        btnStroke.Color           = C_TOG_STROKE
+        btnStroke.Thickness       = 2
+        btnStroke.Transparency    = 0
+        btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
+        -- Padding interno (igual que toggle)
         local btnPad = Instance.new("UIPadding", btn)
-        btnPad.PaddingTop    = UDim.new(0, 4)  -- MÓVIL: padding reducido
+        btnPad.PaddingTop    = UDim.new(0, 4)
         btnPad.PaddingBottom = UDim.new(0, 4)
-        btnPad.PaddingLeft   = UDim.new(0, 4)
-        btnPad.PaddingRight  = UDim.new(0, 4)
+        btnPad.PaddingLeft   = UDim.new(0, 8)
+        btnPad.PaddingRight  = UDim.new(0, 8)
 
-        -- Indicador de activo (barra izquierda)
-        local activeBar                 = Instance.new("Frame", btn)
-        activeBar.Name                  = "ActiveBar"
-        activeBar.Size                  = UDim2.new(0, 3, 0.7, 0)
-        activeBar.AnchorPoint           = Vector2.new(0, 0.5)
-        activeBar.Position              = UDim2.new(0, 0, 0.5, 0)
-        activeBar.BackgroundColor3      = Color3.fromRGB(40, 60, 180)
-        activeBar.BackgroundTransparency= 1
-        activeBar.BorderSizePixel       = 0
-        activeBar.ZIndex                = 16
-        Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
-
-        -- Label del botón: texto centrado, tamaño fijo, blanco
-        local lbl                   = Instance.new("TextLabel", btn)
-        lbl.Name                    = "TabLabel"
-        lbl.Size                    = UDim2.new(1, 0, 0, 36)
-        lbl.AnchorPoint             = Vector2.new(0.5, 0.5)
-        lbl.Position                = UDim2.new(0.5, 0, 0.5, 0)
-        lbl.BackgroundTransparency  = 1
-        lbl.Text                    = tabNames[i]
-        lbl.FontFace                = Font.fromEnum(Enum.Font.GothamBold)
-        lbl.TextScaled              = false
-        lbl.TextSize                = 13
-        lbl.TextColor3              = Color3.fromRGB(240, 245, 255)
-        lbl.TextXAlignment          = Enum.TextXAlignment.Center
-        lbl.TextYAlignment          = Enum.TextYAlignment.Center
-        lbl.TextWrapped             = false
-        lbl.TextStrokeTransparency  = 0.6
-        lbl.TextStrokeColor3        = Color3.fromRGB(40, 60, 180)
-        lbl.ZIndex                  = 14
+        -- Etiqueta: mitad izquierda, igual que label del toggle
+        local lbl               = Instance.new("TextLabel", btn)
+        lbl.Name                = "TabLabel"
+        lbl.Size                = UDim2.new(0.6, 0, 1, 0)
+        lbl.Position            = UDim2.new(0, 0, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text                = tabNames[i]
+        lbl.FontFace            = Font.fromEnum(Enum.Font.GothamBold)
+        lbl.TextScaled          = false
+        lbl.TextSize            = _lblTxtSz
+        lbl.TextColor3          = Color3.fromRGB(255, 255, 255)
+        lbl.TextXAlignment      = Enum.TextXAlignment.Left
+        lbl.TextYAlignment      = Enum.TextYAlignment.Center
+        lbl.TextWrapped         = false
+        lbl.TextTruncate        = Enum.TextTruncate.AtEnd
+        lbl.TextStrokeTransparency = 0.4
+        lbl.TextStrokeColor3    = Color3.fromRGB(0, 0, 0)
+        lbl.ZIndex              = 14
 
         do
             local _tabKey = tabNames[i]:lower():gsub(" ", "_")
@@ -53867,23 +53950,59 @@ particles = {}
             end
         end
 
-        local ti = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        -- Fondo del área del knob (igual que toggleBg en CreateAuroraToggle)
+        local knobBg              = Instance.new("Frame", btn)
+        knobBg.Name               = "KnobBg"
+        knobBg.Size               = UDim2.new(0, _knobBgW, 0, _knobBgH)
+        knobBg.AnchorPoint        = Vector2.new(1, 0.5)
+        knobBg.Position           = UDim2.new(1, -4, 0.5, 0)
+        knobBg.BackgroundColor3   = C_KNOB_BG
+        knobBg.BackgroundTransparency = 0.3
+        knobBg.BorderSizePixel    = 0
+        knobBg.ZIndex             = 15
+        Instance.new("UICorner", knobBg).CornerRadius = UDim.new(0, 8)
+        local knobBgStroke        = Instance.new("UIStroke", knobBg)
+        knobBgStroke.Color        = C_TOG_STROKE
+        knobBgStroke.Thickness    = 1.5
+        knobBgStroke.Transparency = 0
+        knobBgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-        btn.MouseEnter:Connect(function()
+        -- Knob indicador: empieza en rojo (inactivo), igual que indicator en toggle
+        local knob              = Instance.new("Frame", knobBg)
+        knob.Name               = "Knob"
+        knob.Size               = UDim2.new(0, _knobSz, 0, _knobSz)
+        knob.AnchorPoint        = Vector2.new(0, 0.5)
+        -- posición inicial = OFF (izquierda del knobBg)
+        knob.Position           = UDim2.new(0, 4, 0.5, 0)
+        knob.BackgroundColor3   = C_KNOB_OFF
+        knob.BorderSizePixel    = 0
+        knob.ZIndex             = 16
+        Instance.new("UICorner", knob).CornerRadius = UDim.new(0, 6)
+
+        -- Botón invisible sobre todo el row (para capturar clicks sin interferir visualmente)
+        local clickRow              = Instance.new("TextButton", btn)
+        clickRow.Size               = UDim2.new(1, 0, 1, 0)
+        clickRow.BackgroundTransparency = 1
+        clickRow.Text               = ""
+        clickRow.ZIndex             = 20
+        clickRow.AutoButtonColor    = false
+
+        local ti = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+        -- Hover: resaltar fondo igual que en toggle
+        clickRow.MouseEnter:Connect(function()
             if activeTabIdx ~= i then
                 PlayHoverSound()
-                TweenService:Create(btn, ti, {BackgroundTransparency = 0.15, BackgroundColor3 = Color3.fromRGB(100, 140, 230)}):Play()
-                TweenService:Create(lbl, ti, {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+                TweenService:Create(btn, ti, {BackgroundTransparency = 0.45}):Play()
             end
         end)
-        btn.MouseLeave:Connect(function()
+        clickRow.MouseLeave:Connect(function()
             if activeTabIdx ~= i then
-                TweenService:Create(btn, ti, {BackgroundTransparency = 0.5, BackgroundColor3 = Color3.fromRGB(150, 180, 255)}):Play()
-                TweenService:Create(lbl, ti, {TextColor3 = Color3.fromRGB(240, 245, 255)}):Play()
+                TweenService:Create(btn, ti, {BackgroundTransparency = 0.78}):Play()
             end
         end)
 
-        btn.Activated:Connect(function()
+        clickRow.Activated:Connect(function()
             PlayTabSound()
             local wasVisible = contentContainer.Visible
             if not wasVisible then
@@ -53898,7 +54017,9 @@ particles = {}
         _G._tabBtnRefs[i] = {
             icon      = nil,
             stroke    = btnStroke,
-            activeBar = activeBar,
+            activeBar = nil,    -- ya no se usa, reemplazado por knob
+            knob      = knob,
+            knobBg    = knobBg,
             lbl2      = lbl,
         }
     end
