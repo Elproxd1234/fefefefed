@@ -7297,7 +7297,7 @@ function PlaySound()
     if now - _lastPlaySoundTime < 0.08 then return end  -- debounce: no repetir en menos de 80ms
     _lastPlaySoundTime = now
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://156286438"
+    s.SoundId = "rbxassetid://6927468309"
     s.Volume = 0.5
     s.PlaybackSpeed = 1.0
     s.RollOffMaxDistance = 999
@@ -7316,7 +7316,7 @@ function PlayToggleSound(isOn)
     if now - _lastToggleSoundTime < 0.08 then return end
     _lastToggleSoundTime = now
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://156286438"
+    s.SoundId = "rbxassetid://6927468309"
     s.Volume = 0.5
     s.PlaybackSpeed = 1.0
     s.RollOffMaxDistance = 999
@@ -7329,7 +7329,7 @@ end
 function PlayTabSound()
     if _G._hubSettings and _G._hubSettings.disableClickSound then return end
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://156286438" -- swoosh suave de pestana
+    s.SoundId = "rbxassetid://6927468309" -- swoosh suave de pestana
     s.Volume = 0.35
     s.PlaybackSpeed = 1.1
     s.RollOffMaxDistance = 999
@@ -7342,7 +7342,7 @@ end
 function PlayHoverSound()
     if _G._hubSettings and _G._hubSettings.disableClickSound then return end
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://156286438" -- hover suave
+    s.SoundId = "rbxassetid://6927468309" -- hover suave
     s.Volume = 0.18
     s.PlaybackSpeed = 1.2
     s.RollOffMaxDistance = 999
@@ -7353,7 +7353,7 @@ end
 
 function PlayDeathSound()
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://156286438"
+    s.SoundId = "rbxassetid://6927468309"
     s.Volume = 0.5
     s.Parent = workspace
     s:Play()
@@ -10774,7 +10774,7 @@ function _makeTwoColumns()
     local searchBar = Instance.new("Frame", wrapper)
     searchBar.Name = "SearchBar"
     searchBar.Size = UDim2.new(1, -12, 0, SEARCH_H)
-    searchBar.Position = UDim2.new(0, 6, 0, 4)
+    searchBar.Position = UDim2.new(0, 6, 0, 12)
     -- Color igual al fondo del hub teal
     searchBar.BackgroundColor3 = ThemeColors.Background
     searchBar.BackgroundTransparency = 0.15
@@ -16857,7 +16857,7 @@ function CreateMainUI_BackgroundSelector()
             -- Sonido
             pcall(function()
                 local snd = Instance.new("Sound")
-                snd.SoundId = "rbxassetid://156286438"
+                snd.SoundId = "rbxassetid://6927468309"
                 snd.Volume = 0.8; snd.Parent = hrp; snd:Play()
                 Debris:AddItem(snd, 2)
             end)
@@ -17798,7 +17798,7 @@ function CreateMainUI_GameInfo()
         local _notifyRolState = { enabled = false, lastRole = "", conn = nil, cbId = nil }
         local function _playMurderSound()
             local s = Instance.new("Sound")
-            s.SoundId = "rbxassetid://156286438" -- sonido de muerte/alerta
+            s.SoundId = "rbxassetid://6927468309" -- sonido de muerte/alerta
             s.Volume  = 0.9
             s.Parent  = workspace
             s:Play()
@@ -17806,7 +17806,7 @@ function CreateMainUI_GameInfo()
         end
         local function _playSheriffSound()
             local s = Instance.new("Sound")
-            s.SoundId = "rbxassetid://156286438" -- sonido de click/accion
+            s.SoundId = "rbxassetid://6927468309" -- sonido de click/accion
             s.Volume  = 0.9
             s.Parent  = workspace
             s:Play()
@@ -52495,7 +52495,7 @@ particles = {}
     -- ============================================================
     header = Instance.new("Frame", mainFrame)
     header.Name = "TopBar"
-    header.Size = UDim2.new(1, 0, 0.14, 0)
+    header.Size = UDim2.new(1, 0, 0.14, 8)
     header.Position = UDim2.new(0, 0, 0, 0)
     header.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
     header.BackgroundTransparency = 0.55
@@ -52829,8 +52829,8 @@ particles = {}
     -- ContentContainer: panel izquierdo del hub (contenido de tabs)
     contentContainer = Instance.new("Frame", mainFrame)
     contentContainer.Name = "ContentContainer"
-    contentContainer.Size = UDim2.new(0.70, 0, 0.86, 0)
-    contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
+    contentContainer.Size = UDim2.new(0.70, 0, 0.86, 8)
+    contentContainer.Position = UDim2.new(0, 0, 0.14, -8)
     contentContainer.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
     contentContainer.BackgroundTransparency = 0.55
     contentContainer.BorderSizePixel = 0
@@ -53520,23 +53520,38 @@ particles = {}
             rGui2.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
             rGui2.DisplayOrder = 9998
             rGui2.Parent = pg
-            local SKULL_SIZE2 = 130
+            local SKULL_SIZE2 = 70
             local skullMF2 = Instance.new("Frame", rGui2)
             skullMF2.BackgroundTransparency = 1
             skullMF2.AnchorPoint = Vector2.new(0.5, 0)
             skullMF2.Size = UDim2.new(0, SKULL_SIZE2, 0, SKULL_SIZE2)
             skullMF2.Position = UDim2.new(0.5, 0, 0, 10)
-            local rBtn2 = Instance.new("ImageButton", skullMF2)
+            local rBtn2 = Instance.new("TextButton", skullMF2)
             rBtn2.AnchorPoint = Vector2.new(0.5, 0.5)
             rBtn2.Position = UDim2.new(0.5, 0, 0.5, 0)
             rBtn2.Size = UDim2.new(0, 0, 0, 0)
-            rBtn2.BackgroundTransparency = 1
-            rBtn2.Image = "rbxassetid://100287275990702"
-            rBtn2.ImageColor3 = Color3.fromRGB(255, 255, 255)
-            rBtn2.ScaleType = Enum.ScaleType.Fit
+            rBtn2.BackgroundColor3 = Color3.fromRGB(255, 50, 150)
+            rBtn2.BackgroundTransparency = 0.3
+            rBtn2.BorderSizePixel = 0
+            rBtn2.Text = "zerqon"
+            rBtn2.TextColor3 = Color3.fromRGB(255, 255, 255)
+            rBtn2.TextScaled = true
+            rBtn2.FontFace = Font.fromEnum(Enum.Font.Montserrat)
             rBtn2.ZIndex = 100
             rBtn2.Active = true
-            Instance.new("UICorner", rBtn2).CornerRadius = UDim.new(0, 14)
+            rBtn2.AutoButtonColor = false
+            Instance.new("UICorner", rBtn2).CornerRadius = UDim.new(0, 12)
+            local _rBtn2Stroke = Instance.new("UIStroke", rBtn2)
+            _rBtn2Stroke.Color = Color3.fromRGB(255, 50, 150)
+            _rBtn2Stroke.Thickness = 1.5
+            _rBtn2Stroke.Transparency = 0.1
+            _rBtn2Stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            local _rBtn2Grad = Instance.new("UIGradient", rBtn2)
+            _rBtn2Grad.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(200, 35, 130)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 80, 170)),
+            })
+            _rBtn2Grad.Rotation = 135
             TweenService:Create(rBtn2, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                 Size = UDim2.new(0, SKULL_SIZE2 * 0.9, 0, SKULL_SIZE2 * 0.9)
             }):Play()
@@ -53752,13 +53767,20 @@ particles = {}
             _loadSG.Parent = LocalPlayer.PlayerGui
         end
 
-        -- Fondo negro (empieza transparente para que en Fase 1 se vea el juego detras del ovalo)
+        -- Fondo rosa del hub con transparencia
         local _bg = Instance.new("Frame", _loadSG)
         _bg.Size = UDim2.new(1, 0, 1, 0)
-        _bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        _bg.BackgroundTransparency = 1
+        _bg.BackgroundColor3 = Color3.fromRGB(200, 35, 130)
+        _bg.BackgroundTransparency = 0.55
         _bg.BorderSizePixel = 0
         _bg.ZIndex = 1
+        local _bgGrad = Instance.new("UIGradient", _bg)
+        _bgGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,   Color3.fromRGB(80,  8,  70)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 35, 130)),
+            ColorSequenceKeypoint.new(1,   Color3.fromRGB(255, 50, 150)),
+        })
+        _bgGrad.Rotation = 135
 
         -- ── FASE 1: Ovalo grande cubriendo casi toda la pantalla ──
         local _oval = Instance.new("Frame", _loadSG)
@@ -53802,17 +53824,16 @@ particles = {}
         _loadAuroraBg.Name                   = "LoadAuroraBg"
         _loadAuroraBg.Size                   = UDim2.new(1, 0, 1, 0)
         _loadAuroraBg.Position               = UDim2.new(0, 0, 0, 0)
-        _loadAuroraBg.BackgroundColor3       = Color3.fromRGB(20, 5, 30)
-        _loadAuroraBg.BackgroundTransparency = 0
+        _loadAuroraBg.BackgroundColor3       = Color3.fromRGB(255, 50, 150)
+        _loadAuroraBg.BackgroundTransparency = 0.45
         _loadAuroraBg.BorderSizePixel        = 0
         _loadAuroraBg.ZIndex                 = 5
         -- Gradiente del hub: fondo oscuro con toque rosa/magenta
         local _loadBgGrad = Instance.new("UIGradient", _loadAuroraBg)
         _loadBgGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(40,  5,  55)),
-            ColorSequenceKeypoint.new(0.35, Color3.fromRGB(90,  10, 80)),
-            ColorSequenceKeypoint.new(0.65, Color3.fromRGB(180, 30, 120)),
-            ColorSequenceKeypoint.new(1,    Color3.fromRGB(255, 50, 150)),
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(200, 35,  130)),
+            ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(255, 80,  170)),
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(255, 50,  150)),
         })
         _loadBgGrad.Rotation = 135
 
@@ -53918,8 +53939,8 @@ particles = {}
         _barContainer.AnchorPoint = Vector2.new(0.5, 0)
         _barContainer.Position = UDim2.new(0.5, 0, 0.535, 0)
         _barContainer.Size = UDim2.new(0.50, 0, 0, 16)
-        _barContainer.BackgroundColor3 = ThemeColors.BackgroundLight
-        _barContainer.BackgroundTransparency = 0.2
+        _barContainer.BackgroundColor3 = Color3.fromRGB(30, 10, 25)
+        _barContainer.BackgroundTransparency = 0.1
         _barContainer.BorderSizePixel = 0
         _barContainer.ZIndex = 21
         Instance.new("UICorner", _barContainer).CornerRadius = UDim.new(0, 5)
@@ -53930,7 +53951,7 @@ particles = {}
 
         local _barFill = Instance.new("Frame", _barContainer)
         _barFill.Size = UDim2.new(0, 0, 1, 0)
-        _barFill.BackgroundColor3 = Color3.fromRGB(85, 120, 195)  -- base mezclada
+        _barFill.BackgroundColor3 = Color3.fromRGB(255, 50, 150)  -- rosa/magenta del hub
         _barFill.BackgroundTransparency = 0
         _barFill.BorderSizePixel = 0
         _barFill.ZIndex = 22
@@ -53938,10 +53959,10 @@ particles = {}
         -- Gradiente horizontal: azul -> violeta -> verde -> azul bien mezclados
         local _barGrad = Instance.new("UIGradient", _barFill)
         _barGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(255, 50, 150)),  -- azul puro
-            ColorSequenceKeypoint.new(0.33, Color3.fromRGB(120, 60,  205)),  -- violeta
-            ColorSequenceKeypoint.new(0.66, Color3.fromRGB(255, 130, 190)),  -- verde
-            ColorSequenceKeypoint.new(1,    Color3.fromRGB(220, 60, 160)),  -- azul-violeta
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(255, 50,  150)),  -- rosa hub
+            ColorSequenceKeypoint.new(0.33, Color3.fromRGB(200, 35,  130)),  -- magenta oscuro
+            ColorSequenceKeypoint.new(0.66, Color3.fromRGB(255, 130, 190)),  -- rosa claro
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(220, 60,  160)),  -- rosa medio
         })
         _barGrad.Rotation = 0
 
@@ -53958,10 +53979,10 @@ particles = {}
             local o = _barGradOffset
             -- Interpolar colores ciclicamente para simular movimiento del verde
             local function lerpC(a, b, t) return Color3.new(a.R+(b.R-a.R)*t, a.G+(b.G-a.G)*t, a.B+(b.B-a.B)*t) end
-            local cBlue   = Color3.fromRGB(255, 50, 150)
-            local cViolet = Color3.fromRGB(120, 60,  205)
-            local cGreen  = Color3.fromRGB(255, 130, 190)
-            local cBluePurple = Color3.fromRGB(220, 60, 160)
+            local cBlue   = Color3.fromRGB(255, 50,  150)  -- rosa hub
+            local cViolet = Color3.fromRGB(200, 35,  130)  -- magenta oscuro
+            local cGreen  = Color3.fromRGB(255, 130, 190)  -- rosa claro
+            local cBluePurple = Color3.fromRGB(220, 60, 160)  -- rosa medio
             -- Desplazar los 4 keypoints con el offset para crear efecto de flujo
             local k0 = ((0    + o) % 1)
             local k1 = ((0.33 + o) % 1)
@@ -54008,7 +54029,7 @@ particles = {}
         _barLbl.Text = "Loading Game [0%]"
         _barLbl.Font = Enum.Font.GothamMedium
         _barLbl.TextSize = 11
-        _barLbl.TextColor3 = Color3.fromRGB(160, 200, 255)  -- azul-violeta claro
+        _barLbl.TextColor3 = Color3.fromRGB(255, 180, 220)  -- rosa claro del hub
         _barLbl.TextXAlignment = Enum.TextXAlignment.Center
         _barLbl.ZIndex = 23
 
@@ -54061,15 +54082,13 @@ particles = {}
 
         pcall(function() _loadSG:Destroy() end)
 
-        -- ── FASE FINAL: hub real aparece con pop-in suave ──
+        -- ── FASE FINAL: hub real aparece directo en escala normal ──
         mainFrame.Visible = true
         mainFrame.BackgroundTransparency = 1
         local uiScaleEntry = mainFrame:FindFirstChildOfClass("UIScale")
-        if uiScaleEntry then uiScaleEntry.Scale = 0 end
+        local _targetScale = (_getTargetScale and _getTargetScale() or 0.70)
         if uiScaleEntry then
-            TweenService:Create(uiScaleEntry, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Scale = (_getTargetScale and _getTargetScale() or 0.70)
-            }):Play()
+            uiScaleEntry.Scale = _targetScale  -- directo, sin animación de escala
         end
         task.wait(0)
 
