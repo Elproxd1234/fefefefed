@@ -908,6 +908,33 @@ if _G._toggleStates then
     end
 end
 _G._toggleStates = _freshStates
+
+-- FIX HUBSCALE: inicializar _hubSettings con defaults ANTES de _loadConfig()
+-- para que el valor de hubScale nunca sea nil cuando uiScale lo lee al construir la UI.
+-- _loadConfig() sobreescribe solo los campos que existen en el archivo guardado.
+if not _G._hubSettings then
+    _G._hubSettings = {
+        disableClickSound  = false,
+        disableKeybinds    = false,
+        undraggableButtons = false,
+        noTabAnimations    = false,
+        noMinMaxAnimations = false,
+        allowHubDrag       = true,
+        hubOpacity         = 15,
+        hubScale           = 130,  -- valor por defecto: 130%
+        hubLayoutMode      = 1,
+        notifDuration      = 3,
+        notifMuted         = false,
+        fpsLimit           = 0,
+        crosshairHidden    = false,
+        hudHidden          = false,
+        chatHidden         = false,
+        lowRenderQuality   = false,
+        disableShadows     = false,
+        fullbright         = false,
+        doubleColumn       = false,
+    }
+end
 _loadConfig()
 
 
@@ -1343,12 +1370,12 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
     local savedPT = _G._toggleStates[_ptKey]
     local isToggled = (savedPT ~= nil) and savedPT or (defaultState or false)
 
-    local C_STROKE_OFF  = Color3.fromRGB(220, 60, 160)
-    local C_STROKE_ON   = Color3.fromRGB(255, 50, 150)
+    local C_STROKE_OFF  = Color3.fromRGB(80, 100, 200)
+    local C_STROKE_ON   = Color3.fromRGB(40, 60, 180)
     local C_TRACK_OFF   = Color3.fromRGB(45, 45, 45)
     local C_TRACK_ON    = Color3.fromRGB(0, 220, 0)
-    local C_TRACK_S_OFF = Color3.fromRGB(220, 60, 160)
-    local C_TRACK_S_ON  = Color3.fromRGB(255, 50, 150)
+    local C_TRACK_S_OFF = Color3.fromRGB(80, 100, 200)
+    local C_TRACK_S_ON  = Color3.fromRGB(40, 60, 180)
 
     -- ptStroke eliminado (sin rectangulo)
     local ptStroke = {Color = C_STROKE_OFF}  -- stub para que el resto del codigo no rompa
@@ -1437,10 +1464,10 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
             TweenService:Create(numLabel,    ti,  {Position        = isToggled and UDim2.new(0, THUMB_PAD, 0, 0) or UDim2.new(0.5, 0, 0, 0)}):Play()
             -- Animacion estrella: pulso de brillo al activar
             if isToggled then
-                local thumbColor = Color3.fromRGB(120, 80, 200)
+                local thumbColor = Color3.fromRGB(40, 80, 200)
                 TweenService:Create(thumb, TweenInfo.new(0.10, Enum.EasingStyle.Quad), {BackgroundColor3 = thumbColor, BackgroundTransparency = 0}):Play()
                 task.delay(0.12, function()
-                    TweenService:Create(thumb, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(255, 50, 150), BackgroundTransparency = 0}):Play()
+                    TweenService:Create(thumb, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(40, 60, 180), BackgroundTransparency = 0}):Play()
                     -- pulso del stroke: brilla y vuelve
                     -- trackStroke hidden (border removed)
                 end)
@@ -4130,7 +4157,7 @@ local Themes = {
         Aurora1         = Color3.fromRGB(220, 220, 220), -- blanco gris
         Aurora2         = Color3.fromRGB(80, 80, 80),    -- gris medio
         Aurora3         = Color3.fromRGB(140, 140, 140), -- gris plateado
-        Aurora4         = Color3.fromRGB(220, 60, 160),    -- gris muy oscuro
+        Aurora4         = Color3.fromRGB(80, 100, 200),    -- gris muy oscuro
     },
     ["Amoled"] = {
         Primary         = Color3.fromRGB(117, 117, 117),
@@ -4198,17 +4225,17 @@ local Themes = {
         Aurora4         = Color3.fromRGB(58, 58, 58),
     },
     ["Beach"] = {
-        Primary         = Color3.fromRGB(255, 50, 150),    -- Celeste Electrico
+        Primary         = Color3.fromRGB(40, 60, 180),    -- Celeste Electrico
         Secondary       = Color3.fromRGB(200, 20, 100),    -- Azul Oceano
         Accent          = Color3.fromRGB(255, 200, 120),  -- Arena Dorada
         Background      = Color3.fromRGB(30, 30, 30),      -- Azul muy oscuro
         BackgroundLight = Color3.fromRGB(180, 40, 100),      -- Azul noche
         TextPrimary     = Color3.fromRGB(220, 245, 255),  -- Blanco celeste
         TextSecondary   = Color3.fromRGB(255, 200, 120),  -- Arena dorada
-        Aurora1         = Color3.fromRGB(255, 50, 150),    -- Celeste Electrico
+        Aurora1         = Color3.fromRGB(40, 60, 180),    -- Celeste Electrico
         Aurora2         = Color3.fromRGB(255, 200, 120),  -- Arena Dorada
         Aurora3         = Color3.fromRGB(200, 20, 100),    -- Azul Oceano
-        Aurora4         = Color3.fromRGB(255, 50, 150),    -- Cyan
+        Aurora4         = Color3.fromRGB(40, 60, 180),    -- Cyan
     },
     ["Independence Day"] = {
         Primary         = Color3.fromRGB(20, 5, 45),
@@ -4224,14 +4251,14 @@ local Themes = {
         Aurora4         = Color3.fromRGB(220, 50, 50),
     },
     ["Cyber Cyan"] = {
-        Primary         = Color3.fromRGB(255, 50, 150),    -- Cyan brillante
+        Primary         = Color3.fromRGB(40, 60, 180),    -- Cyan brillante
         Secondary       = Color3.fromRGB(0, 140, 180),    -- Cyan medio
         Accent          = Color3.fromRGB(120, 255, 255),  -- Cyan claro
         Background      = Color3.fromRGB(30, 30, 30),      -- Negro azulado
         BackgroundLight = Color3.fromRGB(30, 30, 30),      -- Gris azulado oscuro
         TextPrimary     = Color3.fromRGB(220, 255, 255),  -- Blanco cyan
         TextSecondary   = Color3.fromRGB(0, 200, 230),    -- Cyan suave
-        Aurora1         = Color3.fromRGB(255, 50, 150),    -- Cyan brillante
+        Aurora1         = Color3.fromRGB(40, 60, 180),    -- Cyan brillante
         Aurora2         = Color3.fromRGB(0, 140, 180),    -- Cyan medio
         Aurora3         = Color3.fromRGB(120, 255, 255),  -- Cyan claro
         Aurora4         = Color3.fromRGB(0, 80, 120),     -- Azul profundo
@@ -4247,7 +4274,7 @@ local Themes = {
         Aurora1         = Color3.fromRGB(92, 92, 92),
         Aurora2         = Color3.fromRGB(46, 46, 46),
         Aurora3         = Color3.fromRGB(159, 159, 159),
-        Aurora4         = Color3.fromRGB(220, 60, 160),
+        Aurora4         = Color3.fromRGB(80, 100, 200),
     },
     ["Neon Purple"] = {
         Primary         = Color3.fromRGB(135, 206, 250),   -- Morado neon principal
@@ -4344,13 +4371,13 @@ local Themes = {
     -- -- TEMA TROPICAL NEON -- Azul profundo + cian vivido --
     ["Teal Dark"] = {
         Primary         = Color3.fromRGB(55, 210, 130),   -- verde esmeralda foto
-        Secondary       = Color3.fromRGB(200, 60, 120),   -- celeste-teal medio
+        Secondary       = Color3.fromRGB(20, 35, 80),   -- celeste-teal medio
         Accent          = Color3.fromRGB(60, 190, 240),   -- celeste claro
         Background      = Color3.fromRGB(180, 40, 100),     -- fondo azul-verde oscuro
-        BackgroundLight = Color3.fromRGB(200, 60, 120),     -- panel interno celeste oscuro
+        BackgroundLight = Color3.fromRGB(20, 35, 80),     -- panel interno celeste oscuro
         TextPrimary     = Color3.fromRGB(215, 255, 240),  -- blanco verdoso suave
         TextSecondary   = Color3.fromRGB(200, 200, 200),   -- celeste
-        Aurora1         = Color3.fromRGB(200, 60, 120),     -- teal glassmorphism
+        Aurora1         = Color3.fromRGB(20, 35, 80),     -- teal glassmorphism
         Aurora2         = Color3.fromRGB(180, 40, 100),     -- cyan oscuro
         Aurora3         = Color3.fromRGB(180, 60, 200),   -- aurora magenta titulo
         Aurora4         = Color3.fromRGB(180, 40, 100),      -- fondo muy oscuro
@@ -4369,17 +4396,17 @@ local Themes = {
     Aurora4         = Color3.fromRGB(80, 10, 130),    -- Morado profundo
 },
     ["Neon Green"] = {
-    Primary         = Color3.fromRGB(255,   0, 140),  -- rosa neon puro
-    Secondary       = Color3.fromRGB(180,   0,  80),  -- rosa oscuro saturado
-    Accent          = Color3.fromRGB(255, 100, 220),  -- fucsia brillante
-    Background      = Color3.fromRGB( 18,   4,  14),  -- negro profundo
-    BackgroundLight = Color3.fromRGB( 50,  10,  35),  -- oscuro calido
-    TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
-    TextSecondary   = Color3.fromRGB(255, 180, 230),  -- rosa brillante
-    Aurora1         = Color3.fromRGB(255,   0, 160),  -- magenta neon
-    Aurora2         = Color3.fromRGB(255,  50, 200),  -- fucsia neon
-    Aurora3         = Color3.fromRGB(200,   0, 255),  -- violeta neon
-    Aurora4         = Color3.fromRGB(255,  80, 180),  -- rosa electrico
+    Primary         = Color3.fromRGB(0, 200, 255),   -- celeste neon puro
+    Secondary       = Color3.fromRGB(0, 140, 210),   -- celeste oscuro saturado
+    Accent          = Color3.fromRGB(80, 230, 255),  -- celeste acento brillante
+    Background      = Color3.fromRGB(  8,  18,  35), -- negro azulado profundo
+    BackgroundLight = Color3.fromRGB( 15,  35,  65), -- azul oscuro calido
+    TextPrimary     = Color3.fromRGB(255, 255, 255), -- blanco puro
+    TextSecondary   = Color3.fromRGB(160, 230, 255), -- celeste pastel
+    Aurora1         = Color3.fromRGB(  0, 180, 240), -- celeste neon
+    Aurora2         = Color3.fromRGB(  0, 200, 255), -- celeste hub neon
+    Aurora3         = Color3.fromRGB( 60, 210, 255), -- celeste medio neon
+    Aurora4         = Color3.fromRGB(100, 230, 255), -- celeste electrico
 },
 }
 
@@ -4387,17 +4414,17 @@ local Themes = {
 currentThemeName = "Neon Green"
 
 local ThemeColors = {
-    Primary         = Color3.fromRGB(255,   0, 140),  -- rosa neon puro (más vivo)
-    Secondary       = Color3.fromRGB(180,   0,  80),  -- rosa oscuro saturado
-    Accent          = Color3.fromRGB(255, 100, 220),  -- fucsia brillante
-    Background      = Color3.fromRGB( 18,   4,  14),  -- negro profundo (mejor contraste)
-    BackgroundLight = Color3.fromRGB( 50,  10,  35),  -- oscuro cálido
+    Primary         = Color3.fromRGB(  0, 200, 255),  -- celeste neon puro
+    Secondary       = Color3.fromRGB(  0, 140, 210),  -- celeste oscuro saturado
+    Accent          = Color3.fromRGB( 80, 230, 255),  -- celeste acento brillante
+    Background      = Color3.fromRGB(  8,  18,  35),  -- negro azulado profundo
+    BackgroundLight = Color3.fromRGB( 15,  35,  65),  -- azul oscuro calido
     TextPrimary     = Color3.fromRGB(255, 255, 255),  -- blanco puro
-    TextSecondary   = Color3.fromRGB(255, 180, 230),  -- rosa brillante
-    Aurora1         = Color3.fromRGB(255,   0, 160),  -- magenta neon
-    Aurora2         = Color3.fromRGB(255,  50, 200),  -- fucsia neon
-    Aurora3         = Color3.fromRGB(200,   0, 255),  -- violeta neon
-    Aurora4         = Color3.fromRGB(255,  80, 180),  -- rosa eléctrico
+    TextSecondary   = Color3.fromRGB(160, 230, 255),  -- celeste pastel
+    Aurora1         = Color3.fromRGB(  0, 180, 240),  -- celeste neon
+    Aurora2         = Color3.fromRGB(  0, 200, 255),  -- celeste hub neon
+    Aurora3         = Color3.fromRGB( 60, 210, 255),  -- celeste medio neon
+    Aurora4         = Color3.fromRGB(100, 230, 255),  -- celeste electrico
 }
 
 ThemeObjects = {}
@@ -7278,7 +7305,7 @@ function convertirFuenteCursor(texto)
     return s
 end
 
--- SONIDO PREMIUM HUB v2: click suave de interfaz profesional
+-- SONIDO PREMIUM HUB v3: click metalico de hub mecanico
 _soundPool = {}
 function _getPooledSound()
     for _, s in ipairs(_soundPool) do
@@ -7297,7 +7324,7 @@ function PlaySound()
     if now - _lastPlaySoundTime < 0.08 then return end  -- debounce: no repetir en menos de 80ms
     _lastPlaySoundTime = now
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://6927468309"
+    s.SoundId = "rbxassetid://6046360355"
     s.Volume = 0.5
     s.PlaybackSpeed = 1.0
     s.RollOffMaxDistance = 999
@@ -7316,7 +7343,7 @@ function PlayToggleSound(isOn)
     if now - _lastToggleSoundTime < 0.08 then return end
     _lastToggleSoundTime = now
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://6927468309"
+    s.SoundId = "rbxassetid://6046360355"
     s.Volume = 0.5
     s.PlaybackSpeed = 1.0
     s.RollOffMaxDistance = 999
@@ -7329,7 +7356,7 @@ end
 function PlayTabSound()
     if _G._hubSettings and _G._hubSettings.disableClickSound then return end
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://6927468309" -- swoosh suave de pestana
+    s.SoundId = "rbxassetid://6046360355" -- swoosh suave de pestana
     s.Volume = 0.35
     s.PlaybackSpeed = 1.1
     s.RollOffMaxDistance = 999
@@ -7342,7 +7369,7 @@ end
 function PlayHoverSound()
     if _G._hubSettings and _G._hubSettings.disableClickSound then return end
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://6927468309" -- hover suave
+    s.SoundId = "rbxassetid://6046360355" -- hover suave
     s.Volume = 0.18
     s.PlaybackSpeed = 1.2
     s.RollOffMaxDistance = 999
@@ -7353,7 +7380,7 @@ end
 
 function PlayDeathSound()
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://6927468309"
+    s.SoundId = "rbxassetid://6046360355"
     s.Volume = 0.5
     s.Parent = workspace
     s:Play()
@@ -8424,7 +8451,104 @@ end
 function updateBindables()
     if Settings.combat.bindable.shoot then
         if not shootBtnGui then
-            shootBtnGui = createBindableButton("SHOOT MURDERER", ThemeColors.Primary)
+            -- == BOTON SILENT AIM PERSONALIZADO (estilo transparente con borde) ==
+            do
+                local _saGui = Instance.new("ScreenGui")
+                _saGui.Name           = "SHOOT MURDERER_CapyBtn"
+                _saGui.ResetOnSpawn   = false
+                _saGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                _saGui.IgnoreGuiInset = true
+                _saGui.DisplayOrder   = 9900
+                pcall(function() _saGui.Parent = game:GetService("CoreGui") end)
+                if not _saGui.Parent then _saGui.Parent = LocalPlayer.PlayerGui end
+
+                local vp = workspace.CurrentCamera.ViewportSize
+                local BTN_W = 130
+                local BTN_H = 60
+                local _slot  = _assignSlot("SHOOT MURDERER")
+                local _sx, _sy = _getBindablePosition(_slot)
+                local posX  = math.clamp(_sx, 4, vp.X - BTN_W - 4)
+                local posY  = math.clamp(_sy, 4, vp.Y - BTN_H - 4)
+
+                -- Contenedor raiz draggable
+                local _saBg = Instance.new("Frame", _saGui)
+                _saBg.Name                   = "CapyBindBtn"
+                _saBg.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
+                _saBg.Position               = UDim2.fromOffset(posX, posY)
+                _saBg.BackgroundTransparency = 1
+                _saBg.BorderSizePixel        = 0
+                _saBg.ZIndex                 = 200
+                _saBg.Active                 = true
+
+                -- Boton principal transparente con borde oscuro (estilo solicitado)
+                local shootButton = Instance.new("TextButton", _saBg)
+                shootButton.Name                   = "ShootButton"
+                shootButton.Size                   = UDim2.new(1, 0, 1, 0)
+                shootButton.Position               = UDim2.new(0, 0, 0, 0)
+                shootButton.AnchorPoint            = Vector2.new(0, 0)
+                shootButton.BackgroundTransparency = 1
+                shootButton.Text                   = "Shoot"
+                shootButton.TextColor3             = Color3.fromRGB(255, 255, 255)
+                shootButton.TextSize               = 16
+                shootButton.Font                   = Enum.Font.GothamMedium
+                shootButton.AutoButtonColor        = false
+                shootButton.ZIndex                 = 210
+
+                local _saCorner = Instance.new("UICorner", shootButton)
+                _saCorner.CornerRadius = UDim.new(0, 12)
+
+                local _saStroke = Instance.new("UIStroke", shootButton)
+                _saStroke.Color           = Color3.fromRGB(45, 45, 45)
+                _saStroke.Thickness       = 4
+                _saStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+                -- Escala animada de entrada
+                local _saScale = Instance.new("UIScale", _saBg)
+                _saScale.Scale = 0
+                task.spawn(function()
+                    task.wait(0.016)
+                    TweenService:Create(_saScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+                end)
+
+                -- Drag manual (compatible con mobile)
+                local _saMoved    = false
+                local _saDragging = false
+                local _saDragStart= nil
+                local _saStartPos = nil
+                shootButton.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1
+                    or input.UserInputType == Enum.UserInputType.Touch then
+                        _saDragging  = true
+                        _saMoved     = false
+                        _saDragStart = input.Position
+                        _saStartPos  = _saBg.Position
+                    end
+                end)
+                UserInputService.InputChanged:Connect(function(input)
+                    if not _saDragging then return end
+                    if input.UserInputType ~= Enum.UserInputType.MouseMovement
+                    and input.UserInputType ~= Enum.UserInputType.Touch then return end
+                    local delta = input.Position - _saDragStart
+                    if delta.Magnitude > 4 then _saMoved = true end
+                    local vpN = workspace.CurrentCamera.ViewportSize
+                    _saBg.Position = UDim2.fromOffset(
+                        math.clamp(_saStartPos.X.Offset + delta.X, 0, vpN.X - BTN_W),
+                        math.clamp(_saStartPos.Y.Offset + delta.Y, 0, vpN.Y - BTN_H))
+                end)
+                shootButton.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1
+                    or input.UserInputType == Enum.UserInputType.Touch then
+                        _saDragging = false
+                        task.defer(function() _saMoved = false end)
+                    end
+                end)
+
+                -- Exponer como gui.Frame para que el Activated de abajo funcione igual
+                _saGui.Frame = shootButton
+                _BindableButtons["SHOOT MURDERER"] = _saGui
+                _registerBindableGui("SHOOT MURDERER_CapyBtn", _saGui)
+                shootBtnGui = _saGui
+            end
             local function _doShootMurderer()
                 task.spawn(function()
                     -- ================================================================
@@ -10203,17 +10327,18 @@ function CreateCustomNotification(titleRaw, message, duration)
 
         local progressBar = Instance.new("Frame")
         progressBar.Size = UDim2.new(1, 0, 1, 0)
-        progressBar.BackgroundColor3 = Color3.fromRGB(130, 80, 210)  -- violeta suave mezclado con azul y verde
+        progressBar.BackgroundColor3 = Color3.fromRGB(0, 200, 255)  -- celeste neon transparente
+        progressBar.BackgroundTransparency = 0.15
         progressBar.BorderSizePixel = 0
         progressBar.Parent = progressBarBg
 
-        -- Gradiente violeta suave: mezcla de violeta + azul + toque de verde
+        -- Gradiente celeste transparente: tono hub celeste/cyan
         local progressGrad = Instance.new("UIGradient")
         progressGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   Color3.fromRGB(100, 180, 220)),  -- azul-verde suave
-            ColorSequenceKeypoint.new(0.4, Color3.fromRGB(130, 80,  210)),  -- violeta central
-            ColorSequenceKeypoint.new(0.7, Color3.fromRGB(90,  120, 200)),  -- azul-violeta
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(110, 190, 180)),  -- verde-azul suave
+            ColorSequenceKeypoint.new(0,   Color3.fromRGB( 80, 230, 255)),  -- celeste claro neon
+            ColorSequenceKeypoint.new(0.35, Color3.fromRGB(  0, 200, 255)),  -- celeste hub puro
+            ColorSequenceKeypoint.new(0.7, Color3.fromRGB(  0, 180, 240)),  -- celeste medio
+            ColorSequenceKeypoint.new(1,   Color3.fromRGB( 60, 220, 255)),  -- celeste electrico
         })
         progressGrad.Rotation = 0
         progressGrad.Parent = progressBar
@@ -11169,16 +11294,16 @@ function CreateBorderedSectionGlobal(parent, title)
     _trackSectionHeight(targetCol, 0)
     local section = Instance.new("Frame", targetCol)
     section.Size = UDim2.new(1, 0, 0, 0)
-    section.BackgroundColor3 = ThemeColors.Background
-    section.BackgroundTransparency = 1  -- FIX: transparente para no tapar toggles
+    section.BackgroundColor3 = Color3.fromRGB(10, 18, 50)
+    section.BackgroundTransparency = 0.30  -- fondo oscuro para contraste de texto
     section.BorderSizePixel = 0
     section.AutomaticSize = Enum.AutomaticSize.Y
     section.ZIndex = 9  -- FIX: menor que el label del toggle (11)
     Instance.new("UICorner", section).CornerRadius = UDim.new(0, 6)
     local _bsgStroke = Instance.new("UIStroke", section)
-    _bsgStroke.Color = ThemeColors.Secondary
+    _bsgStroke.Color = Color3.fromRGB(40, 60, 180)
     _bsgStroke.Thickness = 1
-    _bsgStroke.Transparency = 0.5
+    _bsgStroke.Transparency = 0.3
     _bsgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     local padding = Instance.new("UIPadding", section)
     padding.PaddingTop = UDim.new(0, 0)
@@ -11200,16 +11325,16 @@ function CreateSection(parent, icono, titulo, color)
     _trackSectionHeight(targetCol, 0)
     local section = Instance.new("Frame", targetCol)
     section.Size = UDim2.new(1, 0, 0, 0)
-    section.BackgroundColor3 = ThemeColors.Background
-    section.BackgroundTransparency = 1  -- FIX: completamente transparente, no oscurece el texto de los toggles
+    section.BackgroundColor3 = Color3.fromRGB(10, 18, 50)
+    section.BackgroundTransparency = 0.30  -- fondo oscuro para contraste de texto
     section.BorderSizePixel = 0
     section.AutomaticSize = Enum.AutomaticSize.Y
     section.ZIndex = 9  -- FIX: menor que el label del toggle (11) para no taparlo
     Instance.new("UICorner", section).CornerRadius = UDim.new(0, 6)
     local _csStroke = Instance.new("UIStroke", section)
-    _csStroke.Color = ThemeColors.Secondary
+    _csStroke.Color = Color3.fromRGB(40, 60, 180)
     _csStroke.Thickness = 1
-    _csStroke.Transparency = 0.5
+    _csStroke.Transparency = 0.3
     _csStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     local padding = Instance.new("UIPadding", section)
     padding.PaddingTop = UDim.new(0, 0)
@@ -11373,12 +11498,12 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     --  Track gris delgado con fill blanco y thumb circular blanco
     -- ==============================================================
 
-    local C_BG       = Color3.fromRGB(200, 60, 120)
-    local C_STROKE   = Color3.fromRGB(255, 50, 150)
+    local C_BG       = Color3.fromRGB(20, 35, 80)
+    local C_STROKE   = Color3.fromRGB(40, 60, 180)
     local C_TEXT     = Color3.fromRGB(255, 255, 255)
     local C_NUM      = Color3.fromRGB(160, 220, 255)
-    local C_TRACK_BG = Color3.fromRGB(220, 60, 160)
-    local C_TRACK_FG = Color3.fromRGB(255, 50, 150)
+    local C_TRACK_BG = Color3.fromRGB(80, 100, 200)
+    local C_TRACK_FG = Color3.fromRGB(40, 60, 180)
     local C_THUMB    = Color3.fromRGB(255, 255, 255)
 
     local CONTAINER_H = 52
@@ -11641,7 +11766,7 @@ function CreateGroupedToggles(parent, groupName, subtitle, toggleDefs)
     -- -- Contenedor externo con borde gradiente ----------------------
     local outerFrame = Instance.new("Frame", actualParent)
     outerFrame.Name                   = "GroupedToggles_" .. groupName
-    outerFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+    outerFrame.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
     outerFrame.BackgroundTransparency = 0.85
     outerFrame.BorderSizePixel        = 0
     outerFrame.ClipsDescendants       = false
@@ -14573,7 +14698,7 @@ function CreateMainUI_SwimFlyGithub()
     -- Status bar
     local statusF = Instance.new("Frame", sec)
     statusF.Size = UDim2.new(1, -10, 0, 32)
-    statusF.BackgroundColor3 = Color3.fromRGB(180, 40, 100)
+    statusF.BackgroundColor3 = Color3.fromRGB(0, 140, 210)
     statusF.BackgroundTransparency = 0.75
     statusF.BorderSizePixel = 0
     Instance.new("UICorner", statusF).CornerRadius = UDim.new(0, 8)
@@ -14609,7 +14734,7 @@ function CreateMainUI_SwimFlyGithub()
     local function startAutoJump()
         AJ.enabled = true
         statusL.Text = "Auto Jump: ON  cada " .. string.format("%.1f", AJ.jumpInterval) .. "s"
-        statusL.TextColor3 = Color3.fromRGB(255, 50, 150)
+        statusL.TextColor3 = Color3.fromRGB(40, 60, 180)
         if AJ.conn then pcall(function() pcall(function() coroutine.close(AJ.conn) end) end); AJ.conn = nil end
         AJ.conn = _sp(function()
             while AJ.enabled do
@@ -14712,7 +14837,7 @@ function CreateMainUI_SwimFlyGithub()
             local frame = Instance.new("Frame", sg)
             frame.Name = "AJBindFrame"; frame.Size = UDim2.new(0, BTN, 0, BTN)
             frame.Position = UDim2.new(0, 80, 0.5, -35)
-            frame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+            frame.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
             frame.BackgroundTransparency = 0.75; frame.BorderSizePixel = 0
             frame.Active = true; frame.ZIndex = 200
             -- FIX: Draggable legacy removido; UIDragDetector + fallback UIS se agrega abajo
@@ -14779,14 +14904,14 @@ function CreateMainUI_SwimFlyGithub()
             dot.BackgroundColor3 = Color3.fromRGB(180, 180, 185); dot.BorderSizePixel = 0; dot.ZIndex = 202
             Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
             local function updateDot()
-                dot.BackgroundColor3 = AJ.enabled and Color3.fromRGB(255, 50, 150) or Color3.fromRGB(200, 60, 60)
+                dot.BackgroundColor3 = AJ.enabled and Color3.fromRGB(40, 60, 180) or Color3.fromRGB(200, 60, 60)
             end
             updateDot()
             frame.InputBegan:Connect(function(inp)
                 if inp.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
                 TweenService:Create(frame, TweenInfo.new(0.08), {BackgroundColor3 = Color3.fromRGB(55, 55, 130)}):Play()
                 _w(0.1)
-                TweenService:Create(frame, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(200, 60, 120), BackgroundTransparency = 0.75}):Play()
+                TweenService:Create(frame, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(20, 35, 80), BackgroundTransparency = 0.75}):Play()
                 if AJ.enabled then stopAutoJump()
                 else startAutoJump() end
                 updateDot()
@@ -14920,7 +15045,7 @@ function CreateMainUI_SwimFlyGithub()
             local burst = Instance.new("ParticleEmitter", att)
             burst.Lifetime = NumberRange.new(0.2, 0.5)
             burst.Speed = NumberRange.new(10, 20)
-            burst.Color = ColorSequence.new(Color3.fromRGB(255, 50, 150))
+            burst.Color = ColorSequence.new(Color3.fromRGB(40, 60, 180))
             burst.Size = NumberSequence.new(0.3, 0)
             burst.Rate = 0; burst.Enabled = false
             burst:Emit(18)
@@ -14948,7 +15073,7 @@ function CreateMainUI_SwimFlyGithub()
                 end
             end)
             jbStatusL.Text = "Jump Booster: ON  tecla [" .. tostring(JB.keybind):gsub("Enum.KeyCode.", "") .. "]"
-            jbStatusL.TextColor3 = Color3.fromRGB(255, 50, 150)
+            jbStatusL.TextColor3 = Color3.fromRGB(40, 60, 180)
             -- [notif removed]
         else
             jbStatusL.Text = "Jump Booster: OFF"
@@ -16857,7 +16982,7 @@ function CreateMainUI_BackgroundSelector()
             -- Sonido
             pcall(function()
                 local snd = Instance.new("Sound")
-                snd.SoundId = "rbxassetid://6927468309"
+                snd.SoundId = "rbxassetid://6046360355"
                 snd.Volume = 0.8; snd.Parent = hrp; snd:Play()
                 Debris:AddItem(snd, 2)
             end)
@@ -17798,7 +17923,7 @@ function CreateMainUI_GameInfo()
         local _notifyRolState = { enabled = false, lastRole = "", conn = nil, cbId = nil }
         local function _playMurderSound()
             local s = Instance.new("Sound")
-            s.SoundId = "rbxassetid://6927468309" -- sonido de muerte/alerta
+            s.SoundId = "rbxassetid://6046360355" -- sonido de muerte/alerta
             s.Volume  = 0.9
             s.Parent  = workspace
             s:Play()
@@ -17806,7 +17931,7 @@ function CreateMainUI_GameInfo()
         end
         local function _playSheriffSound()
             local s = Instance.new("Sound")
-            s.SoundId = "rbxassetid://6927468309" -- sonido de click/accion
+            s.SoundId = "rbxassetid://6046360355" -- sonido de click/accion
             s.Volume  = 0.9
             s.Parent  = workspace
             s:Play()
@@ -19702,7 +19827,7 @@ function CreateMainTab()
         local _resetAllBtn = Instance.new("TextButton", _resetAllContainer)
         _resetAllBtn.Size = UDim2.new(1, -8, 1, -8)
         _resetAllBtn.Position = UDim2.new(0, 4, 0, 4)
-        _resetAllBtn.BackgroundColor3 = Color3.fromRGB(120, 0, 60)
+        _resetAllBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 180)
         _resetAllBtn.BackgroundTransparency = 0.1
         _resetAllBtn.BorderSizePixel = 0
         _resetAllBtn.AutoButtonColor = false
@@ -19742,11 +19867,11 @@ function CreateMainTab()
 
         -- Hover
         _resetAllBtn.MouseEnter:Connect(function()
-            TweenService:Create(_resetAllBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(200, 0, 90)}):Play()
-            TweenService:Create(_rabStroke, TweenInfo.new(0.12), {Color = Color3.fromRGB(255, 100, 220), Thickness = 2.5}):Play()
+            TweenService:Create(_resetAllBtn, TweenInfo.new(0.12), {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(0, 160, 220)}):Play()
+            TweenService:Create(_rabStroke, TweenInfo.new(0.12), {Color = Color3.fromRGB(100, 160, 240), Thickness = 2.5}):Play()
         end)
         _resetAllBtn.MouseLeave:Connect(function()
-            TweenService:Create(_resetAllBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(120, 0, 60)}):Play()
+            TweenService:Create(_resetAllBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.1, BackgroundColor3 = Color3.fromRGB(0, 100, 180)}):Play()
             TweenService:Create(_rabStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(255, 0, 140), Thickness = 2}):Play()
         end)
 
@@ -19755,7 +19880,7 @@ function CreateMainTab()
             -- Flash visual
             TweenService:Create(_resetAllBtn, TweenInfo.new(0.07), {BackgroundColor3 = Color3.fromRGB(255, 30, 100)}):Play()
             task.wait(0.1)
-            TweenService:Create(_resetAllBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(120, 0, 60), BackgroundTransparency = 0.1}):Play()
+            TweenService:Create(_resetAllBtn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(0, 100, 180), BackgroundTransparency = 0.1}):Play()
 
             local _count = 0
             local _ts = _G._toggleStates or {}
@@ -19983,7 +20108,7 @@ function CreateMainTab()
             end
             -- Actualizar color del boton flotante si existe
             if _ncBtnRef and _ncBtnRef.Parent then
-                _ncBtnRef.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+                _ncBtnRef.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
                 _ncBtnRef.BackgroundTransparency = 0.75
                 _ncBtnRef.Text = "NC"
             end
@@ -20026,7 +20151,7 @@ function CreateMainTab()
             end)
             -- Actualizar color del boton flotante
             if _ncBtnRef and _ncBtnRef.Parent then
-                _ncBtnRef.BackgroundColor3 = Color3.fromRGB(255, 50, 150)
+                _ncBtnRef.BackgroundColor3 = Color3.fromRGB(40, 60, 180)
                 _ncBtnRef.Text = "NC "
             end
         end
@@ -26192,7 +26317,7 @@ function CreateVisualsTab()
     local function MiniHeader(parent, text, color)
         local lbl = Instance.new("TextLabel", parent)
         lbl.Size = UDim2.new(1, -6, 0, 18)
-        lbl.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+        lbl.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
         lbl.BackgroundTransparency = 1
         lbl.Text = text
         lbl.FontFace = Font.fromEnum(Enum.Font.Montserrat)
@@ -26216,7 +26341,7 @@ function CreateVisualsTab()
     -- Crea un selector de jugador para "pinear" un jugador especifico en un ESP.
     -- flags.pinPlayer = Player | nil  (nil = sin pin, aplica filtros normales)
     local function makeESPPlayerPin(parent, flags, accentColor)
-        local PIN_COLOR = accentColor or Color3.fromRGB(255, 50, 150)
+        local PIN_COLOR = accentColor or Color3.fromRGB(40, 60, 180)
         MiniHeader(parent, "PINEAR JUGADOR ESPECIFICO", PIN_COLOR)
 
         -- Contenedor del selector
@@ -26638,7 +26763,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "ESP Assassin Only", function(v) ve.assassin=v end, ve.assassin)
         MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "ESP Survivor Only", function(v) ve.survivor=v end, ve.survivor)
-        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(255, 50, 150))
+        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(40, 60, 180))
         CreateAuroraToggle(inner, "ESP Zombie Only", function(v) ve.zombie=v end, ve.zombie)
         MiniHeader(inner, "BY OBJECT", Color3.fromRGB(255,220,100))
         CreateAuroraToggle(inner, "ESP Dropped Gun", function(v)
@@ -26834,7 +26959,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Highlight Murderer Only", function(v)
             vh.murderer=v; _recalcHL()
         end, vh.murderer)
-        MiniHeader(inner, "SHERIFF", Color3.fromRGB(255, 50, 150))
+        MiniHeader(inner, "SHERIFF", Color3.fromRGB(40, 60, 180))
         CreateAuroraToggle(inner, "Highlight Sheriff Only", function(v)
             vh.sheriff=v; _recalcHL()
         end, vh.sheriff)
@@ -26846,7 +26971,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Highlight Assassin Only", function(v)
             vh.assassin=v; _recalcHL()
         end, vh.assassin)
-        MiniHeader(inner, "INNOCENT", Color3.fromRGB(255, 50, 150))
+        MiniHeader(inner, "INNOCENT", Color3.fromRGB(40, 60, 180))
         CreateAuroraToggle(inner, "Highlight Innocent Only", function(v)
             vh.innocent=v; _recalcHL()
         end, vh.innocent or false)
@@ -26854,7 +26979,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Highlight Survivor Only", function(v)
             vh.survivor=v; _recalcHL()
         end, vh.survivor)
-        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(255, 50, 150))
+        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(40, 60, 180))
         CreateAuroraToggle(inner, "Highlight Zombie Only", function(v)
             vh.zombie=v; _recalcHL()
         end, vh.zombie)
@@ -27209,7 +27334,7 @@ end, _G._chamDropGun or false)
 
         local inner = CreateVisualCard(leftColumn, "", "VIEW TRAP", Color3.fromRGB(255, 100, 60))
 
-        MiniHeader(inner, " ESP DE TRAMPAS (visible + invisible)", Color3.fromRGB(255, 50, 150))
+        MiniHeader(inner, " ESP DE TRAMPAS (visible + invisible)", Color3.fromRGB(40, 60, 180))
  CreateAuroraToggle(inner, "View Trap ESP", function(v)
             _trapEnabled = v
             if _trapWSConn then _trapWSConn:Disconnect(); _trapWSConn = nil end
@@ -27256,7 +27381,7 @@ end, _G._chamDropGun or false)
         MiniHeader(inner, " SCAN MANUAL", Color3.fromRGB(195, 195, 200))
         local scanBtn = Instance.new("TextButton", inner)
         scanBtn.Size = UDim2.new(1, 0, 0, 36)
-        scanBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+        scanBtn.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
         scanBtn.BackgroundTransparency = 0.75
         scanBtn.BorderSizePixel = 0
  scanBtn.Text = " Scan Todas las Trampas"
@@ -27306,7 +27431,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Tracer Dead Only", function(v) vt.dead=v end, vt.dead)
         MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Tracer Survivor Only", function(v) vt.survivor=v end, vt.survivor)
-        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(255, 50, 150))
+        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(40, 60, 180))
         CreateAuroraToggle(inner, "Tracer Zombie Only", function(v) vt.zombie=v end, vt.zombie)
         MiniHeader(inner, "ORIGIN", Color3.fromRGB(200,200,200))
         CreateAuroraToggle(inner, "Tracer from Head (sale de la cabeza)", function(v)
@@ -27334,7 +27459,7 @@ end, _G._chamDropGun or false)
         CreateAuroraToggle(inner, "Skeleton Dead Only", function(v) vs2.dead=v end, vs2.dead)
         MiniHeader(inner, "SURVIVOR", Color3.fromRGB(255, 210,   0))
         CreateAuroraToggle(inner, "Skeleton Survivor Only", function(v) vs2.survivor=v end, vs2.survivor)
-        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(255, 50, 150))
+        MiniHeader(inner, "ZOMBIE", Color3.fromRGB(40, 60, 180))
         CreateAuroraToggle(inner, "Skeleton Zombie Only", function(v) vs2.zombie=v end, vs2.zombie)
     end
 
@@ -28053,14 +28178,15 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local _knobOffL    = 4
     local _labelTxtSz  = _isMobileTog and 13 or 18
     local _labelWScale = _isMobileTog and 0.55 or 0.6
-    local _rowH        = _isMobileTog and 44 or 55
+    local _rowH        = 130  -- altura fija 130px en mobile y PC
     local _toggleRightOff = _isMobileTog and -8 or -15
 
-    -- Marco principal ancho (600px simulado con 1, 0) -- transparente con borde blanco
+    -- Marco principal — fondo azul translúcido con borde azul (diseño foto)
     local container = Instance.new("Frame", actualParent)
     container.Name                   = "AuroraToggleRow_" .. nombre
     container.Size                   = UDim2.new(1, -8, 0, _rowH)
-    container.BackgroundTransparency = 1   -- completamente transparente
+    container.BackgroundColor3       = Color3.fromRGB(135, 206, 235)  -- celeste
+    container.BackgroundTransparency = 0.78
     container.BorderSizePixel        = 0
     container.ZIndex                 = 20
 
@@ -28068,11 +28194,11 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local mainCorner = Instance.new("UICorner", container)
     mainCorner.CornerRadius = UDim.new(0, 8)
 
-    -- Borde blanco para el marco
+    -- Borde azul visible
     local mainStroke = Instance.new("UIStroke", container)
-    mainStroke.Color = ThemeColors.Primary
-    mainStroke.Thickness = 0
-    mainStroke.Transparency = 1
+    mainStroke.Color = Color3.fromRGB(40, 60, 180)
+    mainStroke.Thickness = 2
+    mainStroke.Transparency = 0
     mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Etiqueta de texto (mitad izquierda)
@@ -28106,8 +28232,8 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     toggleBg.Size                   = UDim2.new(0, _toggleBgW, 0, _toggleBgH)
     toggleBg.AnchorPoint            = Vector2.new(1, 0.5)
     toggleBg.Position               = UDim2.new(1, _toggleRightOff, 0.5, 0)
-    toggleBg.BackgroundColor3       = ThemeColors.Secondary
-    toggleBg.BackgroundTransparency = 0.4
+    toggleBg.BackgroundColor3       = Color3.fromRGB(60, 80, 190)
+    toggleBg.BackgroundTransparency = 0.3
     toggleBg.BorderSizePixel        = 0
     toggleBg.ZIndex                 = 21
 
@@ -28115,9 +28241,9 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     toggleBgCorner.CornerRadius = UDim.new(0, 8)
 
     local toggleBgStroke = Instance.new("UIStroke", toggleBg)
-    toggleBgStroke.Color = ThemeColors.Primary
-    toggleBgStroke.Thickness = 0
-    toggleBgStroke.Transparency = 1
+    toggleBgStroke.Color = Color3.fromRGB(40, 60, 180)
+    toggleBgStroke.Thickness = 1.5
+    toggleBgStroke.Transparency = 0
     toggleBgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Indicador cuadrado redondeado (rojo=off, verde=on)
@@ -28159,9 +28285,14 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     _G._toggleApplyStates[nombre] = ApplyState
     ApplyState(estado, false)
 
-    -- Sin hover (toggle transparente)
-    clickRow.MouseEnter:Connect(function() end)
-    clickRow.MouseLeave:Connect(function() end)
+    -- Hover: resaltar fondo del container
+    local _hoverTi = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    clickRow.MouseEnter:Connect(function()
+        TweenService:Create(container, _hoverTi, {BackgroundTransparency = 0.25}):Play()
+    end)
+    clickRow.MouseLeave:Connect(function()
+        TweenService:Create(container, _hoverTi, {BackgroundTransparency = 0.5}):Play()
+    end)
     -- Logica de toggle
     local function doToggle()
         -- PASO 1: Invertir el booleano en la tabla de estado
@@ -33245,7 +33376,7 @@ function CreateWorldUI_ProximityPromptSection()
     subLbl2.Text = "UNIVERSAL"
     subLbl2.Font = Enum.Font.Montserrat
     subLbl2.TextSize = 10
-    subLbl2.TextColor3 = Color3.fromRGB(255, 50, 150)
+    subLbl2.TextColor3 = Color3.fromRGB(40, 60, 180)
     subLbl2.TextXAlignment = Enum.TextXAlignment.Left
 
     _G._proxState = _G._proxState or { instant = false, noLimit = false, hookConn = nil }
@@ -33446,7 +33577,7 @@ function CreateWorldUI_SpinSection()
     subLbl.Text = "UNIVERSAL"
     subLbl.Font = Enum.Font.Montserrat
     subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(255, 50, 150)
+    subLbl.TextColor3 = Color3.fromRGB(40, 60, 180)
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     -- FIX AUTO-ACTIVAR: resetear enabled/bindEnabled al abrir el tab para que
@@ -33742,7 +33873,7 @@ function CreateWorldUI_VoidTeleport()
     subLbl.Text = "MM2 / MMV"
     subLbl.Font = Enum.Font.Montserrat
     subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(255, 50, 150)
+    subLbl.TextColor3 = Color3.fromRGB(40, 60, 180)
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     _G._tpVoid = _G._tpVoid or {
@@ -33849,7 +33980,7 @@ function CreateWorldUI_ExposeRoles()
     local subLbl = Instance.new("TextLabel", sec)
     subLbl.Size = UDim2.new(1,-12,0,14); subLbl.BackgroundTransparency = 1
     subLbl.Text = "UNIVERSAL"; subLbl.Font = Enum.Font.Montserrat; subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(255, 50, 150); subLbl.TextXAlignment = Enum.TextXAlignment.Left
+    subLbl.TextColor3 = Color3.fromRGB(40, 60, 180); subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     -- Usa _roleCache (mas confiable) con fallback a busqueda por herramienta
     local function getRoles()
@@ -34035,7 +34166,7 @@ function CreateWorldUI_TeleportLobby()
     local subLbl = Instance.new("TextLabel", sec)
     subLbl.Size = UDim2.new(1,-12,0,14); subLbl.BackgroundTransparency = 1
     subLbl.Text = "MM2 / MMV"; subLbl.Font = Enum.Font.Montserrat; subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(255, 50, 150); subLbl.TextXAlignment = Enum.TextXAlignment.Left
+    subLbl.TextColor3 = Color3.fromRGB(40, 60, 180); subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     _G._tpLobby = _G._tpLobby or { enabled=false, conn=nil, fontSize=10, sizeX=38 }
     _G._tpLobby.enabled = false
@@ -34115,7 +34246,7 @@ function CreateWorldUI_TeleportToMap()
     local subLbl = Instance.new("TextLabel", sec)
     subLbl.Size = UDim2.new(1,-12,0,14); subLbl.BackgroundTransparency = 1
     subLbl.Text = "MM2 / MMV"; subLbl.Font = Enum.Font.Montserrat; subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(255, 50, 150); subLbl.TextXAlignment = Enum.TextXAlignment.Left
+    subLbl.TextColor3 = Color3.fromRGB(40, 60, 180); subLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     _G._tpToMap = _G._tpToMap or { enabled=false, conn=nil, fontSize=10, sizeX=38 }
     local M = _G._tpToMap
@@ -34749,7 +34880,7 @@ function CreateWorldUI_FlingPlayer()
     listFrame.BackgroundTransparency = 0.3
     listFrame.BorderSizePixel = 0
     listFrame.ScrollBarThickness = 3
-    listFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 50, 150)
+    listFrame.ScrollBarImageColor3 = Color3.fromRGB(40, 60, 180)
     listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
     listFrame.ZIndex = 15
@@ -34829,7 +34960,7 @@ function CreateWorldUI_FlingPlayer()
     refreshBtn.ZIndex = 15
     Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 7)
     local _rfStroke = Instance.new("UIStroke", refreshBtn)
-    _rfStroke.Color = Color3.fromRGB(255, 50, 150)
+    _rfStroke.Color = Color3.fromRGB(40, 60, 180)
     _rfStroke.Thickness = 1
     _rfStroke.Transparency = 0.4
     refreshBtn.Activated:Connect(function()
@@ -36050,7 +36181,7 @@ function CreatePremiumTab()
     local function CreateLockedToggle(parent, label, desc)
         local lockFrame = Instance.new("Frame", parent)
         lockFrame.Size = UDim2.new(1, -10, 0, 58)
-        lockFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+        lockFrame.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
         lockFrame.BackgroundTransparency = 0.85
         lockFrame.BorderSizePixel = 0
         Instance.new("UICorner", lockFrame).CornerRadius = UDim.new(0, 10)
@@ -37341,7 +37472,7 @@ function CreateExclusiveTab()
         noMinMaxAnimations = false,
         allowHubDrag       = true,
         hubOpacity         = 15,   -- 0-95 (porcentaje de opacidad del fondo)
-        hubScale           = 100,  -- 70-130 (escala del hub en %)
+        hubScale           = 130,  -- 70-130 (escala del hub en %)
         hubLayoutMode      = 1,    -- 1=SidebarIzq 2=BarraTop 3=SidebarDer 4=BarraBot 5=MiniIzq
         notifDuration      = 3,    -- segundos default de notificaciones
         notifMuted         = false, -- silenciar todas las notificaciones
@@ -37386,6 +37517,363 @@ function CreateExclusiveTab()
 
 
     -- ============================================================
+    -- SECCIÓN: USUARIOS EN LÍNEA (tiempo real)
+    -- Muestra cuántos jugadores están usando el hub en el servidor actual.
+    -- Se actualiza automáticamente al entrar/salir jugadores.
+    -- ============================================================
+    do
+        local onlineSec = CreateBorderedSectionGlobal(leftColumn, "👥  USUARIOS EN EL HUB")
+
+        -- Título descriptivo
+        local onlineDesc = Instance.new("TextLabel", onlineSec)
+        onlineDesc.Size = UDim2.new(1, -12, 0, 20)
+        onlineDesc.BackgroundTransparency = 1
+        onlineDesc.Text = "Jugadores en el servidor usando el hub:"
+        onlineDesc.TextColor3 = Color3.fromRGB(140, 180, 255)
+        onlineDesc.FontFace = Font.fromEnum(Enum.Font.Gotham)
+        onlineDesc.TextSize = 11
+        onlineDesc.TextWrapped = true
+        onlineDesc.TextXAlignment = Enum.TextXAlignment.Left
+        onlineDesc.ZIndex = 13
+        local _odPad = Instance.new("UIPadding", onlineDesc)
+        _odPad.PaddingLeft = UDim.new(0, 8)
+
+        -- Contador grande
+        local counterFrame = Instance.new("Frame", onlineSec)
+        counterFrame.Size = UDim2.new(1, -16, 0, 52)
+        counterFrame.BackgroundColor3 = Color3.fromRGB(8, 20, 60)
+        counterFrame.BackgroundTransparency = 0.3
+        counterFrame.BorderSizePixel = 0
+        counterFrame.ZIndex = 13
+        Instance.new("UICorner", counterFrame).CornerRadius = UDim.new(0, 8)
+        local _cfPad = Instance.new("UIPadding", counterFrame)
+        _cfPad.PaddingLeft = UDim.new(0, 8)
+        _cfPad.PaddingRight = UDim.new(0, 8)
+        local _cfStroke = Instance.new("UIStroke", counterFrame)
+        _cfStroke.Color = Color3.fromRGB(40, 100, 255)
+        _cfStroke.Thickness = 1.5
+        _cfStroke.Transparency = 0.4
+        _cfStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+        -- Emoji de usuario
+        local emojiLbl = Instance.new("TextLabel", counterFrame)
+        emojiLbl.Size = UDim2.new(0, 40, 1, 0)
+        emojiLbl.Position = UDim2.new(0, 0, 0, 0)
+        emojiLbl.BackgroundTransparency = 1
+        emojiLbl.Text = "👤"
+        emojiLbl.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        emojiLbl.TextSize = 26
+        emojiLbl.TextXAlignment = Enum.TextXAlignment.Left
+        emojiLbl.TextYAlignment = Enum.TextYAlignment.Center
+        emojiLbl.ZIndex = 14
+
+        -- Número de usuarios
+        local countLbl = Instance.new("TextLabel", counterFrame)
+        countLbl.Size = UDim2.new(1, -48, 1, 0)
+        countLbl.Position = UDim2.new(0, 44, 0, 0)
+        countLbl.BackgroundTransparency = 1
+        countLbl.Text = "..."
+        countLbl.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        countLbl.TextSize = 22
+        countLbl.TextColor3 = Color3.fromRGB(0, 220, 255)
+        countLbl.TextXAlignment = Enum.TextXAlignment.Left
+        countLbl.TextYAlignment = Enum.TextYAlignment.Center
+        countLbl.ZIndex = 14
+
+        -- Barra de lista de usuarios (scroll)
+        local listFrame = Instance.new("ScrollingFrame", onlineSec)
+        listFrame.Name = "HubUsersList"
+        listFrame.Size = UDim2.new(1, -16, 0, 120)
+        listFrame.BackgroundColor3 = Color3.fromRGB(5, 12, 40)
+        listFrame.BackgroundTransparency = 0.4
+        listFrame.BorderSizePixel = 0
+        listFrame.ScrollBarThickness = 3
+        listFrame.ScrollBarImageColor3 = Color3.fromRGB(40, 100, 255)
+        listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+        listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        listFrame.ZIndex = 13
+        listFrame.ClipsDescendants = true
+        Instance.new("UICorner", listFrame).CornerRadius = UDim.new(0, 6)
+        local _lfStroke = Instance.new("UIStroke", listFrame)
+        _lfStroke.Color = Color3.fromRGB(40, 80, 200)
+        _lfStroke.Thickness = 1
+        _lfStroke.Transparency = 0.5
+        _lfStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        local listLayout = Instance.new("UIListLayout", listFrame)
+        listLayout.Padding = UDim.new(0, 2)
+        listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        local _lfPad = Instance.new("UIPadding", listFrame)
+        _lfPad.PaddingTop = UDim.new(0, 4)
+        _lfPad.PaddingBottom = UDim.new(0, 4)
+        _lfPad.PaddingLeft = UDim.new(0, 6)
+        _lfPad.PaddingRight = UDim.new(0, 6)
+
+        -- Indicador de pulso (dot verde animado)
+        local pulseFrame = Instance.new("Frame", onlineSec)
+        pulseFrame.Size = UDim2.new(1, -16, 0, 20)
+        pulseFrame.BackgroundTransparency = 1
+        pulseFrame.BorderSizePixel = 0
+        pulseFrame.ZIndex = 13
+        local pulseDot = Instance.new("Frame", pulseFrame)
+        pulseDot.Size = UDim2.new(0, 8, 0, 8)
+        pulseDot.AnchorPoint = Vector2.new(0, 0.5)
+        pulseDot.Position = UDim2.new(0, 8, 0.5, 0)
+        pulseDot.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
+        pulseDot.BorderSizePixel = 0
+        pulseDot.ZIndex = 14
+        Instance.new("UICorner", pulseDot).CornerRadius = UDim.new(1, 0)
+        local pulseLbl = Instance.new("TextLabel", pulseFrame)
+        pulseLbl.Size = UDim2.new(1, -24, 1, 0)
+        pulseLbl.Position = UDim2.new(0, 22, 0, 0)
+        pulseLbl.BackgroundTransparency = 1
+        pulseLbl.Text = "Actualizando..."
+        pulseLbl.FontFace = Font.fromEnum(Enum.Font.Gotham)
+        pulseLbl.TextSize = 10
+        pulseLbl.TextColor3 = Color3.fromRGB(100, 160, 100)
+        pulseLbl.TextXAlignment = Enum.TextXAlignment.Left
+        pulseLbl.TextYAlignment = Enum.TextYAlignment.Center
+        pulseLbl.ZIndex = 14
+
+        -- ----------------------------------------------------------------
+        -- DETECCIÓN REAL: usando Attribute "_ZH" en el HRP de cada jugador.
+        -- Solo aparecen los jugadores que tienen el hub ejecutado.
+        -- _ZH = 1 lo pone el propio hub al cargar (ver beacon arriba).
+        -- ----------------------------------------------------------------
+        local _ATTR = "_ZH"
+        local _hubUserCount = 0
+        local _userRows = {}   -- [player.UserId] = { frame, dot, nameLbl }
+        local _charConns = {}  -- [player.UserId] = { added, changed }
+
+        local _EMOJIS = {"👤","🧑","👦","👧","🧒","🧑‍💻","🥷","🧛","🤺","🦸"}
+        local _COLORS = {
+            Color3.fromRGB(0,   220, 255),
+            Color3.fromRGB(80,  255, 140),
+            Color3.fromRGB(255, 180,  40),
+            Color3.fromRGB(200,  80, 255),
+            Color3.fromRGB(255,  80, 120),
+            Color3.fromRGB(40,  200, 255),
+            Color3.fromRGB(255, 220,  60),
+            Color3.fromRGB(100, 255, 200),
+        }
+        local function _getEmoji(uid) return _EMOJIS[(uid or 0) % #_EMOJIS + 1] end
+        local function _getColor(uid) return _COLORS[(uid or 0) % #_COLORS + 1] end
+
+        -- Chequea si el HRP de un jugador tiene el atributo del hub
+        local function _hasHub(player)
+            local char = player.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return false end
+            local ok, v = pcall(function() return hrp:GetAttribute(_ATTR) end)
+            return ok and v == 1
+        end
+
+        local function _updateCounter()
+            local count = 0
+            for _ in pairs(_userRows) do count = count + 1 end
+            _hubUserCount = count
+            countLbl.Text = tostring(count) .. " usuario" .. (count ~= 1 and "s" or "")
+        end
+
+        local function _addRow(player)
+            if _userRows[player.UserId] then return end
+            local row = Instance.new("Frame", listFrame)
+            row.Name = "HubUserRow_" .. tostring(player.UserId)
+            row.Size = UDim2.new(1, -8, 0, 26)
+            row.BackgroundTransparency = 1
+            row.BorderSizePixel = 0
+            row.ZIndex = 14
+            local rl = Instance.new("UIListLayout", row)
+            rl.FillDirection = Enum.FillDirection.Horizontal
+            rl.Padding = UDim.new(0, 4)
+            rl.VerticalAlignment = Enum.VerticalAlignment.Center
+
+            local dot = Instance.new("Frame", row)
+            dot.Name = "StatusDot"
+            dot.Size = UDim2.new(0, 7, 0, 7)
+            dot.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+            dot.BorderSizePixel = 0
+            dot.ZIndex = 15
+            Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+            local emojiR = Instance.new("TextLabel", row)
+            emojiR.Size = UDim2.new(0, 22, 1, 0)
+            emojiR.BackgroundTransparency = 1
+            emojiR.Text = _getEmoji(player.UserId)
+            emojiR.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+            emojiR.TextSize = 14
+            emojiR.TextXAlignment = Enum.TextXAlignment.Center
+            emojiR.ZIndex = 15
+
+            local nameLbl = Instance.new("TextLabel", row)
+            nameLbl.Size = UDim2.new(1, -38, 1, 0)
+            nameLbl.BackgroundTransparency = 1
+            local _isLocal = (player == LocalPlayer)
+            nameLbl.Text = (_isLocal and "⭐ " or "") .. player.DisplayName
+            nameLbl.FontFace = Font.fromEnum(Enum.Font.Gotham)
+            nameLbl.TextSize = 12
+            nameLbl.TextColor3 = _isLocal and Color3.fromRGB(255, 220, 50) or _getColor(player.UserId)
+            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+            nameLbl.TextWrapped = false
+            nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+            nameLbl.ZIndex = 15
+
+            _userRows[player.UserId] = { frame = row, dot = dot, nameLbl = nameLbl }
+
+            -- Bounce de entrada
+            TweenService:Create(dot, TweenInfo.new(0.4, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out),
+                {Size = UDim2.new(0, 10, 0, 10)}):Play()
+            task.delay(0.4, function()
+                pcall(function()
+                    TweenService:Create(dot, TweenInfo.new(0.2), {Size = UDim2.new(0, 7, 0, 7)}):Play()
+                end)
+            end)
+
+            _updateCounter()
+        end
+
+        local function _removeRow(player)
+            local r = _userRows[player.UserId]
+            if not r then return end
+            -- Marcar como offline visualmente
+            pcall(function() r.dot.BackgroundColor3 = Color3.fromRGB(180, 60, 60) end)
+            pcall(function()
+                r.nameLbl.Text = "❌ " .. player.DisplayName
+                r.nameLbl.TextColor3 = Color3.fromRGB(180, 80, 80)
+            end)
+            TweenService:Create(r.frame, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+            task.delay(0.55, function()
+                pcall(function() r.frame:Destroy() end)
+            end)
+            _userRows[player.UserId] = nil
+            _updateCounter()
+        end
+
+        -- Escucha cambios de atributo en el HRP de un jugador
+        local function _watchPlayer(player)
+            if _charConns[player.UserId] then return end
+            local conns = {}
+            _charConns[player.UserId] = conns
+
+            local function _checkHRP(char)
+                if not char then return end
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if not hrp then
+                    -- Esperar a que aparezca el HRP
+                    local addConn = char.ChildAdded:Connect(function(child)
+                        if child.Name == "HumanoidRootPart" then
+                            task.wait(0.1)
+                            local ok, v = pcall(function() return child:GetAttribute(_ATTR) end)
+                            if ok and v == 1 then _addRow(player) end
+                            -- Escuchar cambios futuros del atributo
+                            pcall(function()
+                                local attrConn = child.AttributeChanged:Connect(function(attrName)
+                                    if attrName ~= _ATTR then return end
+                                    local ok2, v2 = pcall(function() return child:GetAttribute(_ATTR) end)
+                                    if ok2 and v2 == 1 then
+                                        _addRow(player)
+                                    else
+                                        _removeRow(player)
+                                    end
+                                end)
+                                table.insert(conns, attrConn)
+                            end)
+                        end
+                    end)
+                    table.insert(conns, addConn)
+                    return
+                end
+                -- HRP ya existe: verificar atributo ahora
+                local ok, v = pcall(function() return hrp:GetAttribute(_ATTR) end)
+                if ok and v == 1 then _addRow(player) end
+                -- Escuchar cambios futuros
+                pcall(function()
+                    local attrConn = hrp.AttributeChanged:Connect(function(attrName)
+                        if attrName ~= _ATTR then return end
+                        local ok2, v2 = pcall(function() return hrp:GetAttribute(_ATTR) end)
+                        if ok2 and v2 == 1 then
+                            _addRow(player)
+                        else
+                            _removeRow(player)
+                        end
+                    end)
+                    table.insert(conns, attrConn)
+                end)
+            end
+
+            -- Observar el personaje actual y los futuros
+            if player.Character then
+                _checkHRP(player.Character)
+            end
+            local caConn = player.CharacterAdded:Connect(function(char)
+                task.wait(0.3)
+                _checkHRP(char)
+            end)
+            table.insert(conns, caConn)
+        end
+
+        local function _cleanPlayer(player)
+            _removeRow(player)
+            local conns = _charConns[player.UserId]
+            if conns then
+                for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+                _charConns[player.UserId] = nil
+            end
+        end
+
+        -- Inicializar con los jugadores actuales
+        for _, p in ipairs(Players:GetPlayers()) do
+            _watchPlayer(p)
+        end
+        _updateCounter()
+
+        -- Nuevos jugadores
+        local _paConn = Players.PlayerAdded:Connect(function(p)
+            _watchPlayer(p)
+        end)
+
+        -- Jugadores que se van
+        local _prConn = Players.PlayerRemoving:Connect(function(p)
+            _cleanPlayer(p)
+        end)
+
+        -- Pulso animado del dot verde
+        task.spawn(function()
+            while pulseDot and pulseDot.Parent do
+                TweenService:Create(pulseDot, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                    {BackgroundTransparency = 0.2}):Play()
+                task.wait(0.7)
+                if not (pulseDot and pulseDot.Parent) then break end
+                TweenService:Create(pulseDot, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                    {BackgroundTransparency = 0.8}):Play()
+                task.wait(0.7)
+            end
+        end)
+
+        -- Hora en tiempo real
+        task.spawn(function()
+            while pulseLbl and pulseLbl.Parent do
+                task.wait(1)
+                if pulseLbl and pulseLbl.Parent then
+                    pulseLbl.Text = "En vivo · " .. os.date("%H:%M:%S")
+                end
+            end
+        end)
+
+        -- Limpiar conexiones al destruir el tab
+        onlineSec.AncestryChanged:Connect(function(_, newParent)
+            if not newParent then
+                pcall(function() _paConn:Disconnect() end)
+                pcall(function() _prConn:Disconnect() end)
+                for uid, conns in pairs(_charConns) do
+                    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+                end
+                _charConns = {}
+            end
+        end)
+    end
+
+    -- ============================================================
     -- COLUMNA DERECHA
     -- ============================================================
 
@@ -37399,7 +37887,7 @@ function CreateExclusiveTab()
         layoutDesc.Size = UDim2.new(1, -12, 0, 22)
         layoutDesc.BackgroundTransparency = 1
         layoutDesc.Text = "Choose how the hub tabs are organized"
-        layoutDesc.TextColor3 = Color3.fromRGB(255, 182, 193)
+        layoutDesc.TextColor3 = Color3.fromRGB(140, 180, 255)
         layoutDesc.FontFace = Font.fromEnum(Enum.Font.Gotham)
         layoutDesc.TextSize = 11
         layoutDesc.TextWrapped = true
@@ -37428,10 +37916,10 @@ function CreateExclusiveTab()
 
                 -- Todos los modos usan el layout de referencia: panel derecho con botones grandes
                 do
-                    dock.Position = UDim2.new(0.70, 0, 0.14, 0)
-                    dock.Size = UDim2.new(0.30, 0, 0.86, 0)
+                    dock.Position = UDim2.new(0.73, 0, 0.14, 0)
+                    dock.Size = UDim2.new(0.27, 0, 0.86, 0)
                     contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
-                    contentContainer.Size = UDim2.new(0.70, 0, 0.86, 0)
+                    contentContainer.Size = UDim2.new(0.73, 0, 0.86, 0)
                     if dockLayout then
                         dockLayout.FillDirection       = Enum.FillDirection.Vertical
                         dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -37633,7 +38121,7 @@ function CreateExclusiveTab()
         -- Definicion de los 5 layouts
         -- ============================================================
         local _layouts = {
-            { label="SIDEBAR IZQ", desc="Tabs verticales izquierda",  color=Color3.fromRGB(200, 60, 120),  accent=Color3.fromRGB(255, 80, 180), mode=1 },
+            { label="SIDEBAR IZQ", desc="Tabs verticales izquierda",  color=Color3.fromRGB(20, 35, 80),  accent=Color3.fromRGB(255, 80, 180), mode=1 },
             { label="BARRA TOP",   desc="Tabs horizontales arriba",   color=Color3.fromRGB(18,  95,  65),  accent=Color3.fromRGB(55, 210, 135), mode=2 },
             { label="SIDEBAR DER", desc="Tabs verticales derecha",    color=Color3.fromRGB(95,  25, 135),  accent=Color3.fromRGB(175,  75, 255), mode=3 },
             { label="BARRA BOT",   desc="Tabs horizontales abajo",    color=Color3.fromRGB(135,  60, 15),  accent=Color3.fromRGB(255, 155,  55), mode=4 },
@@ -37735,7 +38223,7 @@ function CreateExclusiveTab()
             descLbl.Position = UDim2.new(0, 2, 1, -17)
             descLbl.BackgroundTransparency = 1
             descLbl.Text = layout.desc
-            descLbl.TextColor3 = Color3.fromRGB(255, 182, 193)
+            descLbl.TextColor3 = Color3.fromRGB(140, 180, 255)
             descLbl.FontFace = Font.fromEnum(Enum.Font.Gotham)
             descLbl.TextSize = 7
             descLbl.TextWrapped = true
@@ -37819,16 +38307,24 @@ function CreateExclusiveTab()
     end)
 
     -- Escala del hub (slider 70-130%)
-    CreateSlider(visualSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 100, function(v)
-        _hs().hubScale = v
-        pcall(function()
-            local sc = mainFrame:FindFirstChildOfClass("UIScale")
-            if not sc then sc = Instance.new("UIScale", mainFrame) end
-            -- Combinar escala de dispositivo + preferencia usuario para no romper el auto-fit
-            local baseScale = (_getTargetScale and _getTargetScale()) or 1
-            sc.Scale = baseScale * (v / 100)
+    do
+        -- FIX ESCALA: el slider llama al callback en el init (applyValue en CreateSlider).
+        -- Ese primer disparo pisaba el uiScale correcto ya aplicado al arrancar el hub.
+        -- Con _scaleSliderReady lo ignoramos en el init y solo aplicamos en drags reales.
+        local _scaleSliderReady = false
+        CreateSlider(visualSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 130, function(v)
+            if not _scaleSliderReady then _scaleSliderReady = true; return end
+            _hs().hubScale = v
+            pcall(function()
+                local sc = mainFrame:FindFirstChildOfClass("UIScale")
+                if not sc then sc = Instance.new("UIScale", mainFrame) end
+                -- FIX ESCALA DOBLE: v ya es el porcentaje (ej: 130), solo dividir por 100.
+                sc.Scale = v / 100
+                -- Mantener el tamaño base fijo; el UIScale se encarga de la escala visual
+                mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
+            end)
         end)
-    end)
+    end
 
     -- ============================================================
     --  FONT SELECTOR (Hub Labels)
@@ -37920,7 +38416,7 @@ function CreateExclusiveTab()
         previewLbl.TextXAlignment       = Enum.TextXAlignment.Center
         previewLbl.ZIndex               = 14
         Instance.new("UICorner", previewLbl).CornerRadius = UDim.new(0, 8)
-        Instance.new("UIStroke", previewLbl).Color        = Color3.fromRGB(255, 130, 190)
+        Instance.new("UIStroke", previewLbl).Color = Color3.fromRGB(40, 60, 180)
 
         local function _refreshPreview(modeIdx)
             local fd = _FONTS[modeIdx]
@@ -37948,7 +38444,7 @@ function CreateExclusiveTab()
             for i, btn in ipairs(_fontBtns) do
                 local isActive = (i == activeIdx)
                 TweenService:Create(btn, _tiFont, {
-                    BackgroundColor3     = isActive and Color3.fromRGB(255, 130, 190) or Color3.fromRGB(20, 30, 70),
+                    BackgroundColor3     = isActive and Color3.fromRGB(40, 100, 220) or Color3.fromRGB(20, 30, 70),
                     BackgroundTransparency = isActive and 0.15 or 0.55,
                 }):Play()
                 local st = btn:FindFirstChildOfClass("UIStroke")
@@ -37972,7 +38468,7 @@ function CreateExclusiveTab()
             btn.ZIndex                 = 14
             Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
             local st = Instance.new("UIStroke", btn)
-            st.Color       = Color3.fromRGB(255, 50, 150)
+            st.Color       = Color3.fromRGB(40, 60, 180)
             st.Thickness   = 1.5
             st.Transparency = 0.5
             st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -38505,7 +39001,7 @@ function CreateExclusiveTab()
         purgeBtn.ZIndex = 13
         Instance.new("UICorner", purgeBtn).CornerRadius = UDim.new(0, 8)
         local purgeStroke = Instance.new("UIStroke", purgeBtn)
-        purgeStroke.Color = Color3.fromRGB(255, 50, 150)
+        purgeStroke.Color = Color3.fromRGB(40, 60, 180)
         purgeStroke.Thickness = 1
         purgeStroke.Transparency = 0.3
         purgeBtn.MouseEnter:Connect(function()
@@ -38646,8 +39142,8 @@ function CreateCombatTab()
         -- Wrapper externo con borde y fondo semitransparente (sin loops de animacion)
         local wrapper = Instance.new("Frame", parent)
         wrapper.Size = UDim2.new(1, -6, 0, 0)
-        wrapper.BackgroundColor3 = ThemeColors.Background
-        wrapper.BackgroundTransparency = 1
+        wrapper.BackgroundColor3 = Color3.fromRGB(10, 18, 50)
+        wrapper.BackgroundTransparency = 0.30
         wrapper.BorderSizePixel = 0
         wrapper.AutomaticSize = Enum.AutomaticSize.Y
         wrapper.ZIndex = 11
@@ -39407,7 +39903,7 @@ function CreateCombatTab()
             local row = Instance.new("Frame", parent)
             row.Size = UDim2.new(1, -8, 0, 0)
             row.AutomaticSize = Enum.AutomaticSize.Y
-            row.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+            row.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
             row.BackgroundTransparency = 0.5
             row.BorderSizePixel = 0
             row.ZIndex = 13
@@ -39673,10 +40169,11 @@ function CreateCombatTab()
         local function _createSASMButton()
             _destroySASMGui()
 
-            local BTN_W, BTN_H = 75, 75
+            -- MÓVIL: botón grande circular (estilo Throw/Footsteps de MM2)
+            local BTN_W, BTN_H = 110, 110
             local vp = workspace.CurrentCamera.ViewportSize
-            local posX = math.clamp(vp.X * 0.85 - BTN_W / 2, 4, vp.X - BTN_W - 4)
-            local posY = math.clamp(vp.Y * 0.80 - BTN_H / 2, 4, vp.Y - BTN_H - 4)
+            local posX = math.clamp(vp.X * 0.82 - BTN_W / 2, 4, vp.X - BTN_W - 4)
+            local posY = math.clamp(vp.Y * 0.78 - BTN_H / 2, 4, vp.Y - BTN_H - 4)
 
             local sg = Instance.new("ScreenGui")
             sg.Name           = "SilentAimShootMurderGui"
@@ -39699,23 +40196,23 @@ function CreateCombatTab()
             btnRoot.ZIndex                 = 200
             btnRoot.Active                 = true
 
-            -- UIScale para animacion
+            -- UIScale para animacion de entrada
             local sc = Instance.new("UIScale", btnRoot)
             sc.Scale = 0
 
-            -- Fondo transparente (sin fondo, igual que bindable)
+            -- Fondo circular oscuro (estilo botones MM2 Throw/Footsteps)
             local pillBg = Instance.new("Frame", btnRoot)
             pillBg.Name                   = "PillBg"
             pillBg.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
             pillBg.AnchorPoint            = Vector2.new(0.5, 0.5)
             pillBg.Position               = UDim2.fromScale(0.5, 0.5)
-            pillBg.BackgroundColor3       = ThemeColors.Aurora1
-            pillBg.BackgroundTransparency = 1
+            pillBg.BackgroundColor3       = Color3.fromRGB(20, 20, 35)
+            pillBg.BackgroundTransparency = 0.25
             pillBg.BorderSizePixel        = 0
             pillBg.ZIndex                 = 200
-            Instance.new("UICorner", pillBg).CornerRadius = UDim.new(0, 10)
+            Instance.new("UICorner", pillBg).CornerRadius = UDim.new(1, 0)  -- perfectamente circular
 
-            -- Borde del color del hub (principal visible)
+            -- Borde circular del color del hub
             local borderFrame = Instance.new("Frame", btnRoot)
             borderFrame.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
             borderFrame.AnchorPoint            = Vector2.new(0.5, 0.5)
@@ -39723,43 +40220,43 @@ function CreateCombatTab()
             borderFrame.BackgroundTransparency = 1
             borderFrame.BorderSizePixel        = 0
             borderFrame.ZIndex                 = 201
-            Instance.new("UICorner", borderFrame).CornerRadius = UDim.new(0, 10)
+            Instance.new("UICorner", borderFrame).CornerRadius = UDim.new(1, 0)  -- circular
 
             local borderStroke = Instance.new("UIStroke", borderFrame)
             borderStroke.Color           = ThemeColors.Aurora1
-            borderStroke.Thickness       = 3
+            borderStroke.Thickness       = 4
             borderStroke.Transparency    = 0
             borderStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-            -- Glow sutil
+            -- Glow exterior
             local glow = Instance.new("ImageLabel", btnRoot)
             glow.AnchorPoint            = Vector2.new(0.5, 0.5)
             glow.Position               = UDim2.fromScale(0.5, 0.5)
-            glow.Size                   = UDim2.fromOffset(BTN_W * 1.4, BTN_H * 1.4)
+            glow.Size                   = UDim2.fromOffset(BTN_W * 1.5, BTN_H * 1.5)
             glow.BackgroundTransparency = 1
             glow.Image                  = "rbxassetid://4970638706"
             glow.ImageColor3            = ThemeColors.Aurora1
-            glow.ImageTransparency      = 0.82
+            glow.ImageTransparency      = 0.78
             glow.ZIndex                 = 199
 
-            -- Texto "SHOOT" centrado (estilo bindable)
+            -- Texto "SHOOT" grande, centrado
             local lbl = Instance.new("TextLabel", btnRoot)
-            lbl.Size                   = UDim2.fromOffset(BTN_W - 8, BTN_H - 8)
+            lbl.Size                   = UDim2.fromOffset(BTN_W - 10, BTN_H - 10)
             lbl.AnchorPoint            = Vector2.new(0.5, 0.5)
             lbl.Position               = UDim2.fromScale(0.5, 0.5)
             lbl.BackgroundTransparency = 1
             lbl.Text                   = "SHOOT"
             lbl.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-            lbl.TextSize               = 13
+            lbl.TextSize               = 20  -- texto más grande para móvil
             lbl.TextColor3             = Color3.fromRGB(255, 255, 255)
             lbl.TextXAlignment         = Enum.TextXAlignment.Center
             lbl.TextYAlignment         = Enum.TextYAlignment.Center
             lbl.TextWrapped            = true
             lbl.ZIndex                 = 204
             local lblStroke = Instance.new("UIStroke", lbl)
-            lblStroke.Color = Color3.fromRGB(0,0,0); lblStroke.Thickness = 1; lblStroke.Transparency = 0.5
+            lblStroke.Color = Color3.fromRGB(0,0,0); lblStroke.Thickness = 1.5; lblStroke.Transparency = 0.4
 
-            -- Boton clickeable encima
+            -- Boton clickeable encima (circular)
             local clickBtn = Instance.new("TextButton", btnRoot)
             clickBtn.Size                 = UDim2.fromOffset(BTN_W, BTN_H)
             clickBtn.AnchorPoint          = Vector2.new(0.5, 0.5)
@@ -39768,12 +40265,44 @@ function CreateCombatTab()
             clickBtn.Text                 = ""
             clickBtn.ZIndex               = 210
             clickBtn.AutoButtonColor      = false
-            Instance.new("UICorner", clickBtn).CornerRadius = UDim.new(0, 10)
+            Instance.new("UICorner", clickBtn).CornerRadius = UDim.new(1, 0)
 
-            -- Animacion entrada
+            -- Animacion de entrada (escala desde 0)
             task.spawn(function()
                 task.wait(0.016)
                 TweenService:Create(sc, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
+            end)
+
+            -- ANIMACION FLOTANTE: el botón sube y baja suavemente (estilo MM2)
+            task.spawn(function()
+                local _floatRunning = true
+                local _origY = posY
+                -- Esperar a que la animacion de entrada termine
+                task.wait(0.4)
+                while _floatRunning and btnRoot and btnRoot.Parent do
+                    -- Subir
+                    TweenService:Create(btnRoot, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                        Position = UDim2.fromOffset(btnRoot.Position.X.Offset, btnRoot.Position.Y.Offset - 8)
+                    }):Play()
+                    task.wait(0.9)
+                    if not (btnRoot and btnRoot.Parent) then break end
+                    -- Bajar
+                    TweenService:Create(btnRoot, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                        Position = UDim2.fromOffset(btnRoot.Position.X.Offset, btnRoot.Position.Y.Offset + 8)
+                    }):Play()
+                    task.wait(0.9)
+                end
+            end)
+
+            -- ANIMACION PULSO del glow
+            task.spawn(function()
+                while glow and glow.Parent do
+                    TweenService:Create(glow, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.60}):Play()
+                    task.wait(1.1)
+                    if not (glow and glow.Parent) then break end
+                    TweenService:Create(glow, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.88}):Play()
+                    task.wait(1.1)
+                end
             end)
 
             -- Drag
@@ -47545,7 +48074,7 @@ function CreateCombatTab()
             plb.BackgroundTransparency = 0.4
             plb.BorderSizePixel = 0; plb.ZIndex = 13
             plb.Text = "Ping: -- ms"
-            plb.TextColor3 = Color3.fromRGB(255, 50, 150)
+            plb.TextColor3 = Color3.fromRGB(40, 60, 180)
             plb.FontFace = Font.fromEnum(Enum.Font.GothamBold)
             plb.TextSize = 13; plb.TextXAlignment = Enum.TextXAlignment.Center
             Instance.new("UICorner", plb).CornerRadius = UDim.new(0,6)
@@ -47557,7 +48086,7 @@ function CreateCombatTab()
                     pcall(function()
                         local ping = math.floor(statsService.Network.ServerStatsItem["Data Ping"]:GetValue())
                         _apcLastPing = ping
-                        local color = ping < 80 and Color3.fromRGB(255, 50, 150)
+                        local color = ping < 80 and Color3.fromRGB(40, 60, 180)
                                    or ping < 150 and Color3.fromRGB(255,200,0)
                                    or Color3.fromRGB(255,60,60)
                         plb.TextColor3 = color
@@ -47749,7 +48278,7 @@ function CreateCombatTab()
             kfBtn.ZIndex = 14
             Instance.new("UICorner", kfBtn).CornerRadius = UDim.new(0, 6)
             local kbStroke = Instance.new("UIStroke", kfBtn)
-            kbStroke.Color = Color3.fromRGB(255, 50, 150)
+            kbStroke.Color = Color3.fromRGB(40, 60, 180)
             kbStroke.Thickness = 1.5
             kbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
@@ -47774,14 +48303,14 @@ function CreateCombatTab()
                             _listening = false
                             kfBtn.Text = tostring(_skbKey):gsub("Enum.KeyCode.", "")
                             kfBtn.BackgroundColor3 = Color3.fromRGB(160, 20, 35)
-                            kbStroke.Color = Color3.fromRGB(255, 50, 150)
+                            kbStroke.Color = Color3.fromRGB(40, 60, 180)
                             pcall(function() _listenConn:Disconnect() end)
                             return
                         end
                         _skbKey = inp.KeyCode
                         kfBtn.Text = keyName
                         kfBtn.BackgroundColor3 = Color3.fromRGB(160, 20, 35)
-                        kbStroke.Color = Color3.fromRGB(255, 50, 150)
+                        kbStroke.Color = Color3.fromRGB(40, 60, 180)
                         _listening = false
                         pcall(function() _listenConn:Disconnect() end)
                         if not UserInputService.TouchEnabled then CreateCustomNotification("SHOOT KEYBIND", "Tecla -> " .. keyName, 2) end
@@ -49621,7 +50150,7 @@ function CreateCombatTab()
         _skPanel.BorderSizePixel = 0
         Instance.new("UICorner", _skPanel).CornerRadius = UDim.new(0, 8)
         local _skStroke = Instance.new("UIStroke", _skPanel)
-        _skStroke.Color = Color3.fromRGB(255, 50, 150)
+        _skStroke.Color = Color3.fromRGB(40, 60, 180)
         _skStroke.Thickness = 1.5
         _skStroke.Transparency = 0.3
 
@@ -49953,7 +50482,7 @@ function CreateCombatTab()
         _scHdr.Size = UDim2.new(1, -8, 0, 16)
         _scHdr.BackgroundTransparency = 1
         _scHdr.Text = " SHOOT CONDITION"
-        _scHdr.TextColor3 = Color3.fromRGB(255, 50, 150)
+        _scHdr.TextColor3 = Color3.fromRGB(40, 60, 180)
         _scHdr.Font = Enum.Font.GothamBold
         _scHdr.TextSize = 10
         _scHdr.TextXAlignment = Enum.TextXAlignment.Left
@@ -49970,7 +50499,7 @@ function CreateCombatTab()
         _scRow.ZIndex = 13
         Instance.new("UICorner", _scRow).CornerRadius = UDim.new(0, 8)
         local _scRowStroke = Instance.new("UIStroke", _scRow)
-        _scRowStroke.Color = Color3.fromRGB(255, 50, 150)
+        _scRowStroke.Color = Color3.fromRGB(40, 60, 180)
         _scRowStroke.Thickness = 1.2
         _scRowStroke.Transparency = 0.4
 
@@ -49981,7 +50510,7 @@ function CreateCombatTab()
         _scPrev.BackgroundTransparency = 0.4
         _scPrev.BorderSizePixel = 0
         _scPrev.Text = ""
-        _scPrev.TextColor3 = Color3.fromRGB(255, 50, 150)
+        _scPrev.TextColor3 = Color3.fromRGB(40, 60, 180)
         _scPrev.Font = Enum.Font.GothamBold
         _scPrev.TextSize = 18
         _scPrev.ZIndex = 14
@@ -49995,7 +50524,7 @@ function CreateCombatTab()
         _scNext.BackgroundTransparency = 0.4
         _scNext.BorderSizePixel = 0
         _scNext.Text = ""
-        _scNext.TextColor3 = Color3.fromRGB(255, 50, 150)
+        _scNext.TextColor3 = Color3.fromRGB(40, 60, 180)
         _scNext.Font = Enum.Font.GothamBold
         _scNext.TextSize = 18
         _scNext.ZIndex = 14
@@ -50028,7 +50557,7 @@ function CreateCombatTab()
         _scDescLabel.TextSize = 10
         Instance.new("UICorner", _scDescLabel).CornerRadius = UDim.new(0, 6)
         local _scDescStroke = Instance.new("UIStroke", _scDescLabel)
-        _scDescStroke.Color = Color3.fromRGB(255, 50, 150)
+        _scDescStroke.Color = Color3.fromRGB(40, 60, 180)
         _scDescStroke.Thickness = 1
         _scDescStroke.Transparency = 0.5
         local _scDescPad = Instance.new("UIPadding", _scDescLabel)
@@ -50286,7 +50815,7 @@ infoBtn.Activated:Connect(function()
     local function addRow(icon, key, value)
         local row = Instance.new("Frame", infoFrame)
         row.Size = UDim2.new(1, 0, 0, 32)
-        row.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+        row.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
         row.BackgroundTransparency = 0.9
         row.BorderSizePixel = 0
         row.ZIndex = 101
@@ -50539,7 +51068,7 @@ Instance.new("UICorner", spinGlow).CornerRadius = UDim.new(0, 16)
 spinIconFrame = Instance.new("Frame", serverPanel)
 spinIconFrame.Size = UDim2.new(0, 60, 0, 60)
 spinIconFrame.Position = UDim2.new(0, 0, 0, 0)
-spinIconFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+spinIconFrame.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
 spinIconFrame.BackgroundTransparency = 1
 spinIconFrame.BorderSizePixel = 0
 spinIconFrame.ZIndex = 21
@@ -50586,7 +51115,7 @@ do
     local DA = _G._discordAuth or { loggedIn = false, hasPremium = false, username = nil }
     local tierName  = DA.hasPremium and "Premium" or "Free User"
     local tierColor = DA.hasPremium
-        and Color3.fromRGB(255, 50, 150)
+        and Color3.fromRGB(40, 60, 180)
         or  Color3.fromRGB(80, 255, 140)
 
     -- Card principal  debajo del serverInfoBox, ancho completo del serverPanel
@@ -50692,7 +51221,7 @@ do
             newColor = Color3.fromRGB(255, 210,   0)
         elseif isPrem then
             newTier  = "* Premium"
-            newColor = Color3.fromRGB(255, 50, 150)
+            newColor = Color3.fromRGB(40, 60, 180)
         else
             newTier  = "* Free User"
             newColor = Color3.fromRGB(80, 255, 140)
@@ -50729,7 +51258,7 @@ do
     wlFrame.ZIndex = 22
     Instance.new("UICorner", wlFrame).CornerRadius = UDim.new(0, 8)
     local wlStroke = Instance.new("UIStroke", wlFrame)
-    wlStroke.Color = Color3.fromRGB(255, 50, 150)
+    wlStroke.Color = Color3.fromRGB(40, 60, 180)
     wlStroke.Thickness = 1
     wlStroke.Transparency = 0.5
 
@@ -50780,7 +51309,7 @@ do
     wlFillGrad.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0,   Color3.fromRGB(80, 100, 240)),
         ColorSequenceKeypoint.new(0.5, Color3.fromRGB(80, 255, 140)),
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(255, 50, 150)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(40, 60, 180)),
     })
 
     -- Actualizar la barra y el tiempo
@@ -50853,7 +51382,7 @@ end)
 serverInfoBox = Instance.new("Frame", serverPanel)
 serverInfoBox.Size = UDim2.new(1, -80, 0, 115)
 serverInfoBox.Position = UDim2.new(0, 75, 0, 0)
-serverInfoBox.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+serverInfoBox.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
 serverInfoBox.BackgroundTransparency = 0.75
 serverInfoBox.BorderSizePixel = 0
 serverInfoBox.ZIndex = 21
@@ -50936,7 +51465,7 @@ for idx, info in ipairs(siData) do
     local cell = Instance.new("Frame", siGrid)
     cell.Size = UDim2.new(0.5, -6, 0, 34)
     cell.Position = UDim2.new(col * 0.5, col == 0 and 0 or 6, 0, row * 38)
-    cell.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+    cell.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
     cell.BackgroundTransparency = 1
     cell.BorderSizePixel = 0
     cell.ZIndex = 23
@@ -51021,7 +51550,7 @@ rolesLayout.SortOrder = Enum.SortOrder.LayoutOrder
 statsBar = Instance.new("Frame", serverPanel)
 statsBar.Size = UDim2.new(1, 0, 0, 36)
 statsBar.Position = UDim2.new(0, 0, 0, 270)
-statsBar.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+statsBar.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
 statsBar.BackgroundTransparency = 0.75
 statsBar.BorderSizePixel = 0
 statsBar.ZIndex = 21
@@ -51146,7 +51675,7 @@ function RefreshRoles()
 
         local card = Instance.new("Frame", rolesScroll)
         card.Size = UDim2.new(0, 90, 0, 84)
-        card.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+        card.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
         card.BackgroundTransparency = 1
         card.BorderSizePixel = 0
         card.ZIndex = 23
@@ -51168,7 +51697,7 @@ function RefreshRoles()
         local avatarFrame = Instance.new("Frame", card)
         avatarFrame.Size = UDim2.new(0, 44, 0, 44)
         avatarFrame.Position = UDim2.new(0.5, -22, 0, 7)
-        avatarFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+        avatarFrame.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
         avatarFrame.BackgroundTransparency = 1
         avatarFrame.BorderSizePixel = 0
         avatarFrame.ZIndex = 24
@@ -51872,76 +52401,79 @@ print("3: mainFrame creado")
 -- Layout relativo: 80% ancho x 82% alto, centrado en pantalla
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
--- mainFrame completamente transparente — los paneles internos tienen su propio fondo
-mainFrame.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
-mainFrame.BackgroundTransparency = 1
+-- mainFrame con fondo azul translúcido (diseño CustomBlueGui)
+mainFrame.BackgroundColor3 = Color3.fromRGB(8, 18, 35)
+mainFrame.BackgroundTransparency = 0.82
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 
--- TAMAÑO: relativo a la pantalla (80% x 82%)
-mainFrame.Size = UDim2.new(0.72, 0, 0.74, 0)
+-- TAMAÑO MÓVIL: tamaño base en píxeles para que al aplicar UIScale no se salga de pantalla.
+-- Con UIScale = 1.3 (130%), un frame de 100% ancho se expande a 130% -> se sale de pantalla.
+-- Solución: tamaño base que el UIScale ajusta correctamente.
+-- El slider de escala (70-130%) maneja el UIScale; el Size queda fijo.
+mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
 
 -- Fondo: sin imagen rbxassetid, fondo rosa limpio
 _G._hubBgMainImageRef = nil
 _G._applyHubBackground = function(id) end  -- stub de compatibilidad
 _G._hubWaveContainer = nil
 
--- Borde eliminado
+-- Borde del mainFrame activado (diseño CustomBlueGui)
 glowBorder = Instance.new("UIStroke", mainFrame)
-glowBorder.Color = Color3.fromRGB(255, 50, 150)
-glowBorder.Thickness = 0
-glowBorder.Transparency = 1.0
+glowBorder.Color = Color3.fromRGB(0, 200, 255)
+glowBorder.Thickness = 2
+glowBorder.Transparency = 0
 glowBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 -- ANIMACION DE BORDE: gradiente giratorio con los colores del tema
 do
     local _borderGrad = Instance.new("UIGradient", glowBorder)
     _borderGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,    Color3.fromRGB(255,  50, 150)),  -- Rosa oscuro
-        ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 105, 180)),  -- Rosa base
-        ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(255, 182, 193)),  -- Rosa claro
-        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255,  20, 147)),  -- Rosa intenso
-        ColorSequenceKeypoint.new(1,    Color3.fromRGB(255,  50, 150)),  -- Rosa oscuro (cierra el loop)
+        ColorSequenceKeypoint.new(0,    Color3.fromRGB(  0, 200, 255)),  -- celeste neon
+        ColorSequenceKeypoint.new(0.25, Color3.fromRGB( 60, 220, 255)),  -- celeste claro
+        ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(  0, 240, 255)),  -- cian brillante
+        ColorSequenceKeypoint.new(0.75, Color3.fromRGB(  0, 180, 240)),  -- celeste medio
+        ColorSequenceKeypoint.new(1,    Color3.fromRGB(  0, 200, 255)),  -- celeste neon (cierra loop)
     })
     _borderGrad.Rotation = 0
-    -- Pulso de grosor suave en paralelo al shimmer de rotacion
     _G._hubBorderGrad = _borderGrad
-    -- Registrar en el shimmer global (velocidad 45 = rotacion lenta y elegante)
     RegisterShimmer(_borderGrad, 45, 0)
-    -- Pulso de grosor + animacion de colores rapida en el borde
     local _pulseTick = 0
-    -- Paleta de colores para el ciclo rapido del borde
     local _borderColors = {
-        Color3.fromRGB(255,  50, 150),  -- rosa oscuro
-        Color3.fromRGB(255, 105, 180),  -- rosa base
-        Color3.fromRGB(255, 182, 193),  -- rosa claro pastel
-        Color3.fromRGB(255,  20, 147),  -- rosa intenso (deep pink)
-        Color3.fromRGB(255, 153, 204),  -- rosa suave
-        Color3.fromRGB(219,  51, 115),  -- rosa brillante
-        Color3.fromRGB(255, 130, 170),  -- rosa medio
-        Color3.fromRGB(200,  40, 130),  -- rosa fucsia
+        Color3.fromRGB(  0, 200, 255),  -- celeste neon
+        Color3.fromRGB( 60, 220, 255),  -- celeste claro
+        Color3.fromRGB(  0, 240, 255),  -- cian brillante
+        Color3.fromRGB(  0, 180, 240),  -- celeste medio
+        Color3.fromRGB( 80, 230, 255),  -- celeste acento
+        Color3.fromRGB(  0, 160, 220),  -- celeste oscuro
+        Color3.fromRGB(100, 230, 255),  -- celeste electrico
+        Color3.fromRGB( 40, 210, 255),  -- celeste suave
     }
     local _colorIdx = 1
     local _colorTick = 0
     task.spawn(function()
         while glowBorder and glowBorder.Parent do
             task.wait(0.016)  -- ~60fps ultra rapido
-            -- Borde desactivado: no animar
-            glowBorder.Thickness = 0
-            glowBorder.Transparency = 1.0
+            -- Borde activo: mantener grosor y color (diseño CustomBlueGui)
+            -- glowBorder.Thickness ya es 2, no se sobreescribe
+            task.wait(1)  -- throttle para no consumir CPU innecesariamente
         end
     end)
 end
 
 uiScale = Instance.new("UIScale", mainFrame)
-uiScale.Scale = 1
+uiScale.Scale = 1.0  -- MÓVIL: escala 1:1
 
 -- ================================================================
--- == ESCALA FIJA (layout relativo, no necesita UIScale dinámico)
+-- == ESCALA MÓVIL: fija en 1.0 para pantalla de celular
 -- ================================================================
-_getTargetScale = function() return 1 end
-uiScale.Scale = 1
+_getTargetScale = function()
+    return 1.0  -- MÓVIL: sin sobreescalar
+end
+do
+    uiScale.Scale = 1.0
+end
 mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 print("[ZerqonHUB] Layout relativo 80%x82% aplicado")
@@ -52373,7 +52905,7 @@ do
     local _auroraBase = Instance.new("Frame", _auroraContainer)
     _auroraBase.Name = "AuroraBase"
     _auroraBase.Size = UDim2.new(1, 0, 1, 0)
-    _auroraBase.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+    _auroraBase.BackgroundColor3 = Color3.fromRGB(60, 80, 190)
     _auroraBase.BackgroundTransparency = 1  -- invisible: el fondo del juego se ve detras
     _auroraBase.BorderSizePixel = 0
     _auroraBase.ZIndex = 2
@@ -52497,18 +53029,18 @@ particles = {}
     header.Name = "TopBar"
     header.Size = UDim2.new(1, 0, 0.14, 8)
     header.Position = UDim2.new(0, 0, 0, 0)
-    header.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
-    header.BackgroundTransparency = 0.55
+    header.BackgroundColor3 = Color3.fromRGB(60, 80, 190)
+    header.BackgroundTransparency = 0.1
     header.BorderSizePixel = 0
     header.ZIndex = 10
     header.Active = true
     header.ClipsDescendants = true
     local _hdrCorner = Instance.new("UICorner", header)
-    _hdrCorner.CornerRadius = UDim.new(0, 8)
+    _hdrCorner.CornerRadius = UDim.new(0, 10)
     local _hdrStroke = Instance.new("UIStroke", header)
-    _hdrStroke.Color = Color3.fromRGB(255, 50, 150)
-    _hdrStroke.Thickness = 0
-    _hdrStroke.Transparency = 1.0
+    _hdrStroke.Color = Color3.fromRGB(40, 60, 180)
+    _hdrStroke.Thickness = 2
+    _hdrStroke.Transparency = 0
     _hdrStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Título del hub a la izquierda — estilo referencia
@@ -52516,14 +53048,15 @@ particles = {}
     _hdLabel.Size = UDim2.new(0.7, 0, 0.75, 0)
     _hdLabel.Position = UDim2.new(0, 10, 0.125, 0)
     _hdLabel.BackgroundTransparency = 1
-    _hdLabel.Text = "✦ ZERQON HUB"
-    _hdLabel.TextColor3 = Color3.fromRGB(130, 0, 60)
+    _hdLabel.Text = "Murderer Mystery 2"
+    _hdLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     _hdLabel.FontFace = Font.fromEnum(Enum.Font.GothamBold)
-    _hdLabel.TextScaled = true
-    _hdLabel.TextXAlignment = Enum.TextXAlignment.Left
+    _hdLabel.TextScaled = false
+    _hdLabel.TextSize = 18
+    _hdLabel.TextXAlignment = Enum.TextXAlignment.Right
     _hdLabel.TextYAlignment = Enum.TextYAlignment.Center
     _hdLabel.TextStrokeTransparency = 0.4
-    _hdLabel.TextStrokeColor3 = Color3.fromRGB(130, 0, 60)
+    _hdLabel.TextStrokeColor3 = Color3.fromRGB(200, 220, 255)
     _hdLabel.ZIndex = 12
 
     -- Animacion lenta de brillo del titulo (pulso de stroke)
@@ -52531,7 +53064,7 @@ particles = {}
         while _hdLabel and _hdLabel.Parent do
             TweenService:Create(_hdLabel, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
                 TextStrokeTransparency = 0.0,
-                TextColor3 = Color3.fromRGB(255, 200, 220),
+                TextColor3 = Color3.fromRGB(180, 210, 255),
             }):Play()
             task.wait(2.2)
             TweenService:Create(_hdLabel, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
@@ -52542,7 +53075,17 @@ particles = {}
         end
     end)
 
-    -- Subtítulo "by zerqon" eliminado
+    -- Subtítulo del hub (diseño CustomBlueGui)
+    local _hdSub = Instance.new("TextLabel", header)
+    _hdSub.Size = UDim2.new(0.4, 0, 0.5, 0)
+    _hdSub.Position = UDim2.new(0.5, 60, 0.25, 0)
+    _hdSub.BackgroundTransparency = 1
+    _hdSub.Text = "By CapybaraScripts"
+    _hdSub.TextColor3 = Color3.fromRGB(200, 200, 200)
+    _hdSub.FontFace = Font.fromEnum(Enum.Font.Gotham)
+    _hdSub.TextSize = 14
+    _hdSub.TextXAlignment = Enum.TextXAlignment.Left
+    _hdSub.ZIndex = 12
 
     -- FLECHA en la esquina superior izquierda del header (imagen 2)
     -- (ArrowCornerBtn eliminado por pedido del usuario)
@@ -52829,9 +53372,9 @@ particles = {}
     -- ContentContainer: panel izquierdo del hub (contenido de tabs)
     contentContainer = Instance.new("Frame", mainFrame)
     contentContainer.Name = "ContentContainer"
-    contentContainer.Size = UDim2.new(0.70, 0, 0.86, 8)
+    contentContainer.Size = UDim2.new(0.73, 0, 0.86, 8)
     contentContainer.Position = UDim2.new(0, 0, 0.14, -8)
-    contentContainer.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+    contentContainer.BackgroundColor3 = Color3.fromRGB(15, 30, 80)
     contentContainer.BackgroundTransparency = 0.55
     contentContainer.BorderSizePixel = 0
     contentContainer.ClipsDescendants = true
@@ -52840,7 +53383,7 @@ particles = {}
     local _ccCorner = Instance.new("UICorner", contentContainer)
     _ccCorner.CornerRadius = UDim.new(0, 8)
     local _ccStroke = Instance.new("UIStroke", contentContainer)
-    _ccStroke.Color = Color3.fromRGB(255, 50, 150)
+    _ccStroke.Color = Color3.fromRGB(40, 60, 180)
     _ccStroke.Thickness = 0
     _ccStroke.Transparency = 1.0
     _ccStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -52853,7 +53396,7 @@ particles = {}
     local _auroraFrame = Instance.new("Frame", contentContainer)
     _auroraFrame.Name = "AuroraEffect"
     _auroraFrame.Size = UDim2.new(1, 0, 1, 0)
-    _auroraFrame.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+    _auroraFrame.BackgroundColor3 = Color3.fromRGB(60, 80, 190)
     _auroraFrame.BackgroundTransparency = 1  -- completamente invisible
     _auroraFrame.BorderSizePixel = 0
     _auroraFrame.ZIndex = 1
@@ -53031,28 +53574,27 @@ particles = {}
         local btn = sideButtons[i]
         if not btn then return end
         local r         = _G._tabBtnRefs[i]
-        local icon      = r and r.icon
         local stroke    = r and r.stroke
         local activeBar = r and r.activeBar
         local lbl2      = r and r.lbl2
         if isActive then
-            -- Tab activa: fondo rosa más sólido, borde fucsia, texto oscuro
-            btn.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
-            btn.BackgroundTransparency = 0.25
-            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0, Color = Color3.fromRGB(255, 50, 150)}):Play() end
-            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(255, 50, 150)}):Play() end
-            if lbl2      then
-                TweenService:Create(lbl2, _ti_tab, {TextColor3 = Color3.fromRGB(130, 0, 60), TextStrokeTransparency = 0.6}):Play()
-            end
+            -- Tab activa: igual al topBar del CustomBlueGui (60,80,190 / transparency 0.1)
+            TweenService:Create(btn, _ti_tab, {
+                BackgroundColor3 = Color3.fromRGB(60, 80, 190),
+                BackgroundTransparency = 0.1
+            }):Play()
+            if stroke    then TweenService:Create(stroke, _ti_tab, {Transparency = 0, Color = Color3.fromRGB(40, 60, 180)}):Play() end
+            if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(40, 60, 180)}):Play() end
+            if lbl2      then TweenService:Create(lbl2, _ti_tab, {TextColor3 = Color3.fromRGB(255, 255, 255), TextStrokeTransparency = 0.4}):Play() end
         else
-            -- Tab inactiva: fondo semitransparente rosa, borde fucsia, texto oscuro
-            btn.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
-            btn.BackgroundTransparency = 0.55
-            if stroke    then TweenService:Create(stroke,    _ti_tab, {Transparency = 0.0, Color = Color3.fromRGB(255, 50, 150)}):Play() end
+            -- Tab inactiva: igual a las cajas vacías del CustomBlueGui (150,180,255 / 0.5)
+            TweenService:Create(btn, _ti_tab, {
+                BackgroundColor3 = Color3.fromRGB(150, 180, 255),
+                BackgroundTransparency = 0.5
+            }):Play()
+            if stroke    then TweenService:Create(stroke, _ti_tab, {Transparency = 0, Color = Color3.fromRGB(40, 60, 180)}):Play() end
             if activeBar then TweenService:Create(activeBar, _ti_tab, {BackgroundTransparency = 1}):Play() end
-            if lbl2      then
-                TweenService:Create(lbl2, _ti_tab, {TextColor3 = Color3.fromRGB(130, 0, 60), TextStrokeTransparency = 0.8}):Play()
-            end
+            if lbl2      then TweenService:Create(lbl2, _ti_tab, {TextColor3 = Color3.fromRGB(240, 245, 255), TextStrokeTransparency = 0.6}):Play() end
         end
     end
 
@@ -53203,12 +53745,12 @@ particles = {}
     tabDockFrame.ZIndex = 12
     tabDockFrame.ClipsDescendants = false
     tabDockFrame.BackgroundTransparency = 1
-    tabDockFrame.Position = UDim2.new(0.70, 0, 0.14, 0)
-    tabDockFrame.Size = UDim2.new(0.30, 0, 0.86, 0)
+    tabDockFrame.Position = UDim2.new(0.73, 0, 0.14, 0)
+    tabDockFrame.Size = UDim2.new(0.27, 0, 0.86, 0)
     tabDockFrame.Visible  = true
 
     local _dockStroke = Instance.new("UIStroke", tabDockFrame)
-    _dockStroke.Color           = Color3.fromRGB(255, 50, 150)
+    _dockStroke.Color           = Color3.fromRGB(40, 60, 180)
     _dockStroke.Thickness       = 0
     _dockStroke.Transparency    = 1.0
     _dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -53229,7 +53771,7 @@ particles = {}
     local dockLayout = Instance.new("UIListLayout", tabDockList)
     dockLayout.FillDirection = Enum.FillDirection.Vertical
     dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    dockLayout.Padding = UDim.new(0, 0)
+    dockLayout.Padding = UDim.new(0, 0)  -- MÓVIL: sin separación entre pestañas
     dockLayout.SortOrder = Enum.SortOrder.LayoutOrder
     local dockPad = Instance.new("UIPadding", tabDockList)
     dockPad.PaddingTop    = UDim.new(0, 0)
@@ -53239,47 +53781,51 @@ particles = {}
 
     -- Panel izquierdo: contentContainer (área de contenido de tabs)
     contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
-    contentContainer.Size = UDim2.new(0.70, 0, 0.86, 0)
+    contentContainer.Size = UDim2.new(0.73, 0, 0.86, 0)
     contentContainer.Visible  = false
 
-    local C_TAB_IDLE   = Color3.fromRGB(255, 105, 180)
-    local C_TAB_ACTIVE = Color3.fromRGB(255, 105, 180)
-    local C_TAB_HOVER  = Color3.fromRGB(255, 105, 180)
-    local C_NEON       = Color3.fromRGB(255, 50, 150)
+    local C_TAB_IDLE   = Color3.fromRGB(150, 180, 255)
+    local C_TAB_ACTIVE = Color3.fromRGB(60, 80, 190)
+    local C_TAB_HOVER  = Color3.fromRGB(100, 140, 230)
+    local C_NEON       = Color3.fromRGB(40, 60, 180)
 
     local BTN_H = 52
 
     local function _syncDockPos() end  -- no-op
 
-    -- Crear botones en el panel derecho — estilo referencia: grandes, rosa, texto oscuro
+    -- Crear botones de tabs — diseño CustomBlueGui (cajas con borde azul, fondo translúcido)
     for i = 1, #tabNames do
         local btn = Instance.new("TextButton", tabDockList)
-        btn.Name             = tabNames[i] .. "SideBtn"
-        btn.Size             = UDim2.new(1, 0, 0.10, 0)
-        btn.BackgroundColor3        = Color3.fromRGB(255, 105, 180)
-        btn.BackgroundTransparency  = 0.55
+        btn.Name                    = tabNames[i] .. "SideBtn"
+        btn.Size                    = UDim2.new(1, 0, 0, 0)  -- MÓVIL: ancho completo, sin hueco lateral
+        btn.AutomaticSize           = Enum.AutomaticSize.Y
+        btn.BackgroundColor3        = Color3.fromRGB(150, 180, 255)
+        btn.BackgroundTransparency  = 0.5
         btn.BorderSizePixel         = 0
         btn.Text                    = ""
         btn.AutoButtonColor         = false
         btn.ClipsDescendants        = false
         btn.ZIndex                  = 13
+        btn.LayoutOrder             = i
 
         local _tabTag       = Instance.new("StringValue", btn)
         _tabTag.Name        = "TAB_BTN_PROTECTED"
         _tabTag.Value       = "1"
 
-        local btnCorner         = Instance.new("UICorner", btn)
-        btnCorner.CornerRadius  = UDim.new(0, 8)
+        -- Sin corner radius: pestañas pegadas sin huecos
+        -- local btnCorner = Instance.new("UICorner", btn)
 
         local btnStroke             = Instance.new("UIStroke", btn)
-        btnStroke.Color             = Color3.fromRGB(255, 50, 150)
-        btnStroke.Thickness         = 0
-        btnStroke.Transparency      = 1.0
+        btnStroke.Color             = Color3.fromRGB(40, 60, 180)
+        btnStroke.Thickness         = 2
+        btnStroke.Transparency      = 0
         btnStroke.ApplyStrokeMode   = Enum.ApplyStrokeMode.Border
 
         local btnPad = Instance.new("UIPadding", btn)
-        btnPad.PaddingTop    = UDim.new(0.05, 0)
-        btnPad.PaddingBottom = UDim.new(0.05, 0)
+        btnPad.PaddingTop    = UDim.new(0, 4)  -- MÓVIL: padding reducido
+        btnPad.PaddingBottom = UDim.new(0, 4)
+        btnPad.PaddingLeft   = UDim.new(0, 4)
+        btnPad.PaddingRight  = UDim.new(0, 4)
 
         -- Indicador de activo (barra izquierda)
         local activeBar                 = Instance.new("Frame", btn)
@@ -53287,45 +53833,31 @@ particles = {}
         activeBar.Size                  = UDim2.new(0, 3, 0.7, 0)
         activeBar.AnchorPoint           = Vector2.new(0, 0.5)
         activeBar.Position              = UDim2.new(0, 0, 0.5, 0)
-        activeBar.BackgroundColor3      = Color3.fromRGB(255, 50, 150)
+        activeBar.BackgroundColor3      = Color3.fromRGB(40, 60, 180)
         activeBar.BackgroundTransparency= 1
         activeBar.BorderSizePixel       = 0
         activeBar.ZIndex                = 16
         Instance.new("UICorner", activeBar).CornerRadius = UDim.new(1, 0)
 
-        -- Label del botón: texto grande, escalado, color oscuro rosa
+        -- Label del botón: texto centrado, tamaño fijo, blanco
         local lbl                   = Instance.new("TextLabel", btn)
         lbl.Name                    = "TabLabel"
-        lbl.Size                    = UDim2.new(1, 0, 1, 0)
+        lbl.Size                    = UDim2.new(1, 0, 0, 36)
         lbl.AnchorPoint             = Vector2.new(0.5, 0.5)
         lbl.Position                = UDim2.new(0.5, 0, 0.5, 0)
         lbl.BackgroundTransparency  = 1
         lbl.Text                    = tabNames[i]
         lbl.FontFace                = Font.fromEnum(Enum.Font.GothamBold)
-        lbl.TextScaled              = true
-        lbl.TextColor3              = Color3.fromRGB(130, 0, 60)
+        lbl.TextScaled              = false
+        lbl.TextSize                = 13
+        lbl.TextColor3              = Color3.fromRGB(240, 245, 255)
         lbl.TextXAlignment          = Enum.TextXAlignment.Center
         lbl.TextYAlignment          = Enum.TextYAlignment.Center
         lbl.TextWrapped             = false
-        lbl.TextStrokeTransparency  = 0.8
-        lbl.TextStrokeColor3        = Color3.fromRGB(130, 0, 60)
+        lbl.TextStrokeTransparency  = 0.6
+        lbl.TextStrokeColor3        = Color3.fromRGB(40, 60, 180)
         lbl.ZIndex                  = 14
-        -- Brillo blanco pulsante en el nombre de la pestana (glow blanco)
-        local _lblCaptured = lbl
-        local _iCaptured = i
-        task.spawn(function()
-            local _phaseOffset = _iCaptured * 0.55
-            while _lblCaptured and _lblCaptured.Parent do
-                local _t = tick() + _phaseOffset
-                local _pulse = (math.sin(_t * 1.2) + 1) * 0.5
-                if activeTabIdx ~= _iCaptured then
-                    _lblCaptured.TextStrokeTransparency = 0.25 + (1 - _pulse) * 0.60
-                    local _v = math.floor(190 + _pulse * 65)
-                    _lblCaptured.TextColor3 = Color3.fromRGB(_v, _v, _v)
-                end
-                task.wait(0.05)
-            end
-        end)
+
         do
             local _tabKey = tabNames[i]:lower():gsub(" ", "_")
             table.insert(_LangObjects, {obj=lbl, key=_tabKey, prefix="", suffix=""})
@@ -53340,12 +53872,14 @@ particles = {}
         btn.MouseEnter:Connect(function()
             if activeTabIdx ~= i then
                 PlayHoverSound()
-                TweenService:Create(lbl, ti, {TextColor3 = Color3.fromRGB(160, 255, 210)}):Play()
+                TweenService:Create(btn, ti, {BackgroundTransparency = 0.15, BackgroundColor3 = Color3.fromRGB(100, 140, 230)}):Play()
+                TweenService:Create(lbl, ti, {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
             end
         end)
         btn.MouseLeave:Connect(function()
             if activeTabIdx ~= i then
-                TweenService:Create(lbl, ti, {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+                TweenService:Create(btn, ti, {BackgroundTransparency = 0.5, BackgroundColor3 = Color3.fromRGB(150, 180, 255)}):Play()
+                TweenService:Create(lbl, ti, {TextColor3 = Color3.fromRGB(240, 245, 255)}):Play()
             end
         end)
 
@@ -53354,7 +53888,6 @@ particles = {}
             local wasVisible = contentContainer.Visible
             if not wasVisible then
                 contentContainer.Visible = true
-                -- Entrada instantánea (animación de pestaña eliminada)
                 contentContainer.Position = UDim2.new(0.02, 0, 0.16, 0)
             end
             SetActiveTab(i)
@@ -53379,14 +53912,14 @@ particles = {}
         f.Name = name
         f.Size = size
         f.Position = pos
-        f.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+        f.BackgroundColor3 = Color3.fromRGB(60, 80, 190)
         f.BackgroundTransparency = 0.55
         f.BorderSizePixel = 0
         f.ZIndex = 20
         f.Visible = false
         Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
         local st = Instance.new("UIStroke", f)
-        st.Color = Color3.fromRGB(255, 50, 150)
+        st.Color = Color3.fromRGB(40, 60, 180)
         st.Thickness = 2
         st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         return f
@@ -53530,7 +54063,7 @@ particles = {}
             rBtn2.AnchorPoint = Vector2.new(0.5, 0.5)
             rBtn2.Position = UDim2.new(0.5, 0, 0.5, 0)
             rBtn2.Size = UDim2.new(0, 0, 0, 0)
-            rBtn2.BackgroundColor3 = Color3.fromRGB(255, 50, 150)
+            rBtn2.BackgroundColor3 = Color3.fromRGB(40, 60, 180)
             rBtn2.BackgroundTransparency = 0.3
             rBtn2.BorderSizePixel = 0
             rBtn2.Text = "zerqon"
@@ -53542,7 +54075,7 @@ particles = {}
             rBtn2.AutoButtonColor = false
             Instance.new("UICorner", rBtn2).CornerRadius = UDim.new(0, 12)
             local _rBtn2Stroke = Instance.new("UIStroke", rBtn2)
-            _rBtn2Stroke.Color = Color3.fromRGB(255, 50, 150)
+            _rBtn2Stroke.Color = Color3.fromRGB(40, 60, 180)
             _rBtn2Stroke.Thickness = 1.5
             _rBtn2Stroke.Transparency = 0.1
             _rBtn2Stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -53778,7 +54311,7 @@ particles = {}
         _bgGrad.Color = ColorSequence.new({
             ColorSequenceKeypoint.new(0,   Color3.fromRGB(80,  8,  70)),
             ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 35, 130)),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(255, 50, 150)),
+            ColorSequenceKeypoint.new(1,   Color3.fromRGB(40, 60, 180)),
         })
         _bgGrad.Rotation = 135
 
@@ -53787,7 +54320,7 @@ particles = {}
         _oval.AnchorPoint = Vector2.new(0.5, 0.5)
         _oval.Position = UDim2.new(0.5, 0, 0.5, 0)
         _oval.Size = UDim2.new(0, 0, 0, 0)
-        local _loaderAccent = Color3.fromRGB(255, 50, 150)
+        local _loaderAccent = Color3.fromRGB(40, 60, 180)
         _oval.BackgroundColor3 = _loaderAccent
         _oval.BackgroundTransparency = 0.10
         _oval.BorderSizePixel = 0
@@ -53799,7 +54332,7 @@ particles = {}
             ColorSequenceKeypoint.new(0,    Color3.fromRGB(15,  3,  25)),
             ColorSequenceKeypoint.new(0.35, Color3.fromRGB(80,  8,  70)),
             ColorSequenceKeypoint.new(0.65, Color3.fromRGB(200, 35, 130)),
-            ColorSequenceKeypoint.new(1,    Color3.fromRGB(255, 50, 150)),
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(40, 60, 180)),
         })
         _ovalGrad.Rotation = 135
 
@@ -53824,7 +54357,7 @@ particles = {}
         _loadAuroraBg.Name                   = "LoadAuroraBg"
         _loadAuroraBg.Size                   = UDim2.new(1, 0, 1, 0)
         _loadAuroraBg.Position               = UDim2.new(0, 0, 0, 0)
-        _loadAuroraBg.BackgroundColor3       = Color3.fromRGB(255, 50, 150)
+        _loadAuroraBg.BackgroundColor3       = Color3.fromRGB(40, 60, 180)
         _loadAuroraBg.BackgroundTransparency = 0.45
         _loadAuroraBg.BorderSizePixel        = 0
         _loadAuroraBg.ZIndex                 = 5
@@ -53865,17 +54398,17 @@ particles = {}
         _titleLbl.AnchorPoint = Vector2.new(0.5, 0.5)
         _titleLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
         _titleLbl.Size = UDim2.new(0, 520, 0, 260)
-        _titleLbl.BackgroundColor3 = Color3.fromRGB(255, 50, 150)
+        _titleLbl.BackgroundColor3 = Color3.fromRGB(40, 60, 180)
         _titleLbl.BackgroundTransparency = 1
         _titleLbl.BorderSizePixel = 0
         _titleLbl.ZIndex = 20
         -- Hub color gradient (matches the hub pink/magenta theme)
         local _titleGrad = Instance.new("UIGradient", _titleLbl)
         _titleGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(255, 50, 150)),
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(40, 60, 180)),
             ColorSequenceKeypoint.new(0.40, Color3.fromRGB(200, 40, 120)),
             ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 130, 190)),
-            ColorSequenceKeypoint.new(1,    Color3.fromRGB(255, 50, 150)),
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(40, 60, 180)),
         })
         _titleGrad.Rotation = 135
         Instance.new("UICorner", _titleLbl).CornerRadius = UDim.new(0, 14)
@@ -53945,13 +54478,13 @@ particles = {}
         _barContainer.ZIndex = 21
         Instance.new("UICorner", _barContainer).CornerRadius = UDim.new(0, 5)
         local _barStroke = Instance.new("UIStroke", _barContainer)
-        _barStroke.Color = Color3.fromRGB(255, 50, 150)  -- azul-violeta
+        _barStroke.Color = Color3.fromRGB(40, 60, 180)  -- azul-violeta
         _barStroke.Thickness = 1.2
         _barStroke.Transparency = 0.25
 
         local _barFill = Instance.new("Frame", _barContainer)
         _barFill.Size = UDim2.new(0, 0, 1, 0)
-        _barFill.BackgroundColor3 = Color3.fromRGB(255, 50, 150)  -- rosa/magenta del hub
+        _barFill.BackgroundColor3 = Color3.fromRGB(40, 60, 180)  -- rosa/magenta del hub
         _barFill.BackgroundTransparency = 0
         _barFill.BorderSizePixel = 0
         _barFill.ZIndex = 22
@@ -53982,7 +54515,7 @@ particles = {}
             local cBlue   = Color3.fromRGB(255, 50,  150)  -- rosa hub
             local cViolet = Color3.fromRGB(200, 35,  130)  -- magenta oscuro
             local cGreen  = Color3.fromRGB(255, 130, 190)  -- rosa claro
-            local cBluePurple = Color3.fromRGB(220, 60, 160)  -- rosa medio
+            local cBluePurple = Color3.fromRGB(80, 100, 200)  -- rosa medio
             -- Desplazar los 4 keypoints con el offset para crear efecto de flujo
             local k0 = ((0    + o) % 1)
             local k1 = ((0.33 + o) % 1)
@@ -54086,7 +54619,9 @@ particles = {}
         mainFrame.Visible = true
         mainFrame.BackgroundTransparency = 1
         local uiScaleEntry = mainFrame:FindFirstChildOfClass("UIScale")
-        local _targetScale = (_getTargetScale and _getTargetScale() or 0.70)
+        -- Aplicar hubScale guardado en settings (default 130%)
+        local _savedHubScale = (_G._hubSettings and _G._hubSettings.hubScale or 130) / 100
+        local _targetScale = _savedHubScale
         if uiScaleEntry then
             uiScaleEntry.Scale = _targetScale  -- directo, sin animación de escala
         end
@@ -54103,10 +54638,35 @@ particles = {}
         _G._hubReady = true
         _G._hubAlreadyBuilt = true  -- FIX: marcar que el hub ya fue construido una vez
         pcall(ApplyTheme, "Neon Green")
+        -- ================================================================
+        -- BEACON: señal visible para otros clientes con el hub ejecutado.
+        -- Se pone un Attribute "_ZH" en el HRP del jugador local para que
+        -- los demás (que también tienen el hub) puedan detectarlo.
+        -- ================================================================
+        task.spawn(function()
+            local function _setHubBeacon()
+                local char = LocalPlayer.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    pcall(function() hrp:SetAttribute("_ZH", 1) end)
+                end
+            end
+            _setHubBeacon()
+            -- Re-aplicar al respawnear
+            LocalPlayer.CharacterAdded:Connect(function(char)
+                task.wait(0.5)
+                local hrp = char:WaitForChild("HumanoidRootPart", 5)
+                if hrp then
+                    pcall(function() hrp:SetAttribute("_ZH", 1) end)
+                end
+            end)
+        end)
+
         mainFrame.Visible = true
         mainFrame.BackgroundTransparency = 1
         if mainFrame:FindFirstChildOfClass("UIScale") then
-            mainFrame:FindFirstChildOfClass("UIScale").Scale = (_getTargetScale and _getTargetScale() or 0.70)
+            local _hs2 = _G._hubSettings and _G._hubSettings.hubScale or 130
+            mainFrame:FindFirstChildOfClass("UIScale").Scale = _hs2 / 100
         end
         print("3: Hub completamente visible")
         -- AUTO-ABRIR MAIN al iniciar
@@ -54632,7 +55192,7 @@ function CreateUpdateTab()
         card.LayoutOrder = lo or 0
         Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
         local stroke = Instance.new("UIStroke", card)
-        stroke.Color = Color3.fromRGB(255, 50, 150)
+        stroke.Color = Color3.fromRGB(40, 60, 180)
         stroke.Thickness = 1.5
         stroke.Transparency = 0.35
         local pad = Instance.new("UIPadding", card)
@@ -54667,7 +55227,7 @@ function CreateUpdateTab()
     local function _makeDivider(parent, lo)
         local div = Instance.new("Frame", parent)
         div.Size = UDim2.new(1, 0, 0, 1)
-        div.BackgroundColor3 = Color3.fromRGB(255, 130, 190)
+        div.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
         div.BackgroundTransparency = 0.6
         div.BorderSizePixel = 0
         div.LayoutOrder = lo or 0
@@ -55015,7 +55575,7 @@ function CreateEmotesTab()
         playBtn.ZIndex = 14
         Instance.new("UICorner", playBtn).CornerRadius = UDim.new(0, 8)
         local _pbs = Instance.new("UIStroke", playBtn)
-        _pbs.Color = Color3.fromRGB(255, 50, 150)
+        _pbs.Color = Color3.fromRGB(40, 60, 180)
         _pbs.Thickness = 1.5
         _pbs.Transparency = 0.3
 
@@ -55038,7 +55598,7 @@ function CreateEmotesTab()
     for _, emote in ipairs(EMOTES) do
         local row = Instance.new("TextButton", emoteSec)
         row.Size = UDim2.new(1, -8, 0, 30)
-        row.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+        row.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
         row.BackgroundTransparency = 0.4
         row.BorderSizePixel = 0
         row.Text = "  " .. emote.name
@@ -55074,7 +55634,7 @@ function CreateEmotesTab()
     for _, pose in ipairs(POSES) do
         local row = Instance.new("TextButton", posesSec)
         row.Size = UDim2.new(1, -8, 0, 30)
-        row.BackgroundColor3 = Color3.fromRGB(180, 40, 100)
+        row.BackgroundColor3 = Color3.fromRGB(0, 140, 210)
         row.BackgroundTransparency = 0.4
         row.BorderSizePixel = 0
         row.Text = "  " .. pose.name
@@ -55404,7 +55964,7 @@ function CreateUseTab()
 
     local rolesPanel = Instance.new("Frame", infoRolesSec)
     rolesPanel.Size = UDim2.new(1,0,0,108)
-    rolesPanel.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+    rolesPanel.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
     rolesPanel.BackgroundTransparency = 0.85; rolesPanel.BorderSizePixel = 0
     Instance.new("UICorner", rolesPanel).CornerRadius = UDim.new(0,10)
     local rpStroke = Instance.new("UIStroke", rolesPanel)
@@ -55443,7 +56003,7 @@ function CreateUseTab()
 
     local allPlayersFrame = Instance.new("ScrollingFrame", infoRolesSec)
     allPlayersFrame.Size = UDim2.new(1,0,0,140)
-    allPlayersFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+    allPlayersFrame.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
     allPlayersFrame.BackgroundTransparency = 0.85
     allPlayersFrame.BorderSizePixel = 0
     allPlayersFrame.ScrollBarThickness = 3
@@ -55464,7 +56024,7 @@ function CreateUseTab()
         for _, p in ipairs(_cachedPlayers) do
             local row = Instance.new("Frame", allPlayersFrame)
             row.Size = UDim2.new(1,0,0,38)
-            row.BackgroundColor3 = Color3.fromRGB(200, 60, 120)
+            row.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
             row.BackgroundTransparency = 0.75
             row.BorderSizePixel = 0
             Instance.new("UICorner", row).CornerRadius = UDim.new(0,6)
@@ -55542,7 +56102,7 @@ function CreateUseTab()
     local infoDeadSec = CreateBorderedSectionGlobal(rightColumn, " INFORMATION DEAD")
     local deadLogFrame = Instance.new("ScrollingFrame", infoDeadSec)
     deadLogFrame.Size = UDim2.new(1,0,0,140)
-    deadLogFrame.BackgroundColor3 = Color3.fromRGB(200, 60, 120); deadLogFrame.BackgroundTransparency = 0.85; deadLogFrame.BorderSizePixel = 0
+    deadLogFrame.BackgroundColor3 = Color3.fromRGB(20, 35, 80); deadLogFrame.BackgroundTransparency = 0.85; deadLogFrame.BorderSizePixel = 0
     deadLogFrame.BackgroundTransparency = 0.75
     deadLogFrame.ScrollBarThickness = 3; deadLogFrame.ScrollBarImageColor3 = Color3.fromRGB(200,50,50)
     deadLogFrame.CanvasSize = UDim2.new(0,0,0,0); deadLogFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -55657,12 +56217,12 @@ function CreateUseTab()
         rfBtn.Text                   = "->  Actualizar lista de jugadores"
         rfBtn.FontFace               = Font.fromEnum(Enum.Font.Montserrat)
         rfBtn.TextSize               = 11
-        rfBtn.TextColor3             = Color3.fromRGB(255, 50, 150)
+        rfBtn.TextColor3             = Color3.fromRGB(40, 60, 180)
         rfBtn.AutoButtonColor        = false
         rfBtn.ZIndex                 = 13
         Instance.new("UICorner", rfBtn).CornerRadius = UDim.new(0, 8)
         local rfStroke = Instance.new("UIStroke", rfBtn)
-        rfStroke.Color = Color3.fromRGB(255, 50, 150); rfStroke.Thickness = 1.2; rfStroke.Transparency = 0.20
+        rfStroke.Color = Color3.fromRGB(40, 60, 180); rfStroke.Thickness = 1.2; rfStroke.Transparency = 0.20
         rfStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         rfBtn.MouseEnter:Connect(function()
             TweenService:Create(rfBtn, TweenInfo.new(0.10), {BackgroundTransparency = 0.20}):Play()
