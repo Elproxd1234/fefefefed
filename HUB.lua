@@ -28339,7 +28339,19 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         pcall(_saveConfig)
 
         -- PASO 4: Ejecutar la accion real del toggle (callback del feature)
-        if callback then callback(estado) end
+        -- FIX: suprimir notificaciones al activar/desactivar manualmente,
+        -- EXCEPTO toggles de tipo "Information" (muestran paneles de informacion).
+        if callback then
+            local _isInfoToggle = nombre:lower():find("^information")
+            if _isInfoToggle then
+                callback(estado)
+            else
+                local _origNotif = CreateCustomNotification
+                CreateCustomNotification = function() end
+                pcall(callback, estado)
+                CreateCustomNotification = _origNotif
+            end
+        end
 
         -- FIX: forzar tick inmediato del instanceLoop para que los visuals
         -- se apliquen o limpien en el proximo Heartbeat sin esperar el intervalo
@@ -30171,9 +30183,12 @@ function CreateWorldUI_QuickFlingButtons()
     end
 
     -- BOTON: STEAL GUN (fling al sheriff/portador de gun por 5s, luego TP al mapa)
+    -- FIX TP INVOLUNTARIO: token de sesion para invalidar spawns acumulados de presses anteriores
+    local _sgBtnToken = 0
     CreateButton(leftColumn, ">> STEAL GUN", ThemeColors.Aurora4, function()
         if _qfState.stealGunActive then
-            -- Cancelar activo
+            -- Cancelar activo: incrementar token para invalidar el spawn en curso
+            _sgBtnToken = _sgBtnToken + 1
             _qfState.stealGunActive    = false
             StealGunSystem.enabled     = false
             _flingActive               = false
@@ -30250,6 +30265,9 @@ function CreateWorldUI_QuickFlingButtons()
         _qfState.stealGunActive             = true
         StealGunSystem.enabled              = true
         StealGunSystem.sheriffOriginalFound = currentGunHolder
+        -- FIX TP INVOLUNTARIO: incrementar token en cada nueva activacion para invalidar spawns viejos
+        _sgBtnToken = _sgBtnToken + 1
+        local _myToken = _sgBtnToken
         CreateCustomNotification("STEAL GUN", "Flingeando a " .. currentGunHolder.Name .. " por 5s...", 3)
 
         task.spawn(function()
@@ -30371,8 +30389,10 @@ function CreateWorldUI_QuickFlingButtons()
             _flingReturning         = false
 
             -- TP al mapa inmediatamente (en spawn separado para que nunca quede bloqueado)
+            -- FIX TP INVOLUNTARIO: solo ejecutar el TP si este spawn corresponde al ultimo press
             task.spawn(function()
                 task.wait(0.15)
+                if _myToken ~= _sgBtnToken then return end  -- press mas reciente lo invalida
                 TeleportToMap()
                 CreateCustomNotification("STEAL GUN", "Fling terminado - volviendo al mapa...", 2)
             end)
