@@ -38088,20 +38088,27 @@ function CreateExclusiveTab()
                         dockLayout.FillDirection       = Enum.FillDirection.Vertical
                         dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
                         dockLayout.VerticalAlignment   = Enum.VerticalAlignment.Top
-                        dockLayout.Padding             = UDim.new(0.02, 0)
+                        -- FIX TAMAÑO PESTAÑAS: usar padding fijo en px igual al valor de creacion
+                        -- (antes usaba UDim.new(0.02, 0) relativo -> tamaño cambiaba al reabrir)
+                        dockLayout.Padding             = UDim.new(0, 4)
                     end
                     if dockPad then
-                        dockPad.PaddingTop    = UDim.new(0, 0)
-                        dockPad.PaddingBottom = UDim.new(0, 0)
-                        dockPad.PaddingLeft   = UDim.new(0, 0)
-                        dockPad.PaddingRight  = UDim.new(0, 0)
+                        dockPad.PaddingTop    = UDim.new(0, 4)
+                        dockPad.PaddingBottom = UDim.new(0, 4)
+                        dockPad.PaddingLeft   = UDim.new(0, 4)
+                        dockPad.PaddingRight  = UDim.new(0, 4)
                     end
+                    -- FIX TAMAÑO PESTAÑAS: usar altura fija en px igual al valor de creacion
+                    -- (antes usaba UDim2.new(1,0,0.10,0) relativo -> tamaño cambiaba al reabrir)
+                    local _isMobileLayout2 = pcall(function() return game:GetService("UserInputService").TouchEnabled end)
+                                            and game:GetService("UserInputService").TouchEnabled
+                    local _fixedRowH = _isMobileLayout2 and 52 or 60
                     for _, btn in ipairs(dockList:GetChildren()) do
-                        if btn:IsA("TextButton") then
-                            btn.Size = UDim2.new(1, 0, 0.10, 0)
+                        if btn:IsA("TextButton") and btn:FindFirstChild("TAB_BTN_PROTECTED") then
+                            btn.Size = UDim2.new(1, -8, 0, _fixedRowH)
                             local lbl = btn:FindFirstChild("TabLabel")
                             if lbl then
-                                lbl.TextScaled   = true
+                                lbl.TextScaled   = false
                                 local fullName = btn.Name:gsub("SideBtn$", "")
                                 lbl.Text = fullName
                             end
