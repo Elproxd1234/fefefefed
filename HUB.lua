@@ -926,7 +926,7 @@ if not _G._hubSettings then
         noMinMaxAnimations = false,
         allowHubDrag       = true,
         hubOpacity         = 15,
-        hubScale           = 130,  -- valor por defecto: 130%
+        hubScale           = 70,   -- valor por defecto: 70%
         hubLayoutMode      = 1,
         notifDuration      = 3,
         notifMuted         = false,
@@ -37575,7 +37575,7 @@ function CreateExclusiveTab()
         noMinMaxAnimations = false,
         allowHubDrag       = true,
         hubOpacity         = 15,   -- 0-95 (porcentaje de opacidad del fondo)
-        hubScale           = 130,  -- 70-130 (escala del hub en %)
+        hubScale           = 70,   -- 70-130 (escala del hub en %)
         hubLayoutMode      = 1,    -- 1=SidebarIzq 2=BarraTop 3=SidebarDer 4=BarraBot 5=MiniIzq
         notifDuration      = 3,    -- segundos default de notificaciones
         notifMuted         = false, -- silenciar todas las notificaciones
@@ -38488,7 +38488,7 @@ function CreateExclusiveTab()
         -- Ese primer disparo pisaba el uiScale correcto ya aplicado al arrancar el hub.
         -- Con _scaleSliderReady lo ignoramos en el init y solo aplicamos en drags reales.
         local _scaleSliderReady = false
-        CreateSlider(visualSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 130, function(v)
+        CreateSlider(visualSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 70, function(v)
             if not _scaleSliderReady then _scaleSliderReady = true; return end
             _hs().hubScale = v
             pcall(function()
@@ -52549,7 +52549,7 @@ _getTargetScale = function()
         local _baseScale = math.max(0.40, math.min(_scaleW, _scaleH))
         -- Aplicar preferencia del slider (default 130%) sobre la escala base
         local _hs = _G._hubSettings and _G._hubSettings.hubScale
-        local _userMult = (type(_hs) == "number" and _hs >= 70 and _hs <= 130) and (_hs / 100) or 1.30
+        local _userMult = (type(_hs) == "number" and _hs >= 70 and _hs <= 130) and (_hs / 100) or 0.70
         -- Limitar para que no se salga de pantalla
         return math.max(0.40, math.min(_baseScale * _userMult, math.min(_scaleW, _scaleH) * 1.30))
     end
