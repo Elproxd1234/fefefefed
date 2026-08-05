@@ -54402,18 +54402,18 @@ particles = {}
             _loadSG.Parent = LocalPlayer.PlayerGui
         end
 
-        -- Fondo rosa del hub con transparencia
+        -- Fondo oscuro translúcido (sin rosa)
         local _bg = Instance.new("Frame", _loadSG)
         _bg.Size = UDim2.new(1, 0, 1, 0)
-        _bg.BackgroundColor3 = Color3.fromRGB(200, 35, 130)
-        _bg.BackgroundTransparency = 0.55
+        _bg.BackgroundColor3 = Color3.fromRGB(5, 10, 30)
+        _bg.BackgroundTransparency = 0.35
         _bg.BorderSizePixel = 0
         _bg.ZIndex = 1
         local _bgGrad = Instance.new("UIGradient", _bg)
         _bgGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,   Color3.fromRGB(80,  8,  70)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 35, 130)),
-            ColorSequenceKeypoint.new(1,   Color3.fromRGB(40, 60, 180)),
+            ColorSequenceKeypoint.new(0,   Color3.fromRGB(5,  10,  30)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(15, 25,  60)),
+            ColorSequenceKeypoint.new(1,   Color3.fromRGB(30, 50, 120)),
         })
         _bgGrad.Rotation = 135
 
@@ -54422,18 +54422,18 @@ particles = {}
         _oval.AnchorPoint = Vector2.new(0.5, 0.5)
         _oval.Position = UDim2.new(0.5, 0, 0.5, 0)
         _oval.Size = UDim2.new(0, 0, 0, 0)
-        local _loaderAccent = Color3.fromRGB(40, 60, 180)
+        local _loaderAccent = Color3.fromRGB(10, 20, 60)
         _oval.BackgroundColor3 = _loaderAccent
-        _oval.BackgroundTransparency = 0.10
+        _oval.BackgroundTransparency = 0.40
         _oval.BorderSizePixel = 0
         _oval.ZIndex = 5
 
-        -- Gradiente del hub: morado oscuro -> rosa/magenta
+        -- Gradiente del hub: azul oscuro -> azul medio (sin rosa)
         local _ovalGrad = Instance.new("UIGradient", _oval)
         _ovalGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(15,  3,  25)),
-            ColorSequenceKeypoint.new(0.35, Color3.fromRGB(80,  8,  70)),
-            ColorSequenceKeypoint.new(0.65, Color3.fromRGB(200, 35, 130)),
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(5,  10,  30)),
+            ColorSequenceKeypoint.new(0.35, Color3.fromRGB(15, 30,  80)),
+            ColorSequenceKeypoint.new(0.65, Color3.fromRGB(25, 50, 140)),
             ColorSequenceKeypoint.new(1,    Color3.fromRGB(40, 60, 180)),
         })
         _ovalGrad.Rotation = 135
@@ -54442,7 +54442,7 @@ particles = {}
         _ovalCorner.CornerRadius = UDim.new(0.5, 0)
 
         local _ovalStroke = Instance.new("UIStroke", _oval)
-        _ovalStroke.Color = Color3.fromRGB(100, 80, 220)
+        _ovalStroke.Color = Color3.fromRGB(60, 100, 220)
         _ovalStroke.Thickness = 3
         _ovalStroke.Transparency = 0.05
         _ovalStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -54454,33 +54454,33 @@ particles = {}
         -- Parent = _oval con ClipsDescendants=true para que queden recortadas al borde.
         _oval.ClipsDescendants = true
 
-        -- ── FONDO DEL RECTANGULO DE CARGA: color del hub (sin imagen externa) ──
+        -- ── FONDO DEL RECTANGULO DE CARGA: azul oscuro translúcido (sin rosa) ──
         local _loadAuroraBg = Instance.new("Frame", _oval)
         _loadAuroraBg.Name                   = "LoadAuroraBg"
         _loadAuroraBg.Size                   = UDim2.new(1, 0, 1, 0)
         _loadAuroraBg.Position               = UDim2.new(0, 0, 0, 0)
-        _loadAuroraBg.BackgroundColor3       = Color3.fromRGB(40, 60, 180)
-        _loadAuroraBg.BackgroundTransparency = 0.45
+        _loadAuroraBg.BackgroundColor3       = Color3.fromRGB(10, 20, 60)
+        _loadAuroraBg.BackgroundTransparency = 0.30
         _loadAuroraBg.BorderSizePixel        = 0
         _loadAuroraBg.ZIndex                 = 5
-        -- Gradiente del hub: fondo oscuro con toque rosa/magenta
+        -- Gradiente del hub: fondo azul oscuro translúcido (sin rosa)
         local _loadBgGrad = Instance.new("UIGradient", _loadAuroraBg)
         _loadBgGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(200, 35,  130)),
-            ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(255, 80,  170)),
-            ColorSequenceKeypoint.new(1,    Color3.fromRGB(255, 50,  150)),
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(5,  10,  30)),
+            ColorSequenceKeypoint.new(0.5,  Color3.fromRGB(15, 30,  80)),
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(25, 50, 140)),
         })
         _loadBgGrad.Rotation = 135
 
-        -- Pulso suave de opacidad del gradiente
+        -- Pulso suave de opacidad
         task.spawn(function()
             while _loadAuroraBg and _loadAuroraBg.Parent do
                 TweenService:Create(_loadAuroraBg, TweenInfo.new(3.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    BackgroundTransparency = 0.15
+                    BackgroundTransparency = 0.55
                 }):Play()
                 task.wait(3.0)
                 TweenService:Create(_loadAuroraBg, TweenInfo.new(3.0, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    BackgroundTransparency = 0
+                    BackgroundTransparency = 0.30
                 }):Play()
                 task.wait(3.0)
             end
@@ -54504,18 +54504,18 @@ particles = {}
         _titleLbl.BackgroundTransparency = 1
         _titleLbl.BorderSizePixel = 0
         _titleLbl.ZIndex = 20
-        -- Hub color gradient (matches the hub pink/magenta theme)
+        -- Hub color gradient — azul oscuro translúcido (sin rosa)
         local _titleGrad = Instance.new("UIGradient", _titleLbl)
         _titleGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(40, 60, 180)),
-            ColorSequenceKeypoint.new(0.40, Color3.fromRGB(200, 40, 120)),
-            ColorSequenceKeypoint.new(0.75, Color3.fromRGB(255, 130, 190)),
-            ColorSequenceKeypoint.new(1,    Color3.fromRGB(40, 60, 180)),
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(10, 18,  60)),
+            ColorSequenceKeypoint.new(0.40, Color3.fromRGB(20, 40, 110)),
+            ColorSequenceKeypoint.new(0.75, Color3.fromRGB(40, 70, 180)),
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(10, 18,  60)),
         })
         _titleGrad.Rotation = 135
         Instance.new("UICorner", _titleLbl).CornerRadius = UDim.new(0, 14)
         local _titleStroke = Instance.new("UIStroke", _titleLbl)
-        _titleStroke.Color = Color3.fromRGB(255, 180, 220)
+        _titleStroke.Color = Color3.fromRGB(80, 140, 255)
         _titleStroke.Thickness = 2.5
         _titleStroke.Transparency = 0.3
         -- Hub name text label inside the colored frame
@@ -54574,37 +54574,37 @@ particles = {}
         _barContainer.AnchorPoint = Vector2.new(0.5, 0)
         _barContainer.Position = UDim2.new(0.5, 0, 0.535, 0)
         _barContainer.Size = UDim2.new(0.50, 0, 0, 16)
-        _barContainer.BackgroundColor3 = Color3.fromRGB(30, 10, 25)
-        _barContainer.BackgroundTransparency = 0.1
+        _barContainer.BackgroundColor3 = Color3.fromRGB(5, 10, 30)
+        _barContainer.BackgroundTransparency = 0.35
         _barContainer.BorderSizePixel = 0
         _barContainer.ZIndex = 21
         Instance.new("UICorner", _barContainer).CornerRadius = UDim.new(0, 5)
         local _barStroke = Instance.new("UIStroke", _barContainer)
-        _barStroke.Color = Color3.fromRGB(40, 60, 180)  -- azul-violeta
+        _barStroke.Color = Color3.fromRGB(60, 100, 220)
         _barStroke.Thickness = 1.2
         _barStroke.Transparency = 0.25
 
         local _barFill = Instance.new("Frame", _barContainer)
         _barFill.Size = UDim2.new(0, 0, 1, 0)
-        _barFill.BackgroundColor3 = Color3.fromRGB(40, 60, 180)  -- rosa/magenta del hub
+        _barFill.BackgroundColor3 = Color3.fromRGB(40, 80, 200)
         _barFill.BackgroundTransparency = 0
         _barFill.BorderSizePixel = 0
         _barFill.ZIndex = 22
         Instance.new("UICorner", _barFill).CornerRadius = UDim.new(0, 5)
-        -- Gradiente horizontal: azul -> violeta -> verde -> azul bien mezclados
+        -- Gradiente horizontal: azul -> celeste -> azul claro (sin rosa)
         local _barGrad = Instance.new("UIGradient", _barFill)
         _barGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,    Color3.fromRGB(255, 50,  150)),  -- rosa hub
-            ColorSequenceKeypoint.new(0.33, Color3.fromRGB(200, 35,  130)),  -- magenta oscuro
-            ColorSequenceKeypoint.new(0.66, Color3.fromRGB(255, 130, 190)),  -- rosa claro
-            ColorSequenceKeypoint.new(1,    Color3.fromRGB(220, 60,  160)),  -- rosa medio
+            ColorSequenceKeypoint.new(0,    Color3.fromRGB(30,  60, 180)),  -- azul
+            ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0,  150, 255)),  -- celeste
+            ColorSequenceKeypoint.new(0.66, Color3.fromRGB(80, 180, 255)),  -- celeste claro
+            ColorSequenceKeypoint.new(1,    Color3.fromRGB(40, 100, 220)),  -- azul medio
         })
         _barGrad.Rotation = 0
 
-        -- Animacion de movimiento del color verde: offset ciclico via Offset
+        -- Animacion de movimiento del gradiente
         local _barGradConn
         local _barGradOffset = 0
-        local _barGradSpeed  = 0.35  -- ciclos por segundo (mas alto = mas rapido)
+        local _barGradSpeed  = 0.35
         _barGradConn = RunService.Heartbeat:Connect(function(dt)
             if not _barFill or not _barFill.Parent then
                 _barGradConn:Disconnect()
@@ -54612,26 +54612,22 @@ particles = {}
             end
             _barGradOffset = (_barGradOffset + dt * _barGradSpeed) % 1
             local o = _barGradOffset
-            -- Interpolar colores ciclicamente para simular movimiento del verde
             local function lerpC(a, b, t) return Color3.new(a.R+(b.R-a.R)*t, a.G+(b.G-a.G)*t, a.B+(b.B-a.B)*t) end
-            local cBlue   = Color3.fromRGB(255, 50,  150)  -- rosa hub
-            local cViolet = Color3.fromRGB(200, 35,  130)  -- magenta oscuro
-            local cGreen  = Color3.fromRGB(255, 130, 190)  -- rosa claro
-            local cBluePurple = Color3.fromRGB(80, 100, 200)  -- rosa medio
-            -- Desplazar los 4 keypoints con el offset para crear efecto de flujo
+            local cBlue      = Color3.fromRGB(30,  60, 180)
+            local cCyan      = Color3.fromRGB(0,  150, 255)
+            local cLightBlue = Color3.fromRGB(80, 180, 255)
+            local cMidBlue   = Color3.fromRGB(40, 100, 220)
             local k0 = ((0    + o) % 1)
             local k1 = ((0.33 + o) % 1)
             local k2 = ((0.66 + o) % 1)
             local k3 = ((0.99 + o) % 1)
-            -- Ordenar keypoints (UIGradient requiere posiciones ascendentes 0..1)
             local pts = {
                 {p=k0, c=cBlue},
-                {p=k1, c=cViolet},
-                {p=k2, c=cGreen},
-                {p=k3, c=cBluePurple},
+                {p=k1, c=cCyan},
+                {p=k2, c=cLightBlue},
+                {p=k3, c=cMidBlue},
             }
             table.sort(pts, function(a,b) return a.p < b.p end)
-            -- Asegurar que siempre haya puntos en 0 y 1
             local seq = {}
             if pts[1].p > 0 then table.insert(seq, ColorSequenceKeypoint.new(0, pts[1].c)) end
             for _, pt in ipairs(pts) do
@@ -54664,7 +54660,7 @@ particles = {}
         _barLbl.Text = "Loading Game [0%]"
         _barLbl.Font = Enum.Font.GothamMedium
         _barLbl.TextSize = 11
-        _barLbl.TextColor3 = Color3.fromRGB(255, 180, 220)  -- rosa claro del hub
+        _barLbl.TextColor3 = Color3.fromRGB(140, 190, 255)  -- celeste claro del hub
         _barLbl.TextXAlignment = Enum.TextXAlignment.Center
         _barLbl.ZIndex = 23
 
