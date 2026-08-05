@@ -50834,6 +50834,12 @@ minimizeBtn.Activated:Connect(function()
                 existingHub.Enabled = true
                 _G._hubHidden = false
                 -- Reapertura instantánea (animación eliminada)
+                -- FIX TAMAÑO: restaurar Size original antes de restaurar UIScale
+                if mainFrame then
+                    mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
+                    mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+                    mainFrame.BackgroundTransparency = 0.82
+                end
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then uiScale.Scale = (_getTargetScale and _getTargetScale() or 0.70) end
                 -- NO llamar _reloadActiveTab: no es necesario y disparaba
@@ -51098,6 +51104,13 @@ closeBtn.Activated:Connect(function()
             if existingHub and _G._hubHidden then
                 existingHub.Enabled = true
                 _G._hubHidden = false
+                -- FIX TAMAÑO: restaurar Size y Position originales que fueron
+                -- modificados por el tween de cierre (Size→0,0 / Pos→center)
+                if mainFrame then
+                    mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
+                    mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+                    mainFrame.BackgroundTransparency = 0.82
+                end
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
                     uiScale.Scale = (_getTargetScale and _getTargetScale() or 0.70)  -- apertura instantánea
@@ -52374,6 +52387,12 @@ function abrirHub()
         end
         existingHub.Enabled = true
         _G._hubHidden = false
+        -- FIX TAMAÑO: restaurar Size y Position originales antes del tween de escala
+        if mainFrame then
+            mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
+            mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+            mainFrame.BackgroundTransparency = 0.82
+        end
         local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
         if uiScale then
             uiScale.Scale = 0
