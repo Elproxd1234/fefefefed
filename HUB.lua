@@ -38073,10 +38073,10 @@ function CreateExclusiveTab()
 
                 -- Todos los modos usan el layout de referencia: panel derecho con botones grandes
                 do
-                    dock.Position = UDim2.new(0.73, 0, 0.14, 0)
-                    dock.Size = UDim2.new(0.27, 0, 0.86, 0)
+                    dock.Position = UDim2.new(0.65, 0, 0.14, 0)
+                    dock.Size = UDim2.new(0.35, 0, 0.86, 0)
                     contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
-                    contentContainer.Size = UDim2.new(0.73, 0, 0.86, 0)
+                    contentContainer.Size = UDim2.new(0.65, 0, 0.86, 0)
                     if dockLayout then
                         dockLayout.FillDirection       = Enum.FillDirection.Vertical
                         dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -38485,7 +38485,7 @@ function CreateExclusiveTab()
                 -- FIX ESCALA DOBLE: v ya es el porcentaje (ej: 130), solo dividir por 100.
                 sc.Scale = v / 100
                 -- Mantener el tamaño base fijo; el UIScale se encarga de la escala visual
-                mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
+                mainFrame.Size = UDim2.new(0, 750, 0, 420)
             end)
         end)
     end
@@ -50778,7 +50778,7 @@ minimizeBtn.Activated:Connect(function()
                 -- Reapertura instantánea (animación eliminada)
                 -- FIX TAMAÑO: restaurar Size original antes de restaurar UIScale
                 if mainFrame then
-                    mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
+                    mainFrame.Size = UDim2.new(0, 750, 0, 420)
                     mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
                     mainFrame.BackgroundTransparency = 0.82
                 end
@@ -51049,7 +51049,7 @@ closeBtn.Activated:Connect(function()
                 -- FIX TAMAÑO: restaurar Size y Position originales que fueron
                 -- modificados por el tween de cierre (Size→0,0 / Pos→center)
                 if mainFrame then
-                    mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
+                    mainFrame.Size = UDim2.new(0, 750, 0, 420)
                     mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
                     mainFrame.BackgroundTransparency = 0.82
                 end
@@ -52343,7 +52343,7 @@ function abrirHub()
         pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(true) end end)
         -- FIX TAMAÑO: restaurar Size y Position originales antes del tween de escala
         if mainFrame then
-            mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
+            mainFrame.Size = UDim2.new(0, 750, 0, 420)
             mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
             mainFrame.BackgroundTransparency = 0.82
         end
@@ -52451,7 +52451,7 @@ Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 -- Con UIScale = 1.3 (130%), un frame de 100% ancho se expande a 130% -> se sale de pantalla.
 -- Solución: tamaño base que el UIScale ajusta correctamente.
 -- El slider de escala (70-130%) maneja el UIScale; el Size queda fijo.
-mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
+mainFrame.Size = UDim2.new(0, 750, 0, 420)
 
 -- Fondo: sin imagen rbxassetid, fondo rosa limpio
 _G._hubBgMainImageRef = nil
@@ -53066,8 +53066,8 @@ particles = {}
     header.Name = "TopBar"
     header.Size = UDim2.new(1, 0, 0.14, 8)
     header.Position = UDim2.new(0, 0, 0, 0)
-    header.BackgroundColor3 = Color3.fromRGB(60, 80, 190)
-    header.BackgroundTransparency = 0.1
+    header.BackgroundColor3 = Color3.fromRGB(10, 20, 60)
+    header.BackgroundTransparency = 0.05
     header.BorderSizePixel = 0
     header.ZIndex = 10
     header.Active = true
@@ -53075,7 +53075,7 @@ particles = {}
     local _hdrCorner = Instance.new("UICorner", header)
     _hdrCorner.CornerRadius = UDim.new(0, 10)
     local _hdrStroke = Instance.new("UIStroke", header)
-    _hdrStroke.Color = Color3.fromRGB(40, 60, 180)
+    _hdrStroke.Color = Color3.fromRGB(20, 35, 100)
     _hdrStroke.Thickness = 2
     _hdrStroke.Transparency = 0
     _hdrStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -53410,7 +53410,7 @@ particles = {}
     -- ContentContainer: panel izquierdo del hub (contenido de tabs)
     contentContainer = Instance.new("Frame", mainFrame)
     contentContainer.Name = "ContentContainer"
-    contentContainer.Size = UDim2.new(0.73, 0, 0.86, 8)
+    contentContainer.Size = UDim2.new(0.65, 0, 0.86, 8)
     contentContainer.Position = UDim2.new(0, 0, 0.14, -8)
     contentContainer.BackgroundColor3 = Color3.fromRGB(15, 30, 80)
     contentContainer.BackgroundTransparency = 0.55
@@ -53792,8 +53792,8 @@ particles = {}
     tabDockFrame.ZIndex = 12
     tabDockFrame.ClipsDescendants = false
     tabDockFrame.BackgroundTransparency = 1
-    tabDockFrame.Position = UDim2.new(0.73, 0, 0.14, 0)
-    tabDockFrame.Size = UDim2.new(0.27, 0, 0.86, 0)
+    tabDockFrame.Position = UDim2.new(0.65, 0, 0.14, 0)
+    tabDockFrame.Size = UDim2.new(0.35, 0, 0.86, 0)
     tabDockFrame.Visible  = true
 
     local _dockStroke = Instance.new("UIStroke", tabDockFrame)
@@ -53818,17 +53818,17 @@ particles = {}
     local dockLayout = Instance.new("UIListLayout", tabDockList)
     dockLayout.FillDirection = Enum.FillDirection.Vertical
     dockLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    dockLayout.Padding = UDim.new(0, 4)  -- espacio entre pestañas redondeadas
+    dockLayout.Padding = UDim.new(0, 0)  -- espacio entre pestañas redondeadas
     dockLayout.SortOrder = Enum.SortOrder.LayoutOrder
     local dockPad = Instance.new("UIPadding", tabDockList)
-    dockPad.PaddingTop    = UDim.new(0, 4)
-    dockPad.PaddingBottom = UDim.new(0, 4)
-    dockPad.PaddingLeft   = UDim.new(0, 4)
-    dockPad.PaddingRight  = UDim.new(0, 4)
+    dockPad.PaddingTop    = UDim.new(0, 0)
+    dockPad.PaddingBottom = UDim.new(0, 0)
+    dockPad.PaddingLeft   = UDim.new(0, 0)
+    dockPad.PaddingRight  = UDim.new(0, 0)
 
     -- Panel izquierdo: contentContainer (área de contenido de tabs)
     contentContainer.Position = UDim2.new(0, 0, 0.14, 0)
-    contentContainer.Size = UDim2.new(0.73, 0, 0.86, 0)
+    contentContainer.Size = UDim2.new(0.65, 0, 0.86, 0)
     contentContainer.Visible  = false
 
     -- Mismos colores que CreateAuroraToggle
@@ -53845,7 +53845,7 @@ particles = {}
     local _knobSz       = _isMobileTog and 18 or 24
     local _knobOffR     = _isMobileTog and -(_knobSz + 5) or -28
     local _lblTxtSz     = _isMobileTog and 13 or 14
-    local _rowH         = _isMobileTog and 52 or 60   -- altura de cada pestaña
+    local _rowH         = _isMobileTog and 70 or 80   -- altura de cada pestaña
 
     local function _syncDockPos() end  -- no-op
 
@@ -53854,8 +53854,9 @@ particles = {}
         -- Contenedor principal del botón
         local btn = Instance.new("Frame", tabDockList)
         btn.Name                    = tabNames[i] .. "SideBtn"
-        btn.Size                    = UDim2.new(1, -8, 0, _rowH)
-        btn.BackgroundTransparency  = 1  -- fondo completamente transparente (sin fondo)
+        btn.Size                    = UDim2.new(1, 0, 0, _rowH)
+        btn.BackgroundColor3        = Color3.fromRGB(20, 40, 100)
+        btn.BackgroundTransparency  = 0.45
         btn.BorderSizePixel         = 0
         btn.ClipsDescendants        = false
         btn.ZIndex                  = 13
@@ -53866,13 +53867,13 @@ particles = {}
         _tabTag.Value   = "1"
 
         -- Esquinas redondeadas al contenedor
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 16)
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 
         -- Borde azul oscuro grueso (estilo del código de referencia)
         local btnStroke           = Instance.new("UIStroke", btn)
-        btnStroke.Color           = Color3.fromRGB(35, 65, 145)
-        btnStroke.Thickness       = 6
-        btnStroke.Transparency    = 0
+        btnStroke.Color           = Color3.fromRGB(80, 120, 220)
+        btnStroke.Thickness       = 2
+        btnStroke.Transparency    = 0.3
         btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         -- "tintOverlay" dummy para compatibilidad con _applyBtnState
@@ -53891,8 +53892,8 @@ particles = {}
         lbl.BackgroundTransparency = 1
         lbl.Text                = tabNames[i]
         lbl.Font                = Enum.Font.GothamSemibold
-        lbl.TextScaled          = false
-        lbl.TextSize            = _lblTxtSz + 1  -- ligeramente más grande para leer bien
+        lbl.TextScaled          = true
+        lbl.TextSize            = 55
         lbl.TextColor3          = Color3.fromRGB(255, 255, 255)
         lbl.TextXAlignment      = Enum.TextXAlignment.Center
         lbl.TextYAlignment      = Enum.TextYAlignment.Center
@@ -53924,12 +53925,12 @@ particles = {}
         clickRow.MouseEnter:Connect(function()
             if activeTabIdx ~= i then
                 PlayHoverSound()
-                TweenService:Create(btnStroke, ti, {Color = Color3.fromRGB(60, 100, 220), Thickness = 7}):Play()
+                TweenService:Create(btnStroke, ti, {Color = Color3.fromRGB(100, 160, 255), Thickness = 3}):Play()
             end
         end)
         clickRow.MouseLeave:Connect(function()
             if activeTabIdx ~= i then
-                TweenService:Create(btnStroke, ti, {Color = Color3.fromRGB(35, 65, 145), Thickness = 6}):Play()
+                TweenService:Create(btnStroke, ti, {Color = Color3.fromRGB(80, 120, 220), Thickness = 2}):Play()
             end
         end)
 
