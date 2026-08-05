@@ -18933,11 +18933,6 @@ function CreateMainUI_SecureAuto()
         if _secAuto.conn then _secAuto.conn:Disconnect(); _secAuto.conn = nil end
     end
 
-    -- Secure Auto toggle + bindable removidos (reemplazados por Admin Fly)
-    -- Legacy functions kept for compatibility
-    local function _secStart() end
-    local function _secStop() end
-
     -- -- BINDABLE LEGACY ------------------------------------------------
  CreateToggle(leftColumn, " Bindable Secure Auto (boton pantalla)", function(on)
         if _secAuto._gui then
@@ -28415,9 +28410,57 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
         -- se bloquean (isPhysical=true) para no duplicar loops ya activos; los no fisicos
         -- siempre se disparan porque son stateless (settings, visuals, etc.).
         if isPhysical and not _isTabRebuild and savedState == true then
-            -- Toggle fisico en re-ejecucion real: disparar con delay para que el personaje este listo
+            -- Toggle fisico en re-ejecucion real: esperar a que el tab que lo contiene
+            -- este construido Y el personaje este listo antes de disparar el callback.
+            -- FIX: sin este wait el callback se ejecuta mientras las upvalues del tab
+            -- (ej: _saSMState, findMurderer en CreateCombatTab) aun son nil → falla silencioso.
             task.spawn(function()
+                -- Primero esperar al personaje (0.3s minimo, igual que antes)
                 task.wait(0.3)
+                -- Luego esperar a que el tab al que pertenece este toggle este construido.
+                -- _G._tabBuilt es la tabla que marca tabs ya construidos (ver _buildTabCached).
+                -- Esperamos hasta 15s como tope para no colgar indefinidamente.
+                if _G._tabBuilt then
+                    local _waitTick = 0
+                    -- Detectar a qué tab pertenece este toggle por nombre
+                    local _lower = nombre:lower()
+                    local _targetTabIdx = nil
+                    if _lower:find("silent aim") or _lower:find("aimlock") or _lower:find("shoot")
+                    or _lower:find("auto stab") or _lower:find("auto slash") or _lower:find("fast slash")
+                    or _lower:find("auto throw") or _lower:find("fast throw") or _lower:find("instant throw")
+                    or _lower:find("knife silent") or _lower:find("throwing knife") or _lower:find("bullet tracer")
+                    or _lower:find("prediction tracer") or _lower:find("velocity prediction")
+                    or _lower:find("strafe prediction") or _lower:find("tianca prediction")
+                    or _lower:find("pierce bullet") or _lower:find("shooper") or _lower:find("bindable silent")
+                    or _lower:find("shoot pick") or _lower:find("wall check") or _lower:find("auto ping")
+                    or _lower:find("lead time") or _lower:find("jump prediction") or _lower:find("lag compensation")
+                    or _lower:find("shoot studs") or _lower:find("shoot view") or _lower:find("trajectory")
+                    or _lower:find("dual knife") or _lower:find("dual gun") or _lower:find("auto shoot") then
+                        _targetTabIdx = 6  -- CreateCombatTab
+                    elseif _lower:find("fly") or _lower:find("noclip") or _lower:find("walkspeed")
+                    or _lower:find("speed glitch") or _lower:find("power jump") or _lower:find("infinite jump")
+                    or _lower:find("infinity jump") or _lower:find("auto jump") or _lower:find("wall hop")
+                    or _lower:find("spin") or _lower:find("click tp") or _lower:find("tp low map")
+                    or _lower:find("orbit") or _lower:find("invisible") or _lower:find("second life")
+                    or _lower:find("trap immune") or _lower:find("bug tramp") or _lower:find("skip death")
+                    or _lower:find("auto farm") or _lower:find("auto prestige") or _lower:find("auto grab")
+                    or _lower:find("auto equip") or _lower:find("coin aura") or _lower:find("auto remove")
+                    or _lower:find("auto esquivar") or _lower:find("auto spectate") or _lower:find("auto announce")
+                    or _lower:find("auto reset") or _lower:find("ping boost") or _lower:find("own ping")
+                    or _lower:find("secure auto") or _lower:find("booster") or _lower:find("bindable boton")
+                    or _lower:find("show bindable") then
+                        _targetTabIdx = 7  -- CreateUseTab
+                    end
+                    -- Esperar a que el tab esté construido (max 15s)
+                    if _targetTabIdx then
+                        while not _G._tabBuilt[_targetTabIdx] and _waitTick < 150 do
+                            task.wait(0.1)
+                            _waitTick = _waitTick + 1
+                        end
+                        -- Pequeño delay extra para que las upvalues locales del tab queden listas
+                        task.wait(0.05)
+                    end
+                end
                 local _orig = CreateCustomNotification
                 CreateCustomNotification = function() end
                 pcall(callback, true)
@@ -36458,15 +36501,18 @@ function CreatePremiumTab()
         end
     end
 
- CreateToggle(leftColumn, "Enable Speed Glitch", function(enabled)
-        Settings.premium.speedGlitch.enabled = enabled
-        if not enabled then
-            _sgStop()
- CreateCustomNotification("SPEED GLITCH", "Desactivado -- velocidad normal restaurada", 2)
-            return
-        end
+    -- _sgStart: inicia el Heartbeat loop del speed glitch.
+    -- Extraida del callback del toggle para que el boton bindable
+    -- tambien pueda arrancar el loop (antes solo seteaba el flag sin crear _sgConn).
+    local function _sgStart()
+        if _sgConn then _sgConn:Disconnect(); _sgConn = nil end
+        Settings.premium.speedGlitch.enabled = true
 
- CreateCustomNotification("SPEED GLITCH", "Activado -- saltar + joystick para boost de velocidad", 3)
+        local char0 = LocalPlayer.Character
+        if char0 then
+            local hum0 = char0:FindFirstChildOfClass("Humanoid")
+            if hum0 then Settings.premium.speedGlitch.originalSpeed = hum0.WalkSpeed end
+        end
 
         -- MOBILE: detectar tap en boton de salto nativo de Roblox
         if UserInputService.TouchEnabled then
@@ -36487,8 +36533,8 @@ function CreatePremiumTab()
                     or LocalPlayer:WaitForChild("PlayerGui", 10)
                 if not pg then return end
                 local jBtn = _findJumpBtn(pg, 0)
-                if jBtn and _sgConn then
-                    local jc = jBtn.Activated:Connect(function()
+                if jBtn then
+                    jBtn.Activated:Connect(function()
                         if not Settings.premium.speedGlitch.enabled then return end
                         local char = LocalPlayer.Character
                         local hum  = char and char:FindFirstChildOfClass("Humanoid")
@@ -36499,16 +36545,8 @@ function CreatePremiumTab()
                             hum.Jump = true
                         end
                     end)
-                    -- Registrar la conexion para que se limpie junto con _sgConn
-                    local _origDisc = _sgConn.Disconnect
                 end
             end)
-        end
-
-        char0 = LocalPlayer.Character
-        if char0 then
-            local hum0 = char0:FindFirstChildOfClass("Humanoid")
-            if hum0 then Settings.premium.speedGlitch.originalSpeed = hum0.WalkSpeed end
         end
 
         local _hbTsgConn = 0  -- OPT: local
@@ -36571,6 +36609,16 @@ function CreatePremiumTab()
                 _sgWasJumping = false
             end
         end)
+    end
+
+ CreateToggle(leftColumn, "Enable Speed Glitch", function(enabled)
+        if not enabled then
+            _sgStop()
+ CreateCustomNotification("SPEED GLITCH", "Desactivado -- velocidad normal restaurada", 2)
+            return
+        end
+        _sgStart()
+ CreateCustomNotification("SPEED GLITCH", "Activado -- saltar + joystick para boost de velocidad", 3)
     end, Settings.premium.speedGlitch.enabled)
 
  CreateSlider(leftColumn, "Speed Multiplier (Salto+W)", 2, 20, Settings.premium.speedGlitch.multiplier, function(value)
@@ -36603,17 +36651,10 @@ function CreatePremiumTab()
             _sgBindGui = sg
             MakeCapyBindableFrame(sg, "SPEED", function()
                 local newState = not Settings.premium.speedGlitch.enabled
-                Settings.premium.speedGlitch.enabled = newState
                 if newState then
-                    local _c0b = LocalPlayer.Character  -- OPT: no pisar upvalue c0b/h0b
-                    if _c0b then
-                        local _h0b = _c0b:FindFirstChildOfClass("Humanoid")
-                        if _h0b then Settings.premium.speedGlitch.originalSpeed = _h0b.WalkSpeed end
-                    end
-                    -- [notif removed]
+                    _sgStart()
                 else
                     _sgStop()
-                    -- [notif removed]
                 end
             end, 200, 200)
         end
@@ -53051,7 +53092,7 @@ particles = {}
     _hdSub.Size = UDim2.new(1, 0, 0.38, 0)
     _hdSub.Position = UDim2.new(0, 0, 0.60, 0)
     _hdSub.BackgroundTransparency = 1
-    _hdSub.Text = "By CapybaraScripts"
+    _hdSub.Text = "Zerqon Hub"
     _hdSub.TextColor3 = Color3.fromRGB(200, 200, 200)
     _hdSub.FontFace = Font.fromEnum(Enum.Font.Gotham)
     _hdSub.TextSize = 12
@@ -55614,35 +55655,57 @@ function CreateEmotesTab()
 
     -- SECCION: LISTA DE EMOTES (columna izquierda abajo / derecha)
     local emoteSec = CreateBorderedSectionGlobal(rightColumn, "EMOTES")
-    for _, emote in ipairs(EMOTES) do
-        local row = Instance.new("TextButton", emoteSec)
-        row.Size = UDim2.new(1, -8, 0, 30)
-        row.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
-        row.BackgroundTransparency = 0.4
-        row.BorderSizePixel = 0
-        row.Text = "  " .. emote.name
-        row.TextColor3 = Color3.fromRGB(200, 240, 255)
-        row.FontFace = Font.fromEnum(Enum.Font.GothamMedium)
-        row.TextSize = 12
-        row.TextXAlignment = Enum.TextXAlignment.Left
-        row.ZIndex = 14
-        local _rp = Instance.new("UIPadding", row)
-        _rp.PaddingLeft = UDim.new(0, 10)
-        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-        local _rs = Instance.new("UIStroke", row)
-        _rs.Color = Color3.fromRGB(255, 130, 190)
-        _rs.Thickness = 1
-        _rs.Transparency = 0.5
+
+    -- Grid container 2 columnas
+    local emoteGrid = Instance.new("Frame", emoteSec)
+    emoteGrid.Name = "EmoteGrid"
+    emoteGrid.Size = UDim2.new(1, -8, 0, 0)
+    emoteGrid.AutomaticSize = Enum.AutomaticSize.Y
+    emoteGrid.BackgroundTransparency = 1
+    emoteGrid.BorderSizePixel = 0
+    emoteGrid.ZIndex = 14
+
+    local emoteGridLayout = Instance.new("UIGridLayout", emoteGrid)
+    emoteGridLayout.CellSize = UDim2.new(0.5, -6, 0, 70)
+    emoteGridLayout.CellPadding = UDim2.new(0, 6, 0, 6)
+    emoteGridLayout.FillDirection = Enum.FillDirection.Horizontal
+    emoteGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    emoteGridLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    emoteGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    for i, emote in ipairs(EMOTES) do
+        local btn = Instance.new("TextButton", emoteGrid)
+        btn.LayoutOrder = i
+        btn.Size = UDim2.new(0, 0, 0, 0)  -- manejado por UIGridLayout
+        btn.BackgroundColor3 = Color3.fromRGB(20, 35, 80)
+        btn.BackgroundTransparency = 0.3
+        btn.BorderSizePixel = 0
+        btn.Text = emote.name
+        btn.TextColor3 = Color3.fromRGB(200, 240, 255)
+        btn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        btn.TextSize = 13
+        btn.TextXAlignment = Enum.TextXAlignment.Center
+        btn.TextYAlignment = Enum.TextYAlignment.Center
+        btn.TextWrapped = true
+        btn.ZIndex = 14
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
+        local _rs = Instance.new("UIStroke", btn)
+        _rs.Color = Color3.fromRGB(80, 130, 255)
+        _rs.Thickness = 1.5
+        _rs.Transparency = 0.3
+
         local _tiE = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        row.MouseEnter:Connect(function()
-            TweenService:Create(row, _tiE, {BackgroundTransparency = 0.1, TextColor3 = Color3.fromRGB(235, 248, 255)}):Play()
+        btn.MouseEnter:Connect(function()
+            TweenService:Create(btn, _tiE, {BackgroundTransparency = 0.05, BackgroundColor3 = Color3.fromRGB(30, 55, 120)}):Play()
+            TweenService:Create(_rs, _tiE, {Transparency = 0}):Play()
         end)
-        row.MouseLeave:Connect(function()
-            TweenService:Create(row, _tiE, {BackgroundTransparency = 0.4, TextColor3 = Color3.fromRGB(200, 240, 255)}):Play()
+        btn.MouseLeave:Connect(function()
+            TweenService:Create(btn, _tiE, {BackgroundTransparency = 0.3, BackgroundColor3 = Color3.fromRGB(20, 35, 80)}):Play()
+            TweenService:Create(_rs, _tiE, {Transparency = 0.3}):Play()
         end)
         local _eId = emote.id
         local _eName = emote.name
-        row.Activated:Connect(function()
+        btn.Activated:Connect(function()
             _playEmote(_eId, ES.loopActive)
             CreateCustomNotification("EMOTES", _eName .. (ES.loopActive and " (loop)" or ""), 1.5)
         end)
