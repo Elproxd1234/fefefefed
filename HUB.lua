@@ -8702,14 +8702,7 @@ function updateBindables()
                         return
                     end
 
-                    -- ── 5. Flash handle (invisible durante el disparo) ──────────────────
-                    local _flashHandle = gun:FindFirstChild("Handle")
-                    local _flashOrigTrans = _flashHandle and _flashHandle.Transparency or 0
-                    if _flashHandle then
-                        pcall(function() _flashHandle.Transparency = 1 end)
-                    end
-
-                    -- ── 6. FireServer exactamente como GunClient: gun.Shoot:FireServer(graCF, targetCF) ──
+                    -- ── 5. FireServer exactamente como GunClient: gun.Shoot:FireServer(graCF, targetCF) ──
                     -- El RemoteEvent "Shoot" esta directamente en la gun (v1.Shoot en el GunClient)
                     local shootRem = gun:FindFirstChild("Shoot")
                     -- Fallback: buscar en GunServer o GetDescendants
@@ -8743,19 +8736,12 @@ function updateBindables()
                         end
                     end
 
-                    -- ── 7. Restaurar handle y desequipar si vino del backpack ──────────
-                    task.delay(0.12, function()
-                        pcall(function()
-                            if _flashHandle and _flashHandle.Parent then
-                                _flashHandle.Transparency = _flashOrigTrans
-                            end
+                    -- ── 7. Desequipar si vino del backpack ──────────────────────────────
+                    if _wasInBackpack and myHum and myHum.Parent then
+                        task.delay(0.17, function()
+                            pcall(function() myHum:UnequipTools() end)
                         end)
-                        if _wasInBackpack and myHum and myHum.Parent then
-                            task.delay(0.05, function()
-                                pcall(function() myHum:UnequipTools() end)
-                            end)
-                        end
-                    end)
+                    end
                 end)
             end
             -- FIX MOBILE v4: Activated cubre PC (MouseButton1Click) y touch en un solo evento
@@ -40206,13 +40192,6 @@ function CreateCombatTab()
                     return
                 end
 
-                -- FLASH: ocultar handle de la gun brevemente
-                local _flashHandle = gun:FindFirstChild("Handle")
-                local _flashOrigTrans = _flashHandle and _flashHandle.Transparency or 0
-                if _flashHandle then
-                    pcall(function() _flashHandle.Transparency = 1 end)
-                end
-
                 -- Calcular posición objetivo usando la lógica del Silent Aim existente
                 local partName = (CombatTabState and CombatTabState.saTargetPart) or "Head"
                 local tPart    = tChar:FindFirstChild(partName) or tChar:FindFirstChild("Head") or tHRP
@@ -40277,30 +40256,16 @@ function CreateCombatTab()
                             _fireGunMM2(gun, tCF)
                         end
                     end
-                    -- Restaurar handle visible
-                    task.delay(0.12, function()
-                        pcall(function()
-                            if _flashHandle and _flashHandle.Parent then
-                                _flashHandle.Transparency = _flashOrigTrans
-                            end
+                    -- Desequipar si vino del backpack
+                    if _wasInBackpack and myHum and myHum.Parent then
+                        task.delay(0.17, function()
+                            pcall(function() myHum:UnequipTools() end)
                         end)
-                        if _wasInBackpack and myHum and myHum.Parent then
-                            task.delay(0.05, function()
-                                pcall(function() myHum:UnequipTools() end)
-                            end)
-                        end
-                    end)
+                    end
                     CreateCustomNotification("SILENT AIM", "Bala redirigida -> " .. target.Name, 1.5)
                 else
                     -- Fallback sin CFrame válido
                     if _fireGunMM2 then _fireGunMM2(gun) end
-                    task.delay(0.12, function()
-                        pcall(function()
-                            if _flashHandle and _flashHandle.Parent then
-                                _flashHandle.Transparency = _flashOrigTrans
-                            end
-                        end)
-                    end)
                 end
             end)
         end
@@ -40533,23 +40498,14 @@ function CreateCombatTab()
                 return
             end
 
-            -- FLASH: hacer la gun invisible brevemente
-            local handle = gun:FindFirstChild("Handle")
-            local origTrans = handle and handle.Transparency or 0
-            if handle then
-                pcall(function() handle.Transparency = 1 end)
-            end
-
             -- Target: murder detectado
             local target = findMurderer and findMurderer()
             if not target or not target.Character then
-                if handle then pcall(function() handle.Transparency = origTrans end) end
                 CreateCustomNotification("BINDABLE SA", "Sin target (murder)", 1)
                 return
             end
             local tHRP2 = target.Character:FindFirstChild("HumanoidRootPart")
             if not tHRP2 then
-                if handle then pcall(function() handle.Transparency = origTrans end) end
                 return
             end
 
@@ -40585,20 +40541,12 @@ function CreateCombatTab()
                 _fireGunMM2(gun)
             end
 
-            -- Restaurar visibilidad de la gun después de 0.12s
-            task.delay(0.12, function()
-                pcall(function()
-                    if handle and handle.Parent then
-                        handle.Transparency = origTrans
-                    end
+            -- Si estaba en backpack, volver a guardar
+            if wasInBackpack and myHum and myHum.Parent then
+                task.delay(0.17, function()
+                    pcall(function() myHum:UnequipTools() end)
                 end)
-                -- Si estaba en backpack, volver a guardar
-                if wasInBackpack and myHum and myHum.Parent then
-                    task.delay(0.05, function()
-                        pcall(function() myHum:UnequipTools() end)
-                    end)
-                end
-            end)
+            end
 
             if onShootDone then onShootDone() end
         end
