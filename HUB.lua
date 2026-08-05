@@ -52532,19 +52532,26 @@ uiScale.Scale = 1.0
 -- ================================================================
 -- == ESCALA AUTOMATICA POR DISPOSITIVO
 -- Celular: calcula la escala para que 750px quepan en el ancho
---          disponible con un margen de 8px a cada lado.
+--          disponible con un margen de 4px a cada lado (ancho ligeramente mayor).
+--          Luego aplica hubScale (default 130%) sobre esa escala base.
 -- PC:      usa el slider hubScale (70-130%, default 100%).
 -- ================================================================
 _getTargetScale = function()
     if _G._isMobileHub then
         -- Escalar para que el hub de 750px entre en la pantalla del celu
+        -- Margen reducido a 4px a cada lado para aprovechar mas ancho en mobile
         local _vpNow = workspace.CurrentCamera.ViewportSize
-        local _availW = _vpNow.X - 16   -- 8px margen a cada lado
+        local _availW = _vpNow.X - 8    -- 4px margen a cada lado (antes: 16px / 8px c/lado)
         local _availH = _vpNow.Y - 16
         local _scaleW = _availW / 750
         local _scaleH = _availH / 420
-        -- Usar la escala mas restrictiva para que entre en ambas dimensiones
-        return math.max(0.40, math.min(_scaleW, _scaleH))
+        -- Escala base que hace entrar el hub en pantalla
+        local _baseScale = math.max(0.40, math.min(_scaleW, _scaleH))
+        -- Aplicar preferencia del slider (default 130%) sobre la escala base
+        local _hs = _G._hubSettings and _G._hubSettings.hubScale
+        local _userMult = (type(_hs) == "number" and _hs >= 70 and _hs <= 130) and (_hs / 100) or 1.30
+        -- Limitar para que no se salga de pantalla
+        return math.max(0.40, math.min(_baseScale * _userMult, math.min(_scaleW, _scaleH) * 1.30))
     end
     -- PC: leer preferencia del slider
     local _hs = _G._hubSettings and _G._hubSettings.hubScale
