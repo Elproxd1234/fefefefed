@@ -7331,7 +7331,7 @@ function PlaySound()
     if now - _lastPlaySoundTime < 0.08 then return end  -- debounce: no repetir en menos de 80ms
     _lastPlaySoundTime = now
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://6046360355"
+    s.SoundId = "rbxassetid://9116544314"
     s.Volume = 0.5
     s.PlaybackSpeed = 1.0
     s.RollOffMaxDistance = 999
@@ -7350,7 +7350,7 @@ function PlayToggleSound(isOn)
     if now - _lastToggleSoundTime < 0.08 then return end
     _lastToggleSoundTime = now
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://6046360355"
+    s.SoundId = "rbxassetid://9116544314"
     s.Volume = 0.5
     s.PlaybackSpeed = 1.0
     s.RollOffMaxDistance = 999
@@ -7363,7 +7363,7 @@ end
 function PlayTabSound()
     if _G._hubSettings and _G._hubSettings.disableClickSound then return end
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://6046360355" -- swoosh suave de pestana
+    s.SoundId = "rbxassetid://9116544314" -- swoosh suave de pestana
     s.Volume = 0.35
     s.PlaybackSpeed = 1.1
     s.RollOffMaxDistance = 999
@@ -7376,7 +7376,7 @@ end
 function PlayHoverSound()
     if _G._hubSettings and _G._hubSettings.disableClickSound then return end
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://6046360355" -- hover suave
+    s.SoundId = "rbxassetid://9116544314" -- hover suave
     s.Volume = 0.18
     s.PlaybackSpeed = 1.2
     s.RollOffMaxDistance = 999
@@ -7387,7 +7387,7 @@ end
 
 function PlayDeathSound()
     local s = Instance.new("Sound")
-    s.SoundId = "rbxassetid://6046360355"
+    s.SoundId = "rbxassetid://9116544314"
     s.Volume = 0.5
     s.Parent = workspace
     s:Play()
@@ -17024,7 +17024,7 @@ function CreateMainUI_BackgroundSelector()
             -- Sonido
             pcall(function()
                 local snd = Instance.new("Sound")
-                snd.SoundId = "rbxassetid://6046360355"
+                snd.SoundId = "rbxassetid://9116544314"
                 snd.Volume = 0.8; snd.Parent = hrp; snd:Play()
                 Debris:AddItem(snd, 2)
             end)
@@ -17965,7 +17965,7 @@ function CreateMainUI_GameInfo()
         local _notifyRolState = { enabled = false, lastRole = "", conn = nil, cbId = nil }
         local function _playMurderSound()
             local s = Instance.new("Sound")
-            s.SoundId = "rbxassetid://6046360355" -- sonido de muerte/alerta
+            s.SoundId = "rbxassetid://9116544314" -- sonido de muerte/alerta
             s.Volume  = 0.9
             s.Parent  = workspace
             s:Play()
@@ -17973,7 +17973,7 @@ function CreateMainUI_GameInfo()
         end
         local function _playSheriffSound()
             local s = Instance.new("Sound")
-            s.SoundId = "rbxassetid://6046360355" -- sonido de click/accion
+            s.SoundId = "rbxassetid://9116544314" -- sonido de click/accion
             s.Volume  = 0.9
             s.Parent  = workspace
             s:Play()
