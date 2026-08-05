@@ -38496,8 +38496,8 @@ function CreateExclusiveTab()
                 if not sc then sc = Instance.new("UIScale", mainFrame) end
                 -- FIX ESCALA DOBLE: v ya es el porcentaje (ej: 130), solo dividir por 100.
                 sc.Scale = v / 100
-                -- Mantener el tamaño base fijo; el UIScale se encarga de la escala visual
-                mainFrame.Size = UDim2.new(0, 750, 0, 420)
+                -- Mantener el tamaño base correcto segun dispositivo
+                mainFrame.Size = (_getHubSize and _getHubSize()) or UDim2.new(0, 750, 0, 420)
             end)
         end)
     end
@@ -50790,9 +50790,9 @@ minimizeBtn.Activated:Connect(function()
                     pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(true) end end)
                 end)
                 -- Reapertura instantánea (animación eliminada)
-                -- FIX TAMAÑO: restaurar Size original antes de restaurar UIScale
+                -- FIX TAMAÑO: restaurar Size segun dispositivo antes de restaurar UIScale
                 if mainFrame then
-                    mainFrame.Size = UDim2.new(0, 750, 0, 420)
+                    mainFrame.Size = (_getHubSize and _getHubSize()) or UDim2.new(0, 750, 0, 420)
                     mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
                     mainFrame.BackgroundTransparency = 0.82
                 end
@@ -51060,10 +51060,9 @@ closeBtn.Activated:Connect(function()
             if existingHub and _G._hubHidden then
                 existingHub.Enabled = true
                 _G._hubHidden = false
-                -- FIX TAMAÑO: restaurar Size y Position originales que fueron
-                -- modificados por el tween de cierre (Size→0,0 / Pos→center)
+                -- FIX TAMAÑO: restaurar Size segun dispositivo (modificado por tween de cierre)
                 if mainFrame then
-                    mainFrame.Size = UDim2.new(0, 750, 0, 420)
+                    mainFrame.Size = (_getHubSize and _getHubSize()) or UDim2.new(0, 750, 0, 420)
                     mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
                     mainFrame.BackgroundTransparency = 0.82
                 end
@@ -52358,9 +52357,16 @@ function abrirHub()
             task.wait(0.45)
             pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(true) end end)
         end)
-        -- FIX TAMAÑO: restaurar Size y Position originales antes del tween de escala
+        -- FIX TAMAÑO: restaurar Size segun dispositivo antes del tween de escala
         if mainFrame then
-            mainFrame.Size = UDim2.new(0, 750, 0, 420)
+            if _G._isMobileHub then
+                local _vp2 = workspace.CurrentCamera.ViewportSize
+                local _mW2 = math.floor(math.min(_vp2.X - 12, 420))
+                local _mH2 = math.floor(_mW2 * (420 / 750))
+                mainFrame.Size = UDim2.new(0, _mW2, 0, _mH2)
+            else
+                mainFrame.Size = UDim2.new(0, 750, 0, 420)
+            end
             mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
             mainFrame.BackgroundTransparency = 0.82
         end
@@ -52464,11 +52470,26 @@ mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 
--- TAMAÑO MÓVIL: tamaño base en píxeles para que al aplicar UIScale no se salga de pantalla.
--- Con UIScale = 1.3 (130%), un frame de 100% ancho se expande a 130% -> se sale de pantalla.
--- Solución: tamaño base que el UIScale ajusta correctamente.
--- El slider de escala (70-130%) maneja el UIScale; el Size queda fijo.
-mainFrame.Size = UDim2.new(0, 750, 0, 420)
+-- ================================================================
+-- == DETECCION DE DISPOSITIVO: PC vs CELULAR
+-- ================================================================
+local _vp           = workspace.CurrentCamera.ViewportSize
+local _isMobileHub  = false
+pcall(function()
+    local _uis = game:GetService("UserInputService")
+    _isMobileHub = _uis.TouchEnabled and _vp.X < 850
+end)
+_G._isMobileHub = _isMobileHub
+
+if _isMobileHub then
+    -- CELULAR: ajustar al ancho de pantalla
+    local _mW = math.floor(math.min(_vp.X - 12, 420))
+    local _mH = math.floor(_mW * (420 / 750))
+    mainFrame.Size = UDim2.new(0, _mW, 0, _mH)
+else
+    -- PC: tamaño fijo 750x420
+    mainFrame.Size = UDim2.new(0, 750, 0, 420)
+end
 
 -- Fondo: sin imagen rbxassetid, fondo rosa limpio
 _G._hubBgMainImageRef = nil
@@ -52511,14 +52532,32 @@ do
     -- FIX LAG: loop de borde eliminado; el borde es estático y no necesita actualizarse en bucle
 end
 
+-- Helper global: devuelve el UDim2 de tamaño correcto segun dispositivo
+-- Usar esto en vez de hardcodear UDim2.new(0, 750, 0, 420)
+_getHubSize = function()
+    if _G._isMobileHub then
+        local _vp3 = workspace.CurrentCamera.ViewportSize
+        local _w = math.floor(math.min(_vp3.X - 12, 420))
+        local _h = math.floor(_w * (420 / 750))
+        return UDim2.new(0, _w, 0, _h)
+    end
+    return UDim2.new(0, 750, 0, 420)
+end
+
 uiScale = Instance.new("UIScale", mainFrame)
-uiScale.Scale = 1.0  -- MÓVIL: escala 1:1
+uiScale.Scale = 1.0
 
 -- ================================================================
--- == ESCALA MÓVIL: fija en 1.0 para pantalla de celular
+-- == ESCALA AUTOMATICA POR DISPOSITIVO
+-- Celular: escala 1.0 (el Size ya fue reducido arriba para ajustarse).
+-- PC:      usa el slider hubScale (70-130%, default 100%).
 -- ================================================================
 _getTargetScale = function()
-    -- Lee hubScale guardado en settings (default 100%). Nunca devuelve nil.
+    if _G._isMobileHub then
+        -- En celular el tamaño ya esta ajustado al viewport; no escalar extra
+        return 1.0
+    end
+    -- PC: leer preferencia del slider
     local _hs = _G._hubSettings and _G._hubSettings.hubScale
     if type(_hs) == "number" and _hs >= 70 and _hs <= 130 then
         return _hs / 100
