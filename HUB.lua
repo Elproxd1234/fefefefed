@@ -582,8 +582,11 @@ local function _rebuildPlayerCache()
     _cachedPlayers = Players:GetPlayers()
 end
 _rebuildPlayerCache()
-Players.PlayerAdded:Connect(function() _rebuildPlayerCache() end)
-Players.PlayerRemoving:Connect(function() task.defer(_rebuildPlayerCache) end)
+-- FIX LAG: desconectar conexiones anteriores para no duplicarlas en cada re-ejecución
+if _G._playerCacheConn1 then pcall(function() _G._playerCacheConn1:Disconnect() end) end
+if _G._playerCacheConn2 then pcall(function() _G._playerCacheConn2:Disconnect() end) end
+_G._playerCacheConn1 = Players.PlayerAdded:Connect(function() _rebuildPlayerCache() end)
+_G._playerCacheConn2 = Players.PlayerRemoving:Connect(function() task.defer(_rebuildPlayerCache) end)
 
 
 -- ==================================================================
@@ -998,28 +1001,30 @@ local function RegisterShimmer(gradObj, speed, offset)
     table.insert(_shimmerRegistry, {grad=gradObj, speed=speed or 80, offset=offset or 0})
 end
 
--- Un solo loop a ~15Hz (suficiente para shimmer visual, menos trabajo que 20Hz)
-task.spawn(function()
-    while true do
-        task.wait(1.0)  -- OPT: 1Hz suficiente para shimmer decorativo (reducido de 1.25Hz)
-        if #_shimmerRegistry == 0 then continue end  -- skip si no hay nada que animar
-        _shimmerAngle = (_shimmerAngle + 4) % 360
-        local i = 1
-        while i <= #_shimmerRegistry do
-            local entry = _shimmerRegistry[i]
-            -- Limpiar entradas huerfanas sin hacer FindFirstAncestor (barato)
-            local _grad = entry.grad
-            local ok, parent = pcall(function() return _grad.Parent end)
-            if not ok or not parent then
-                _shimmerRegistry[i] = _shimmerRegistry[#_shimmerRegistry]
-                _shimmerRegistry[#_shimmerRegistry] = nil
-            else
-                entry.grad.Rotation = (_shimmerAngle * entry.speed / 80 + entry.offset) % 360
-                i = i + 1
+-- FIX LAG: singleton — un solo loop de shimmer aunque el script se re-ejecute N veces
+if not _G._shimmerLoopRunning then
+    _G._shimmerLoopRunning = true
+    task.spawn(function()
+        while true do
+            task.wait(1.0)
+            if #_shimmerRegistry == 0 then continue end
+            _shimmerAngle = (_shimmerAngle + 4) % 360
+            local i = 1
+            while i <= #_shimmerRegistry do
+                local entry = _shimmerRegistry[i]
+                local _grad = entry.grad
+                local ok, parent = pcall(function() return _grad.Parent end)
+                if not ok or not parent then
+                    _shimmerRegistry[i] = _shimmerRegistry[#_shimmerRegistry]
+                    _shimmerRegistry[#_shimmerRegistry] = nil
+                else
+                    entry.grad.Rotation = (_shimmerAngle * entry.speed / 80 + entry.offset) % 360
+                    i = i + 1
+                end
             end
         end
-    end
-end)
+    end)
+end
 
 -- ===================================================================
 -- SISTEMA DE TRADUCCIONES -- Multi-idioma real
@@ -50813,8 +50818,10 @@ minimizeBtn.Activated:Connect(function()
         shrink.Completed:Connect(function()
             rGui:Destroy()
             -- FIX NOMBRE: hubGui se llama "f", no "BypasHubMM2"
+            -- FIX: buscar hub en PlayerGui, CoreGui Y gethui() para no llamar abrirHub() innecesariamente
             local existingHub = LocalPlayer.PlayerGui:FindFirstChild("f")
                              or game:GetService("CoreGui"):FindFirstChild("f")
+                             or (gethui and gethui():FindFirstChild("f"))
             if existingHub and _G._hubHidden then
                 existingHub.Enabled = true
                 _G._hubHidden = false
@@ -50829,8 +50836,6 @@ minimizeBtn.Activated:Connect(function()
                 end
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then uiScale.Scale = (_getTargetScale and _getTargetScale() or 0.70) end
-                -- NO llamar _reloadActiveTab: no es necesario y disparaba
-                -- la pantalla de disculpas del premium al reconstruir el tab.
             else
                 abrirHub()
             end
@@ -51086,8 +51091,10 @@ closeBtn.Activated:Connect(function()
         shrink.Completed:Connect(function()
             skullReopenGui:Destroy()
             -- FIX NOMBRE: hubGui se llama "f", no "BypasHubMM2"
+            -- FIX: buscar hub en PlayerGui, CoreGui Y gethui() para no llamar abrirHub() innecesariamente
             local existingHub = LocalPlayer.PlayerGui:FindFirstChild("f")
                              or game:GetService("CoreGui"):FindFirstChild("f")
+                             or (gethui and gethui():FindFirstChild("f"))
             if existingHub and _G._hubHidden then
                 existingHub.Enabled = true
                 _G._hubHidden = false
@@ -51100,9 +51107,8 @@ closeBtn.Activated:Connect(function()
                 end
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
-                    uiScale.Scale = (_getTargetScale and _getTargetScale() or 0.70)  -- apertura instantánea
+                    uiScale.Scale = (_getTargetScale and _getTargetScale() or 0.70)
                 end
-                -- NO llamar _reloadActiveTab: causaba el popup de premium
             else
                 abrirHub()
             end
@@ -52354,6 +52360,17 @@ function abrirHub()
     -- == FIN SPLASH SCREEN
     -- ================================================================
 
+    -- FIX LAG: limpiar entradas huérfanas del shimmerRegistry de ejecuciones anteriores
+    if _shimmerRegistry then
+        for i = #_shimmerRegistry, 1, -1 do
+            local e = _shimmerRegistry[i]
+            local ok, p = pcall(function() return e and e.grad and e.grad.Parent end)
+            if not ok or not p then
+                _shimmerRegistry[i] = _shimmerRegistry[#_shimmerRegistry]
+                _shimmerRegistry[#_shimmerRegistry] = nil
+            end
+        end
+    end
     -- FIX CRTICO: inicializar _tabConns ANTES de cualquier RegisterTabConn
     -- Si _tabConns es nil cuando RegisterTabConn intenta table.insert -> crash
     _G._tabConns     = {}   -- reiniciar conexiones de tab
@@ -52526,14 +52543,7 @@ do
     }
     local _colorIdx = 1
     local _colorTick = 0
-    task.spawn(function()
-        while glowBorder and glowBorder.Parent do
-            task.wait(0.016)  -- ~60fps ultra rapido
-            -- Borde activo: mantener grosor y color (diseño CustomBlueGui)
-            -- glowBorder.Thickness ya es 2, no se sobreescribe
-            task.wait(1)  -- throttle para no consumir CPU innecesariamente
-        end
-    end)
+    -- FIX LAG: loop de borde eliminado; el borde es estático y no necesita actualizarse en bucle
 end
 
 uiScale = Instance.new("UIScale", mainFrame)
@@ -54250,9 +54260,11 @@ particles = {}
                 _rBtn2Clicked = true
                 task.delay(0.1, function()
                     pcall(function() rGui2:Destroy() end)
+                    -- FIX: buscar hub en PlayerGui, CoreGui Y gethui() para no llamar abrirHub() innecesariamente
                     local existingHub = LocalPlayer.PlayerGui:FindFirstChild("f")
                                      or game:GetService("CoreGui"):FindFirstChild("f")
-                    if existingHub then
+                                     or (gethui and gethui():FindFirstChild("f"))
+                    if existingHub and _G._hubHidden then
                         existingHub.Enabled = true
                         _G._hubHidden = false
                         -- FIX BINDABLES: restaurar todos los botones/bindables flotantes al reabrir
