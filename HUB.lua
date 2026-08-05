@@ -52359,14 +52359,7 @@ function abrirHub()
         end)
         -- FIX TAMAÑO: restaurar Size segun dispositivo antes del tween de escala
         if mainFrame then
-            if _G._isMobileHub then
-                local _vp2 = workspace.CurrentCamera.ViewportSize
-                local _mW2 = math.floor(math.min(_vp2.X - 12, 420))
-                local _mH2 = math.floor(_mW2 * (420 / 750))
-                mainFrame.Size = UDim2.new(0, _mW2, 0, _mH2)
-            else
-                mainFrame.Size = UDim2.new(0, 750, 0, 420)
-            end
+            mainFrame.Size = UDim2.new(0, 750, 0, 420)
             mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
             mainFrame.BackgroundTransparency = 0.82
         end
@@ -52472,6 +52465,9 @@ Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 
 -- ================================================================
 -- == DETECCION DE DISPOSITIVO: PC vs CELULAR
+-- El frame base es SIEMPRE 750x420 (el contenido interno esta disenado
+-- para ese tamaño). En celular, UIScale lo reduce para que entre en
+-- pantalla. En PC, UIScale lo maneja el slider de settings.
 -- ================================================================
 local _vp           = workspace.CurrentCamera.ViewportSize
 local _isMobileHub  = false
@@ -52481,15 +52477,8 @@ pcall(function()
 end)
 _G._isMobileHub = _isMobileHub
 
-if _isMobileHub then
-    -- CELULAR: ajustar al ancho de pantalla
-    local _mW = math.floor(math.min(_vp.X - 12, 420))
-    local _mH = math.floor(_mW * (420 / 750))
-    mainFrame.Size = UDim2.new(0, _mW, 0, _mH)
-else
-    -- PC: tamaño fijo 750x420
-    mainFrame.Size = UDim2.new(0, 750, 0, 420)
-end
+-- Tamaño base fijo: UIScale se encarga de ajustar segun dispositivo
+mainFrame.Size = UDim2.new(0, 750, 0, 420)
 
 -- Fondo: sin imagen rbxassetid, fondo rosa limpio
 _G._hubBgMainImageRef = nil
@@ -52532,15 +52521,8 @@ do
     -- FIX LAG: loop de borde eliminado; el borde es estático y no necesita actualizarse en bucle
 end
 
--- Helper global: devuelve el UDim2 de tamaño correcto segun dispositivo
--- Usar esto en vez de hardcodear UDim2.new(0, 750, 0, 420)
+-- Helper global: siempre 750x420 (UIScale se encarga de la escala)
 _getHubSize = function()
-    if _G._isMobileHub then
-        local _vp3 = workspace.CurrentCamera.ViewportSize
-        local _w = math.floor(math.min(_vp3.X - 12, 420))
-        local _h = math.floor(_w * (420 / 750))
-        return UDim2.new(0, _w, 0, _h)
-    end
     return UDim2.new(0, 750, 0, 420)
 end
 
@@ -52549,13 +52531,20 @@ uiScale.Scale = 1.0
 
 -- ================================================================
 -- == ESCALA AUTOMATICA POR DISPOSITIVO
--- Celular: escala 1.0 (el Size ya fue reducido arriba para ajustarse).
+-- Celular: calcula la escala para que 750px quepan en el ancho
+--          disponible con un margen de 8px a cada lado.
 -- PC:      usa el slider hubScale (70-130%, default 100%).
 -- ================================================================
 _getTargetScale = function()
     if _G._isMobileHub then
-        -- En celular el tamaño ya esta ajustado al viewport; no escalar extra
-        return 1.0
+        -- Escalar para que el hub de 750px entre en la pantalla del celu
+        local _vpNow = workspace.CurrentCamera.ViewportSize
+        local _availW = _vpNow.X - 16   -- 8px margen a cada lado
+        local _availH = _vpNow.Y - 16
+        local _scaleW = _availW / 750
+        local _scaleH = _availH / 420
+        -- Usar la escala mas restrictiva para que entre en ambas dimensiones
+        return math.max(0.40, math.min(_scaleW, _scaleH))
     end
     -- PC: leer preferencia del slider
     local _hs = _G._hubSettings and _G._hubSettings.hubScale
