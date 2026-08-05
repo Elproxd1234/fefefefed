@@ -7720,17 +7720,16 @@ end
 -- Botones en fila al lado del mute icon de Roblox
 -- 6 por fila, luego bajan a la siguiente
 -- =============================================
-_G._bindableSlotIndex = _G._bindableSlotIndex or 0
-_G._bindableSlotMap   = _G._bindableSlotMap   or {}
-_G._bindablePosSave   = _G._bindablePosSave   or {}
+_G._bindableSlotIndex = 0
+_G._bindableSlotMap   = {}
+_G._bindablePosSave   = _G._bindablePosSave or {}
 
--- Slots activos: cuantos bindables estan visibles ahora mismo
--- Cada vez que se crea un bindable se registra; al destruirse se libera
-_G._bindableActiveSlots = _G._bindableActiveSlots or {}  -- label -> slotIndex asignado
+-- Slots activos: siempre fresco al re-ejecutar (evita slots sucios de runs anteriores)
+_G._bindableActiveSlots = {}
 
-_BIND_CS    = 44   -- tamaño del circulo
-_BIND_GAP   = 12
-_BIND_COLS  = 10  -- muchas columnas para que queden en fila arriba
+_BIND_CS    = 76   -- tamaño del boton (debe coincidir con BTN_W/BTN_H en MakeCapyBindableFrame)
+_BIND_GAP   = 10
+_BIND_COLS  = 99   -- sin limite de columnas: siempre fila horizontal unica
 _BIND_PAD_X = 12
 _BIND_PAD_Y = 10  -- pegado arriba
 
@@ -7760,10 +7759,12 @@ function _releaseSlot(label)
 end
 
 -- Registro global: label -> _bindSg, para destruccion directa sin buscar por nombre
--- FIX TOTAL: limpiar registries al inicio para evitar basura de ejecuciones anteriores
+-- Al recargar el hub, destruir CapyBindSg existentes.
+-- Los toggles activos los recrearán solos via auto-restore.
+_G._capyBindRegistry       = {}
+_G._capyBindParentRegistry = {}
+_G._bindableActiveSlots    = {}
 do
-    local _coreGui = game:GetService("CoreGui")
-    local _pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
     local function _nukeOldBindSgs(parent)
         if not parent then return end
         pcall(function()
@@ -7774,19 +7775,18 @@ do
             end
         end)
     end
-    _nukeOldBindSgs(_coreGui)
-    _nukeOldBindSgs(_pg)
+    pcall(function() _nukeOldBindSgs(game:GetService("CoreGui")) end)
+    pcall(function() _nukeOldBindSgs(game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")) end)
+    pcall(function() if gethui then _nukeOldBindSgs(gethui()) end end)
 end
-_G._capyBindRegistry       = {}   -- siempre fresco al cargar el hub
-_G._capyBindParentRegistry = {}
 
 function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
     -- ======================================================
     -- NUEVO DISENO: boton cuadrado redondeado, borde rojo
     -- animado, colores Soft Gray del hub, feedback visual
     -- ======================================================
-    local BTN_W = 80  -- se sobreescribe abajo, se mantiene para calculos de posicion
-    local BTN_H = 80
+    local BTN_W = 76  -- se sobreescribe abajo, se mantiene para calculos de posicion
+    local BTN_H = 76
     local _coreGui = game:GetService("CoreGui")
     local _sgName  = "CapyBindSg_" .. tostring(labelText):gsub("%s","")
     local _posKey  = tostring(labelText)
@@ -7822,34 +7822,41 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
         end
     end)
 
-    -- ScreenGui contenedor
-    local _bindSg = Instance.new("ScreenGui")
-    _bindSg.Name           = _sgName
-    _bindSg.ResetOnSpawn   = false
-    _bindSg.DisplayOrder   = 9998
-    _bindSg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    _bindSg.IgnoreGuiInset = true
-    pcall(function() _bindSg.Parent = _coreGui end)
-    if not _bindSg.Parent then
-        _bindSg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    -- FIX TOGGLE-OFF: si el caller ya creo un ScreenGui (guiParent), usarlo directamente
+    -- como contenedor en vez de crear un _bindSg separado.
+    -- Antes MakeCapyBindableFrame ignoraba guiParent y creaba su propio ScreenGui en CoreGui,
+    -- de modo que al destruir el guiParent externo el boton flotante quedaba vivo.
+    -- Ahora: si guiParent es un ScreenGui ya montado, el Frame del boton va dentro de el
+    -- y cuando el toggle lo destruye, el boton desaparece automaticamente.
+    local _bindSg
+    local _isExternalSg = guiParent and guiParent:IsA("ScreenGui") and guiParent.Parent ~= nil
+    if _isExternalSg then
+        -- Usar el ScreenGui del caller como contenedor real (sin crear uno nuevo)
+        _bindSg = guiParent
+    else
+        -- Comportamiento original: crear propio ScreenGui en CoreGui
+        _bindSg = Instance.new("ScreenGui")
+        _bindSg.Name           = _sgName
+        _bindSg.ResetOnSpawn   = false
+        _bindSg.DisplayOrder   = 9998
+        _bindSg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        _bindSg.IgnoreGuiInset = true
+        pcall(function() _bindSg.Parent = _coreGui end)
+        if not _bindSg.Parent then
+            _bindSg.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+        end
     end
     _G._capyBindRegistry = _G._capyBindRegistry or {}
     _G._capyBindRegistry[labelText] = _bindSg
 
-    -- Destruir cuando el padre del toggle muere
-    if guiParent and guiParent ~= _bindSg and guiParent ~= _coreGui then
-        pcall(function()
-            guiParent.AncestryChanged:Connect(function()
-                if not guiParent.Parent then
-                    pcall(function() _bindSg:Destroy() end)
-                end
-            end)
-        end)
-    end
+    -- FIX PERSISTENCIA: NO destruir el bindable cuando el hub se cierra/re-ejecuta.
+    -- Antes este AncestryChanged mataba el boton al cerrar el hub, por eso desaparecia
+    -- al reabrir. Ahora el bindable sobrevive mientras su toggle este activo.
+    -- Solo se destruye cuando el usuario desactiva el toggle manualmente (_animatedDestroy).
 
     -- Tamaño tecla estilo SHIFT (cuadrado compacto, sin fondo)
-    BTN_W = 60
-    BTN_H = 60
+    BTN_W = 76
+    BTN_H = 76
 
     -- -- CONTENEDOR RAIZ ----------------------------------
     local bg = Instance.new("Frame", _bindSg)
@@ -7934,7 +7941,7 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
     textLabel.BackgroundTransparency = 1
     textLabel.Text                   = tostring(labelText)
     textLabel.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-    textLabel.TextSize               = 11
+    textLabel.TextSize               = 13
     textLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
     textLabel.TextXAlignment         = Enum.TextXAlignment.Center
     textLabel.TextYAlignment         = Enum.TextYAlignment.Center
@@ -8091,12 +8098,10 @@ function MakeCapyBindableFrame(guiParent, labelText, callback, optPosX, optPosY)
         if _destroying then return end
         _destroying = true
         if _dragConn then pcall(function() _dragConn:Disconnect() end) end
-        TweenService:Create(textLabel,  TweenInfo.new(0.25, Enum.EasingStyle.Quad), {TextTransparency=1}):Play()
-        TweenService:Create(fillStroke, TweenInfo.new(0.3,  Enum.EasingStyle.Quad), {Transparency=1}):Play()
-        TweenService:Create(fill,       TweenInfo.new(0.5,  Enum.EasingStyle.Quad), {BackgroundTransparency=1}):Play()
-        task.wait(0.12)
-        TweenService:Create(_bindUiScale, TweenInfo.new(0.6, Enum.EasingStyle.Elastic, Enum.EasingDirection.In, 0, 0.4), {Scale=0}):Play()
-        task.delay(0.8, function() pcall(function() _bindSg:Destroy() end) end)
+        -- Animar salida y destruir
+        TweenService:Create(textLabel,  TweenInfo.new(0.15, Enum.EasingStyle.Quad), {TextTransparency=1}):Play()
+        TweenService:Create(_bindUiScale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Scale=0}):Play()
+        task.delay(0.25, function() pcall(function() _bindSg:Destroy() end) end)
     end
     bg._animatedDestroy      = _animatedDestroy
     _bindSg._animatedDestroy = _animatedDestroy
@@ -8118,35 +8123,42 @@ end
 -- Helper global: destruye el ScreenGui interno de un bindable por su label
 -- Usar esto en el else de cada toggle en vez de (o ademas de) destruir el sg externo
 function DestroyCapyBind(labelText)
-    -- Destruir POR REFERENCIA DIRECTA (mas rapido y confiable)
+    local _sgName = "CapyBindSg_" .. tostring(labelText):gsub("%s","")
+
+    -- 1. Destruir por referencia directa del registry
     local reg = _G._capyBindRegistry
     if reg and reg[labelText] then
         local sg = reg[labelText]
         reg[labelText] = nil
+        _releaseSlot(tostring(labelText))
         if sg._animatedDestroy then
-            pcall(sg._animatedDestroy)
+            task.spawn(sg._animatedDestroy)
         else
-            pcall(function() sg:Destroy() end)
+            task.spawn(function() pcall(function() sg:Destroy() end) end)
         end
+    else
+        _releaseSlot(tostring(labelText))
     end
 
-    -- Barrido por nombre en CoreGui Y PlayerGui (cubre casos donde el registry fallo)
-    local _sgName = "CapyBindSg_" .. tostring(labelText):gsub("%s","")
-    local function _sweepGui(parent)
+    -- 2. Barrido por nombre: destruir cualquier ScreenGui con ese nombre en CoreGui y PlayerGui
+    -- Esto cubre casos donde el registry no tenia la referencia
+    local function _sweepAndDestroy(parent)
         if not parent then return end
         pcall(function()
             for _, g in ipairs(parent:GetChildren()) do
-                if g.Name == _sgName then
-                    if g._animatedDestroy then pcall(g._animatedDestroy)
-                    else pcall(function() g:Destroy() end) end
+                if g.Name == _sgName and g.Parent then
+                    if g._animatedDestroy then
+                        task.spawn(g._animatedDestroy)
+                    else
+                        pcall(function() g:Destroy() end)
+                    end
                 end
             end
         end)
     end
-    _sweepGui(game:GetService("CoreGui"))
-    pcall(function()
-        _sweepGui(game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui"))
-    end)
+    _sweepAndDestroy(game:GetService("CoreGui"))
+    pcall(function() _sweepAndDestroy(game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")) end)
+    pcall(function() if gethui then _sweepAndDestroy(gethui()) end end)
 end
 
 -- Helper: agrega selector de forma debajo de cada toggle bindable
@@ -8232,8 +8244,8 @@ function createBindableButton(name, color)
     -- ==============================================================
     -- BOTON SA REDISENADO -- estilo tecla SHIFT: sin fondo, borde hub
     -- ==============================================================
-    local BTN_W = 60
-    local BTN_H = 60
+    local BTN_W = 76
+    local BTN_H = 76
     local vp    = workspace.CurrentCamera.ViewportSize
 
     -- POSICION: siempre slot automatico -- no restaurar posicion guardada
@@ -50695,8 +50707,7 @@ minimizeBtn.Activated:Connect(function()
     -- Cierre instantáneo (animación eliminada)
     hubGui.Enabled = false
     _G._hubHidden  = true
-    -- FIX BINDABLES: ocultar todos los botones/bindables flotantes al cerrar
-    pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(false) end end)
+    -- BINDABLES: se mantienen visibles al cerrar (son ScreenGuis independientes)
 
     local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
     if not pg then return end
@@ -50773,8 +50784,11 @@ minimizeBtn.Activated:Connect(function()
             if existingHub and _G._hubHidden then
                 existingHub.Enabled = true
                 _G._hubHidden = false
-                -- FIX BINDABLES: restaurar todos los botones/bindables flotantes al reabrir
-                pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(true) end end)
+                -- FIX BINDABLES: restaurar con delay para no chocar con la animación de cierre
+                task.spawn(function()
+                    task.wait(0.45)
+                    pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(true) end end)
+                end)
                 -- Reapertura instantánea (animación eliminada)
                 -- FIX TAMAÑO: restaurar Size original antes de restaurar UIScale
                 if mainFrame then
@@ -52339,8 +52353,11 @@ function abrirHub()
         end
         existingHub.Enabled = true
         _G._hubHidden = false
-        -- FIX BINDABLES: restaurar todos los botones/bindables flotantes al reabrir
-        pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(true) end end)
+        -- FIX BINDABLES: restaurar con delay para no chocar con la animación de cierre
+        task.spawn(function()
+            task.wait(0.45)
+            pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(true) end end)
+        end)
         -- FIX TAMAÑO: restaurar Size y Position originales antes del tween de escala
         if mainFrame then
             mainFrame.Size = UDim2.new(0, 750, 0, 420)
@@ -54082,6 +54099,10 @@ particles = {}
             "NewInvisBind", "HandFlutterBindable", "TpLowMapBindable",
             "PierceBulletGui", "SilentAimBind_HUB", "FakeUnboxRoulette",
             "OD_InfoDisplay", "BombJumpBindable_HUB",
+            -- nombres adicionales que no matcheaban los patrones generales
+            "BypasBSA", "BypasSecureAutoBindable",
+            "NoclipBindableHub", "JumpBoostBindableHub",
+            "BombJumpBindable", "FakeBombBindles", "FakeDiedBindSg",
         }
         local _parents = {}
         pcall(function() table.insert(_parents, LocalPlayer:FindFirstChildOfClass("PlayerGui")) end)
@@ -54095,12 +54116,15 @@ particles = {}
                         if sg then sg.Enabled = visible end
                     end)
                 end
-                -- También buscar cualquier ScreenGui cuyo nombre termine en "_CapyBtn" o "_HUB"
+                -- Scan general: cubre cualquier ScreenGui del hub por patrón de nombre
                 for _, child in ipairs(parent:GetChildren()) do
                     pcall(function()
                         if child:IsA("ScreenGui") then
                             local n = child.Name
-                            if n:find("_CapyBtn") or n:find("_HUB") or n:find("Bindable") or n:find("Bind_") then
+                            if n:find("_CapyBtn")  or n:find("_HUB")      or
+                               n:find("Bindable")  or n:find("Bind_")     or
+                               n:find("CapyBindSg") or n:find("Bypas")    or
+                               n:find("BindableHub") then
                                 child.Enabled = visible
                             end
                         end
@@ -54124,8 +54148,7 @@ particles = {}
         pcall(CloseExpandPanel)
         pcall(function() if _G._stopWeapon then _G._stopWeapon() end end)
         pcall(function() if _G._stopKnife  then _G._stopKnife()  end end)
-        -- FIX BINDABLES: ocultar todos los botones/bindables flotantes al cerrar el hub
-        pcall(function() _setAllBindablesVisible(false) end)
+        -- BINDABLES: se mantienen visibles al cerrar el hub (son ScreenGuis independientes)
         if _G._hubSettings and _G._hubSettings.noMinMaxAnimations then
             if _mainFrameRef then _mainFrameRef.BackgroundTransparency = 1 end
             if tabDockFrame  then tabDockFrame.BackgroundTransparency  = 1 end
