@@ -8463,8 +8463,8 @@ function updateBindables()
                 if not _saGui.Parent then _saGui.Parent = LocalPlayer.PlayerGui end
 
                 local vp = workspace.CurrentCamera.ViewportSize
-                local BTN_W = 130
-                local BTN_H = 60
+                local BTN_W = 250
+                local BTN_H = 180
                 local _slot  = _assignSlot("SHOOT MURDERER")
                 local _sx, _sy = _getBindablePosition(_slot)
                 local posX  = math.clamp(_sx, 4, vp.X - BTN_W - 4)
@@ -8480,22 +8480,22 @@ function updateBindables()
                 _saBg.ZIndex                 = 200
                 _saBg.Active                 = true
 
-                -- Boton principal transparente con borde oscuro (estilo solicitado)
+                -- Boton principal con apariencia personalizada
                 local shootButton = Instance.new("TextButton", _saBg)
                 shootButton.Name                   = "ShootButton"
                 shootButton.Size                   = UDim2.new(1, 0, 1, 0)
                 shootButton.Position               = UDim2.new(0, 0, 0, 0)
-                shootButton.AnchorPoint            = Vector2.new(0, 0)
+                shootButton.AnchorPoint            = Vector2.new(0.5, 0.5)
                 shootButton.BackgroundTransparency = 1
                 shootButton.Text                   = "Shoot"
                 shootButton.TextColor3             = Color3.fromRGB(255, 255, 255)
-                shootButton.TextSize               = 16
+                shootButton.TextSize               = 24
                 shootButton.Font                   = Enum.Font.GothamMedium
                 shootButton.AutoButtonColor        = false
                 shootButton.ZIndex                 = 210
 
                 local _saCorner = Instance.new("UICorner", shootButton)
-                _saCorner.CornerRadius = UDim.new(0, 12)
+                _saCorner.CornerRadius = UDim.new(0, 20)
 
                 local _saStroke = Instance.new("UIStroke", shootButton)
                 _saStroke.Color           = Color3.fromRGB(45, 45, 45)
@@ -40055,13 +40055,6 @@ function CreateCombatTab()
 
         local function _doSilentAimShoot()
             task.spawn(function()
-                -- ================================================================
-                -- LOGICA BASADA EN EL GUNCLIENT ORIGINAL DE MM2
-                -- Firma exacta: gun.Shoot:FireServer(
-                --   GunRaycastAttachment.WorldCFrame,    <- graCF reorientado al target
-                --   WeaponService:GetMouseTargetCFrame() <- targetCF (impacto -> shooter)
-                -- )
-                -- ================================================================
                 local myChar = LocalPlayer.Character
                 if not myChar then return end
                 local myHum = myChar:FindFirstChildOfClass("Humanoid")
@@ -40084,162 +40077,130 @@ function CreateCombatTab()
                 local tHRP = tChar:FindFirstChild("HumanoidRootPart")
                 if not tHRP then return end
 
-                -- ── 1. Buscar DefaultGun (igual que GunClient: script.Parent) ──
-                local gun = nil
-                for _, tool in ipairs(myChar:GetChildren()) do
-                    if tool:IsA("Tool") then
-                        if tool.Name == "DefaultGun"
-                        or tool:FindFirstChild("GunClient")
-                        or tool:FindFirstChild("GunServer") then
-                            gun = tool; break
-                        end
-                    end
-                end
+                -- Buscar gun en mano o backpack
+                local gun = _findGunIn and _findGunIn(myChar)
                 local _wasInBackpack = false
                 if not gun then
-                    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
-                        if tool:IsA("Tool") then
-                            if tool.Name == "DefaultGun"
-                            or tool:FindFirstChild("GunClient")
-                            or tool:FindFirstChild("GunServer") then
-                                gun = tool; _wasInBackpack = true; break
-                            end
-                        end
-                    end
-                    if gun then
-                        pcall(function() myHum:EquipTool(gun) end)
+                    local gunBP = _findGunIn and _findGunIn(LocalPlayer.Backpack)
+                    if gunBP then
+                        _wasInBackpack = true
+                        pcall(function() myHum:EquipTool(gunBP) end)
                         task.wait(0.06)
-                        for _, tool in ipairs(myChar:GetChildren()) do
-                            if tool:IsA("Tool") and (
-                                tool.Name == "DefaultGun"
-                                or tool:FindFirstChild("GunClient")
-                                or tool:FindFirstChild("GunServer")) then
-                                gun = tool; break
-                            end
-                        end
+                        gun = _findGunIn and _findGunIn(myChar)
                     end
                 end
                 if not gun then
-                    gun = _findGunIn and (_findGunIn(myChar) or _findGunIn(LocalPlayer.Backpack))
-                end
-                if not gun then
-                    CreateCustomNotification("SILENT AIM", "No hay DefaultGun disponible", 1.5)
+                    CreateCustomNotification("SILENT AIM", "No hay Gun disponible", 1.5)
                     return
                 end
 
-                -- ── 2. GunRaycastAttachment — igual que EnsureGunRaycastAttachment del GunClient ──
-                local gra = myHRP:FindFirstChild("GunRaycastAttachment")
-                if not gra then
-                    gra = Instance.new("Attachment")
-                    gra.Name     = "GunRaycastAttachment"
-                    gra.Position = Vector3.new(0, 1.35, -1)
-                    gra.Parent   = myHRP
-                end
-                local graCF_world = gra.WorldCFrame
-
-                -- ── 3. CFrames: intentar _saGetTargetCF primero (mayor precision) ──
-                local finalOCF, finalTCF = nil, nil
-                if _saGetTargetCF then
-                    local ok2, newGraCF, newTargetCF = pcall(_saGetTargetCF)
-                    if ok2 and newGraCF and newTargetCF then
-                        finalOCF, finalTCF = newGraCF, newTargetCF
-                    end
-                end
-
-                -- Si no, construir manualmente desde GunRaycastAttachment y targetPos
-                if not (finalOCF and finalTCF) then
-                    local partName = (CombatTabState and CombatTabState.saTargetPart) or "Head"
-                    local tPart    = tChar:FindFirstChild(partName)
-                                  or tChar:FindFirstChild("Head")
-                                  or tHRP
-
-                    local targetPos
-                    if CombatTabState and CombatTabState.saUsePrediction and _getCachedPrediction then
-                        targetPos = _getCachedPrediction(target) or tPart.Position
-                    elseif _unifiedBalisticSolver then
-                        local solved = _unifiedBalisticSolver(tPart, tHRP, {usePrediction = true}, target)
-                        targetPos = solved or tPart.Position
-                    else
-                        targetPos = tPart.Position
-                    end
-
-                    local originPos = graCF_world.Position
-                    local dir = targetPos - originPos
-                    if dir.Magnitude < 0.01 then return end
-                    local dirU = dir.Unit
-                    local upV  = math.abs(dirU.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
-
-                    -- graCF: posicion del attachment, LookVector hacia el target
-                    finalOCF = CFrame.new(graCF_world.Position) * CFrame.lookAt(Vector3.zero, dirU, upV)
-
-                    -- targetCF: replica WeaponService:GetMouseTargetCFrame()
-                    local backDir = originPos - targetPos
-                    local backU   = backDir.Magnitude > 0.01 and backDir.Unit or -dirU
-                    local bkUp    = math.abs(backU.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
-                    finalTCF = CFrame.lookAt(targetPos, targetPos + backU, bkUp)
-                end
-
-                if not (finalOCF and finalTCF) then return end
-
-                -- ── 4. Flash handle ─────────────────────────────────────────────────
+                -- FLASH: ocultar handle de la gun brevemente
                 local _flashHandle = gun:FindFirstChild("Handle")
                 local _flashOrigTrans = _flashHandle and _flashHandle.Transparency or 0
                 if _flashHandle then
                     pcall(function() _flashHandle.Transparency = 1 end)
                 end
 
-                -- ── 5. FireServer: gun.Shoot:FireServer(graCF, targetCF) ────────────
-                -- Exactamente la misma firma que el GunClient original:
-                -- v1.Shoot:FireServer(GunRaycastAttachment.WorldCFrame, GetMouseTargetCFrame())
-                local shootRem = gun:FindFirstChild("Shoot")
-                if not (shootRem and shootRem:IsA("RemoteEvent")) then
-                    local gs = gun:FindFirstChild("GunServer")
-                    if gs then
-                        local gsShoot = gs:FindFirstChild("Shoot")
-                        if gsShoot and gsShoot:IsA("RemoteEvent") then shootRem = gsShoot end
-                    end
-                end
-                if not (shootRem and shootRem:IsA("RemoteEvent")) and getShootRemote then
-                    shootRem = getShootRemote(gun)
-                end
+                -- Calcular posición objetivo usando la lógica del Silent Aim existente
+                local partName = (CombatTabState and CombatTabState.saTargetPart) or "Head"
+                local tPart    = tChar:FindFirstChild(partName) or tChar:FindFirstChild("Head") or tHRP
 
-                if shootRem and shootRem:IsA("RemoteEvent") then
-                    CombatTabState._saBypassHook = true
-                    pcall(function() shootRem:FireServer(finalOCF, finalTCF) end)
-                    CombatTabState._saBypassHook = false
+                -- Determinar targetPos con predicción si está activa
+                local targetPos
+                if CombatTabState and CombatTabState.saUsePrediction and _getCachedPrediction then
+                    local predPos = _getCachedPrediction(target)
+                    targetPos = predPos or tPart.Position
                 else
-                    if _fireGunMM2 then
-                        CombatTabState._saBypassHook = true
-                        _fireGunMM2(gun, finalTCF)
-                        CombatTabState._saBypassHook = false
-                    end
+                    targetPos = tPart.Position
                 end
 
-                -- Restaurar handle visible
-                task.delay(0.12, function()
-                    pcall(function()
-                        if _flashHandle and _flashHandle.Parent then
-                            _flashHandle.Transparency = _flashOrigTrans
+                -- Obtener origen del disparo (GunRaycastAttachment o HRP)
+                local barrelAtt = getGunAttachment and getGunAttachment(gun, myHRP)
+                local graWorldCF = barrelAtt and barrelAtt.WorldCFrame
+                local originPos = (barrelAtt and barrelAtt.WorldPosition)
+                    or (myHRP.Position + Vector3.new(0, 1.5, 0))
+
+                -- Construir los CFrames de disparo
+                local function _buildCF(orig, tgtPos, graWCF)
+                    local dir = tgtPos - orig
+                    if dir.Magnitude < 0.01 then return nil, nil end
+                    local dirU = dir.Unit
+                    local upV  = math.abs(dirU.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
+                    local graCF_new
+                    if graWCF then
+                        graCF_new = CFrame.new(graWCF.Position) * CFrame.lookAt(Vector3.zero, dirU, upV)
+                    else
+                        graCF_new = CFrame.lookAt(orig, tgtPos, upV)
+                    end
+                    local backDir = (orig - tgtPos)
+                    local backU   = backDir.Magnitude > 0.01 and backDir.Unit or -dirU
+                    local bkUp    = math.abs(backU.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
+                    local tgtCF   = CFrame.lookAt(tgtPos, tgtPos + backU, bkUp)
+                    return graCF_new, tgtCF
+                end
+
+                local oCF, tCF = _buildCF(originPos, targetPos, graWorldCF)
+
+                if oCF and tCF then
+                    -- Intentar disparo via remote "Shoot" (método principal MM2)
+                    local shootRem = gun:FindFirstChild("Shoot")
+                    if not shootRem then
+                        for _, v in ipairs(gun:GetDescendants()) do
+                            if v:IsA("RemoteEvent") then shootRem = v; break end
+                        end
+                    end
+                    if not shootRem and getShootRemote then
+                        shootRem = getShootRemote(gun)
+                    end
+
+                    if shootRem and shootRem:IsA("RemoteEvent") then
+                        pcall(function() shootRem:FireServer(oCF, tCF) end)
+                        task.wait(0.05)
+                        pcall(function() shootRem:FireServer(oCF, tCF) end)
+                    else
+                        -- Fallback: _fireGunMM2
+                        if _fireGunMM2 then
+                            _fireGunMM2(gun, tCF)
+                            task.wait(0.05)
+                            _fireGunMM2(gun, tCF)
+                        end
+                    end
+                    -- Restaurar handle visible
+                    task.delay(0.12, function()
+                        pcall(function()
+                            if _flashHandle and _flashHandle.Parent then
+                                _flashHandle.Transparency = _flashOrigTrans
+                            end
+                        end)
+                        if _wasInBackpack and myHum and myHum.Parent then
+                            task.delay(0.05, function()
+                                pcall(function() myHum:UnequipTools() end)
+                            end)
                         end
                     end)
-                    if _wasInBackpack and myHum and myHum.Parent then
-                        task.delay(0.05, function()
-                            pcall(function() myHum:UnequipTools() end)
+                    CreateCustomNotification("SILENT AIM", "Bala redirigida -> " .. target.Name, 1.5)
+                else
+                    -- Fallback sin CFrame válido
+                    if _fireGunMM2 then _fireGunMM2(gun) end
+                    task.delay(0.12, function()
+                        pcall(function()
+                            if _flashHandle and _flashHandle.Parent then
+                                _flashHandle.Transparency = _flashOrigTrans
+                            end
                         end)
-                    end
-                end)
-                CreateCustomNotification("SILENT AIM", "-> " .. target.Name, 1.2)
+                    end)
+                end
             end)
         end
 
         local function _createSASMButton()
             _destroySASMGui()
 
-            -- MÓVIL: botón grande circular (estilo Throw/Footsteps de MM2)
-            local BTN_W, BTN_H = 110, 110
+            -- BOTÓN PERSONALIZADO: transparente con borde oscuro y esquinas redondeadas
+            local BTN_W, BTN_H = 250, 180
             local vp = workspace.CurrentCamera.ViewportSize
-            local posX = math.clamp(vp.X * 0.82 - BTN_W / 2, 4, vp.X - BTN_W - 4)
-            local posY = math.clamp(vp.Y * 0.78 - BTN_H / 2, 4, vp.Y - BTN_H - 4)
+            local posX = math.clamp(vp.X * 0.5 - BTN_W / 2, 4, vp.X - BTN_W - 4)
+            local posY = math.clamp(vp.Y * 0.5 - BTN_H / 2, 4, vp.Y - BTN_H - 4)
 
             local sg = Instance.new("ScreenGui")
             sg.Name           = "SilentAimShootMurderGui"
@@ -40266,109 +40227,32 @@ function CreateCombatTab()
             local sc = Instance.new("UIScale", btnRoot)
             sc.Scale = 0
 
-            -- Fondo circular oscuro (estilo botones MM2 Throw/Footsteps)
-            local pillBg = Instance.new("Frame", btnRoot)
-            pillBg.Name                   = "PillBg"
-            pillBg.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
-            pillBg.AnchorPoint            = Vector2.new(0.5, 0.5)
-            pillBg.Position               = UDim2.fromScale(0.5, 0.5)
-            pillBg.BackgroundColor3       = Color3.fromRGB(20, 20, 35)
-            pillBg.BackgroundTransparency = 0.25
-            pillBg.BorderSizePixel        = 0
-            pillBg.ZIndex                 = 200
-            Instance.new("UICorner", pillBg).CornerRadius = UDim.new(1, 0)  -- perfectamente circular
-
-            -- Borde circular del color del hub
-            local borderFrame = Instance.new("Frame", btnRoot)
-            borderFrame.Size                   = UDim2.fromOffset(BTN_W, BTN_H)
-            borderFrame.AnchorPoint            = Vector2.new(0.5, 0.5)
-            borderFrame.Position               = UDim2.fromScale(0.5, 0.5)
-            borderFrame.BackgroundTransparency = 1
-            borderFrame.BorderSizePixel        = 0
-            borderFrame.ZIndex                 = 201
-            Instance.new("UICorner", borderFrame).CornerRadius = UDim.new(1, 0)  -- circular
-
-            local borderStroke = Instance.new("UIStroke", borderFrame)
-            borderStroke.Color           = ThemeColors.Aurora1
-            borderStroke.Thickness       = 4
-            borderStroke.Transparency    = 0
-            borderStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-            -- Glow exterior
-            local glow = Instance.new("ImageLabel", btnRoot)
-            glow.AnchorPoint            = Vector2.new(0.5, 0.5)
-            glow.Position               = UDim2.fromScale(0.5, 0.5)
-            glow.Size                   = UDim2.fromOffset(BTN_W * 1.5, BTN_H * 1.5)
-            glow.BackgroundTransparency = 1
-            glow.Image                  = "rbxassetid://4970638706"
-            glow.ImageColor3            = ThemeColors.Aurora1
-            glow.ImageTransparency      = 0.78
-            glow.ZIndex                 = 199
-
-            -- Texto "SHOOT" grande, centrado
-            local lbl = Instance.new("TextLabel", btnRoot)
-            lbl.Size                   = UDim2.fromOffset(BTN_W - 10, BTN_H - 10)
-            lbl.AnchorPoint            = Vector2.new(0.5, 0.5)
-            lbl.Position               = UDim2.fromScale(0.5, 0.5)
-            lbl.BackgroundTransparency = 1
-            lbl.Text                   = "SHOOT"
-            lbl.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-            lbl.TextSize               = 20  -- texto más grande para móvil
-            lbl.TextColor3             = Color3.fromRGB(255, 255, 255)
-            lbl.TextXAlignment         = Enum.TextXAlignment.Center
-            lbl.TextYAlignment         = Enum.TextYAlignment.Center
-            lbl.TextWrapped            = true
-            lbl.ZIndex                 = 204
-            local lblStroke = Instance.new("UIStroke", lbl)
-            lblStroke.Color = Color3.fromRGB(0,0,0); lblStroke.Thickness = 1.5; lblStroke.Transparency = 0.4
-
-            -- Boton clickeable encima (circular)
+            -- Botón principal: fondo transparente + borde oscuro + esquinas redondeadas
             local clickBtn = Instance.new("TextButton", btnRoot)
-            clickBtn.Size                 = UDim2.fromOffset(BTN_W, BTN_H)
-            clickBtn.AnchorPoint          = Vector2.new(0.5, 0.5)
-            clickBtn.Position             = UDim2.fromScale(0.5, 0.5)
+            clickBtn.Name                   = "ShootButton"
+            clickBtn.Size                   = UDim2.new(1, 0, 1, 0)
+            clickBtn.Position               = UDim2.new(0, 0, 0, 0)
+            clickBtn.AnchorPoint            = Vector2.new(0.5, 0.5)
             clickBtn.BackgroundTransparency = 1
-            clickBtn.Text                 = ""
-            clickBtn.ZIndex               = 210
-            clickBtn.AutoButtonColor      = false
-            Instance.new("UICorner", clickBtn).CornerRadius = UDim.new(1, 0)
+            clickBtn.Text                   = "Shoot"
+            clickBtn.TextColor3             = Color3.fromRGB(255, 255, 255)
+            clickBtn.TextSize               = 24
+            clickBtn.Font                   = Enum.Font.GothamMedium
+            clickBtn.AutoButtonColor        = false
+            clickBtn.ZIndex                 = 210
+
+            local uiCorner = Instance.new("UICorner", clickBtn)
+            uiCorner.CornerRadius = UDim.new(0, 20)
+
+            local uiStroke = Instance.new("UIStroke", clickBtn)
+            uiStroke.Color           = Color3.fromRGB(45, 45, 45)
+            uiStroke.Thickness       = 4
+            uiStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
             -- Animacion de entrada (escala desde 0)
             task.spawn(function()
                 task.wait(0.016)
                 TweenService:Create(sc, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
-            end)
-
-            -- ANIMACION FLOTANTE: el botón sube y baja suavemente (estilo MM2)
-            task.spawn(function()
-                local _floatRunning = true
-                local _origY = posY
-                -- Esperar a que la animacion de entrada termine
-                task.wait(0.4)
-                while _floatRunning and btnRoot and btnRoot.Parent do
-                    -- Subir
-                    TweenService:Create(btnRoot, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                        Position = UDim2.fromOffset(btnRoot.Position.X.Offset, btnRoot.Position.Y.Offset - 8)
-                    }):Play()
-                    task.wait(0.9)
-                    if not (btnRoot and btnRoot.Parent) then break end
-                    -- Bajar
-                    TweenService:Create(btnRoot, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                        Position = UDim2.fromOffset(btnRoot.Position.X.Offset, btnRoot.Position.Y.Offset + 8)
-                    }):Play()
-                    task.wait(0.9)
-                end
-            end)
-
-            -- ANIMACION PULSO del glow
-            task.spawn(function()
-                while glow and glow.Parent do
-                    TweenService:Create(glow, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.60}):Play()
-                    task.wait(1.1)
-                    if not (glow and glow.Parent) then break end
-                    TweenService:Create(glow, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.88}):Play()
-                    task.wait(1.1)
-                end
             end)
 
             -- Drag
@@ -40420,29 +40304,23 @@ function CreateCombatTab()
 
             -- Hover
             clickBtn.MouseEnter:Connect(function()
-                TweenService:Create(pillBg,      TweenInfo.new(0.12), {BackgroundTransparency=0.75}):Play()
-                TweenService:Create(borderStroke,TweenInfo.new(0.12), {Thickness=3.5}):Play()
+                TweenService:Create(uiStroke, TweenInfo.new(0.12), {Color = Color3.fromRGB(120, 120, 120)}):Play()
             end)
             clickBtn.MouseLeave:Connect(function()
-                TweenService:Create(pillBg,      TweenInfo.new(0.15), {BackgroundTransparency=1}):Play()
-                TweenService:Create(borderStroke,TweenInfo.new(0.15), {Thickness=3}):Play()
+                TweenService:Create(uiStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(45, 45, 45)}):Play()
             end)
 
             -- Press / Release + OCULTAR GUN AL DISPARAR
             local _lastClick = 0
             clickBtn.MouseButton1Down:Connect(function()
                 if _moved then return end
-                TweenService:Create(pillBg,      TweenInfo.new(0.07), {BackgroundTransparency=0.40}):Play()
-                TweenService:Create(borderStroke,TweenInfo.new(0.07), {Thickness=2}):Play()
-                TweenService:Create(sc,          TweenInfo.new(0.07), {Scale=0.92}):Play()
-                TweenService:Create(glow,        TweenInfo.new(0.07), {ImageTransparency=0.50}):Play()
+                TweenService:Create(sc, TweenInfo.new(0.07), {Scale=0.94}):Play()
+                TweenService:Create(uiStroke, TweenInfo.new(0.07), {Thickness=2}):Play()
             end)
             clickBtn.MouseButton1Up:Connect(function()
                 if _moved then return end
-                TweenService:Create(pillBg,      TweenInfo.new(0.18), {BackgroundTransparency=1}):Play()
-                TweenService:Create(borderStroke,TweenInfo.new(0.18), {Thickness=3}):Play()
-                TweenService:Create(sc,          TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
-                TweenService:Create(glow,        TweenInfo.new(0.25), {ImageTransparency=0.82}):Play()
+                TweenService:Create(sc, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale=1}):Play()
+                TweenService:Create(uiStroke, TweenInfo.new(0.18), {Thickness=4}):Play()
             end)
             clickBtn.Activated:Connect(function()
                 if _moved then return end
@@ -53128,17 +53006,25 @@ particles = {}
     _hdrStroke.Transparency = 0
     _hdrStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    -- Título del hub a la izquierda — estilo referencia
-    local _hdLabel = Instance.new("TextLabel", header)
-    _hdLabel.Size = UDim2.new(0.7, 0, 0.75, 0)
-    _hdLabel.Position = UDim2.new(0, 10, 0.125, 0)
+    -- Contenedor centrado para los dos textos del header
+    local _hdCenter = Instance.new("Frame", header)
+    _hdCenter.Size = UDim2.new(0.6, 0, 1, 0)
+    _hdCenter.Position = UDim2.new(0.2, 0, 0, 0)
+    _hdCenter.BackgroundTransparency = 1
+    _hdCenter.BorderSizePixel = 0
+    _hdCenter.ZIndex = 12
+
+    -- Título principal centrado
+    local _hdLabel = Instance.new("TextLabel", _hdCenter)
+    _hdLabel.Size = UDim2.new(1, 0, 0.55, 0)
+    _hdLabel.Position = UDim2.new(0, 0, 0.05, 0)
     _hdLabel.BackgroundTransparency = 1
     _hdLabel.Text = "Murderer Mystery 2"
     _hdLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     _hdLabel.FontFace = Font.fromEnum(Enum.Font.GothamBold)
     _hdLabel.TextScaled = false
     _hdLabel.TextSize = 18
-    _hdLabel.TextXAlignment = Enum.TextXAlignment.Right
+    _hdLabel.TextXAlignment = Enum.TextXAlignment.Center
     _hdLabel.TextYAlignment = Enum.TextYAlignment.Center
     _hdLabel.TextStrokeTransparency = 0.4
     _hdLabel.TextStrokeColor3 = Color3.fromRGB(200, 220, 255)
@@ -53160,25 +53046,18 @@ particles = {}
         end
     end)
 
-    -- Subtítulo del hub (diseño CustomBlueGui)
-    local _hdSub = Instance.new("TextLabel", header)
-    _hdSub.Size = UDim2.new(0.4, 0, 0.5, 0)
-    _hdSub.Position = UDim2.new(0.5, 60, 0.25, 0)
+    -- Subtítulo centrado debajo del título
+    local _hdSub = Instance.new("TextLabel", _hdCenter)
+    _hdSub.Size = UDim2.new(1, 0, 0.38, 0)
+    _hdSub.Position = UDim2.new(0, 0, 0.60, 0)
     _hdSub.BackgroundTransparency = 1
     _hdSub.Text = "By CapybaraScripts"
     _hdSub.TextColor3 = Color3.fromRGB(200, 200, 200)
     _hdSub.FontFace = Font.fromEnum(Enum.Font.Gotham)
-    _hdSub.TextSize = 14
-    _hdSub.TextXAlignment = Enum.TextXAlignment.Left
+    _hdSub.TextSize = 12
+    _hdSub.TextXAlignment = Enum.TextXAlignment.Center
+    _hdSub.TextYAlignment = Enum.TextYAlignment.Center
     _hdSub.ZIndex = 12
-
-    -- FLECHA en la esquina superior izquierda del header (imagen 2)
-    -- (ArrowCornerBtn eliminado por pedido del usuario)
-    -- Titulo en posicion izquierda sin offset de flecha
-    if _hdLabel then
-        _hdLabel.Position = UDim2.new(0, 10, 0.125, 0)
-    end
-    -- _hdSub eliminado
 
     -- ================================================================
     -- DRAG DEL HUB — sistema único consolidado (v-fix)
