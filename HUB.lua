@@ -478,6 +478,8 @@ _G._hubAlreadyBuilt = false
 -- AUTORESTORE: al inicio siempre es una ejecucion limpia del hub (no un rebuild de pestaña)
 -- _isTabRebuild se pone en true SOLO durante _reloadActiveTab() para evitar re-ejecutar callbacks
 _G._isTabRebuild = false
+-- FIX NOTIF SPAWN: resetear flag de notif de auto-restore para que aparezca solo la primera vez
+_G._autoRestoreNotifShown = false
 
 -- ================================================================
 -- == PREMIUM GLOBAL DESBLOQUEADO — TODAS LAS FUNCIONES GRATIS ==
@@ -50740,6 +50742,8 @@ minimizeBtn.Activated:Connect(function()
     -- Cierre instantáneo (animación eliminada)
     hubGui.Enabled = false
     _G._hubHidden  = true
+    -- FIX BINDABLES: ocultar todos los botones/bindables flotantes al cerrar
+    pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(false) end end)
 
     local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
     if not pg then return end
@@ -50814,6 +50818,8 @@ minimizeBtn.Activated:Connect(function()
             if existingHub and _G._hubHidden then
                 existingHub.Enabled = true
                 _G._hubHidden = false
+                -- FIX BINDABLES: restaurar todos los botones/bindables flotantes al reabrir
+                pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(true) end end)
                 -- Reapertura instantánea (animación eliminada)
                 -- FIX TAMAÑO: restaurar Size original antes de restaurar UIScale
                 if mainFrame then
@@ -52368,6 +52374,8 @@ function abrirHub()
         end
         existingHub.Enabled = true
         _G._hubHidden = false
+        -- FIX BINDABLES: restaurar todos los botones/bindables flotantes al reabrir
+        pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(true) end end)
         -- FIX TAMAÑO: restaurar Size y Position originales antes del tween de escala
         if mainFrame then
             mainFrame.Size = UDim2.new(0.76, 0, 0.67, 0)
@@ -52535,10 +52543,15 @@ uiScale.Scale = 1.0  -- MÓVIL: escala 1:1
 -- == ESCALA MÓVIL: fija en 1.0 para pantalla de celular
 -- ================================================================
 _getTargetScale = function()
-    return 1.0  -- MÓVIL: sin sobreescalar
+    -- Lee hubScale guardado en settings (default 100%). Nunca devuelve nil.
+    local _hs = _G._hubSettings and _G._hubSettings.hubScale
+    if type(_hs) == "number" and _hs >= 70 and _hs <= 130 then
+        return _hs / 100
+    end
+    return 1.0
 end
 do
-    uiScale.Scale = 1.0
+    uiScale.Scale = _getTargetScale()
 end
 mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -53647,35 +53660,29 @@ particles = {}
         local r      = _G._tabBtnRefs[i]
         local stroke = r and r.stroke
         local lbl2   = r and r.lbl2
-        local tint   = r and r.tint   -- capa de gradiente diagonal
+        -- tint ignorado: el nuevo estilo no tiene fondo visible, solo borde y texto
 
         if isActive then
-            -- Tab activa: borde más brillante, tint opaco
+            -- Tab activa: borde celeste brillante más grueso + texto blanco puro
             if stroke then TweenService:Create(stroke, _ti_tab, {
                 Transparency = 0,
-                Color        = Color3.fromRGB(120, 140, 255),
-            }):Play() end
-            if tint then TweenService:Create(tint, _ti_tab, {
-                BackgroundColor3       = Color3.fromRGB(160, 175, 255),
-                BackgroundTransparency = 0,
+                Color        = Color3.fromRGB(0, 200, 255),
+                Thickness    = 8,
             }):Play() end
             if lbl2 then TweenService:Create(lbl2, _ti_tab, {
                 TextColor3             = Color3.fromRGB(255, 255, 255),
-                TextStrokeTransparency = 0.3,
+                TextTransparency       = 0,
             }):Play() end
         else
-            -- Tab inactiva: borde azul marino, tint normal
+            -- Tab inactiva: borde azul oscuro estándar + texto levemente más tenue
             if stroke then TweenService:Create(stroke, _ti_tab, {
                 Transparency = 0,
-                Color        = Color3.fromRGB(56, 68, 118),
-            }):Play() end
-            if tint then TweenService:Create(tint, _ti_tab, {
-                BackgroundColor3       = Color3.fromRGB(199, 210, 252),
-                BackgroundTransparency = 0,
+                Color        = Color3.fromRGB(35, 65, 145),
+                Thickness    = 6,
             }):Play() end
             if lbl2 then TweenService:Create(lbl2, _ti_tab, {
-                TextColor3             = Color3.fromRGB(220, 228, 255),
-                TextStrokeTransparency = 0.6,
+                TextColor3             = Color3.fromRGB(180, 200, 240),
+                TextTransparency       = 0,
             }):Play() end
         end
     end
@@ -53884,17 +53891,15 @@ particles = {}
 
     local function _syncDockPos() end  -- no-op
 
-    -- Crear botones de tabs — nuevo estilo Visual: gradiente diagonal azul + borde azul marino
+    -- Crear botones de tabs — estilo "Visual": fondo transparente + borde azul oscuro grueso + texto blanco centrado
     for i = 1, #tabNames do
-        -- Contenedor principal del botón (transparente — la forma la da tintOverlay)
-        local btn = Instance.new("TextButton", tabDockList)
+        -- Contenedor principal del botón
+        local btn = Instance.new("Frame", tabDockList)
         btn.Name                    = tabNames[i] .. "SideBtn"
         btn.Size                    = UDim2.new(1, -8, 0, _rowH)
-        btn.BackgroundTransparency  = 1
+        btn.BackgroundTransparency  = 1  -- fondo completamente transparente (sin fondo)
         btn.BorderSizePixel         = 0
-        btn.Text                    = ""
-        btn.AutoButtonColor         = false
-        btn.ClipsDescendants        = true
+        btn.ClipsDescendants        = false
         btn.ZIndex                  = 13
         btn.LayoutOrder             = i
 
@@ -53902,51 +53907,40 @@ particles = {}
         _tabTag.Name    = "TAB_BTN_PROTECTED"
         _tabTag.Value   = "1"
 
-        -- UICorner en el btn para que ClipsDescendants recorte el tintOverlay
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 14)
+        -- Esquinas redondeadas al contenedor
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 16)
 
-        -- Capa de gradiente diagonal — es quien da la forma, color y borde
-        local tintOverlay = Instance.new("Frame", btn)
-        tintOverlay.Name               = "TinteDiagonal"
-        tintOverlay.Size               = UDim2.new(1, 0, 1, 0)
-        tintOverlay.BackgroundColor3   = Color3.fromRGB(199, 210, 252)
-        tintOverlay.BackgroundTransparency = 0
-        tintOverlay.BorderSizePixel    = 0
-        tintOverlay.ZIndex             = 14
-
-        -- Borde azul marino grueso aplicado al tintOverlay
-        local btnStroke           = Instance.new("UIStroke", tintOverlay)
-        btnStroke.Color           = Color3.fromRGB(56, 68, 118)
-        btnStroke.Thickness       = 5
+        -- Borde azul oscuro grueso (estilo del código de referencia)
+        local btnStroke           = Instance.new("UIStroke", btn)
+        btnStroke.Color           = Color3.fromRGB(35, 65, 145)
+        btnStroke.Thickness       = 6
         btnStroke.Transparency    = 0
         btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-        local uiGrad = Instance.new("UIGradient", tintOverlay)
-        uiGrad.Rotation = 18
-        uiGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0,     Color3.fromRGB(199, 210, 252)),
-            ColorSequenceKeypoint.new(0.32,  Color3.fromRGB(199, 210, 252)),
-            ColorSequenceKeypoint.new(0.321, Color3.fromRGB(122, 136, 181)),
-            ColorSequenceKeypoint.new(1,     Color3.fromRGB(122, 136, 181)),
-        })
+        -- "tintOverlay" dummy para compatibilidad con _applyBtnState
+        local tintOverlay = Instance.new("Frame", btn)
+        tintOverlay.Name               = "TinteDiagonal"
+        tintOverlay.Size               = UDim2.new(1, 0, 1, 0)
+        tintOverlay.BackgroundTransparency = 1  -- invisible: el estilo lo da el borde
+        tintOverlay.BorderSizePixel    = 0
+        tintOverlay.ZIndex             = 14
 
-        -- Etiqueta de texto centrada (estilo "Visual")
+        -- Etiqueta de texto centrada — ÚNICO elemento visible de la pestaña
         local lbl               = Instance.new("TextLabel", btn)
         lbl.Name                = "TabLabel"
         lbl.Size                = UDim2.new(1, 0, 1, 0)
         lbl.Position            = UDim2.new(0, 0, 0, 0)
         lbl.BackgroundTransparency = 1
         lbl.Text                = tabNames[i]
-        lbl.FontFace            = Font.fromEnum(Enum.Font.GothamMedium)
+        lbl.Font                = Enum.Font.GothamSemibold
         lbl.TextScaled          = false
-        lbl.TextSize            = _lblTxtSz
+        lbl.TextSize            = _lblTxtSz + 1  -- ligeramente más grande para leer bien
         lbl.TextColor3          = Color3.fromRGB(255, 255, 255)
         lbl.TextXAlignment      = Enum.TextXAlignment.Center
         lbl.TextYAlignment      = Enum.TextYAlignment.Center
         lbl.TextWrapped         = false
         lbl.TextTruncate        = Enum.TextTruncate.AtEnd
-        lbl.TextStrokeTransparency = 0.5
-        lbl.TextStrokeColor3    = Color3.fromRGB(0, 0, 0)
+        lbl.TextStrokeTransparency = 1  -- sin borde de texto
         lbl.ZIndex              = 16
 
         do
@@ -53968,16 +53962,16 @@ particles = {}
 
         local ti = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-        -- Hover: iluminar ligeramente el tintOverlay
+        -- Hover: iluminar el borde
         clickRow.MouseEnter:Connect(function()
             if activeTabIdx ~= i then
                 PlayHoverSound()
-                TweenService:Create(tintOverlay, ti, {BackgroundColor3 = Color3.fromRGB(180, 195, 255)}):Play()
+                TweenService:Create(btnStroke, ti, {Color = Color3.fromRGB(60, 100, 220), Thickness = 7}):Play()
             end
         end)
         clickRow.MouseLeave:Connect(function()
             if activeTabIdx ~= i then
-                TweenService:Create(tintOverlay, ti, {BackgroundColor3 = Color3.fromRGB(199, 210, 252)}):Play()
+                TweenService:Create(btnStroke, ti, {Color = Color3.fromRGB(35, 65, 145), Thickness = 6}):Play()
             end
         end)
 
@@ -53993,7 +53987,6 @@ particles = {}
         end)
 
         sideButtons[i] = btn
-        -- knob y knobBg se dejan nil: el nuevo estilo no usa knob
         _G._tabBtnRefs[i] = {
             icon      = nil,
             stroke    = btnStroke,
@@ -54100,6 +54093,65 @@ particles = {}
     end
     _G._goBackToEmpty = _goBackToEmpty  -- exponer para minimizeBtn (scope externo)
 
+    -- FIX BINDABLES: función para ocultar/mostrar todos los ScreenGuis flotantes (bindables, botones móvil, etc.)
+    local function _setAllBindablesVisible(visible)
+        -- 1. capyBindRegistry: todos los MakeCapyBindableFrame (FLY, BOOST, BOMB JUMP, etc.)
+        pcall(function()
+            local reg = _G._capyBindRegistry
+            if type(reg) == "table" then
+                for _, sg in pairs(reg) do
+                    pcall(function() if sg and sg.Parent then sg.Enabled = visible end end)
+                end
+            end
+        end)
+        -- 2. _BindableGuiRegistry: TP AM, TP VOID, SILENT AIM, etc.
+        pcall(function()
+            local reg = _G._BindableGuiRegistry
+            if type(reg) == "table" then
+                for _, sg in pairs(reg) do
+                    pcall(function() if sg and sg.Parent then sg.Enabled = visible end end)
+                end
+            end
+        end)
+        -- 3. Buscar por nombre en PlayerGui y CoreGui todos los ScreenGuis conocidos del hub
+        local _knownNames = {
+            "FlyBind_HUB", "FlyMobileControls_HUB", "SwimFlyMobile_HUB",
+            "AutoJumpBind", "JBBoostBind", "FloatBind_HUB", "LayBind_HUB",
+            "EsquivarBind_HUB", "StealGunBindable", "GrabGunBindable",
+            "SpeedGlitchBind_HUB", "TpAMBindable", "TpVoidBindable",
+            "TpLobbyBindable", "TpMapBindable", "OrbitPlayerBind",
+            "NewInvisBind", "HandFlutterBindable", "TpLowMapBindable",
+            "PierceBulletGui", "SilentAimBind_HUB", "FakeUnboxRoulette",
+            "OD_InfoDisplay", "BombJumpBindable_HUB",
+        }
+        local _parents = {}
+        pcall(function() table.insert(_parents, LocalPlayer:FindFirstChildOfClass("PlayerGui")) end)
+        pcall(function() table.insert(_parents, game:GetService("CoreGui")) end)
+        pcall(function() if gethui then table.insert(_parents, gethui()) end end)
+        for _, parent in ipairs(_parents) do
+            if parent then
+                for _, name in ipairs(_knownNames) do
+                    pcall(function()
+                        local sg = parent:FindFirstChild(name)
+                        if sg then sg.Enabled = visible end
+                    end)
+                end
+                -- También buscar cualquier ScreenGui cuyo nombre termine en "_CapyBtn" o "_HUB"
+                for _, child in ipairs(parent:GetChildren()) do
+                    pcall(function()
+                        if child:IsA("ScreenGui") then
+                            local n = child.Name
+                            if n:find("_CapyBtn") or n:find("_HUB") or n:find("Bindable") or n:find("Bind_") then
+                                child.Enabled = visible
+                            end
+                        end
+                    end)
+                end
+            end
+        end
+    end
+    _G._setAllBindablesVisible = _setAllBindablesVisible  -- exponer globalmente
+
     -- FIX MOBILE: en ejecutores moviles MouseButton1Click puede no disparar con touch.
     -- Usamos InputBegan como respaldo para garantizar que el boton funcione.
     local _arrowBtnDebounce = false
@@ -54113,6 +54165,8 @@ particles = {}
         pcall(CloseExpandPanel)
         pcall(function() if _G._stopWeapon then _G._stopWeapon() end end)
         pcall(function() if _G._stopKnife  then _G._stopKnife()  end end)
+        -- FIX BINDABLES: ocultar todos los botones/bindables flotantes al cerrar el hub
+        pcall(function() _setAllBindablesVisible(false) end)
         if _G._hubSettings and _G._hubSettings.noMinMaxAnimations then
             if _mainFrameRef then _mainFrameRef.BackgroundTransparency = 1 end
             if tabDockFrame  then tabDockFrame.BackgroundTransparency  = 1 end
@@ -54201,6 +54255,8 @@ particles = {}
                     if existingHub then
                         existingHub.Enabled = true
                         _G._hubHidden = false
+                        -- FIX BINDABLES: restaurar todos los botones/bindables flotantes al reabrir
+                        pcall(function() if _G._setAllBindablesVisible then _G._setAllBindablesVisible(true) end end)
                         if mainFrame and mainFrame.Parent then
                             mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
                             mainFrame.Position    = UDim2.new(0.5, 0, 0.5, 0)
@@ -54802,7 +54858,11 @@ particles = {}
         task.delay(5.0, function() pcall(function() _buildTabCached(8) end) end)
         task.delay(6.5, function() pcall(function() _buildTabCached(9) end) end)
         -- AUTORESTORE: notificar si se restauraron toggles activos desde disco (config por jugador)
-        if _G._restoredActiveCount and _G._restoredActiveCount > 0 then
+        -- FIX NOTIF SPAWN: solo mostrar la primera vez que el hub carga en este servidor.
+        -- _G._autoRestoreNotifShown evita que la notif aparezca cada vez que el jugador
+        -- vuelve del HUB (teleport de vuelta al servidor principal).
+        if _G._restoredActiveCount and _G._restoredActiveCount > 0 and not _G._autoRestoreNotifShown then
+            _G._autoRestoreNotifShown = true
             task.delay(1.2, function()
                 pcall(function()
                     local _playerName = _G._restoredForPlayer
@@ -54817,6 +54877,10 @@ particles = {}
                 _G._restoredActiveCount = 0
                 _G._restoredForPlayer = nil
             end)
+        else
+            -- Limpiar contadores sin mostrar notif (re-ejecucion post-teleport)
+            _G._restoredActiveCount = 0
+            _G._restoredForPlayer = nil
         end
         end)  -- cierre del pcall de animacion
         -- FIX: si la animacion fallo por cualquier razon, mostrar el hub igual
