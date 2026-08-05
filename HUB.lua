@@ -40388,7 +40388,7 @@ function CreateCombatTab()
                 TweenService:Create(uiStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(45, 45, 45)}):Play()
             end)
 
-            -- Press / Release + OCULTAR GUN AL DISPARAR
+            -- Press / Release
             local _lastClick = 0
             clickBtn.MouseButton1Down:Connect(function()
                 if _moved then return end
@@ -40406,8 +40406,6 @@ function CreateCombatTab()
                 if now - _lastClick < 0.25 then return end
                 _lastClick = now
                 if not _saSMState.enabled then return end
-                -- Disparar directamente (sin ocultar la gun: _doSilentAimShoot
-                -- ya maneja el flash del Handle internamente con timing correcto)
                 _doSilentAimShoot()
             end)
         end
@@ -53621,41 +53619,37 @@ particles = {}
         if not btn then return end
         local r      = _G._tabBtnRefs[i]
         local stroke = r and r.stroke
-        local knob   = r and r.knob    -- indicador rojo/verde (reemplaza activeBar)
-        local knobBg = r and r.knobBg  -- fondo del área del knob
         local lbl2   = r and r.lbl2
-        -- Calcular offsets del knob (misma lógica que CreateAuroraToggle)
-        local _isMob    = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
-        local _kSz      = _isMob and 18 or 24
-        local _kOffR    = _isMob and -(_kSz + 5) or -28  -- posición ON (derecha)
-        local _kOffL    = 4                               -- posición OFF (izquierda)
+        local tint   = r and r.tint   -- capa de gradiente diagonal
 
         if isActive then
-            -- Tab activa: fondo más opaco + knob VERDE a la DERECHA (igual que toggle ON)
-            TweenService:Create(btn, _ti_tab, {
-                BackgroundColor3       = _C_TOG_BG_ACTIVE,
-                BackgroundTransparency = 0.25,
-            }):Play()
-            if stroke  then TweenService:Create(stroke,  _ti_tab, {Transparency = 0, Color = _C_TOG_STROKE}):Play() end
-            if knob    then TweenService:Create(knob,    _ti_tab, {
-                BackgroundColor3 = _C_KNOB_ON,
-                Position         = UDim2.new(1, _kOffR, 0.5, 0),
+            -- Tab activa: borde más brillante, tint opaco
+            if stroke then TweenService:Create(stroke, _ti_tab, {
+                Transparency = 0,
+                Color        = Color3.fromRGB(120, 140, 255),
             }):Play() end
-            if knobBg  then TweenService:Create(knobBg,  _ti_tab, {BackgroundTransparency = 0.3}):Play() end
-            if lbl2    then TweenService:Create(lbl2,    _ti_tab, {TextColor3 = _C_LBL_ACTIVE, TextStrokeTransparency = 0.4}):Play() end
+            if tint then TweenService:Create(tint, _ti_tab, {
+                BackgroundColor3       = Color3.fromRGB(160, 175, 255),
+                BackgroundTransparency = 0,
+            }):Play() end
+            if lbl2 then TweenService:Create(lbl2, _ti_tab, {
+                TextColor3             = Color3.fromRGB(255, 255, 255),
+                TextStrokeTransparency = 0.3,
+            }):Play() end
         else
-            -- Tab inactiva: fondo más transparente + knob ROJO a la IZQUIERDA (igual que toggle OFF)
-            TweenService:Create(btn, _ti_tab, {
-                BackgroundColor3       = _C_TOG_BG_IDLE,
-                BackgroundTransparency = 0.78,
-            }):Play()
-            if stroke  then TweenService:Create(stroke,  _ti_tab, {Transparency = 0, Color = _C_TOG_STROKE}):Play() end
-            if knob    then TweenService:Create(knob,    _ti_tab, {
-                BackgroundColor3 = _C_KNOB_OFF,
-                Position         = UDim2.new(0, _kOffL, 0.5, 0),
+            -- Tab inactiva: borde azul marino, tint normal
+            if stroke then TweenService:Create(stroke, _ti_tab, {
+                Transparency = 0,
+                Color        = Color3.fromRGB(56, 68, 118),
             }):Play() end
-            if knobBg  then TweenService:Create(knobBg,  _ti_tab, {BackgroundTransparency = 0.3}):Play() end
-            if lbl2    then TweenService:Create(lbl2,    _ti_tab, {TextColor3 = _C_LBL_IDLE,   TextStrokeTransparency = 0.6}):Play() end
+            if tint then TweenService:Create(tint, _ti_tab, {
+                BackgroundColor3       = Color3.fromRGB(199, 210, 252),
+                BackgroundTransparency = 0,
+            }):Play() end
+            if lbl2 then TweenService:Create(lbl2, _ti_tab, {
+                TextColor3             = Color3.fromRGB(220, 228, 255),
+                TextStrokeTransparency = 0.6,
+            }):Play() end
         end
     end
 
@@ -53863,17 +53857,17 @@ particles = {}
 
     local function _syncDockPos() end  -- no-op
 
-    -- Crear botones de tabs — estilo AuroraToggle: celeste + borde azul + knob rojo/verde
+    -- Crear botones de tabs — nuevo estilo Visual: gradiente diagonal azul + borde azul marino
     for i = 1, #tabNames do
+        -- Contenedor principal del botón (transparente — la forma la da tintOverlay)
         local btn = Instance.new("TextButton", tabDockList)
         btn.Name                    = tabNames[i] .. "SideBtn"
         btn.Size                    = UDim2.new(1, -8, 0, _rowH)
-        btn.BackgroundColor3        = C_TOG_BG
-        btn.BackgroundTransparency  = 0.78   -- idle: casi transparente, igual que toggle OFF
+        btn.BackgroundTransparency  = 1
         btn.BorderSizePixel         = 0
         btn.Text                    = ""
         btn.AutoButtonColor         = false
-        btn.ClipsDescendants        = false
+        btn.ClipsDescendants        = true
         btn.ZIndex                  = 13
         btn.LayoutOrder             = i
 
@@ -53881,41 +53875,52 @@ particles = {}
         _tabTag.Name    = "TAB_BTN_PROTECTED"
         _tabTag.Value   = "1"
 
-        -- Esquinas redondeadas (8px igual que toggle)
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+        -- UICorner en el btn para que ClipsDescendants recorte el tintOverlay
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 14)
 
-        -- Borde azul (igual que toggle)
-        local btnStroke           = Instance.new("UIStroke", btn)
-        btnStroke.Color           = C_TOG_STROKE
-        btnStroke.Thickness       = 2
+        -- Capa de gradiente diagonal — es quien da la forma, color y borde
+        local tintOverlay = Instance.new("Frame", btn)
+        tintOverlay.Name               = "TinteDiagonal"
+        tintOverlay.Size               = UDim2.new(1, 0, 1, 0)
+        tintOverlay.BackgroundColor3   = Color3.fromRGB(199, 210, 252)
+        tintOverlay.BackgroundTransparency = 0
+        tintOverlay.BorderSizePixel    = 0
+        tintOverlay.ZIndex             = 14
+
+        -- Borde azul marino grueso aplicado al tintOverlay
+        local btnStroke           = Instance.new("UIStroke", tintOverlay)
+        btnStroke.Color           = Color3.fromRGB(56, 68, 118)
+        btnStroke.Thickness       = 5
         btnStroke.Transparency    = 0
         btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-        -- Padding interno (igual que toggle)
-        local btnPad = Instance.new("UIPadding", btn)
-        btnPad.PaddingTop    = UDim.new(0, 4)
-        btnPad.PaddingBottom = UDim.new(0, 4)
-        btnPad.PaddingLeft   = UDim.new(0, 8)
-        btnPad.PaddingRight  = UDim.new(0, 8)
+        local uiGrad = Instance.new("UIGradient", tintOverlay)
+        uiGrad.Rotation = 18
+        uiGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,     Color3.fromRGB(199, 210, 252)),
+            ColorSequenceKeypoint.new(0.32,  Color3.fromRGB(199, 210, 252)),
+            ColorSequenceKeypoint.new(0.321, Color3.fromRGB(122, 136, 181)),
+            ColorSequenceKeypoint.new(1,     Color3.fromRGB(122, 136, 181)),
+        })
 
-        -- Etiqueta: mitad izquierda, igual que label del toggle
+        -- Etiqueta de texto centrada (estilo "Visual")
         local lbl               = Instance.new("TextLabel", btn)
         lbl.Name                = "TabLabel"
-        lbl.Size                = UDim2.new(0.6, 0, 1, 0)
+        lbl.Size                = UDim2.new(1, 0, 1, 0)
         lbl.Position            = UDim2.new(0, 0, 0, 0)
         lbl.BackgroundTransparency = 1
         lbl.Text                = tabNames[i]
-        lbl.FontFace            = Font.fromEnum(Enum.Font.GothamBold)
+        lbl.FontFace            = Font.fromEnum(Enum.Font.GothamMedium)
         lbl.TextScaled          = false
         lbl.TextSize            = _lblTxtSz
         lbl.TextColor3          = Color3.fromRGB(255, 255, 255)
-        lbl.TextXAlignment      = Enum.TextXAlignment.Left
+        lbl.TextXAlignment      = Enum.TextXAlignment.Center
         lbl.TextYAlignment      = Enum.TextYAlignment.Center
         lbl.TextWrapped         = false
         lbl.TextTruncate        = Enum.TextTruncate.AtEnd
-        lbl.TextStrokeTransparency = 0.4
+        lbl.TextStrokeTransparency = 0.5
         lbl.TextStrokeColor3    = Color3.fromRGB(0, 0, 0)
-        lbl.ZIndex              = 14
+        lbl.ZIndex              = 16
 
         do
             local _tabKey = tabNames[i]:lower():gsub(" ", "_")
@@ -53926,36 +53931,7 @@ particles = {}
             end
         end
 
-        -- Fondo del área del knob (igual que toggleBg en CreateAuroraToggle)
-        local knobBg              = Instance.new("Frame", btn)
-        knobBg.Name               = "KnobBg"
-        knobBg.Size               = UDim2.new(0, _knobBgW, 0, _knobBgH)
-        knobBg.AnchorPoint        = Vector2.new(1, 0.5)
-        knobBg.Position           = UDim2.new(1, -4, 0.5, 0)
-        knobBg.BackgroundColor3   = C_KNOB_BG
-        knobBg.BackgroundTransparency = 0.3
-        knobBg.BorderSizePixel    = 0
-        knobBg.ZIndex             = 15
-        Instance.new("UICorner", knobBg).CornerRadius = UDim.new(0, 8)
-        local knobBgStroke        = Instance.new("UIStroke", knobBg)
-        knobBgStroke.Color        = C_TOG_STROKE
-        knobBgStroke.Thickness    = 1.5
-        knobBgStroke.Transparency = 0
-        knobBgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-        -- Knob indicador: empieza en rojo (inactivo), igual que indicator en toggle
-        local knob              = Instance.new("Frame", knobBg)
-        knob.Name               = "Knob"
-        knob.Size               = UDim2.new(0, _knobSz, 0, _knobSz)
-        knob.AnchorPoint        = Vector2.new(0, 0.5)
-        -- posición inicial = OFF (izquierda del knobBg)
-        knob.Position           = UDim2.new(0, 4, 0.5, 0)
-        knob.BackgroundColor3   = C_KNOB_OFF
-        knob.BorderSizePixel    = 0
-        knob.ZIndex             = 16
-        Instance.new("UICorner", knob).CornerRadius = UDim.new(0, 6)
-
-        -- Botón invisible sobre todo el row (para capturar clicks sin interferir visualmente)
+        -- Botón invisible sobre todo el row (captura clicks)
         local clickRow              = Instance.new("TextButton", btn)
         clickRow.Size               = UDim2.new(1, 0, 1, 0)
         clickRow.BackgroundTransparency = 1
@@ -53963,18 +53939,18 @@ particles = {}
         clickRow.ZIndex             = 20
         clickRow.AutoButtonColor    = false
 
-        local ti = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local ti = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-        -- Hover: resaltar fondo igual que en toggle
+        -- Hover: iluminar ligeramente el tintOverlay
         clickRow.MouseEnter:Connect(function()
             if activeTabIdx ~= i then
                 PlayHoverSound()
-                TweenService:Create(btn, ti, {BackgroundTransparency = 0.45}):Play()
+                TweenService:Create(tintOverlay, ti, {BackgroundColor3 = Color3.fromRGB(180, 195, 255)}):Play()
             end
         end)
         clickRow.MouseLeave:Connect(function()
             if activeTabIdx ~= i then
-                TweenService:Create(btn, ti, {BackgroundTransparency = 0.78}):Play()
+                TweenService:Create(tintOverlay, ti, {BackgroundColor3 = Color3.fromRGB(199, 210, 252)}):Play()
             end
         end)
 
@@ -53990,13 +53966,15 @@ particles = {}
         end)
 
         sideButtons[i] = btn
+        -- knob y knobBg se dejan nil: el nuevo estilo no usa knob
         _G._tabBtnRefs[i] = {
             icon      = nil,
             stroke    = btnStroke,
-            activeBar = nil,    -- ya no se usa, reemplazado por knob
-            knob      = knob,
-            knobBg    = knobBg,
+            activeBar = nil,
+            knob      = nil,
+            knobBg    = nil,
             lbl2      = lbl,
+            tint      = tintOverlay,
         }
     end
 
