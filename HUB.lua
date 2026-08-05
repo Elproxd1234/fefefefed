@@ -11493,41 +11493,48 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
                      and _G._sliderVals[_sliderKey] or defaultVal
 
     -- ==============================================================
-    --  SLIDER -- estilo imagen_1: fondo oscuro translucido redondeado
-    --  Titulo izquierda | Numero derecho grande
-    --  Track gris delgado con fill blanco y thumb circular blanco
+    --  SLIDER -- estilo nuevo: fondo azul claro translucido redondeado
+    --  Titulo izquierda | Value box derecha con borde | Track grueso 10px
+    --  Fill azul claro | Thumb circular blanco 18px
     -- ==============================================================
 
-    local C_BG       = Color3.fromRGB(20, 35, 80)
-    local C_STROKE   = Color3.fromRGB(40, 60, 180)
+    local C_BG_MAIN  = Color3.fromRGB(100, 150, 220)   -- azul claro (fondo panel)
+    local C_STROKE   = Color3.fromRGB(30, 50, 130)      -- azul oscuro (bordes)
     local C_TEXT     = Color3.fromRGB(255, 255, 255)
-    local C_NUM      = Color3.fromRGB(160, 220, 255)
-    local C_TRACK_BG = Color3.fromRGB(80, 100, 200)
-    local C_TRACK_FG = Color3.fromRGB(40, 60, 180)
-    local C_THUMB    = Color3.fromRGB(255, 255, 255)
+    local C_TRACK_BG = Color3.fromRGB(80, 120, 200)     -- pista fondo
+    local C_TRACK_FG = Color3.fromRGB(120, 170, 255)    -- fill iluminado
+    local C_THUMB    = Color3.fromRGB(255, 255, 255)    -- knob blanco
+    local C_VALBG    = Color3.fromRGB(100, 150, 220)    -- fondo value box
 
-    local CONTAINER_H = 52
+    local CONTAINER_H = 70
 
+    -- Marco principal azul translucido
     local container = Instance.new("Frame", actualParent)
     container.Name                   = "SliderWrapper_" .. nombre
     container.Size                   = UDim2.new(1, -4, 0, CONTAINER_H)
-    container.BackgroundTransparency = 1
+    container.BackgroundColor3       = C_BG_MAIN
+    container.BackgroundTransparency = 0.3
     container.BorderSizePixel        = 0
     container.ClipsDescendants       = false
     container.ZIndex                 = 10
+    do
+        local mc = Instance.new("UICorner", container); mc.CornerRadius = UDim.new(0, 8)
+        local ms = Instance.new("UIStroke", container)
+        ms.Color = C_STROKE; ms.Thickness = 2; ms.Transparency = 0
+    end
 
-    -- Titulo izquierda
+    -- Titulo izquierda (40% del ancho, margen 5%)
     local titleLabel = Instance.new("TextLabel", container)
     titleLabel.Name                   = "TitleLabel"
-    titleLabel.Size                   = UDim2.new(0.65, -12, 0, 28)
-    titleLabel.Position               = UDim2.new(0, 14, 0, 8)
+    titleLabel.Size                   = UDim2.new(0.4, 0, 1, 0)
+    titleLabel.Position               = UDim2.new(0.05, 0, 0, 0)
     titleLabel.BackgroundTransparency = 1
     titleLabel.Text                   = nombre
     titleLabel.TextXAlignment         = Enum.TextXAlignment.Left
     titleLabel.TextYAlignment         = Enum.TextYAlignment.Center
     titleLabel.TextColor3             = C_TEXT
-    titleLabel.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-    titleLabel.TextSize               = 16
+    titleLabel.FontFace               = Font.fromEnum(Enum.Font.Gotham)
+    titleLabel.TextSize               = 18
     titleLabel.TextTruncate           = Enum.TextTruncate.AtEnd
     titleLabel.ZIndex                 = 12
     if _LangObjects then
@@ -11538,32 +11545,51 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
         end
     end
 
-    -- Numero derecha grande
-    local valueLabel = Instance.new("TextLabel", container)
+    -- Value box: caja con borde a la derecha (estilo codigo de referencia)
+    local valueFrame = Instance.new("Frame", container)
+    valueFrame.Name                   = "ValueFrame"
+    valueFrame.Size                   = UDim2.new(0, 80, 0, 30)
+    valueFrame.Position               = UDim2.new(0.95, -80, 0.15, 0)
+    valueFrame.BackgroundColor3       = C_VALBG
+    valueFrame.BackgroundTransparency = 0.5
+    valueFrame.BorderSizePixel        = 0
+    valueFrame.ZIndex                 = 12
+    do
+        local vc = Instance.new("UICorner", valueFrame); vc.CornerRadius = UDim.new(0, 6)
+        local vs = Instance.new("UIStroke", valueFrame)
+        vs.Color = C_STROKE; vs.Thickness = 2; vs.Transparency = 0
+    end
+
+    local valueLabel = Instance.new("TextBox", valueFrame)
     valueLabel.Name                   = "ValueLabel"
-    valueLabel.Size                   = UDim2.new(0.30, 0, 0, 28)
-    valueLabel.AnchorPoint            = Vector2.new(1, 0)
-    valueLabel.Position               = UDim2.new(1, -12, 0, 8)
+    valueLabel.Size                   = UDim2.new(1, 0, 1, 0)
     valueLabel.BackgroundTransparency = 1
     valueLabel.Text                   = string.format("%.2f", _initVal)
-    valueLabel.TextXAlignment         = Enum.TextXAlignment.Right
+    valueLabel.TextXAlignment         = Enum.TextXAlignment.Center
     valueLabel.TextYAlignment         = Enum.TextYAlignment.Center
-    valueLabel.TextColor3             = C_NUM
-    valueLabel.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
+    valueLabel.TextColor3             = C_TEXT
+    valueLabel.FontFace               = Font.fromEnum(Enum.Font.Gotham)
     valueLabel.TextSize               = 18
     valueLabel.ZIndex                 = 13
+    valueLabel.ClearTextOnFocus       = true
+    valueLabel.PlaceholderText        = string.format("%.2f", _initVal)
+    valueLabel.PlaceholderColor3      = Color3.fromRGB(200, 220, 255)
 
-    -- Track del slider (abajo)
+    -- Track grueso (10px alto) posicionado en la parte baja del panel
     local sliderTrack = Instance.new("Frame", container)
     sliderTrack.Name                   = "SliderTrack"
-    sliderTrack.Size                   = UDim2.new(1, -28, 0, 2)
-    sliderTrack.Position               = UDim2.new(0, 14, 0, 38)
+    sliderTrack.Size                   = UDim2.new(0, 150, 0, 10)
+    sliderTrack.Position               = UDim2.new(0.95, -150, 0.7, -5)
     sliderTrack.BackgroundColor3       = C_TRACK_BG
-    sliderTrack.BackgroundTransparency = 0.35
+    sliderTrack.BackgroundTransparency = 0.5
     sliderTrack.BorderSizePixel        = 0
     sliderTrack.ClipsDescendants       = false
     sliderTrack.ZIndex                 = 12
-    Instance.new("UICorner", sliderTrack).CornerRadius = UDim.new(1, 0)
+    do
+        Instance.new("UICorner", sliderTrack).CornerRadius = UDim.new(1, 0)
+        local ts = Instance.new("UIStroke", sliderTrack)
+        ts.Color = C_STROKE; ts.Thickness = 1.5; ts.Transparency = 0
+    end
 
     local fillRatio = math.clamp((_initVal - minVal) / math.max(maxVal - minVal, 0.001), 0, 1)
 
@@ -11580,7 +11606,7 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     local _thumbSize = UserInputService.TouchEnabled and 26 or 18
     local _thumbSizeHover = UserInputService.TouchEnabled and 30 or 22
 
-    -- Thumb circular blanco
+    -- Thumb circular blanco (TextButton para compatibilidad con InputBegan)
     local sliderThumb = Instance.new("ImageButton", sliderTrack)
     sliderThumb.Name                   = "SliderThumb"
     sliderThumb.Size                   = UDim2.new(0, _thumbSize, 0, _thumbSize)
@@ -11612,6 +11638,17 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     end
 
     applyValue(_initVal)
+
+    -- Permitir escribir un valor directamente en la caja
+    valueLabel.FocusLost:Connect(function(enterPressed)
+        local typed = tonumber(valueLabel.Text)
+        if typed then
+            applyValue(typed)
+        else
+            -- Si escribieron algo invalido, restaurar el valor actual
+            valueLabel.Text = string.format("%.2f", currentValue)
+        end
+    end)
 
     local function updateFromInput(inputObj)
         local mx
