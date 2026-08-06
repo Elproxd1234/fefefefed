@@ -37042,6 +37042,14 @@ function CreatePremiumTab()
                 dualKnife = true,
             },
             {
+                name   = "Knife",
+                meshId = "rbxassetid://109711282082830",
+                texId  = "rbxassetid://1117556526686597",
+                scale  = Vector3.new(0.0560000017285347, 0.0560000017285347, 0.0560000017285347),
+                grip   = CFrame.new(0, -0.1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                dualKnife = true,
+            },
+            {
                 name   = " Coming Soon...",
                 meshId = "",
                 texId  = "",
@@ -37243,6 +37251,10 @@ function CreatePremiumTab()
                 pcall(function() _skinState._charConn:Disconnect() end)
                 _skinState._charConn = nil
             end
+            if _skinState._gunCharConn then
+                pcall(function() _skinState._gunCharConn:Disconnect() end)
+                _skinState._gunCharConn = nil
+            end
             if _skinState._wsConn then
                 pcall(function() _skinState._wsConn:Disconnect() end)
                 _skinState._wsConn = nil
@@ -37383,12 +37395,43 @@ function CreatePremiumTab()
             end
             -- [Dual Gun automatico por skin desactivado]
             -- -------------------------------------------------------------
+            -- FIX AUTO-APPLY: activar siempre, aunque no tenga la gun todavia.
+            -- Los listeners de _scSetupListener se encargan de aplicar cuando aparezca.
+            _skinState.enabled = true
+
             -- FIX: usar _findGun() que busca en char y backpack correctamente (MM2 usa modelo en workspace)
             local tool = _findGun and _findGun()
             if tool then
-                _skinState.enabled = true
                 _scApply(tool, _scGetSkin(), true)
             end
+
+            -- FIX AUTO-APPLY NUEVA RONDA: registrar CharacterAdded para re-aplicar
+            -- la skin de gun automaticamente en cada nueva ronda/respawn, igual que knife.
+            if _skinState._gunCharConn then
+                pcall(function() _skinState._gunCharConn:Disconnect() end)
+            end
+            _skinState._gunCharConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
+                _skinState.origData = {}
+                _scSetupListener(newChar)
+            end)
+            -- Re-configurar listener en el char actual por si ya estamos en partida
+            local _scCharNow = LocalPlayer.Character
+            if _scCharNow then _scSetupListener(_scCharNow) end
+
+            -- Delays de seguridad para executors lentos / mobile
+            task.delay(0.3, function()
+                if not _skinState.enabled or _skinState.mode ~= "gun" then return end
+                task.spawn(_scTryApplyGun)
+            end)
+            task.delay(1.0, function()
+                if not _skinState.enabled or _skinState.mode ~= "gun" then return end
+                task.spawn(_scTryApplyGun)
+            end)
+            task.delay(2.5, function()
+                if not _skinState.enabled or _skinState.mode ~= "gun" then return end
+                task.spawn(_scTryApplyGun)
+            end)
+
             -- FIX DUAL GUN POSE: si Dual Gun esta activo, destruir el clon actual
             -- para que RenderStepped lo recree con el grip correcto del nuevo skin.
             if _G._dualGunState and _G._dualGunState.enabled then
@@ -37399,6 +37442,8 @@ function CreatePremiumTab()
                     end
                 end
             end
+
+            CreateCustomNotification("🔫 GUN SKIN", sel .. " seleccionada!", 3)
         end)
 
         -- ── SELECTOR KNIFE SKINS (funcional, mismo patron que Gun) ───────────
@@ -37565,8 +37610,9 @@ function CreatePremiumTab()
                 end)
 
                 -- Registrar listener del personaje para re-aplicar si el jugador muere/respawnea
-                local char2 = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                _scSetupKnifeListener(char2)
+                -- FIX: no yieldar con :Wait() -- si no hay char todavia los listeners ya esperan
+                local char2 = LocalPlayer.Character
+                if char2 then _scSetupKnifeListener(char2) end
                 if _skinState._knifeCharConn then
                     pcall(function() _skinState._knifeCharConn:Disconnect() end)
                 end
@@ -46507,6 +46553,22 @@ function CreateCombatTab()
                 -- Desactivar Dual Gun si estaba activo (solo uno a la vez)
                 if _G._dualGunState.enabled then
                     _dualStopArm(_G._dualGunState)
+                    -- FIX: limpiar tambien los hooks de Dual Gun para que no re-activen el gun
+                    if _G._dualGunBpConn then
+                        pcall(function() _G._dualGunBpConn:Disconnect() end)
+                        _G._dualGunBpConn = nil
+                    end
+                    if _G._dualGunCharPickupConn then
+                        pcall(function() _G._dualGunCharPickupConn:Disconnect() end)
+                        _G._dualGunCharPickupConn = nil
+                    end
+                    -- FIX: limpiar DK_Clone que pudo quedar del Dual Gun
+                    local _chG = LocalPlayer.Character
+                    if _chG then
+                        for _, obj in pairs(_chG:GetChildren()) do
+                            if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
+                        end
+                    end
                 end
                 state.enabled        = true
                 state.isAttacking    = false
@@ -46645,7 +46707,24 @@ function CreateCombatTab()
                 -- Desactivar Dual Knife si estaba activo (solo uno a la vez)
                 if _G._dualKnifeState.enabled then
                     _G._dualKnifeEnabled = false  -- FIX: limpiar flag global que _dualStopArm no toca
+                    _dkStopAll()
                     _dualStopArm(_G._dualKnifeState)
+                    -- FIX: limpiar hooks de Dual Knife para que no re-activen el knife
+                    if _G._dualKnifeBpConn then
+                        pcall(function() _G._dualKnifeBpConn:Disconnect() end)
+                        _G._dualKnifeBpConn = nil
+                    end
+                    if _G._dualKnifeCharPickupConn then
+                        pcall(function() _G._dualKnifeCharPickupConn:Disconnect() end)
+                        _G._dualKnifeCharPickupConn = nil
+                    end
+                    -- FIX: limpiar DK_Clone que pudo quedar del Dual Knife
+                    local _chK = LocalPlayer.Character
+                    if _chK then
+                        for _, obj in pairs(_chK:GetChildren()) do
+                            if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
+                        end
+                    end
                 end
                 state.enabled = true
                 _dualStartArm(state, _dualGunKeywords)
