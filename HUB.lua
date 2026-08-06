@@ -3214,7 +3214,7 @@ function _unifiedBalisticSolver(targetPart, rootPart, flags, murderer)
     local h      = _getHist(uid)
     local now    = os.clock()
     local rawVel = rootPart.AssemblyLinearVelocity or Vector3.zero
-    local rawSpd = rawVel.Magnitude * _gDistScale  -- FIX CERCA: escala a 0 si esta cerca
+    local rawSpd = rawVel.Magnitude * (_gDistScale or 1.0)  -- FIX CERCA: escala a 0 si esta cerca
 
     _pushPosHist(uid, rootPart.Position, now)
 
@@ -30420,7 +30420,7 @@ function CreateWorldUI_QuickFlingButtons()
 
             -- Intentar agarrar la gun en paralelo (no bloquea el TP)
             task.spawn(function()
-                local grabbed = _sgLocalHasGun()
+                local grabbed = _sgLocalHasGun and _sgLocalHasGun()
                 if not grabbed and _gunDropped then
                     local myC = LocalPlayer.Character
                     local myH = myC and myC:FindFirstChild("HumanoidRootPart")
@@ -36958,16 +36958,16 @@ function CreatePremiumTab()
                 dualGun = true,
             },
             {
-                -- Shotgun: modelo custom exportado desde Blender, IDs subidos por el usuario
+                -- Shotgun: modelo custom exportado desde Blender
                 name   = "Shotgun",
-                meshId = "rbxassetid://116808509089705",
+                meshId = "rbxassetid://113266841572317",
                 texId  = "rbxassetid://108221897243102",
                 scale  = Vector3.new(0.05, 0.05, 0.05),
                 grip   = CFrame.new(
-                    -0.3, -0.15, 0.0,
-                     0,    0,   -1,
-                     0,    1,    0,
-                     1,    0,    0
+                    0, -0.1, -0.5,
+                    1,  0,    0,
+                    0,  1,    0,
+                    0,  0,    1
                 ),
                 dualGun = true,
             },
