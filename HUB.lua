@@ -480,6 +480,8 @@ end
 _G._hubReady = false
 -- FIX: resetear siempre al re-ejecutar para que la animacion de carga (con Aurora) siempre aparezca
 _G._hubAlreadyBuilt = false
+-- GUARD DE DOBLE EJECUCION: evita que abrirHub() corra dos veces en paralelo
+_G._hubRunning = false
 -- AUTORESTORE: al inicio siempre es una ejecucion limpia del hub (no un rebuild de pestaña)
 -- _isTabRebuild se pone en true SOLO durante _reloadActiveTab() para evitar re-ejecutar callbacks
 _G._isTabRebuild = false
@@ -52343,6 +52345,20 @@ end
 
 _logOK("Nuevos sistemas cargados: Visual Danger Knife + Invisible Knife")
 function abrirHub()
+    -- ================================================================
+    -- == GUARD DE DOBLE EJECUCION
+    -- Si el hub ya se esta construyendo, ignorar la llamada extra.
+    -- ================================================================
+    if _G._hubRunning then
+        warn("[ZerqonHUB] abrirHub() ya en ejecucion, ignorando llamada duplicada.")
+        return
+    end
+    _G._hubRunning = true
+    -- Safety net: liberar el lock si algo falla y el hub nunca termina
+    task.delay(20, function()
+        if not _G._hubReady then _G._hubRunning = false end
+    end)
+    -- ================================================================
     print("3: abrirHub() INICIADO")
 
     -- ================================================================
@@ -52408,7 +52424,8 @@ function abrirHub()
         end)
         return
     end
-    _G._hubReady = false  -- resetear al (re)abrir
+    _G._hubReady   = false  -- resetear al (re)abrir
+    _G._hubRunning = true   -- bloquear nuevas llamadas mientras se construye este hub
     -- FIX LAG: resetear el flag del loop homePanel para que el nuevo hub pueda iniciarlo
     _G._homePanelLoopActive = false
 
@@ -52669,20 +52686,24 @@ do
         _ball.ImageTransparency      = 0.30
         _ball.ZIndex                 = 2
 
-        -- Rotacion lenta continua usando TweenService (loop infinito)
-        local _speed = pos.spd  -- segundos por vuelta completa (mas alto = mas lento)
+        -- Rotacion lenta continua usando TweenService
+        -- El loop se detiene solo cuando el wrapper es destruido (sin acumular coroutines)
+        local _speed = pos.spd  -- segundos por vuelta completa
         local _dir   = (i % 2 == 0) and 1 or -1  -- alterno horario/antihorario
-        local _rot   = 0
+        local _alive = true
+        _wrap.AncestryChanged:Connect(function()
+            if not _wrap.Parent then _alive = false end
+        end)
         task.spawn(function()
-            while _wrap and _wrap.Parent do
-                _rot = (_rot + _dir * 360) % 36000
+            while _alive and _wrap and _wrap.Parent do
                 local _tw = TweenService:Create(
                     _wrap,
-                    TweenInfo.new(_speed, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, 0, false, 0),
+                    TweenInfo.new(_speed, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut),
                     {Rotation = _wrap.Rotation + _dir * 360}
                 )
                 _tw:Play()
                 _tw.Completed:Wait()
+                if not _alive then _tw:Cancel(); break end
             end
         end)
     end
@@ -54465,6 +54486,7 @@ particles = {}
             end)
             _G._hubReady = true
             _G._hubAlreadyBuilt = true
+            _G._hubRunning = false  -- liberar lock: hub listo
             pcall(ApplyTheme, "Neon Green")
             task.defer(function()
                 _G._tabContentActive = false
@@ -54904,6 +54926,7 @@ particles = {}
 
         _G._hubReady = true
         _G._hubAlreadyBuilt = true  -- FIX: marcar que el hub ya fue construido una vez
+        _G._hubRunning = false      -- liberar lock: hub completamente construido
         pcall(ApplyTheme, "Neon Green")
         -- ================================================================
         -- BEACON: señal visible para otros clientes con el hub ejecutado.
@@ -55009,6 +55032,7 @@ particles = {}
             end)
             _G._hubReady = true
             _G._hubAlreadyBuilt = true
+            _G._hubRunning = false  -- liberar lock
             pcall(ApplyTheme, "Neon Green")
             task.defer(function()
                 _G._tabContentActive = false
