@@ -314,9 +314,14 @@ do
     end
 
     -- OPT-7: Detectar si el executor soporta identidad elevada
-    _G._hasElevatedIdentity = (syn ~= nil) or (KRNL_LOADED ~= nil) or
-                               (getidentity ~= nil) or (identifyexecutor ~= nil) or
-                               (gethui ~= nil)
+    -- FIX: usar pcall para cada global porque algunos executors lanzan error
+    -- en lugar de devolver nil cuando la variable no existe.
+    _G._hasElevatedIdentity = false
+    pcall(function()
+        _G._hasElevatedIdentity = (syn ~= nil) or (KRNL_LOADED ~= nil) or
+                                   (getidentity ~= nil) or (identifyexecutor ~= nil) or
+                                   (gethui ~= nil)
+    end)
 
     -- OPT-8: Reducir frecuencia del GC durante carga, restaurar al terminar
     pcall(function()
@@ -40774,7 +40779,7 @@ function CreateCombatTab()
         ssLbl.Size = UDim2.new(1, -80, 0, 20); ssLbl.Position = UDim2.new(0, 10, 0, 5)
         ssLbl.BackgroundTransparency = 1; ssLbl.FontFace = Font.fromEnum(Enum.Font.Montserrat); ssLbl.TextSize = 11
         ssLbl.TextColor3 = ThemeColors.TextPrimary; ssLbl.TextXAlignment = Enum.TextXAlignment.Left
- ssLbl.Text = "Tamao Botn SA: " .. CombatState.saButtonSize
+ ssLbl.Text = "Tamaño Botón SA: " .. CombatState.saButtonSize
 
         local ssBg = Instance.new("Frame", sizeSec)
         ssBg.Size = UDim2.new(1, -20, 0, 6); ssBg.Position = UDim2.new(0, 10, 0, 34)
@@ -40807,7 +40812,7 @@ function CreateCombatTab()
                 local val = math.floor(100 + pct * (400 - 100))
                 ssFill.Size = UDim2.new(pct, 0, 1, 0)
                 ssKnob.Position = UDim2.new(pct, 0, 0.5, 0)
- ssLbl.Text = "Tamao Botn SA: " .. val
+ ssLbl.Text = "Tamaño Botón SA: " .. val
                 CombatState.saButtonSize = val
                 -- Actualizar tamao del botn existente
                 if CombatState.silentAimGui then
@@ -41475,6 +41480,18 @@ function CreateCombatTab()
                     _ssjState.wasAirborne = airborne
                 end)
             end
+
+            -- FIX BUG-1: Toggle para activar/desactivar Shoot Spam Jumper en la UI
+            CreateBorderedToggle(silentAimSection, "Shoot Spam Jumper (4 saltos)", function(enabled)
+                _ssjState.enabled = enabled
+                if enabled then
+                    _ssjStart()
+                    CreateCustomNotification("SPAM JUMPER", "Activo — detecta 4 saltos del Murder y dispara", 3)
+                else
+                    _ssjStop()
+                    CreateCustomNotification("SPAM JUMPER", "Desactivado", 2)
+                end
+            end, false)
 
         -- ── FIN SHOOT SPAM JUMPER ────────────────────────────────────────────────
 
