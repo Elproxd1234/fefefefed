@@ -3688,7 +3688,7 @@ end
 function _fluidGrabGun(child)
     -- -- Throttle global ----------------------------------------------
     local now = os.clock()
-    if now - _grabGunLastTime < 0.05 then return false end  -- FIX v5: 0.08->0.05s, mas responsivo
+    if now - _grabGunLastTime < 0.01 then return false end  -- 0 delay efectivo (solo antiflood mínimo)
     _grabGunLastTime = now
 
     local char = LocalPlayer.Character
@@ -3727,7 +3727,7 @@ function _fluidGrabGun(child)
     -- -- METODO: La GUN viene hacia el jugador (NO el jugador a la gun) --
     -- Movemos la parte de la gun al HRP usando CFrame client-side.
     -- El servidor detecta la proximidad y da la gun al jugador.
-    -- El personaje NUNCA se teletransporta.
+    -- El personaje NUNCA se teletransporta. 0 delay entre pasos.
 
     -- PASO 1: EquipTool directo (funciona si ya esta en backpack/workspace)
     if child:IsA("Tool") then
@@ -3745,7 +3745,7 @@ function _fluidGrabGun(child)
     end)
     if _hasGun() then return true end
 
-    -- PASO 2: mover la gun al jugador (gun viene hacia nosotros, sin TP del HRP)
+    -- PASO 2: mover la gun al jugador (gun viene hacia nosotros, sin TP del HRP, sin delays)
     local targetPos = hrp.Position + Vector3.new(0, -1.2, 0)
     local origCF    = part.CFrame
     local origAnch  = part.Anchored
@@ -3755,14 +3755,14 @@ function _fluidGrabGun(child)
         if child:IsA("Tool") then child:PivotTo(CFrame.new(targetPos)) end
     end)
 
-    -- PASO 3: firetouchinterest para simular el contacto
+    -- PASO 3: firetouchinterest para simular el contacto (mismo frame, sin yield)
     pcall(function()
         firetouchinterest(hrp, part, 0)
         firetouchinterest(hrp, part, 1)
     end)
     if _hasGun() then return true end
 
-    -- PASO 4: segundo intento directo sobre el HRP (ligeramente por encima)
+    -- PASO 4: segundo intento directo sobre el HRP (mismo frame, sin yield)
     pcall(function()
         part.CFrame = CFrame.new(hrp.Position + Vector3.new(0, 0.5, 0))
         if child:IsA("Tool") then child:PivotTo(CFrame.new(hrp.Position + Vector3.new(0, 0.5, 0))) end
@@ -30743,74 +30743,54 @@ function CreateWorldUI_AutoGrabGun()
                     return
                 end
 
-                -- METODO 3: blink del HRP a la gun, firetouchinterest, volver
-                local savedCF2 = root.CFrame
-                local gunPos2  = gPart.Position
-                pcall(function()
-                    root.CFrame = CFrame.new(gunPos2 + Vector3.new(0, 1.5, 0))
-                    root.AssemblyLinearVelocity = Vector3.zero
-                end)
-                task.wait(0)
-                pcall(function()
-                    firetouchinterest(root, gPart, 0)
-                    firetouchinterest(root, gPart, 1)
-                end)
-                task.wait(0)
-                pcall(function()
-                    root.CFrame = savedCF2
-                    root.AssemblyLinearVelocity  = Vector3.zero
-                    root.AssemblyAngularVelocity = Vector3.zero
-                end)
-                if _findGun(char) then
-                    CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
-                    return
-                end
-
-                -- METODO 4: segundo blink mas cercano
-                local savedCF = root.CFrame
-                pcall(function()
-                    root.CFrame = gPart.CFrame + Vector3.new(0, 1.2, 0)
-                    root.AssemblyLinearVelocity = Vector3.zero
-                end)
-                task.wait(0.015)
-                pcall(function()
-                    firetouchinterest(root, gPart, 0)
-                    firetouchinterest(root, gPart, 1)
-                end)
-                task.wait(0.015)
-                pcall(function()
-                    root.CFrame = savedCF
-                    root.AssemblyLinearVelocity  = Vector3.zero
-                    root.AssemblyAngularVelocity = Vector3.zero
-                end)
-                if _findGun(char) then
-                    CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
-                    return
-                end
-
-                -- METODO 5: mover la GUN al jugador y restaurar
+                -- METODO 3: LA GUN viene al jugador (NO blink del HRP — 0 TP, 0 delay)
                 local gOrigCF   = gPart.CFrame
                 local gAnchored = gPart.Anchored
+                local grabTarget = root.Position + Vector3.new(0, -1.2, 0)
                 pcall(function()
                     gPart.Anchored = false
-                    gPart.CFrame = CFrame.new(root.Position + Vector3.new(0, -1, 0))
-                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(root.Position + Vector3.new(0, -1, 0))) end
+                    gPart.CFrame = CFrame.new(grabTarget)
+                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(grabTarget)) end
                 end)
-                task.wait(0)
                 pcall(function()
                     firetouchinterest(root, gPart, 0)
                     firetouchinterest(root, gPart, 1)
                 end)
-                task.wait(0.016)
                 if _findGun(char) then
                     CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
-                else
+                    return
+                end
+
+                -- METODO 4: exactamente en HRP (sin yield)
+                pcall(function()
+                    gPart.CFrame = CFrame.new(root.Position)
+                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(root.Position)) end
+                end)
+                pcall(function()
+                    firetouchinterest(root, gPart, 0)
+                    firetouchinterest(root, gPart, 1)
+                end)
+                if _findGun(char) then
+                    CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
+                    return
+                end
+
+                -- METODO 5: EquipTool forzado final, restaurar si falla
+                task.defer(function()
+                    if _findGun(char) then return end
+                    if gunDrop and gunDrop.Parent then
+                        pcall(function() hum:EquipTool(gunDrop) end)
+                    end
+                    if _findGun(char) then
+                        CreateCustomNotification("GRAB GUN", " Gun agarrada!", 2)
+                        return
+                    end
                     pcall(function()
                         gPart.CFrame   = gOrigCF
                         gPart.Anchored = gAnchored
                     end)
                     CreateCustomNotification("GRAB GUN", "Arma encontrada pero no se pudo agarrar.", 2)
-                end
+                end)
             end)
         end)
     end
@@ -31044,7 +31024,7 @@ function CreateWorldUI_AutoGrabGun()
                 local gPart = _agGetPart(gunDrop)
                 if not gPart then return end
 
-                -- METODO 1: EquipTool directo (instantaneo, 0 lag)
+                -- METODO 1: EquipTool directo (0 lag, 0 delay, sin mover nada)
                 if gunDrop:IsA("Tool") then
                     pcall(function() hum:EquipTool(gunDrop) end)
                     if _findGun(char) then
@@ -31054,23 +31034,11 @@ function CreateWorldUI_AutoGrabGun()
                     end
                 end
 
-                -- METODO 2: blink del HRP a la gun, firetouchinterest, volver
-                local savedCF2 = root.CFrame
-                local gunPos2  = gPart.Position
+                -- METODO 2: ProximityPrompt (algunos modos de MM2 lo usan)
                 pcall(function()
-                    root.CFrame = CFrame.new(gunPos2 + Vector3.new(0, 1.5, 0))
-                    root.AssemblyLinearVelocity = Vector3.zero
-                end)
-                task.wait(0)
-                pcall(function()
-                    firetouchinterest(root, gPart, 0)
-                    firetouchinterest(root, gPart, 1)
-                end)
-                task.wait(0)
-                pcall(function()
-                    root.CFrame = savedCF2
-                    root.AssemblyLinearVelocity  = Vector3.zero
-                    root.AssemblyAngularVelocity = Vector3.zero
+                    local pp = gunDrop:FindFirstChildOfClass("ProximityPrompt")
+                           or (gPart and gPart:FindFirstChildOfClass("ProximityPrompt"))
+                    if pp then fireproximityprompt(pp) end
                 end)
                 if _findGun(char) then
                     GrabState._cachedDrop = nil
@@ -31078,27 +31046,61 @@ function CreateWorldUI_AutoGrabGun()
                     return
                 end
 
-                -- METODO 3: segundo intento de blink mas cercano
-                local savedCF = root.CFrame
+                -- METODO 3: LA GUN viene al jugador (NO blink del HRP — 0 TP de world)
+                -- Guardamos CFrame original para restaurar si no se agarra
+                local origGunCF  = gPart.CFrame
+                local origAnch   = gPart.Anchored
+                local grabTarget = root.Position + Vector3.new(0, -1.2, 0)
                 pcall(function()
-                    root.CFrame = gPart.CFrame + Vector3.new(0, 1.2, 0)
-                    root.AssemblyLinearVelocity = Vector3.zero
+                    gPart.Anchored = false
+                    gPart.CFrame   = CFrame.new(grabTarget)
+                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(grabTarget)) end
                 end)
-                task.wait(0.015)
+                -- firetouchinterest en el mismo frame (sin yield)
                 pcall(function()
                     firetouchinterest(root, gPart, 0)
                     firetouchinterest(root, gPart, 1)
                 end)
-                task.wait(0.015)
+                if _findGun(char) then
+                    GrabState._cachedDrop = nil
+                    CreateCustomNotification("AUTO GRAB GUN", "Gun agarrada!", 2)
+                    return
+                end
+
+                -- METODO 4: segundo movimiento exactamente en HRP (sin yield)
                 pcall(function()
-                    root.CFrame = savedCF
-                    root.AssemblyLinearVelocity  = Vector3.zero
-                    root.AssemblyAngularVelocity = Vector3.zero
+                    gPart.CFrame = CFrame.new(root.Position)
+                    if gunDrop:IsA("Tool") then gunDrop:PivotTo(CFrame.new(root.Position)) end
+                end)
+                pcall(function()
+                    firetouchinterest(root, gPart, 0)
+                    firetouchinterest(root, gPart, 1)
                 end)
                 if _findGun(char) then
                     GrabState._cachedDrop = nil
                     CreateCustomNotification("AUTO GRAB GUN", "Gun agarrada!", 2)
+                    return
                 end
+
+                -- METODO 5 (último recurso): EquipTool forzado + restaurar posición si falla
+                task.defer(function()
+                    if _findGun(char) then return end
+                    if gunDrop and gunDrop.Parent then
+                        pcall(function() hum:EquipTool(gunDrop) end)
+                    end
+                    if _findGun(char) then
+                        GrabState._cachedDrop = nil
+                        CreateCustomNotification("AUTO GRAB GUN", "Gun agarrada!", 2)
+                        return
+                    end
+                    -- Restaurar posición original si ningún método funcionó
+                    pcall(function()
+                        if gPart and gPart.Parent then
+                            gPart.CFrame   = origGunCF
+                            gPart.Anchored = origAnch
+                        end
+                    end)
+                end)
             end)
             task.wait(0.02)
             GrabState._agBusy = false
@@ -45981,7 +45983,9 @@ function CreateCombatTab()
                 end
                 local rHand  = char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm")
                 local lHand  = char:FindFirstChild("LeftHand")  or char:FindFirstChild("Left Arm")
-                local grip   = rHand and rHand:FindFirstChild("RightGrip")
+                -- FIX: filtrar por tipo para evitar agarrar un Script/StringValue con ese nombre
+                local _gripRaw = rHand and rHand:FindFirstChild("RightGrip")
+                local grip = (_gripRaw and (_gripRaw:IsA("Motor6D") or _gripRaw:IsA("Weld"))) and _gripRaw or nil
                 if not (handle and grip and lHand) then return end
                 -- Verificar que el handle pertenece a la tool correcta (no a otra tool del char)
                 if handle.Parent ~= tool then return end
@@ -46355,9 +46359,10 @@ function CreateCombatTab()
 
             if track.IsPlaying then
                 pcall(function() track:Stop(0) end)
-                _w()
+                -- FIX: eliminado _w() — introducía un yield que dejaba pasar la animación nativa
+                -- del servidor antes del Play. Stop(0) es instantáneo; no necesita espera.
             end
-            -- Segunda pasada post-yield (atrapa lo que el servidor disparó en ese frame)
+            -- Segunda pasada sin yield (atrapa lo que el servidor pudo disparar en este frame)
             _dkKillNativeSlash()
 
             pcall(function() track:Play(0.05); track:AdjustSpeed(speed) end)
@@ -46567,6 +46572,7 @@ function CreateCombatTab()
             if en then
                 -- Desactivar Dual Knife si estaba activo (solo uno a la vez)
                 if _G._dualKnifeState.enabled then
+                    _G._dualKnifeEnabled = false  -- FIX: limpiar flag global que _dualStopArm no toca
                     _dualStopArm(_G._dualKnifeState)
                 end
                 state.enabled = true
