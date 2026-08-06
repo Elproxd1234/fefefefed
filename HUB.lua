@@ -10511,12 +10511,15 @@ function TeleportToMap()
 
     -- TP seguro: anula velocidad, teletransporta 2 veces para evitar rebote
     local function doTP(pos, label)
-        -- Asegurarse de que Y no sea nulo/negativo
-        local safePos = Vector3.new(pos.X, math.max(pos.Y, 2), pos.Z)
-        -- Primer TP
+        -- FIX CAIDA STEAL GUN: usar offset Y mas generoso (+2 extra) para no aparecer
+        -- justo en el borde del suelo donde la fisica puede empujar al jugador abajo
+        local safePos = Vector3.new(pos.X, math.max(pos.Y, 4) + 2, pos.Z)
+        -- Primer TP + zereo completo
         pcall(function()
             hrp.AssemblyLinearVelocity  = Vector3.zero
             hrp.AssemblyAngularVelocity = Vector3.zero
+            hrp.Velocity    = Vector3.zero
+            hrp.RotVelocity = Vector3.zero
             hrp.CFrame = CFrame.new(safePos)
         end)
         -- Segundo TP 1 frame despues para confirmar posicion
@@ -10526,6 +10529,8 @@ function TeleportToMap()
             if h2 then
                 h2.AssemblyLinearVelocity  = Vector3.zero
                 h2.AssemblyAngularVelocity = Vector3.zero
+                h2.Velocity    = Vector3.zero
+                h2.RotVelocity = Vector3.zero
                 h2.CFrame = CFrame.new(safePos)
             end
         end)
@@ -10535,7 +10540,18 @@ function TeleportToMap()
             local h3 = c3 and c3:FindFirstChild("HumanoidRootPart")
             if h3 then
                 h3.AssemblyLinearVelocity  = Vector3.zero
+                h3.AssemblyAngularVelocity = Vector3.zero
                 h3.CFrame = CFrame.new(safePos)
+            end
+        end)
+        -- FIX CAIDA: cuarto TP a 0.4s para rescatar si sigue cayendo
+        task.delay(0.4, function()
+            local c4 = LocalPlayer.Character
+            local h4 = c4 and c4:FindFirstChild("HumanoidRootPart")
+            if h4 and h4.Position.Y < safePos.Y - 3 then
+                h4.AssemblyLinearVelocity  = Vector3.zero
+                h4.AssemblyAngularVelocity = Vector3.zero
+                h4.CFrame = CFrame.new(safePos)
             end
         end)
  CreateCustomNotification("TP MAP", "-> " .. label, 2)
@@ -30411,10 +30427,50 @@ function CreateWorldUI_QuickFlingButtons()
 
             -- TP al mapa inmediatamente (en spawn separado para que nunca quede bloqueado)
             -- FIX TP INVOLUNTARIO: solo ejecutar el TP si este spawn corresponde al ultimo press
+            -- FIX CAIDA: zerear velocidad varias veces y reintentar TP para no caer bajo el mapa
             task.spawn(function()
                 task.wait(0.15)
                 if _myToken ~= _sgBtnToken then return end  -- press mas reciente lo invalida
-                TeleportToMap()
+                -- Zero extra antes del TP para asegurar que no haya velocidad residual del fling
+                local _myC3 = LocalPlayer.Character
+                local _myH3 = _myC3 and _myC3:FindFirstChild("HumanoidRootPart")
+                local _myHum3 = _myC3 and _myC3:FindFirstChildOfClass("Humanoid")
+                if _myH3 then
+                    pcall(function()
+                        _myH3.AssemblyLinearVelocity  = Vector3.zero
+                        _myH3.AssemblyAngularVelocity = Vector3.zero
+                        _myH3.Velocity    = Vector3.zero
+                        _myH3.RotVelocity = Vector3.zero
+                    end)
+                end
+                if _myHum3 then
+                    pcall(function() _myHum3:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+                end
+                -- Primer TP al mapa
+                local _tpOk = pcall(TeleportToMap)
+                task.wait(0.2)
+                -- Segundo zereo + segundo TP de confirmacion para evitar caer
+                if _myToken ~= _sgBtnToken then return end
+                local _myC4 = LocalPlayer.Character
+                local _myH4 = _myC4 and _myC4:FindFirstChild("HumanoidRootPart")
+                if _myH4 then
+                    pcall(function()
+                        _myH4.AssemblyLinearVelocity  = Vector3.zero
+                        _myH4.AssemblyAngularVelocity = Vector3.zero
+                    end)
+                    -- Si el TP anterior fallo o el personaje esta muy abajo, reintentar
+                    if not _tpOk or _myH4.Position.Y < 0 then
+                        pcall(TeleportToMap)
+                        task.wait(0.15)
+                        local _myH5 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        if _myH5 then
+                            pcall(function()
+                                _myH5.AssemblyLinearVelocity  = Vector3.zero
+                                _myH5.AssemblyAngularVelocity = Vector3.zero
+                            end)
+                        end
+                    end
+                end
                 CreateCustomNotification("STEAL GUN", "Fling terminado - volviendo al mapa...", 2)
             end)
 
