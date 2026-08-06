@@ -931,7 +931,7 @@ if not _G._hubSettings then
         noMinMaxAnimations = false,
         allowHubDrag       = true,
         hubOpacity         = 15,
-        hubScale           = 70,   -- valor por defecto: 70%
+        hubScale           = 130,  -- valor por defecto: 130% (PC)
         hubLayoutMode      = 1,
         notifDuration      = 3,
         notifMuted         = false,
@@ -2804,7 +2804,8 @@ function _resetHist(userId)
         pingHistory   = {},   -- ultimas N estimaciones para tendencia
         lastSeenT     = 0,    -- tick() de la ultima posicion recibida
         lastSeenPos   = nil,  -- ultima posicion guardada
-        receiveDeltas = {},   -- intervalos entre actualizaciones (~ lag del target)
+        receiveDeltas = {},   -- ring buffer de intervalos (~ lag del target)
+        receiveDeltasIdx = 0, -- indice actual del ring buffer (O(1) insert)
     }
     _histTimers[userId] = 0
 end
@@ -2970,9 +2971,10 @@ RunService.Heartbeat:Connect(function()
                     -- Clamp: ignora deltas absurdos (lag spikes > 800ms o < 8ms)
                     _delta = math.clamp(_delta, 8, 800)
                     -- Guardar ultimas 16 deltas para EMA y jitter
+                    -- FIX LAG: ring buffer O(1) — table.remove(_rd,1) era O(N) desplazando todo
                     local _rd = _h.receiveDeltas
-                    table.insert(_rd, _delta)
-                    if #_rd > 16 then table.remove(_rd, 1) end
+                    _h.receiveDeltasIdx = (_h.receiveDeltasIdx % 16) + 1
+                    _rd[_h.receiveDeltasIdx] = _delta
                     -- EMA del delta (~ ping estimado del jugador)
                     _h.pingEMA = _h.pingEMA * 0.70 + _delta * 0.30
                     -- Jitter = varianza suavizada del delta
@@ -9908,9 +9910,12 @@ local function _startEspBoxLoop()
     _G._espBoxConn = task.spawn(function()
         while _G._espBoxEnabled do
             wait(0.5)
+            -- FIX LAG: iterar solo personajes de jugadores en vez de workspace:GetDescendants()
+            -- GetDescendants() aloca miles de objetos cada 0.5s — innecesario para ESP de jugadores
             local myChar = game.Players.LocalPlayer.Character
-            for _, box in ipairs(workspace:GetDescendants()) do
-                if box:FindFirstChild("Humanoid") and box ~= myChar then
+            for _, player in ipairs(_cachedPlayers) do
+                local box = player.Character
+                if box and box ~= myChar then
                     local role  = _espBoxGetRole(box)
                     local show  = _espBoxShouldShow(role)
                     local existing = box:FindFirstChild("EspBox")
@@ -9945,10 +9950,14 @@ end
 local function _stopEspBoxLoop()
     _G._espBoxEnabled = false
     _G._espBoxConn = nil
-    for _, obj in ipairs(workspace:GetDescendants()) do
+    -- FIX LAG: limpiar EspBox solo de personajes de jugadores, no de todo workspace
+    for _, player in ipairs(_cachedPlayers) do
         pcall(function()
-            local e = obj:FindFirstChild("EspBox")
-            if e then e:Destroy() end
+            local char = player.Character
+            if char then
+                local e = char:FindFirstChild("EspBox")
+                if e then e:Destroy() end
+            end
         end)
     end
 end
@@ -26131,13 +26140,13 @@ _hbTtracer = 0
 _tracerViewCenter = Vector2.new(0, 0)
 _tracerViewTick = 0
 RunService.Heartbeat:Connect(function()
-    _hbTtracer=_hbTtracer+1; if _hbTtracer<36 then return end; _hbTtracer=0  -- OPT: 30→36 frames para tracers
-
+    -- FIX LAG: guard ANTES del ticker — si no hay tracers activos no incrementar ni entrar
     local vt = VisualState.tracer
     local anyTracer = vt.everyone or vt.murderer or vt.sheriff or vt.hero
         or vt.assassin or vt.dead or vt.survivor or vt.zombie
         or vt.knife or vt.droppedknife or vt.throwknife
-    if not anyTracer then resetLinePool(); return end
+    if not anyTracer then return end  -- sin resetLinePool: no hay lineas que limpiar si no hay tracers
+    _hbTtracer=_hbTtracer+1; if _hbTtracer<36 then return end; _hbTtracer=0
 
     resetLinePool()
 
@@ -37580,7 +37589,7 @@ function CreateExclusiveTab()
         noMinMaxAnimations = false,
         allowHubDrag       = true,
         hubOpacity         = 15,   -- 0-95 (porcentaje de opacidad del fondo)
-        hubScale           = 70,   -- 70-130 (escala del hub en %)
+        hubScale           = 130,  -- 70-130 (escala del hub en %)
         hubLayoutMode      = 1,    -- 1=SidebarIzq 2=BarraTop 3=SidebarDer 4=BarraBot 5=MiniIzq
         notifDuration      = 3,    -- segundos default de notificaciones
         notifMuted         = false, -- silenciar todas las notificaciones
@@ -38493,7 +38502,7 @@ function CreateExclusiveTab()
         -- Ese primer disparo pisaba el uiScale correcto ya aplicado al arrancar el hub.
         -- Con _scaleSliderReady lo ignoramos en el init y solo aplicamos en drags reales.
         local _scaleSliderReady = false
-        CreateSlider(visualSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 70, function(v)
+        CreateSlider(visualSec, "Escala Hub (%)", 70, 130, _hs().hubScale or 130, function(v)
             if not _scaleSliderReady then _scaleSliderReady = true; return end
             _hs().hubScale = v
             pcall(function()
@@ -50814,7 +50823,7 @@ minimizeBtn.Activated:Connect(function()
                     mainFrame.BackgroundTransparency = 0.82
                 end
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
-                if uiScale then uiScale.Scale = (_getTargetScale and _getTargetScale() or 0.70) end
+                if uiScale then uiScale.Scale = (_getTargetScale and _getTargetScale() or 1.30) end
             else
                 abrirHub()
             end
@@ -51085,7 +51094,7 @@ closeBtn.Activated:Connect(function()
                 end
                 local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                 if uiScale then
-                    uiScale.Scale = (_getTargetScale and _getTargetScale() or 0.70)
+                    uiScale.Scale = (_getTargetScale and _getTargetScale() or 1.30)
                 end
             else
                 abrirHub()
@@ -52383,7 +52392,7 @@ function abrirHub()
         local uiScale = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
         if uiScale then
             uiScale.Scale = 0
-            TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+            TweenService:Create(uiScale, TweenInfo.new(0.65, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 1.30)}):Play()
         end
         -- FIX: recargar el tab activo para restaurar bindables y botones
         task.defer(function()
@@ -52551,7 +52560,7 @@ uiScale.Scale = 1.0
 -- Celular: calcula la escala para que 750px quepan en el ancho
 --          disponible con un margen de 4px a cada lado (ancho ligeramente mayor).
 --          Luego aplica hubScale (default 130%) sobre esa escala base.
--- PC:      usa el slider hubScale (70-130%, default 100%).
+-- PC:      usa el slider hubScale (70-130%, default 130%).
 -- ================================================================
 _getTargetScale = function()
     if _G._isMobileHub then
@@ -52570,12 +52579,12 @@ _getTargetScale = function()
         -- Limitar para que no se salga de pantalla
         return math.max(0.40, math.min(_baseScale * _userMult, math.min(_scaleW, _scaleH) * 1.30))
     end
-    -- PC: leer preferencia del slider
+    -- PC: leer preferencia del slider (default 130%)
     local _hs = _G._hubSettings and _G._hubSettings.hubScale
     if type(_hs) == "number" and _hs >= 70 and _hs <= 130 then
         return _hs / 100
     end
-    return 1.0
+    return 1.30  -- default PC: 130%
 end
 do
     uiScale.Scale = _getTargetScale()
@@ -54300,7 +54309,7 @@ particles = {}
                         local uiScaleR = mainFrame and mainFrame:FindFirstChildOfClass("UIScale")
                         if uiScaleR then
                             uiScaleR.Scale = 0
-                            TweenService:Create(uiScaleR, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                            TweenService:Create(uiScaleR, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 1.30)}):Play()
                         end
                     else
                         task.spawn(abrirHub)
@@ -54382,7 +54391,7 @@ particles = {}
                 mainFrame.Visible = true
                 mainFrame.BackgroundTransparency = 1
                 local _uiSF = mainFrame:FindFirstChildOfClass("UIScale")
-                if _uiSF then _uiSF.Scale = (_getTargetScale and _getTargetScale() or 0.70) end
+                if _uiSF then _uiSF.Scale = (_getTargetScale and _getTargetScale() or 1.30) end
                 if header then header.Position = UDim2.new(0, 0, 0, 0) end
                 if sidebar then sidebar.Position = UDim2.new(0, 0, 0, 32) end
             end)
@@ -54423,7 +54432,7 @@ particles = {}
             local _uiSR = mainFrame:FindFirstChildOfClass("UIScale")
             if _uiSR then _uiSR.Scale = 0 end
             if _uiSR then
-                TweenService:Create(_uiSR, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 0.70)}):Play()
+                TweenService:Create(_uiSR, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = (_getTargetScale and _getTargetScale() or 1.30)}):Play()
             end
             header.Position  = UDim2.new(0.02, 0, 0.02, 0)
             sidebar.Position = UDim2.new(0, 0, 0, 32)
@@ -54431,7 +54440,7 @@ particles = {}
             _G._hubReady = true
             mainFrame.BackgroundTransparency = 1
             if mainFrame:FindFirstChildOfClass("UIScale") then
-                mainFrame:FindFirstChildOfClass("UIScale").Scale = (_getTargetScale and _getTargetScale() or 0.70)
+                mainFrame:FindFirstChildOfClass("UIScale").Scale = (_getTargetScale and _getTargetScale() or 1.30)
             end
             task.defer(function()
                 _G._tabContentActive = false
@@ -54926,7 +54935,7 @@ particles = {}
                 mainFrame.Visible = true
                 mainFrame.BackgroundTransparency = 1
                 local _uiS = mainFrame:FindFirstChildOfClass("UIScale")
-                if _uiS then _uiS.Scale = (_getTargetScale and _getTargetScale() or 0.70) end
+                if _uiS then _uiS.Scale = (_getTargetScale and _getTargetScale() or 1.30) end
                 if header then header.Position = UDim2.new(0, 0, 0, 0) end
                 if sidebar then sidebar.Position = UDim2.new(0, 0, 0, 32) end
             end)
