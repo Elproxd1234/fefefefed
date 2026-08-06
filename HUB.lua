@@ -36960,7 +36960,7 @@ function CreatePremiumTab()
             {
                 -- Shotgun: modelo custom exportado desde Blender, IDs subidos por el usuario
                 name   = "Shotgun",
-                meshId = "rbxassetid://120554221146210",
+                meshId = "rbxassetid://116808509089705",
                 texId  = "rbxassetid://108221897243102",
                 scale  = Vector3.new(0.05, 0.05, 0.05),
                 grip   = CFrame.new(
@@ -52612,9 +52612,9 @@ _getTargetScale = function()
         local _baseScale = math.max(0.40, math.min(_scaleW, _scaleH))
         -- Aplicar preferencia del slider (default 130%) sobre la escala base
         local _hs = _G._hubSettings and _G._hubSettings.hubScale
-        local _userMult = (type(_hs) == "number" and _hs >= 70 and _hs <= 130) and (_hs / 100) or 0.70
-        -- Limitar para que no se salga de pantalla
-        return math.max(0.40, math.min(_baseScale * _userMult, math.min(_scaleW, _scaleH) * 1.30))
+        local _userMult = (type(_hs) == "number" and _hs >= 70 and _hs <= 130) and (_hs / 100) or 0.55
+        -- Limitar estrictamente para que no se salga de pantalla en mobile
+        return math.max(0.35, math.min(_baseScale * _userMult, math.min(_scaleW, _scaleH) * 0.95))
     end
     -- PC: leer preferencia del slider (default 130%)
     local _hs = _G._hubSettings and _G._hubSettings.hubScale
