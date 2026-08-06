@@ -52629,6 +52629,68 @@ _auroraContainer.ClipsDescendants       = true
 
 -- [FONDO DE ONDAS ELIMINADO]
 
+-- ================================================================
+-- == PELOTAS DE PLAYA: decoracion visible esparcida por el hub
+-- Giratorias, dispersas, sin tapar la UI.
+-- ================================================================
+do
+    local _BALL_ID = "rbxassetid://125345248174992"
+    local _ballPositions = {
+        {x = 0.07, y = 0.12, spd = 4.0},   -- esquina sup izquierda
+        {x = 0.82, y = 0.08, spd = 5.5},   -- esquina sup derecha
+        {x = 0.18, y = 0.71, spd = 3.5},   -- zona inf izquierda
+        {x = 0.74, y = 0.78, spd = 6.0},   -- zona inf derecha
+        {x = 0.45, y = 0.34, spd = 4.8},   -- centro ligeramente arriba
+        {x = 0.91, y = 0.48, spd = 3.2},   -- borde derecho medio
+        {x = 0.03, y = 0.46, spd = 5.0},   -- borde izquierdo medio
+        {x = 0.61, y = 0.88, spd = 4.2},   -- zona inf centro-derecha
+        {x = 0.29, y = 0.92, spd = 3.8},   -- zona inf centro-izquierda
+        {x = 0.55, y = 0.18, spd = 5.2},   -- zona sup centro
+    }
+    for i, pos in ipairs(_ballPositions) do
+        -- Wrapper Frame para poder rotar (ImageLabel no soporta rotacion de imagen,
+        -- pero si rotamos el Frame contenedor el efecto es el mismo)
+        local _wrap = Instance.new("Frame", _auroraContainer)
+        _wrap.Name                   = "BeachBallWrap_" .. i
+        _wrap.Size                   = UDim2.new(0, 48, 0, 48)
+        _wrap.AnchorPoint            = Vector2.new(0.5, 0.5)
+        _wrap.Position               = UDim2.new(pos.x, 0, pos.y, 0)
+        _wrap.BackgroundTransparency = 1
+        _wrap.BorderSizePixel        = 0
+        _wrap.ZIndex                 = 2
+        _wrap.ClipsDescendants       = false
+
+        local _ball = Instance.new("ImageLabel", _wrap)
+        _ball.Name                   = "BeachBall_" .. i
+        _ball.Size                   = UDim2.new(1, 0, 1, 0)
+        _ball.Position               = UDim2.new(0, 0, 0, 0)
+        _ball.BackgroundTransparency = 1
+        _ball.Image                  = _BALL_ID
+        _ball.ImageTransparency      = 0.30
+        _ball.ZIndex                 = 2
+
+        -- Rotacion lenta continua usando TweenService (loop infinito)
+        local _speed = pos.spd  -- segundos por vuelta completa (mas alto = mas lento)
+        local _dir   = (i % 2 == 0) and 1 or -1  -- alterno horario/antihorario
+        local _rot   = 0
+        task.spawn(function()
+            while _wrap and _wrap.Parent do
+                _rot = (_rot + _dir * 360) % 36000
+                local _tw = TweenService:Create(
+                    _wrap,
+                    TweenInfo.new(_speed, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, 0, false, 0),
+                    {Rotation = _wrap.Rotation + _dir * 360}
+                )
+                _tw:Play()
+                _tw.Completed:Wait()
+            end
+        end)
+    end
+end
+-- ================================================================
+-- == FIN PELOTAS DE PLAYA
+-- ================================================================
+
 
 
 --[[ task.spawn(function()
