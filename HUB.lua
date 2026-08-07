@@ -12219,13 +12219,20 @@ function UpdateCustomCursor()
     end
 
     -- Ocultar cursor nativo siempre que la mira este activa
-    UserInputService.MouseIconEnabled = false
+    -- FIX MOBILE SHOOT: en celu NO deshabilitar MouseIconEnabled porque
+    -- Roblox lo necesita para procesar el tap-to-shoot del GunClient original.
+    if not _isMobile then
+        UserInputService.MouseIconEnabled = false
+    end
 
     _updateCursorPos()
     Settings.cursor.connections.position = RunService.RenderStepped:Connect(function()
         if not Settings.cursor.image or not Settings.cursor.image.Parent then return end
         _updateCursorPos()
-        UserInputService.MouseIconEnabled = false
+        -- FIX MOBILE SHOOT: solo bloquear cursor nativo en PC
+        if not _isMobile then
+            UserInputService.MouseIconEnabled = false
+        end
     end)
 
     -- PC: reaccionar inmediatamente al entrar/salir de Shift Lock
@@ -13110,6 +13117,56 @@ function _spawnClickEffect(screenX, screenY)
         if dot  and dot.Parent  then dot:Destroy()  end
     end)
 end
+
+-- ================================================================
+-- FIX MOBILE SHOOT: TouchTap -> gun:Activate() para disparo normal
+-- Solo actua si NO hay auto-shoot activo del hub.
+-- ================================================================
+do
+    local _UIS_MF = game:GetService("UserInputService")
+    local _isMobileShootFix = _UIS_MF.TouchEnabled and not _UIS_MF.KeyboardEnabled
+    if _isMobileShootFix then
+        local _msfLastTap = 0
+        local _MSF_CD     = 0.15
+
+        local function _msfGetEquippedGun()
+            local char = LocalPlayer.Character
+            if not char then return nil end
+            for _, t in ipairs(char:GetChildren()) do
+                if t:IsA("Tool") then
+                    local n = t.Name:lower()
+                    if t:FindFirstChild("Shoot", true)
+                    or t:FindFirstChild("GunClient", true)
+                    or n:find("gun") or n:find("sheriff") or n:find("revolver") then
+                        return t
+                    end
+                end
+            end
+            return nil
+        end
+
+        _UIS_MF.TouchTap:Connect(function(positions, gameProcessed)
+            if gameProcessed then return end
+            if _G._autoShootEnabled or _G._ssEnabled then return end
+            local now = tick()
+            if now - _msfLastTap < _MSF_CD then return end
+            _msfLastTap = now
+            local gun = _msfGetEquippedGun()
+            if not gun then return end
+            pcall(function() gun:Activate() end)
+        end)
+
+        _UIS_MF.TouchLongPress:Connect(function(positions, state, gameProcessed)
+            if gameProcessed then return end
+            if state ~= Enum.UserInputState.Begin then return end
+            if _G._autoShootEnabled or _G._ssEnabled then return end
+            local gun = _msfGetEquippedGun()
+            if not gun then return end
+            pcall(function() gun:Activate() end)
+        end)
+    end
+end
+-- ================================================================
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -46324,7 +46381,10 @@ function CreateCombatTab()
                 -- -- LMB/Touch = SLASH cuando SA est OFF (SA lo maneja si est ON) --
                 -- FIX: sin _sp() para que _dkPlaySlot->_dkKillNativeSlash actue en el mismo frame.
                 -- FIX: usar _dkToggle local en vez de _G._dualSlashToggle (global compartido).
-                if isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
+                -- FIX MOBILE: no interceptar Touch en mobile para el slash del knife
+                -- (permite que el GunClient y el shoot nativo funcionen sin interferencia)
+                local _dkIsPC = not (game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
+                if isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or (_dkIsPC and input.UserInputType == Enum.UserInputType.Touch))
                     and not (KnifeSAState and KnifeSAState.enabled) then
                     if state.isAttacking then return end
                     local now = os.clock()
@@ -46341,11 +46401,10 @@ function CreateCombatTab()
                     if ks then pcall(function() ks:FireServer() end) end
                     _dl(0.85, function() state.isAttacking = false end)
 
-                -- -- RMB/Touch = THROW (Dual Knife ON) ---------------------------
-                -- FIX: RMB en Dual Knife debe tirar el cuchillo (igual que el inputConn
-                -- del toggle), no reproducir una animacion hardcodeada de DualStab
-                -- con un ID externo que puede no existir.
-                elseif isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch) then
+                -- -- RMB = THROW (Dual Knife ON) ---------------------------
+                -- FIX MOBILE: en celu NO interceptar Touch para throw del knife.
+                -- Solo RMB en PC para lanzar el knife.
+                elseif isDualKnife and input.UserInputType == Enum.UserInputType.MouseButton2 then
                     local now = os.clock()
                     if now - (state._lastThrow or -999) < 1.0 then return end
                     state._lastThrow = now
@@ -46357,10 +46416,12 @@ function CreateCombatTab()
                         or cam.CFrame
                     if knifeThrown then pcall(function() knifeThrown:FireServer(targetCF, targetCF) end) end
 
-                -- -- LMB/Touch = SHOOT (Dual Gun) ----------------------------------
-                elseif not isDualKnife and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-                    -- Dual Gun: LMB dispara usando el remote Shoot de la gun
-                    -- (igual que el GunClient real; no usa KnifeThrown que es del knife)
+                -- -- LMB = SHOOT (Dual Gun) ----------------------------------
+                -- FIX MOBILE: en celu NO interceptar Touch aqui.
+                -- El GunClient nativo maneja el disparo con Touch.
+                -- Interceptarlo rompe el shoot normal en mobile.
+                elseif not isDualKnife and input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    -- Dual Gun PC: LMB dispara usando el remote Shoot
                     local now = os.clock()
                     if now - (state._lastThrow or -999) < 0.6 then return end
                     state._lastThrow = now
@@ -46382,10 +46443,8 @@ function CreateCombatTab()
                             and CFrame.lookAt(targetPos, originPos)
                             or (cam and cam.CFrame or originCF)
                     end
-                    -- Firma 1: Shoot:FireServer(originCF, targetCF) -- GunClient clasico
                     local ok = pcall(function() shootR:FireServer(originCF, targetCF) end)
                     if not ok then
-                        -- Firma 2: Shoot:FireServer(1, targetPos) -- GunClient alternativo
                         pcall(function() shootR:FireServer(1, targetPos) end)
                     end
                 end
