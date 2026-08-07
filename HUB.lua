@@ -13145,6 +13145,35 @@ do
             return nil
         end
 
+        -- Helper: disparar la gun usando el remote Shoot directamente (bypass GunClient).
+        -- Usado cuando Dual Gun esta activo para evitar que el brazo izquierdo forzado
+        -- interfiera con la validacion del GunClient nativo de MM2.
+        local function _msfFireDualGun(gun)
+            local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local cam   = workspace.CurrentCamera
+            local gra   = myHRP and myHRP:FindFirstChild("GunRaycastAttachment")
+            local originPos = (gra and gra.WorldPosition)
+                or (cam and cam.CFrame.Position)
+                or (myHRP and myHRP.Position + Vector3.new(0, 1.5, 0))
+            local targetPos = originPos + (cam and cam.CFrame.LookVector * 500 or Vector3.new(0, 0, -500))
+            local graWorldCF = gra and gra.WorldCFrame or nil
+            local shootR = getShootRemote and getShootRemote(gun)
+            if not shootR then
+                pcall(function() gun:Activate() end)
+                return
+            end
+            local originCF, targetCF = buildShootCFrames(originPos, targetPos, graWorldCF)
+            if not originCF then
+                originCF = graWorldCF or (myHRP and myHRP.CFrame) or cam.CFrame
+                local dir = targetPos - originPos
+                targetCF = dir.Magnitude > 0.01
+                    and CFrame.lookAt(targetPos, originPos)
+                    or (cam and cam.CFrame or originCF)
+            end
+            local ok = pcall(function() shootR:FireServer(originCF, targetCF) end)
+            if not ok then pcall(function() shootR:FireServer(1, targetPos) end) end
+        end
+
         _UIS_MF.TouchTap:Connect(function(positions, gameProcessed)
             if gameProcessed then return end
             if _G._autoShootEnabled or _G._ssEnabled then return end
@@ -13153,7 +13182,14 @@ do
             _msfLastTap = now
             local gun = _msfGetEquippedGun()
             if not gun then return end
-            pcall(function() gun:Activate() end)
+            -- FIX DUAL GUN MOBILE: si Dual Gun esta activo, usar remote Shoot
+            -- directamente para evitar que el brazo izquierdo forzado interfiera
+            -- con la validacion del GunClient y requiera multiples taps.
+            if _G._dualGunState and _G._dualGunState.enabled then
+                _msfFireDualGun(gun)
+            else
+                pcall(function() gun:Activate() end)
+            end
         end)
 
         _UIS_MF.TouchLongPress:Connect(function(positions, state, gameProcessed)
@@ -13162,7 +13198,11 @@ do
             if _G._autoShootEnabled or _G._ssEnabled then return end
             local gun = _msfGetEquippedGun()
             if not gun then return end
-            pcall(function() gun:Activate() end)
+            if _G._dualGunState and _G._dualGunState.enabled then
+                _msfFireDualGun(gun)
+            else
+                pcall(function() gun:Activate() end)
+            end
         end)
     end
 end
@@ -46463,6 +46503,35 @@ function CreateCombatTab()
                     if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
                 end
             end
+            -- FIX BRAZO CAIDO: resetear Transform del brazo izquierdo a neutral.
+            -- Sin esto el brazo queda a 90deg y MM2 detecta el estado anomalo
+            -- causando re-equip o bajada de la gun equipada.
+            -- task.defer: esperar un frame para que el nuevo modo (si se activo
+            -- inmediatamente despues) ya conecte su steppedConn y tome control.
+            task.defer(function()
+                local gsEnabled = _G._dualGunState   and _G._dualGunState.enabled
+                local ksEnabled = _G._dualKnifeState and _G._dualKnifeState.enabled
+                if gsEnabled or ksEnabled then return end  -- otro modo ya activo, no resetear
+                local _ch = LocalPlayer.Character
+                if not _ch then return end
+                pcall(function()
+                    local lUA = _ch:FindFirstChild("LeftUpperArm")
+                    local lSh = lUA and lUA:FindFirstChild("LeftShoulder")
+                    local lLA = _ch:FindFirstChild("LeftLowerArm")
+                    local lEl = lLA and lLA:FindFirstChild("LeftElbow")
+                    local lHP = _ch:FindFirstChild("LeftHand")
+                    local lWr = lHP and lHP:FindFirstChild("LeftWrist")
+                    if lSh then
+                        lSh.Transform = CFrame.new()
+                        if lEl then lEl.Transform = CFrame.new() end
+                        if lWr then lWr.Transform = CFrame.new() end
+                    else
+                        local torso = _ch:FindFirstChild("Torso")
+                        local lJ    = torso and torso:FindFirstChild("Left Shoulder")
+                        if lJ then lJ.Transform = CFrame.new() end
+                    end
+                end)
+            end)
         end
 
         -- ==============================================================
