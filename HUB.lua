@@ -46641,6 +46641,8 @@ function CreateCombatTab()
                 local events       = tool:FindFirstChild("Events")
                 local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
                 local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
+                -- FIX MOBILE: detectar si es mobile (touch sin teclado)
+                local _dkRearmIsMobile = game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled
                 if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
                     and not (KnifeSAState and KnifeSAState.enabled) then
                     if st.isAttacking then return end
@@ -46652,7 +46654,10 @@ function CreateCombatTab()
                     _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
                     if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                     _dl(0.85, function() st.isAttacking = false end)
-                elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+                -- FIX MOBILE: throw solo en RMB (PC). En mobile NO capturar Touch aqui
+                -- porque Touch ya fue consumido arriba por el slash, y capturarlo en el
+                -- elseif causaria que el shoot nativo de la gun se rompa.
+                elseif input.UserInputType == Enum.UserInputType.MouseButton2 and not _dkRearmIsMobile then
                     if not knifeThrown then return end
                     local now = os.clock()
                     if now - (st._lastThrow or -999) < 1.0 then return end
@@ -46690,6 +46695,14 @@ function CreateCombatTab()
                         for _, obj in pairs(_chG:GetChildren()) do
                             if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
                         end
+                    end
+                    -- FIX BUG DUAL: sincronizar el estado del toggle visual de Dual Gun a OFF
+                    -- para que el task.defer de rebuild de tab no lo re-active automaticamente.
+                    _G._toggleStates = _G._toggleStates or {}
+                    _G._toggleStates["Dual Gun"] = false
+                    -- Actualizar el knob visual si el toggle ya fue renderizado
+                    if _G._toggleApplyStates and _G._toggleApplyStates["Dual Gun"] then
+                        pcall(function() _G._toggleApplyStates["Dual Gun"](false, true) end)
                     end
                 end
                 state.enabled        = true
@@ -46730,6 +46743,8 @@ function CreateCombatTab()
                     local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
 
                     -- LMB/Touch -> slash alternado (solo si Knife SA est OFF)
+                    -- FIX MOBILE: detectar si es mobile (touch sin teclado)
+                    local _dkToggleIsMobile = game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled
                     if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
                         and not (KnifeSAState and KnifeSAState.enabled) then
                         if state.isAttacking then return end
@@ -46744,8 +46759,10 @@ function CreateCombatTab()
                         if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
                         _dl(0.85, function() state.isAttacking = false end)
 
-                    -- RMB/Touch -> throw
-                    elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+                    -- FIX MOBILE: throw solo en RMB (PC). En mobile NO capturar Touch aqui
+                    -- porque Touch ya fue consumido arriba por el slash, y capturarlo en el
+                    -- elseif causaria que el shoot nativo de la gun se rompa.
+                    elseif input.UserInputType == Enum.UserInputType.MouseButton2 and not _dkToggleIsMobile then
                         if not knifeThrown then return end
                         local now = os.clock()
                         if now - (state._lastThrow or -999) < 1.0 then return end
@@ -46846,6 +46863,14 @@ function CreateCombatTab()
                         for _, obj in pairs(_chK:GetChildren()) do
                             if obj.Name == "DK_Clone" then pcall(function() obj:Destroy() end) end
                         end
+                    end
+                    -- FIX BUG DUAL: sincronizar el estado del toggle visual de Dual Knife a OFF
+                    -- para que el task.defer de rebuild de tab no lo re-active automaticamente.
+                    _G._toggleStates = _G._toggleStates or {}
+                    _G._toggleStates["Dual Knife"] = false
+                    -- Actualizar el knob visual si el toggle ya fue renderizado
+                    if _G._toggleApplyStates and _G._toggleApplyStates["Dual Knife"] then
+                        pcall(function() _G._toggleApplyStates["Dual Knife"](false, true) end)
                     end
                 end
                 state.enabled = true
