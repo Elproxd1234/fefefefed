@@ -8787,8 +8787,9 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     local TWEEN_OPEN  = TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
     local TWEEN_CLOSE = TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 
-    local ROW_H    = 44
-    local HEADER_H = 56
+    local _ns_isMobile = (_G._isMobileHub == true) or (pcall(function() return game:GetService("UserInputService").TouchEnabled end) and game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
+    local ROW_H    = _ns_isMobile and 30 or 44
+    local HEADER_H = _ns_isMobile and 40 or 56
     local GAP      = 4
     local MAX_ROWS = 5
 
@@ -8821,7 +8822,7 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     titleLabel.Text                   = titulo
     titleLabel.TextColor3             = C("TextPrimary")
     titleLabel.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-    titleLabel.TextSize               = 15
+    titleLabel.TextSize               = _ns_isMobile and 11 or 15
     titleLabel.TextXAlignment         = Enum.TextXAlignment.Left
     titleLabel.TextYAlignment         = Enum.TextYAlignment.Center
     titleLabel.TextTruncate           = Enum.TextTruncate.AtEnd
@@ -8830,9 +8831,9 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     -- Badge pill derecho
     local triggerBtn = Instance.new("TextButton", masterFrame)
     triggerBtn.Name                   = "TriggerBadge"
-    triggerBtn.Size                   = UDim2.new(0.44, 0, 0, 36)
+    triggerBtn.Size                   = UDim2.new(0.44, 0, 0, _ns_isMobile and 24 or 36)
     triggerBtn.AnchorPoint            = Vector2.new(1, 0)
-    triggerBtn.Position               = UDim2.new(1, -10, 0, 10)
+    triggerBtn.Position               = UDim2.new(1, -10, 0, _ns_isMobile and 8 or 10)
     triggerBtn.BackgroundColor3       = C("Primary")
     triggerBtn.BackgroundTransparency = 0.15
     triggerBtn.Text                   = ""
@@ -8853,7 +8854,7 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     selectedText.Text                   = default
     selectedText.TextColor3             = C("TextPrimary")
     selectedText.FontFace               = Font.fromEnum(Enum.Font.Gotham)
-    selectedText.TextSize               = 13
+    selectedText.TextSize               = _ns_isMobile and 10 or 13
     selectedText.BackgroundTransparency = 1
     selectedText.TextXAlignment         = Enum.TextXAlignment.Left
     selectedText.TextTruncate           = Enum.TextTruncate.AtEnd
@@ -9027,7 +9028,7 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
             lbl.Text                   = convertirFuenteCursor(name)
             lbl.TextColor3             = C("TextPrimary")
             lbl.FontFace               = Font.fromEnum(Enum.Font.GothamSemibold)
-            lbl.TextSize               = 13
+            lbl.TextSize               = _ns_isMobile and 10 or 13
             lbl.TextXAlignment         = Enum.TextXAlignment.Left
             lbl.TextYAlignment         = Enum.TextYAlignment.Center
             lbl.BackgroundTransparency = 1
