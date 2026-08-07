@@ -38951,6 +38951,156 @@ function CreateExclusiveTab()
         end)
     end
 
+    -- ============================================================
+    --  TOGGLE COLOR SELECTOR
+    --  Cambia el color de fondo de todos los toggles del hub
+    -- ============================================================
+    do
+        local _TOGGLE_COLORS = {
+            { label = "Azul",    bg = Color3.fromRGB(135, 206, 235), bgT = 0.78, stroke = Color3.fromRGB(40,  60,  180), pill = Color3.fromRGB(60,  80,  190) },
+            { label = "Verde",   bg = Color3.fromRGB(80,  200, 120), bgT = 0.78, stroke = Color3.fromRGB(20,  140, 60),  pill = Color3.fromRGB(30,  130, 70)  },
+            { label = "Rojo",    bg = Color3.fromRGB(220, 80,  80),  bgT = 0.80, stroke = Color3.fromRGB(180, 30,  30),  pill = Color3.fromRGB(160, 40,  40)  },
+            { label = "Morado",  bg = Color3.fromRGB(160, 80,  220), bgT = 0.78, stroke = Color3.fromRGB(110, 30,  180), pill = Color3.fromRGB(100, 40,  170) },
+            { label = "Naranja", bg = Color3.fromRGB(255, 160, 50),  bgT = 0.80, stroke = Color3.fromRGB(200, 100, 10),  pill = Color3.fromRGB(190, 100, 20)  },
+            { label = "Rosa",    bg = Color3.fromRGB(255, 120, 180), bgT = 0.78, stroke = Color3.fromRGB(200, 60,  130), pill = Color3.fromRGB(190, 60,  130) },
+            { label = "Cyan",    bg = Color3.fromRGB(0,   220, 220), bgT = 0.80, stroke = Color3.fromRGB(0,   160, 180), pill = Color3.fromRGB(0,   150, 170) },
+            { label = "Blanco",  bg = Color3.fromRGB(240, 240, 255), bgT = 0.82, stroke = Color3.fromRGB(160, 170, 210), pill = Color3.fromRGB(140, 150, 200) },
+        }
+
+        _G._hubSettings.toggleColorIdx = _G._hubSettings.toggleColorIdx or 1
+
+        local function _applyToggleColor(idx)
+            _G._hubSettings.toggleColorIdx = idx
+            local c = _TOGGLE_COLORS[idx]
+            if not c then return end
+            _G._toggleColorCurrent = c
+            pcall(function()
+                if not mainFrame then return end
+                for _, obj in ipairs(mainFrame:GetDescendants()) do
+                    if obj:IsA("Frame") and obj.Name and obj.Name:sub(1, 16) == "AuroraToggleRow_" then
+                        pcall(function()
+                            obj.BackgroundColor3       = c.bg
+                            obj.BackgroundTransparency = c.bgT
+                            local st = obj:FindFirstChildOfClass("UIStroke")
+                            if st then st.Color = c.stroke end
+                            local tb = obj:FindFirstChild("ToggleBackground")
+                            if tb then
+                                tb.BackgroundColor3 = c.pill
+                                tb.BackgroundTransparency = 0.3
+                                local tbSt = tb:FindFirstChildOfClass("UIStroke")
+                                if tbSt then tbSt.Color = c.stroke end
+                            end
+                        end)
+                    end
+                end
+            end)
+        end
+
+        local colorSec = CreateBorderedSectionGlobal(rightColumn, " COLOR TOGGLES")
+
+        -- Preview mini-toggle
+        local prevRow = Instance.new("Frame", colorSec)
+        prevRow.Name                   = "ToggleColorPreview"
+        prevRow.Size                   = UDim2.new(1, -8, 0, 42)
+        prevRow.BackgroundColor3       = _TOGGLE_COLORS[_G._hubSettings.toggleColorIdx].bg
+        prevRow.BackgroundTransparency = _TOGGLE_COLORS[_G._hubSettings.toggleColorIdx].bgT
+        prevRow.BorderSizePixel        = 0; prevRow.ZIndex = 13
+        Instance.new("UICorner", prevRow).CornerRadius = UDim.new(0, 8)
+        local prevStroke = Instance.new("UIStroke", prevRow)
+        prevStroke.Color = _TOGGLE_COLORS[_G._hubSettings.toggleColorIdx].stroke
+        prevStroke.Thickness = 2; prevStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+        local prevLabel = Instance.new("TextLabel", prevRow)
+        prevLabel.Size = UDim2.new(0.6, 0, 1, 0); prevLabel.Position = UDim2.new(0, 8, 0, 0)
+        prevLabel.BackgroundTransparency = 1; prevLabel.Text = "Preview toggle"
+        prevLabel.TextColor3 = Color3.fromRGB(255, 255, 255); prevLabel.TextSize = 12
+        prevLabel.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        prevLabel.TextXAlignment = Enum.TextXAlignment.Left; prevLabel.ZIndex = 14
+
+        local prevPill = Instance.new("Frame", prevRow)
+        prevPill.Size = UDim2.new(0, 50, 0, 24); prevPill.AnchorPoint = Vector2.new(1, 0.5)
+        prevPill.Position = UDim2.new(1, -8, 0.5, 0)
+        prevPill.BackgroundColor3 = _TOGGLE_COLORS[_G._hubSettings.toggleColorIdx].pill
+        prevPill.BackgroundTransparency = 0.3; prevPill.BorderSizePixel = 0; prevPill.ZIndex = 14
+        Instance.new("UICorner", prevPill).CornerRadius = UDim.new(0, 7)
+        local prevPillStroke = Instance.new("UIStroke", prevPill)
+        prevPillStroke.Color = _TOGGLE_COLORS[_G._hubSettings.toggleColorIdx].stroke
+        prevPillStroke.Thickness = 1.5; prevPillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+        local prevKnob = Instance.new("Frame", prevPill)
+        prevKnob.Size = UDim2.new(0, 16, 0, 16); prevKnob.AnchorPoint = Vector2.new(0, 0.5)
+        prevKnob.Position = UDim2.new(0, 4, 0.5, 0)
+        prevKnob.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+        prevKnob.BorderSizePixel = 0; prevKnob.ZIndex = 15
+        Instance.new("UICorner", prevKnob).CornerRadius = UDim.new(0, 5)
+
+        local function _refreshPreviewColor(idx)
+            local c = _TOGGLE_COLORS[idx]
+            if not c then return end
+            prevRow.BackgroundColor3       = c.bg
+            prevRow.BackgroundTransparency = c.bgT
+            prevStroke.Color               = c.stroke
+            prevPill.BackgroundColor3      = c.pill
+            prevPillStroke.Color           = c.stroke
+        end
+
+        -- Grid 2 columnas
+        local grid = Instance.new("Frame", colorSec)
+        grid.Size = UDim2.new(1, -8, 0, 0)
+        grid.BackgroundTransparency = 1; grid.BorderSizePixel = 0
+        grid.AutomaticSize = Enum.AutomaticSize.Y
+        local gridLayout = Instance.new("UIGridLayout", grid)
+        gridLayout.CellSize = UDim2.new(0.5, -4, 0, 30)
+        gridLayout.CellPadding = UDim2.new(0, 6, 0, 5)
+        gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+        local _colorBtns = {}
+        local _tiColor = TweenInfo.new(0.13, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+        local function _refreshColorBtns(activeIdx)
+            for i, btn in ipairs(_colorBtns) do
+                local isActive = (i == activeIdx)
+                local c = _TOGGLE_COLORS[i]
+                TweenService:Create(btn, _tiColor, {
+                    BackgroundColor3       = c.bg,
+                    BackgroundTransparency = isActive and 0.15 or 0.65,
+                }):Play()
+                local st = btn:FindFirstChildOfClass("UIStroke")
+                if st then st.Transparency = isActive and 0 or 0.55 end
+            end
+        end
+
+        for i, cd in ipairs(_TOGGLE_COLORS) do
+            local btn = Instance.new("TextButton", grid)
+            btn.Size                   = UDim2.new(1, 0, 1, 0)
+            btn.BackgroundColor3       = cd.bg
+            btn.BackgroundTransparency = 0.65
+            btn.BorderSizePixel        = 0
+            btn.Text                   = cd.label
+            btn.TextColor3             = Color3.fromRGB(255, 255, 255)
+            btn.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
+            btn.TextSize               = 11
+            btn.AutoButtonColor        = false; btn.ZIndex = 14
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
+            local bst = Instance.new("UIStroke", btn)
+            bst.Color = cd.stroke; bst.Thickness = 1.8; bst.Transparency = 0.55
+            bst.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            local _i = i
+            btn.Activated:Connect(function()
+                _applyToggleColor(_i)
+                _refreshPreviewColor(_i)
+                _refreshColorBtns(_i)
+                CreateCustomNotification("COLOR TOGGLES", "Color: " .. cd.label, 1.5)
+            end)
+            _colorBtns[i] = btn
+        end
+
+        _refreshColorBtns(_G._hubSettings.toggleColorIdx)
+        task.defer(function()
+            _applyToggleColor(_G._hubSettings.toggleColorIdx)
+        end)
+    end
+
     -- -- NOTIFICACIONES -------------------------------------------
     local notifSec = CreateBorderedSectionGlobal(rightColumn, " NOTIFICACIONES")
 
@@ -52938,20 +53088,16 @@ uiScale.Scale = 1.0
 -- ================================================================
 _getTargetScale = function()
     if _G._isMobileHub then
-        -- Escalar para que el hub de 750px entre en la pantalla del celu
-        -- Margen reducido a 4px a cada lado para aprovechar mas ancho en mobile
+        -- Escalar para que el hub entre en pantalla dejando margen visible a los lados
+        -- El slider hubScale NO aplica en mobile para evitar que ocupe toda la pantalla
         local _vpNow = workspace.CurrentCamera.ViewportSize
-        local _availW = _vpNow.X - 8    -- 4px margen a cada lado (antes: 16px / 8px c/lado)
-        local _availH = _vpNow.Y - 16
+        local _availW = _vpNow.X - 32   -- 16px margen a cada lado
+        local _availH = _vpNow.Y - 48   -- 24px margen arriba y abajo
         local _scaleW = _availW / 750
         local _scaleH = _availH / 420
-        -- Escala base que hace entrar el hub en pantalla
-        local _baseScale = math.max(0.40, math.min(_scaleW, _scaleH))
-        -- Aplicar preferencia del slider (default 130%) sobre la escala base
-        local _hs = _G._hubSettings and _G._hubSettings.hubScale
-        local _userMult = (type(_hs) == "number" and _hs >= 70 and _hs <= 130) and (_hs / 100) or 0.55
-        -- Limitar estrictamente para que no se salga de pantalla en mobile
-        return math.max(0.35, math.min(_baseScale * _userMult, math.min(_scaleW, _scaleH) * 0.95))
+        -- Usar el mas chico para que entre completo; tope de 0.52 para que nunca llene la pantalla
+        local _fit = math.min(_scaleW, _scaleH)
+        return math.max(0.28, math.min(_fit, 0.52))
     end
     -- PC: leer preferencia del slider (default 130%)
     local _hs = _G._hubSettings and _G._hubSettings.hubScale
@@ -52965,6 +53111,18 @@ do
 end
 mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+-- Reajustar escala en mobile cuando rota la pantalla o cambia el viewport
+if _G._isMobileHub then
+    pcall(function()
+        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+            task.defer(function()
+                if uiScale and uiScale.Parent then
+                    uiScale.Scale = _getTargetScale()
+                end
+            end)
+        end)
+    end)
+end
 print("[ZerqonHUB] Layout relativo 80%x82% aplicado")
 -- Limpiar orbs de ejecuciones previas
 pcall(function()
