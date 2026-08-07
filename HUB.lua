@@ -37054,6 +37054,14 @@ function CreatePremiumTab()
                 dualKnife = true,
             },
             {
+                name   = "Custom knife for me",
+                meshId = "rbxassetid://106376139482867",
+                texId  = "rbxassetid://112744655854803",
+                scale  = Vector3.new(0.5, 0.5, 0.5),
+                grip   = CFrame.new(0, -0.6, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                dualKnife = true,
+            },
+            {
                 name   = " Coming Soon...",
                 meshId = "",
                 texId  = "",
