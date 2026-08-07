@@ -37171,6 +37171,14 @@ function CreatePremiumTab()
                 grip   = CFrame.new(0, -0.55, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
                 dualKnife = true,
             },
+            {
+                name   = "Katana",
+                meshId = "rbxassetid://106988631058775",
+                texId  = "rbxassetid://138272175698969",
+                scale  = Vector3.new(0.05, 0.05, 0.05),
+                grip   = CFrame.new(0, -0.6, 0) * CFrame.Angles(math.rad(-90), 0, 0),
+                dualKnife = true,
+            },
         }
 
         -- Exponer lista de knife skins en _G para que _dualStartArm pueda usarla
