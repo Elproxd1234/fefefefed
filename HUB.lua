@@ -8800,8 +8800,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     masterFrame.Name             = "NebulaSelector_" .. titulo
     masterFrame.Size             = UDim2.new(1, -4, 0, HEADER_H)
     masterFrame.AutomaticSize    = Enum.AutomaticSize.None
-    masterFrame.BackgroundColor3 = C("Secondary")
-    masterFrame.BackgroundTransparency = 0.10
+    masterFrame.BackgroundColor3 = C("BackgroundLight")
+    masterFrame.BackgroundTransparency = 0.35
     masterFrame.BorderSizePixel  = 0
     masterFrame.ClipsDescendants = false
     masterFrame.ZIndex           = 5
@@ -8878,8 +8878,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     listFrame.Name                   = "ListContainer"
     listFrame.Size                   = UDim2.new(1, 0, 0, 0)
     listFrame.Position               = UDim2.new(0, 0, 0, HEADER_H + GAP)
-    listFrame.BackgroundColor3       = C("Secondary")
-    listFrame.BackgroundTransparency = 0.05
+    listFrame.BackgroundColor3       = C("BackgroundLight")
+    listFrame.BackgroundTransparency = 0.25
     listFrame.BorderSizePixel        = 0
     listFrame.ClipsDescendants       = true
     listFrame.Visible                = false
@@ -8925,8 +8925,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
             local stroke  = row:FindFirstChildWhichIsA("UIStroke")
             local active  = (wrapper.Name == selectedValue)
             TweenService:Create(row, TweenInfo.new(0.18), {
-                BackgroundColor3       = active and C("Primary") or C("Secondary"),
-                BackgroundTransparency = active and 0.10 or 0.45,
+                BackgroundColor3       = active and C("Primary") or C("BackgroundLight"),
+                BackgroundTransparency = active and 0.10 or 0.55,
             }):Play()
             if stroke then
                 TweenService:Create(stroke, TweenInfo.new(0.18), {
@@ -9006,8 +9006,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
 
             local row = Instance.new("TextButton", wrapper)
             row.Size                   = UDim2.new(1, 0, 1, 0)
-            row.BackgroundColor3       = isActive and C("Primary") or C("Secondary")
-            row.BackgroundTransparency = isActive and 0.10 or 0.45
+            row.BackgroundColor3       = isActive and C("Primary") or C("BackgroundLight")
+            row.BackgroundTransparency = isActive and 0.10 or 0.55
             row.Text                   = ""
             row.BorderSizePixel        = 0
             row.AutoButtonColor        = false
@@ -9044,8 +9044,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
             row.MouseLeave:Connect(function()
                 if name ~= selectedValue then
                     TweenService:Create(row, TweenInfo.new(0.12), {
-                        BackgroundColor3       = C("Secondary"),
-                        BackgroundTransparency = 0.45,
+                        BackgroundColor3       = C("BackgroundLight"),
+                        BackgroundTransparency = 0.55,
                     }):Play()
                 end
             end)
@@ -37844,6 +37844,124 @@ function CreatePremiumTab()
                 CreateCustomNotification("🔪 KNIFE SKIN", sel .. " aplicada!", 3)
             end)
         end  -- cierra do knife selector
+
+        -- ── AUTO REMOVE GUN ─────────────────────────────────────────────────
+        do
+            local _argConn = nil
+            local _argConnWs = nil
+
+            local function _isGunTool(obj)
+                if not obj or not obj:IsA("Tool") then return false end
+                local n = obj.Name:lower()
+                return n:find("gun") or n:find("sheriff") or n:find("revolver")
+                    or obj:FindFirstChild("GunClient", true) ~= nil
+                    or obj:FindFirstChild("GunServer", true) ~= nil
+            end
+
+            local function _removeGunVisible()
+                -- Ocultar gun en character y backpack localmente
+                local char = LocalPlayer.Character
+                local bp   = LocalPlayer.Backpack
+                local function _hideGun(parent)
+                    if not parent then return end
+                    for _, child in ipairs(parent:GetChildren()) do
+                        if _isGunTool(child) then
+                            pcall(function()
+                                for _, part in ipairs(child:GetDescendants()) do
+                                    if part:IsA("BasePart") or part:IsA("MeshPart") then
+                                        part.LocalTransparencyModifier = 1
+                                    end
+                                end
+                            end)
+                        end
+                    end
+                end
+                _hideGun(char)
+                _hideGun(bp)
+                -- Tambien en workspace (gun de otro jugador / modelo suelto)
+                local wsChar = workspace:FindFirstChild(LocalPlayer.Name)
+                if wsChar then _hideGun(wsChar) end
+            end
+
+            local function _restoreGunVisible()
+                local char = LocalPlayer.Character
+                local bp   = LocalPlayer.Backpack
+                local function _showGun(parent)
+                    if not parent then return end
+                    for _, child in ipairs(parent:GetChildren()) do
+                        if _isGunTool(child) then
+                            pcall(function()
+                                for _, part in ipairs(child:GetDescendants()) do
+                                    if part:IsA("BasePart") or part:IsA("MeshPart") then
+                                        part.LocalTransparencyModifier = 0
+                                    end
+                                end
+                            end)
+                        end
+                    end
+                end
+                _showGun(char)
+                _showGun(bp)
+                local wsChar = workspace:FindFirstChild(LocalPlayer.Name)
+                if wsChar then _showGun(wsChar) end
+            end
+
+            local _argSection = (CreateBorderedSection and leftColumn) and CreateBorderedSection(leftColumn, "🔫  AUTO REMOVE GUN") or Instance.new("Frame")
+
+            CreateAuroraToggle(_argSection, "Auto Remove Gun", function(en)
+                -- Limpiar conexiones previas
+                if _argConn then pcall(function() _argConn:Disconnect() end); _argConn = nil end
+                if _argConnWs then pcall(function() _argConnWs:Disconnect() end); _argConnWs = nil end
+
+                if en then
+                    _removeGunVisible()
+                    -- Listener: cuando una gun aparezca, ocultarla
+                    local char = LocalPlayer.Character
+                    if char then
+                        _argConn = char.DescendantAdded:Connect(function(obj)
+                            if _isGunTool(obj) then
+                                task.defer(function()
+                                    if not _G._toggleStates["Auto Remove Gun"] then return end
+                                    for _, part in ipairs(obj:GetDescendants()) do
+                                        if part:IsA("BasePart") or part:IsA("MeshPart") then
+                                            pcall(function() part.LocalTransparencyModifier = 1 end)
+                                        end
+                                    end
+                                end)
+                            elseif (obj:IsA("BasePart") or obj:IsA("MeshPart")) then
+                                local p = obj.Parent
+                                if p and _isGunTool(p) then
+                                    pcall(function() obj.LocalTransparencyModifier = 1 end)
+                                end
+                            end
+                        end)
+                    end
+                    _argConnWs = workspace.DescendantAdded:Connect(function(obj)
+                        if not _G._toggleStates["Auto Remove Gun"] then return end
+                        if _isGunTool(obj) then
+                            task.defer(function()
+                                for _, part in ipairs(obj:GetDescendants()) do
+                                    if part:IsA("BasePart") or part:IsA("MeshPart") then
+                                        pcall(function() part.LocalTransparencyModifier = 1 end)
+                                    end
+                                end
+                            end)
+                        elseif (obj:IsA("BasePart") or obj:IsA("MeshPart")) then
+                            local p = obj.Parent
+                            if p and _isGunTool(p) then
+                                pcall(function() obj.LocalTransparencyModifier = 1 end)
+                            end
+                        end
+                    end)
+                    CreateCustomNotification("🔫 AUTO REMOVE GUN", "Gun ocultada localmente", 2)
+                else
+                    _restoreGunVisible()
+                    CreateCustomNotification("🔫 AUTO REMOVE GUN", "Gun restaurada", 2)
+                end
+            end, false)
+        end
+        -- ── FIN AUTO REMOVE GUN ─────────────────────────────────────────────
+
         end  -- cierra do skin changer
     -- -- FIN SKIN CHANGER ------------------------------------------
 
@@ -39023,28 +39141,48 @@ function CreateExclusiveTab()
     end
 
     -- ============================================================
-    --  TOGGLE COLOR SELECTOR
-    --  Cambia el color de fondo de todos los toggles del hub
+    --  TOGGLE COLOR SELECTOR  v2  (NebulaSelector — dropdown)
+    --  Selector de color FONDO del toggle (row) + PILL (switch)
+    --  Se cierra automaticamente al seleccionar. Animacion lenta.
     -- ============================================================
     do
-        local _TOGGLE_COLORS = {
-            { label = "Azul",    bg = Color3.fromRGB(135, 206, 235), bgT = 0.78, stroke = Color3.fromRGB(40,  60,  180), pill = Color3.fromRGB(60,  80,  190) },
-            { label = "Verde",   bg = Color3.fromRGB(80,  200, 120), bgT = 0.78, stroke = Color3.fromRGB(20,  140, 60),  pill = Color3.fromRGB(30,  130, 70)  },
-            { label = "Rojo",    bg = Color3.fromRGB(220, 80,  80),  bgT = 0.80, stroke = Color3.fromRGB(180, 30,  30),  pill = Color3.fromRGB(160, 40,  40)  },
-            { label = "Morado",  bg = Color3.fromRGB(160, 80,  220), bgT = 0.78, stroke = Color3.fromRGB(110, 30,  180), pill = Color3.fromRGB(100, 40,  170) },
-            { label = "Naranja", bg = Color3.fromRGB(255, 160, 50),  bgT = 0.80, stroke = Color3.fromRGB(200, 100, 10),  pill = Color3.fromRGB(190, 100, 20)  },
-            { label = "Rosa",    bg = Color3.fromRGB(255, 120, 180), bgT = 0.78, stroke = Color3.fromRGB(200, 60,  130), pill = Color3.fromRGB(190, 60,  130) },
-            { label = "Cyan",    bg = Color3.fromRGB(0,   220, 220), bgT = 0.80, stroke = Color3.fromRGB(0,   160, 180), pill = Color3.fromRGB(0,   150, 170) },
-            { label = "Blanco",  bg = Color3.fromRGB(240, 240, 255), bgT = 0.82, stroke = Color3.fromRGB(160, 170, 210), pill = Color3.fromRGB(140, 150, 200) },
+        -- Paleta compartida: fondo del row + pill del switch
+        local _TC_BG = {
+            { label = "🔵 Azul",     bg = Color3.fromRGB(135, 206, 235), bgT = 0.78, stroke = Color3.fromRGB(40,  60,  180) },
+            { label = "🟢 Verde",    bg = Color3.fromRGB(80,  200, 120), bgT = 0.78, stroke = Color3.fromRGB(20,  140, 60)  },
+            { label = "🔴 Rojo",     bg = Color3.fromRGB(220, 80,  80),  bgT = 0.80, stroke = Color3.fromRGB(180, 30,  30)  },
+            { label = "🟣 Morado",   bg = Color3.fromRGB(160, 80,  220), bgT = 0.78, stroke = Color3.fromRGB(110, 30,  180) },
+            { label = "🟠 Naranja",  bg = Color3.fromRGB(255, 160, 50),  bgT = 0.80, stroke = Color3.fromRGB(200, 100, 10)  },
+            { label = "🌸 Rosa",     bg = Color3.fromRGB(255, 120, 180), bgT = 0.78, stroke = Color3.fromRGB(200, 60,  130) },
+            { label = "🩵 Cyan",     bg = Color3.fromRGB(0,   220, 220), bgT = 0.80, stroke = Color3.fromRGB(0,   160, 180) },
+            { label = "⬜ Blanco",   bg = Color3.fromRGB(240, 240, 255), bgT = 0.82, stroke = Color3.fromRGB(160, 170, 210) },
+            { label = "⬛ Negro",    bg = Color3.fromRGB(20,  20,  30),  bgT = 0.55, stroke = Color3.fromRGB(80,  80,  120) },
+            { label = "🌙 Indigo",   bg = Color3.fromRGB(60,  40,  180), bgT = 0.72, stroke = Color3.fromRGB(100, 60,  220) },
+        }
+        local _TC_PILL = {
+            { label = "🔵 Azul Rey",  pill = Color3.fromRGB(60,  80,  190), stroke = Color3.fromRGB(40,  60,  180) },
+            { label = "🟢 Verde",     pill = Color3.fromRGB(30,  130, 70),  stroke = Color3.fromRGB(20,  140, 60)  },
+            { label = "🔴 Rojo",      pill = Color3.fromRGB(160, 40,  40),  stroke = Color3.fromRGB(180, 30,  30)  },
+            { label = "🟣 Morado",    pill = Color3.fromRGB(100, 40,  170), stroke = Color3.fromRGB(110, 30,  180) },
+            { label = "🟠 Naranja",   pill = Color3.fromRGB(190, 100, 20),  stroke = Color3.fromRGB(200, 100, 10)  },
+            { label = "🌸 Rosa",      pill = Color3.fromRGB(190, 60,  130), stroke = Color3.fromRGB(200, 60,  130) },
+            { label = "🩵 Cyan",      pill = Color3.fromRGB(0,   150, 170), stroke = Color3.fromRGB(0,   160, 180) },
+            { label = "⬜ Plata",     pill = Color3.fromRGB(140, 150, 200), stroke = Color3.fromRGB(160, 170, 210) },
+            { label = "⬛ Oscuro",    pill = Color3.fromRGB(30,  30,  50),  stroke = Color3.fromRGB(80,  80,  120) },
+            { label = "🌙 Violeta",   pill = Color3.fromRGB(80,  40,  200), stroke = Color3.fromRGB(100, 60,  220) },
         }
 
-        _G._hubSettings.toggleColorIdx = _G._hubSettings.toggleColorIdx or 1
+        _G._hubSettings.toggleColorIdx     = _G._hubSettings.toggleColorIdx     or 1
+        _G._hubSettings.togglePillColorIdx = _G._hubSettings.togglePillColorIdx or 1
 
-        local function _applyToggleColor(idx)
+        -- Aplicar color de fondo del row
+        local function _applyBgColor(idx)
             _G._hubSettings.toggleColorIdx = idx
-            local c = _TOGGLE_COLORS[idx]
-            if not c then return end
-            _G._toggleColorCurrent = c
+            local c = _TC_BG[idx]; if not c then return end
+            _G._toggleColorCurrent = _G._toggleColorCurrent or {}
+            _G._toggleColorCurrent.bg     = c.bg
+            _G._toggleColorCurrent.bgT    = c.bgT
+            _G._toggleColorCurrent.stroke = c.stroke
             pcall(function()
                 if not mainFrame then return end
                 for _, obj in ipairs(mainFrame:GetDescendants()) do
@@ -39054,9 +39192,26 @@ function CreateExclusiveTab()
                             obj.BackgroundTransparency = c.bgT
                             local st = obj:FindFirstChildOfClass("UIStroke")
                             if st then st.Color = c.stroke end
+                        end)
+                    end
+                end
+            end)
+        end
+
+        -- Aplicar color del pill (ToggleBackground)
+        local function _applyPillColor(idx)
+            _G._hubSettings.togglePillColorIdx = idx
+            local c = _TC_PILL[idx]; if not c then return end
+            _G._toggleColorCurrent = _G._toggleColorCurrent or {}
+            _G._toggleColorCurrent.pill = c.pill
+            pcall(function()
+                if not mainFrame then return end
+                for _, obj in ipairs(mainFrame:GetDescendants()) do
+                    if obj:IsA("Frame") and obj.Name and obj.Name:sub(1, 16) == "AuroraToggleRow_" then
+                        pcall(function()
                             local tb = obj:FindFirstChild("ToggleBackground")
                             if tb then
-                                tb.BackgroundColor3 = c.pill
+                                tb.BackgroundColor3       = c.pill
                                 tb.BackgroundTransparency = 0.3
                                 local tbSt = tb:FindFirstChildOfClass("UIStroke")
                                 if tbSt then tbSt.Color = c.stroke end
@@ -39069,106 +39224,95 @@ function CreateExclusiveTab()
 
         local colorSec = CreateBorderedSectionGlobal(rightColumn, " COLOR TOGGLES")
 
-        -- Preview mini-toggle
+        -- === Preview mini-toggle ===
         local prevRow = Instance.new("Frame", colorSec)
         prevRow.Name                   = "ToggleColorPreview"
-        prevRow.Size                   = UDim2.new(1, -8, 0, 42)
-        prevRow.BackgroundColor3       = _TOGGLE_COLORS[_G._hubSettings.toggleColorIdx].bg
-        prevRow.BackgroundTransparency = _TOGGLE_COLORS[_G._hubSettings.toggleColorIdx].bgT
+        prevRow.Size                   = UDim2.new(1, -8, 0, 46)
+        prevRow.BackgroundColor3       = _TC_BG[_G._hubSettings.toggleColorIdx].bg
+        prevRow.BackgroundTransparency = _TC_BG[_G._hubSettings.toggleColorIdx].bgT
         prevRow.BorderSizePixel        = 0; prevRow.ZIndex = 13
         Instance.new("UICorner", prevRow).CornerRadius = UDim.new(0, 8)
         local prevStroke = Instance.new("UIStroke", prevRow)
-        prevStroke.Color = _TOGGLE_COLORS[_G._hubSettings.toggleColorIdx].stroke
+        prevStroke.Color = _TC_BG[_G._hubSettings.toggleColorIdx].stroke
         prevStroke.Thickness = 2; prevStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         local prevLabel = Instance.new("TextLabel", prevRow)
         prevLabel.Size = UDim2.new(0.6, 0, 1, 0); prevLabel.Position = UDim2.new(0, 8, 0, 0)
-        prevLabel.BackgroundTransparency = 1; prevLabel.Text = "Preview toggle"
-        prevLabel.TextColor3 = Color3.fromRGB(255, 255, 255); prevLabel.TextSize = 12
+        prevLabel.BackgroundTransparency = 1; prevLabel.Text = "▶ Preview toggle"
+        prevLabel.TextColor3 = Color3.fromRGB(255, 255, 255); prevLabel.TextSize = 11
         prevLabel.FontFace = Font.fromEnum(Enum.Font.GothamBold)
         prevLabel.TextXAlignment = Enum.TextXAlignment.Left; prevLabel.ZIndex = 14
 
         local prevPill = Instance.new("Frame", prevRow)
-        prevPill.Size = UDim2.new(0, 50, 0, 24); prevPill.AnchorPoint = Vector2.new(1, 0.5)
+        prevPill.Size = UDim2.new(0, 52, 0, 26); prevPill.AnchorPoint = Vector2.new(1, 0.5)
         prevPill.Position = UDim2.new(1, -8, 0.5, 0)
-        prevPill.BackgroundColor3 = _TOGGLE_COLORS[_G._hubSettings.toggleColorIdx].pill
+        prevPill.BackgroundColor3 = _TC_PILL[_G._hubSettings.togglePillColorIdx].pill
         prevPill.BackgroundTransparency = 0.3; prevPill.BorderSizePixel = 0; prevPill.ZIndex = 14
         Instance.new("UICorner", prevPill).CornerRadius = UDim.new(0, 7)
         local prevPillStroke = Instance.new("UIStroke", prevPill)
-        prevPillStroke.Color = _TOGGLE_COLORS[_G._hubSettings.toggleColorIdx].stroke
+        prevPillStroke.Color = _TC_PILL[_G._hubSettings.togglePillColorIdx].stroke
         prevPillStroke.Thickness = 1.5; prevPillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
         local prevKnob = Instance.new("Frame", prevPill)
-        prevKnob.Size = UDim2.new(0, 16, 0, 16); prevKnob.AnchorPoint = Vector2.new(0, 0.5)
+        prevKnob.Size = UDim2.new(0, 18, 0, 18); prevKnob.AnchorPoint = Vector2.new(0, 0.5)
         prevKnob.Position = UDim2.new(0, 4, 0.5, 0)
         prevKnob.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
         prevKnob.BorderSizePixel = 0; prevKnob.ZIndex = 15
         Instance.new("UICorner", prevKnob).CornerRadius = UDim.new(0, 5)
 
-        local function _refreshPreviewColor(idx)
-            local c = _TOGGLE_COLORS[idx]
-            if not c then return end
-            prevRow.BackgroundColor3       = c.bg
-            prevRow.BackgroundTransparency = c.bgT
-            prevStroke.Color               = c.stroke
-            prevPill.BackgroundColor3      = c.pill
-            prevPillStroke.Color           = c.stroke
-        end
-
-        -- Grid 2 columnas
-        local grid = Instance.new("Frame", colorSec)
-        grid.Size = UDim2.new(1, -8, 0, 0)
-        grid.BackgroundTransparency = 1; grid.BorderSizePixel = 0
-        grid.AutomaticSize = Enum.AutomaticSize.Y
-        local gridLayout = Instance.new("UIGridLayout", grid)
-        gridLayout.CellSize = UDim2.new(0.5, -4, 0, 30)
-        gridLayout.CellPadding = UDim2.new(0, 6, 0, 5)
-        gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-        local _colorBtns = {}
-        local _tiColor = TweenInfo.new(0.13, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-        local function _refreshColorBtns(activeIdx)
-            for i, btn in ipairs(_colorBtns) do
-                local isActive = (i == activeIdx)
-                local c = _TOGGLE_COLORS[i]
-                TweenService:Create(btn, _tiColor, {
-                    BackgroundColor3       = c.bg,
-                    BackgroundTransparency = isActive and 0.15 or 0.65,
-                }):Play()
-                local st = btn:FindFirstChildOfClass("UIStroke")
-                if st then st.Transparency = isActive and 0 or 0.55 end
+        local function _refreshPreview()
+            local bg  = _TC_BG[_G._hubSettings.toggleColorIdx]
+            local pil = _TC_PILL[_G._hubSettings.togglePillColorIdx]
+            if bg then
+                TweenService:Create(prevRow,    TweenInfo.new(0.35), {BackgroundColor3 = bg.bg, BackgroundTransparency = bg.bgT}):Play()
+                TweenService:Create(prevStroke, TweenInfo.new(0.35), {Color = bg.stroke}):Play()
+            end
+            if pil then
+                TweenService:Create(prevPill,       TweenInfo.new(0.35), {BackgroundColor3 = pil.pill}):Play()
+                TweenService:Create(prevPillStroke, TweenInfo.new(0.35), {Color = pil.stroke}):Play()
             end
         end
 
-        for i, cd in ipairs(_TOGGLE_COLORS) do
-            local btn = Instance.new("TextButton", grid)
-            btn.Size                   = UDim2.new(1, 0, 1, 0)
-            btn.BackgroundColor3       = cd.bg
-            btn.BackgroundTransparency = 0.65
-            btn.BorderSizePixel        = 0
-            btn.Text                   = cd.label
-            btn.TextColor3             = Color3.fromRGB(255, 255, 255)
-            btn.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-            btn.TextSize               = 11
-            btn.AutoButtonColor        = false; btn.ZIndex = 14
-            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
-            local bst = Instance.new("UIStroke", btn)
-            bst.Color = cd.stroke; bst.Thickness = 1.8; bst.Transparency = 0.55
-            bst.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-            local _i = i
-            btn.Activated:Connect(function()
-                _applyToggleColor(_i)
-                _refreshPreviewColor(_i)
-                _refreshColorBtns(_i)
-                CreateCustomNotification("COLOR TOGGLES", "Color: " .. cd.label, 1.5)
-            end)
-            _colorBtns[i] = btn
-        end
+        -- === Selector Fondo del Row ===
+        local _bgNames = {}
+        for _, c in ipairs(_TC_BG) do _bgNames[#_bgNames+1] = c.label end
 
-        _refreshColorBtns(_G._hubSettings.toggleColorIdx)
+        CreateNebulaSelector(colorSec, "Fondo del Toggle", _bgNames,
+            _TC_BG[_G._hubSettings.toggleColorIdx].label,
+            function(sel)
+                for i, c in ipairs(_TC_BG) do
+                    if c.label == sel then
+                        _applyBgColor(i)
+                        _refreshPreview()
+                        CreateCustomNotification("COLOR TOGGLES", "Fondo: " .. c.label, 1.5)
+                        break
+                    end
+                end
+            end
+        )
+
+        -- === Selector Pill (ToggleBackground) ===
+        local _pillNames = {}
+        for _, c in ipairs(_TC_PILL) do _pillNames[#_pillNames+1] = c.label end
+
+        CreateNebulaSelector(colorSec, "Pill del Toggle (switch)", _pillNames,
+            _TC_PILL[_G._hubSettings.togglePillColorIdx].label,
+            function(sel)
+                for i, c in ipairs(_TC_PILL) do
+                    if c.label == sel then
+                        _applyPillColor(i)
+                        _refreshPreview()
+                        CreateCustomNotification("COLOR TOGGLES", "Pill: " .. c.label, 1.5)
+                        break
+                    end
+                end
+            end
+        )
+
+        -- Aplicar colores guardados al construir el tab
         task.defer(function()
-            _applyToggleColor(_G._hubSettings.toggleColorIdx)
+            _applyBgColor(_G._hubSettings.toggleColorIdx)
+            _applyPillColor(_G._hubSettings.togglePillColorIdx)
         end)
     end
 
