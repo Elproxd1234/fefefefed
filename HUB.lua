@@ -37044,12 +37044,11 @@ function CreatePremiumTab()
 
         local _SC_GUN_SKINS = {
             {
-                name        = "Luger",
-                meshId      = "http://www.roblox.com/asset/?id=95356090",
-                texId       = "http://www.roblox.com/asset/?id=126534866",
-                scale       = Vector3.new(1.7999999523162842, 1.7999999523162842, 1.7999999523162842),
-                mobileScale = Vector3.new(1.5, 1.5, 1.5),
-                grip        = CFrame.new(
+                name   = "Luger",
+                meshId = "http://www.roblox.com/asset/?id=95356090",
+                texId  = "http://www.roblox.com/asset/?id=126534866",
+                scale  = Vector3.new(1.7999999523162842, 1.7999999523162842, 1.7999999523162842),
+                grip   = CFrame.new(
                     0, -0.5, 0.5,
                     0.999924004,    -0.00871835742, -0.00871835742,
                     0.00871835742,   0.999961972,   -3.80063248e-05,
@@ -37057,92 +37056,85 @@ function CreatePremiumTab()
                 ),
             },
             {
-                name        = "Harvester",
-                meshId      = "rbxassetid://7775027413",
-                texId       = "http://www.roblox.com/asset/?id=7775245551",
-                scale       = Vector3.new(0.05999999865889549, 0.05000000074505806, 0.05000000074505806),
-                mobileScale = Vector3.new(0.05999999865889549, 0.05000000074505806, 0.05000000074505806),
-                grip        = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                dualGun     = true,
+                name   = "Harvester",
+                meshId = "rbxassetid://7775027413",
+                texId  = "http://www.roblox.com/asset/?id=7775245551",
+                scale  = Vector3.new(0.05999999865889549, 0.05000000074505806, 0.05000000074505806),
+                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                dualGun = true,
             },
             {
                 -- Bacon: SpecialMesh, Grip exacto del scanner, GunClient confirmado
-                name        = "Bacon",
-                meshId      = "http://www.roblox.com/asset/?id=79401392",
-                texId       = "rbxassetid://178240361",
-                scale       = Vector3.new(1.5, 1.5, 1.5),
-                mobileScale = Vector3.new(1.5, 1.5, 1.5),
-                grip        = CFrame.new(
+                name   = "Bacon",
+                meshId = "http://www.roblox.com/asset/?id=79401392",
+                texId  = "rbxassetid://178240361",
+                scale  = Vector3.new(1.5, 1.5, 1.5),
+                grip   = CFrame.new(
                     0, -0.759000003, -0.314999998,
                     1, 0, 0,
                     0, 0, -1,
                     0, 1, 0
                 ),
-                dualGun     = true,
+                dualGun = true,
             },
             {
                 -- ElderwoodGun: scale achicado, Grip exacto del scanner, GunClient confirmado
-                name        = "ElderwoodGun",
-                meshId      = "rbxassetid://4210029922",
-                texId       = "rbxassetid://4210038158",
-                scale       = Vector3.new(0.035, 0.035, 0.035),
-                mobileScale = Vector3.new(0.035, 0.035, 0.035),
-                grip        = CFrame.new(
+                name   = "ElderwoodGun",
+                meshId = "rbxassetid://4210029922",
+                texId  = "rbxassetid://4210038158",
+                scale  = Vector3.new(0.035, 0.035, 0.035),
+                grip   = CFrame.new(
                     -0.567565918, -0.124303818, -0.0424308777,
                     -0.000212550163, 0.0230092816, -0.999735236,
                     -0.011778634,   0.999665856,   0.0230101906,
                      0.99993062,    0.0117804073,  5.85317612e-05
                 ),
-                dualGun     = true,
+                dualGun = true,
             },
             {
                 -- GingerScope: Handle + Scope (MeshPart), GunClient confirmado — IDs capturados en consola
-                name        = "GingerScope",
-                meshId      = "rbxassetid://15374602183",
-                texId       = "rbxassetid://107224776622554",
-                scale       = Vector3.new(0.08, 0.08, 0.08),
-                mobileScale = Vector3.new(0.08, 0.08, 0.08),
-                grip        = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                dualGun     = true,
+                name   = "GingerScope",
+                meshId = "rbxassetid://15374602183",
+                texId  = "rbxassetid://107224776622554",
+                scale  = Vector3.new(0.08, 0.08, 0.08),
+                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                dualGun = true,
             },
             {
                 -- XenoShot: Handle MeshPart, GunClient confirmado — IDs capturados en consola
-                name        = "XenoShot",
-                meshId      = "rbxassetid://96867436912658",
-                texId       = "rbxassetid://103568875118220",
-                scale       = Vector3.new(0.035, 0.055, 0.020),
-                mobileScale = Vector3.new(0.035, 0.055, 0.020),
-                grip        = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                dualGun     = true,
+                name   = "XenoShot",
+                meshId = "rbxassetid://96867436912658",
+                texId  = "rbxassetid://103568875118220",
+                scale  = Vector3.new(0.035, 0.055, 0.020),
+                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                dualGun = true,
             },
             {
-                name        = "New Gun",
-                meshId      = "rbxassetid://95356090",
-                texId       = "rbxassetid://126534866",
-                scale       = Vector3.new(1.85, 1.85, 1.85),
-                mobileScale = Vector3.new(1.5, 1.5, 1.5),
-                grip        = CFrame.new(
+                name   = "New Gun",
+                meshId = "rbxassetid://95356090",
+                texId  = "rbxassetid://126534866",
+                scale  = Vector3.new(1.85, 1.85, 1.85),
+                grip   = CFrame.new(
                     0, -0.5, 0.5,
                     0.999924004, -0.00871835742, -0.00871835742,
                     0.00871835742,  0.999961972,  -3.80063248e-05,
                     0.00871835742, -3.80063248e-05,  0.999961972
                 ),
-                dualGun     = true,
+                dualGun = true,
             },
             {
                 -- AK (English): Handle MeshPart, IDs provided by user
-                name        = "AK",
-                meshId      = "rbxassetid://130016653323757",
-                texId       = "rbxassetid://110314778967742",
-                scale       = Vector3.new(0.055, 0.055, 0.055),
-                mobileScale = Vector3.new(0.055, 0.055, 0.055),
-                grip        = CFrame.new(-1.12, -0.28, -0.2) *
-                              CFrame.fromEulerAnglesXYZ(
-                                  math.rad(-6),
-                                  math.rad(-80),
-                                  math.rad(1)
-                              ),
-                dualGun     = true,
+                name   = "AK",
+                meshId = "rbxassetid://130016653323757",
+                texId  = "rbxassetid://110314778967742",
+                scale  = Vector3.new(0.055, 0.055, 0.055),
+                grip   = CFrame.new(-1.12, -0.28, -0.2) *
+                         CFrame.fromEulerAnglesXYZ(
+                             math.rad(-6),
+                             math.rad(-80),
+                             math.rad(1)
+                         ),
+                dualGun = true,
             },
         }
         -- FIX: exponer la lista en _G para que _dualStartArm pueda referenciarla
@@ -37229,6 +37221,7 @@ function CreatePremiumTab()
                                 elseif obj:IsA("MeshPart") then
                                     if eData.Mesh and eData.Mesh ~= "" then obj.MeshId = eData.Mesh end
                                     obj.TextureID = eData.Texture
+                                    if eData.Size then obj.Size = eData.Size end
                                 end
                             end)
                         end
@@ -37245,12 +37238,10 @@ function CreatePremiumTab()
         --                          el part completamente invisible en Roblox.
         --   2. Handle BasePart con SpecialMesh hijo  -> pisar MeshId/TextureId/Scale del SM
         --   3. Handle BasePart sin SpecialMesh (legacy)  -> pisar MeshId/TextureID directo
-        -- Detectar mobile correctamente (pcall solo captura errores, no devuelve el valor)
+        -- FIX MOBILE: detectar dispositivo para escalar correctamente
         local _UIS_SC = game:GetService("UserInputService")
-        local _scIsMobile = false
-        pcall(function()
-            _scIsMobile = _UIS_SC.TouchEnabled and not _UIS_SC.KeyboardEnabled
-        end)
+        local _scIsMobile = pcall(function() return _UIS_SC.TouchEnabled end)
+            and _UIS_SC.TouchEnabled and not _UIS_SC.KeyboardEnabled
 
         local function _scApply(tool, skin, bypass)
             if not tool or not skin then return end
@@ -37262,11 +37253,18 @@ function CreatePremiumTab()
                 _skinState.origData[tool] = { Grip = tool.Grip, Elements = {} }
             end
 
-            -- Grip: aplicar siempre, en mobile y PC. Cada skin tiene su grip calibrado.
-            pcall(function() tool.Grip = skin.grip end)
+            -- FIX MOBILE: en celu aplicar Grip original del tool (no el custom)
+            -- para que el shoot no se rompa. Solo aplica mesh/texture/scale.
+            local _applyGrip = not _scIsMobile
+            if _applyGrip then
+                pcall(function() tool.Grip = skin.grip end)
+            end
 
-            -- Escala: en mobile usar mobileScale si la skin la define, sino usar scale normal
-            local _effectiveScale = (_scIsMobile and skin.mobileScale) or skin.scale
+            -- FIX MOBILE: reducir escala a la mitad en mobile para evitar guns gigantes
+            local _effectiveScale = skin.scale
+            if _scIsMobile and skin.scale then
+                _effectiveScale = skin.scale * 0.5
+            end
 
             -- PASO 1: manejar el Handle directamente (mismo enfoque que actualizarBomba/GoldBomb)
             local handle = tool:FindFirstChild("Handle")
@@ -37288,13 +37286,17 @@ function CreatePremiumTab()
                     -- Handle MeshPart moderno
                     if not _skinState.origData[tool].Elements[handle] then
                         _skinState.origData[tool].Elements[handle] = {
-                            Mesh = handle.MeshId, Texture = handle.TextureID
+                            Mesh = handle.MeshId, Texture = handle.TextureID,
+                            Size = handle.Size  -- guardar Size original para resetear
                         }
                     end
-                    -- Intentar escribir MeshId directo
+                    -- Escribir MeshId + TextureID + Size (escala via Size en MeshPart)
                     local meshWriteOk = pcall(function()
                         handle.MeshId    = skin.meshId
                         handle.TextureID = skin.texId
+                        if _effectiveScale then
+                            handle.Size = _effectiveScale
+                        end
                     end)
                     if not meshWriteOk then
                         -- Fallback: inyectar SpecialMesh FileMesh cuando el executor bloquea MeshPart.MeshId
@@ -37339,11 +37341,14 @@ function CreatePremiumTab()
                     end)
                 elseif obj:IsA("MeshPart") and obj ~= handle then
                     if not _skinState.origData[tool].Elements[obj] then
-                        _skinState.origData[tool].Elements[obj] = { Mesh = obj.MeshId, Texture = obj.TextureID }
+                        _skinState.origData[tool].Elements[obj] = {
+                            Mesh = obj.MeshId, Texture = obj.TextureID, Size = obj.Size
+                        }
                     end
                     pcall(function()
                         if skin.meshId and skin.meshId ~= "" then obj.MeshId = skin.meshId end
                         obj.TextureID = skin.texId
+                        if _effectiveScale then obj.Size = _effectiveScale end
                     end)
                 end
             end
