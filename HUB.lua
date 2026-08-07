@@ -37207,7 +37207,7 @@ function CreatePremiumTab()
                                 elseif obj:IsA("SpecialMesh") then
                                     obj.MeshId    = eData.Mesh
                                     obj.TextureId = eData.Texture
-                                    obj.Scale     = eData.Scale
+                                    if eData.Scale then pcall(function() obj.Scale = eData.Scale end) end
                                 elseif obj:IsA("MeshPart") then
                                     if eData.Mesh and eData.Mesh ~= "" then obj.MeshId = eData.Mesh end
                                     obj.TextureID = eData.Texture
@@ -37262,11 +37262,9 @@ function CreatePremiumTab()
                 pcall(function() tool.Grip = skin.grip end)
             end
 
-            -- FIX MOBILE: reducir escala a la mitad en mobile para evitar guns gigantes
+            -- _effectiveScale: aplica SOLO a SpecialMesh (SM.Scale si funciona desde executor).
+            -- NO aplica a MeshPart.Size (read-only en cliente).
             local _effectiveScale = skin.scale
-            if _scIsMobile and skin.scale then
-                _effectiveScale = skin.scale * 0.5
-            end
 
             -- PASO 1: manejar el Handle directamente (mismo enfoque que actualizarBomba/GoldBomb)
             local handle = tool:FindFirstChild("Handle")
@@ -37282,7 +37280,7 @@ function CreatePremiumTab()
                     pcall(function()
                         existingSM.MeshId    = skin.meshId
                         existingSM.TextureId = skin.texId
-                        existingSM.Scale     = _effectiveScale
+                        if _effectiveScale then existingSM.Scale = _effectiveScale end
                     end)
                 elseif handle:IsA("MeshPart") then
                     -- Handle MeshPart moderno
@@ -37307,20 +37305,32 @@ function CreatePremiumTab()
             end
 
             -- PASO 2: descendientes adicionales (modelos multi-parte), saltando el Handle ya procesado
+            -- FIX: si la skin usa MeshPart (AK), NO pisar SpecialMeshes de descendientes.
+            -- El AK no tiene SMs propios; pisarlos rompe guns como Luger/Bacon al cambiar skin.
+            -- FIX TAMAÑO: NO aplicar scale a SMs que NO son hijos directos del Handle;
+            -- el scale correcto ya se aplico en PASO 1 al SM hijo del Handle.
+            -- Aplicar scale a SMs secundarios los hace verse grandes (rompe Luger, etc).
+            local _skinIsMeshPart = handle and handle:IsA("MeshPart")
             for _, obj in pairs(tool:GetDescendants()) do
                 if obj == handle then
                     -- ya procesado arriba
                 elseif obj:IsA("SpecialMesh") and obj.Name ~= "_SC_FakeSM" then
-                    if not _skinState.origData[tool].Elements[obj] then
+                    -- Solo es el SM del Handle si su padre directo ES el Handle
+                    local _isHandleSM = handle and (obj.Parent == handle)
+                    if _skinIsMeshPart then
+                        -- skin es MeshPart: no tocar SMs ajenos para no romper otras guns
+                    elseif not _skinState.origData[tool].Elements[obj] then
                         _skinState.origData[tool].Elements[obj] = {
                             Mesh = obj.MeshId, Texture = obj.TextureId, Scale = obj.Scale
                         }
                     end
-                    pcall(function()
+                    if not _skinIsMeshPart then pcall(function()
                         obj.MeshId    = skin.meshId
                         obj.TextureId = skin.texId
-                        obj.Scale     = _effectiveScale
-                    end)
+                        -- FIX TAMAÑO: aplicar scale SOLO al SM hijo directo del Handle.
+                        -- Los SMs de partes secundarias no reciben scale para no quedar grandes.
+                        if _effectiveScale and _isHandleSM then obj.Scale = _effectiveScale end
+                    end) end
                 elseif obj:IsA("MeshPart") and obj ~= handle then
                     if not _skinState.origData[tool].Elements[obj] then
                         _skinState.origData[tool].Elements[obj] = { Mesh = obj.MeshId, Texture = obj.TextureID }
@@ -37503,6 +37513,29 @@ function CreatePremiumTab()
         -- Selector skin Gun
         local _gunNames = {}
         for _, s in ipairs(_SC_GUN_SKINS) do _gunNames[#_gunNames+1] = s.name end
+
+        -- BOTON DEBUG: imprimir estructura del Handle de la gun actual
+        CreateButton(leftColumn, "[DEBUG] Info Handle Gun", ThemeColors.Primary, function()
+            local gun = _findGun and _findGun()
+            if not gun then CreateCustomNotification("DEBUG", "No gun encontrada", 3); return end
+            local h = gun:FindFirstChild("Handle")
+            if not h then CreateCustomNotification("DEBUG", "Sin Handle: " .. gun.Name, 3); return end
+            local sm = h:FindFirstChildOfClass("SpecialMesh")
+            local canWriteSM = sm and pcall(function() sm.Scale = sm.Scale end)
+            local info = "Gun: " .. gun.Name
+                .. "  Handle: " .. h.ClassName
+                .. "  Size: " .. tostring(h.Size)
+                .. "  SM: " .. tostring(sm ~= nil)
+            if sm then
+                info = info
+                    .. "  SM.Scale: " .. tostring(sm.Scale)
+                    .. "  Escribible: " .. tostring(canWriteSM)
+                    .. "  MeshId: " .. sm.MeshId:sub(1,30)
+            end
+            print("[SC DEBUG] " .. info)
+            CreateCustomNotification("DEBUG HANDLE", info, 10)
+        end)
+
         CreateNebulaSelector(leftColumn, "Skin -- Gun", _gunNames, _gunNames[1], function(sel)
             -- Auto-setear modo gun al usar este selector
             if _skinState.mode ~= "gun" then
@@ -37523,6 +37556,10 @@ function CreatePremiumTab()
             -- FIX AUTO-APPLY: activar siempre, aunque no tenga la gun todavia.
             -- Los listeners de _scSetupListener se encargan de aplicar cuando aparezca.
             _skinState.enabled = true
+
+            -- FIX: resetear skin anterior antes de aplicar la nueva para limpiar origData
+            -- Esto evita que el Scale del AK quede guardado en origData[tool] y afecte skins siguientes
+            _scResetAll()
 
             -- FIX: usar _findGun() que busca en char y backpack correctamente (MM2 usa modelo en workspace)
             local tool = _findGun and _findGun()
