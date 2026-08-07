@@ -37689,7 +37689,10 @@ function CreatePremiumTab()
                                 if w then
                                     local sg = currentSkin.grip
                                     local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
-                                    w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                                    -- FIX: Para gun usar rotacion 180Y (no espejo X que rompe el mesh)
+                                    local rot180Y = CFrame.Angles(0, math.rad(180), 0)
+                                    w.C0 = CFrame.new(-px, py, pz) * rot180Y *
+                                        CFrame.new(r00,r10,r20, r01,r11,r21, r02,r12,r22)
                                     w.C1 = CFrame.new()
                                 end
                             end
@@ -46616,12 +46619,32 @@ function CreateCombatTab()
                 if not (handle and grip and lHand) then return end
                 -- Verificar que el handle pertenece a la tool correcta (no a otra tool del char)
                 if handle.Parent ~= tool then return end
+                -- FIX DUAL GUN ROTO: para gun NO hacer espejo X (deforma mesh asimetrico).
+                -- Para gun usar rotacion 180 en Y sobre el grip → queda como mano izquierda natural.
+                -- Para knife mantener espejo X (funciona bien en meshes simetricos).
+                local isDualGun = (keywordList == _dualGunKeywords)
+
+                -- Funcion helper: calcular C0 del weld segun modo
+                local function _calcMirrorC0(gripC0)
+                    local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = gripC0:GetComponents()
+                    if isDualGun then
+                        -- Gun: rotar 180° en Y para voltear la gun al lado opuesto
+                        -- sin invertir la geometria del mesh (evita el "roto")
+                        local rot180Y = CFrame.Angles(0, math.rad(180), 0)
+                        local mirrored = CFrame.new(-px, py, pz) * rot180Y *
+                            CFrame.new(r00,r10,r20, r01,r11,r21, r02,r12,r22)
+                        return mirrored
+                    else
+                        -- Knife: espejo X (comportamiento original, funciona bien)
+                        return CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                    end
+                end
+
                 local existing = char:FindFirstChild("DK_Clone")
                 if existing then
                     local w = existing:FindFirstChild("MirrorWeld")
                     if w then
-                        local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
-                        w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                        w.C0 = _calcMirrorC0(grip.C0)
                         w.C1 = grip.C1
                     end
                     -- FIX DUAL INVISIBLE: mantener el clon visible aunque el handle cambie de transparencia
@@ -46637,39 +46660,92 @@ function CreateCombatTab()
                 for _, d in ipairs(handle:GetDescendants()) do
                     pcall(function() d.Archivable = true end)
                 end
-                local clon = handle:Clone()
-                clon.Name       = "DK_Clone"
-                clon.CanCollide = false
-                clon.Massless   = true
-                clon.Anchored   = false
-                -- FIX DUAL INVISIBLE: forzar visibilidad del clon sin importar la
-                -- transparencia del handle original (puede estar en 1 por SA flash u otros sistemas)
-                clon.Transparency = 0
-                pcall(function() clon.LocalTransparencyModifier = 0 end)
-                -- Limpiar hijos que no sean visuales (solo mantener mesh y partes)
-                for _, child in pairs(clon:GetChildren()) do
-                    if not child:IsA("BasePart") and not child:IsA("SpecialMesh") and not child:IsA("MeshPart") then
-                        child:Destroy()
+
+                -- FIX GUN ROTA: para Dual Gun clonar TODA la tool (todas las BasePart)
+                -- no solo el Handle. Algunas guns tienen partes extra (barrel, scope, etc.)
+                -- que son hijas directas de la Tool y no del Handle, y quedaban faltando.
+                local clon
+                if isDualGun then
+                    -- Crear un Model contenedor y clonar cada BasePart/SpecialMesh de la tool
+                    clon = Instance.new("Part")
+                    clon.Name        = "DK_Clone"
+                    clon.CanCollide  = false
+                    clon.Massless    = true
+                    clon.Anchored    = false
+                    clon.Transparency = 1  -- parte raiz invisible, solo ancla el weld
+                    clon.Size        = Vector3.new(0.1, 0.1, 0.1)
+                    -- Clonar handle y todos sus descendientes como hijos del clon raiz
+                    local handleClone = handle:Clone()
+                    handleClone.Name      = "HandleClone"
+                    handleClone.CanCollide = false
+                    handleClone.Massless  = true
+                    handleClone.Transparency = 0
+                    pcall(function() handleClone.LocalTransparencyModifier = 0 end)
+                    -- Limpiar scripts/etc del handleClone pero mantener mesh
+                    for _, child in pairs(handleClone:GetChildren()) do
+                        if not child:IsA("BasePart") and not child:IsA("SpecialMesh")
+                            and not child:IsA("MeshPart") and not child:IsA("UIBase") then
+                            child:Destroy()
+                        end
+                    end
+                    handleClone.Parent = clon
+                    -- Weld del handleClone al clon raiz (offset relativo al handle original)
+                    local hw = Instance.new("Weld", handleClone)
+                    hw.Part0 = clon
+                    hw.Part1 = handleClone
+                    hw.C0    = CFrame.new()
+                    hw.C1    = CFrame.new()
+                    -- Clonar partes extra de la tool (hijos directos que no son Handle ni scripts)
+                    for _, child in pairs(tool:GetChildren()) do
+                        if child ~= handle and (child:IsA("BasePart") or child:IsA("MeshPart")) then
+                            pcall(function()
+                                child.Archivable = true
+                                local partClone = child:Clone()
+                                partClone.CanCollide  = false
+                                partClone.Massless    = true
+                                partClone.Transparency = 0
+                                pcall(function() partClone.LocalTransparencyModifier = 0 end)
+                                -- Calcular offset de esta parte relativo al handle
+                                local relCF = handle.CFrame:Inverse() * child.CFrame
+                                partClone.Parent = clon
+                                local pw = Instance.new("Weld", partClone)
+                                pw.Part0 = handleClone
+                                pw.Part1 = partClone
+                                pw.C0    = relCF
+                                pw.C1    = CFrame.new()
+                            end)
+                        end
+                    end
+                else
+                    -- Dual Knife: comportamiento original (clonar solo handle)
+                    clon = handle:Clone()
+                    clon.Name       = "DK_Clone"
+                    clon.CanCollide = false
+                    clon.Massless   = true
+                    clon.Anchored   = false
+                    clon.Transparency = 0
+                    pcall(function() clon.LocalTransparencyModifier = 0 end)
+                    for _, child in pairs(clon:GetChildren()) do
+                        if not child:IsA("BasePart") and not child:IsA("SpecialMesh") and not child:IsA("MeshPart") then
+                            child:Destroy()
+                        end
+                    end
+                    for _, desc in ipairs(clon:GetDescendants()) do
+                        if desc:IsA("BasePart") then
+                            pcall(function() desc.Transparency = 0; desc.LocalTransparencyModifier = 0 end)
+                        end
                     end
                 end
-                -- Asegurar que sub-partes del clon tambien sean visibles
-                for _, desc in ipairs(clon:GetDescendants()) do
-                    if desc:IsA("BasePart") then
-                        pcall(function() desc.Transparency = 0; desc.LocalTransparencyModifier = 0 end)
-                    end
-                end
+
                 clon.Parent = char
                 local weld = Instance.new("Weld", clon)
                 weld.Name  = "MirrorWeld"
                 weld.Part0 = lHand
                 weld.Part1 = clon
-                local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = grip.C0:GetComponents()
-                weld.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                weld.C0 = _calcMirrorC0(grip.C0)
                 weld.C1 = grip.C1
 
                 -- HOOK PREMIUM SKIN: solo aplicar skin al clon si es Dual Gun (no Dual Knife)
-                -- FIX: antes aplicaba siempre la skin de gun incluso al clon del knife
-                local isDualGun = (keywordList == _dualGunKeywords)
                 if isDualGun then
                     pcall(function()
                         local sc = _G._skinChangerState
