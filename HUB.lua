@@ -37033,6 +37033,10 @@ function CreatePremiumTab()
 
         local _SC_KNIFE_SKINS = {
             {
+                name       = "❌ Remove Skin",
+                removeSkin = true,
+            },
+            {
                 name   = "Turkey",
                 meshId = "rbxassetid://15320557481",
                 texId  = "rbxassetid://86999625612475",
@@ -37554,6 +37558,27 @@ function CreatePremiumTab()
                 end
 
                 if not selectedSkin then return end
+
+                -- REMOVE SKIN: restaurar el knife a su estado original
+                if selectedSkin.removeSkin then
+                    _skinState.enabled = false
+                    _scResetAll()
+                    -- Limpiar listeners para que no se re-aplique en nueva ronda
+                    if _skinState._knifeCharConn then
+                        pcall(function() _skinState._knifeCharConn:Disconnect() end)
+                        _skinState._knifeCharConn = nil
+                    end
+                    if _skinState._knifePickupConn then
+                        pcall(function() _skinState._knifePickupConn:Disconnect() end)
+                        _skinState._knifePickupConn = nil
+                    end
+                    if _skinState._knifeWsConn then
+                        pcall(function() _skinState._knifeWsConn:Disconnect() end)
+                        _skinState._knifeWsConn = nil
+                    end
+                    CreateCustomNotification("❌ KNIFE SKIN", "Skin removida!", 2)
+                    return
+                end
 
                 -- FIX SKIN SWAP: si ya habia una skin aplicada, restaurar origData antes de aplicar la nueva
                 local _knifeActual = _findKnife()
