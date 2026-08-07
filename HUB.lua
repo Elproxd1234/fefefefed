@@ -1374,8 +1374,10 @@ lastEvasionTime = 0
 -- ===================================================================
 
 function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultState)
+    local _ptIsMobile = (_G._isMobileHub == true) or (pcall(function() return game:GetService("UserInputService").TouchEnabled end) and game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
     local mainFrame = Instance.new("Frame", parent)
-    mainFrame.Size = UDim2.new(1, 0, 0, subtitleText and subtitleText ~= "" and 68 or 50)
+    local _ptBaseH = _ptIsMobile and (subtitleText and subtitleText ~= "" and 44 or 36) or (subtitleText and subtitleText ~= "" and 68 or 50)
+    mainFrame.Size = UDim2.new(1, 0, 0, _ptBaseH)
     mainFrame.BackgroundTransparency = 1   -- sin fondo
     mainFrame.BorderSizePixel = 0
 
@@ -1420,9 +1422,9 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
         subLabel.TextTruncate = Enum.TextTruncate.AtEnd
     end
 
-    local TRACK_W, TRACK_H = 130, 35
-    local THUMB_W, THUMB_H = 50, 27
-    local THUMB_PAD = 4
+    local TRACK_W, TRACK_H = _ptIsMobile and 80 or 130, _ptIsMobile and 22 or 35
+    local THUMB_W, THUMB_H = _ptIsMobile and 30 or 50,  _ptIsMobile and 16 or 27
+    local THUMB_PAD = 3
 
     local track = Instance.new("Frame", mainFrame)
     track.Size = UDim2.new(0, TRACK_W, 0, TRACK_H)
@@ -11543,8 +11545,8 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     local C_TRACK_FG = Color3.fromRGB(120, 170, 255)    -- fill iluminado
     local C_THUMB    = Color3.fromRGB(255, 255, 255)    -- knob blanco
     local C_VALBG    = Color3.fromRGB(100, 150, 220)    -- fondo value box
-
-    local CONTAINER_H = 70
+    local _slIsMobile = (_G._isMobileHub == true) or (pcall(function() return game:GetService("UserInputService").TouchEnabled end) and game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
+    local CONTAINER_H = _slIsMobile and 46 or 70
 
     -- Marco principal azul translucido
     local container = Instance.new("Frame", actualParent)
@@ -11951,8 +11953,9 @@ end
 
 function CreateButton(parent, nombre, color, callback)
     local actualParent = _currentMainSectionFrame or parent
+    local _btnIsMobile = (_G._isMobileHub == true) or (pcall(function() return game:GetService("UserInputService").TouchEnabled end) and game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
     local container = Instance.new("Frame", actualParent)
-    container.Size = UDim2.new(1, 0, 0, 60)
+    container.Size = UDim2.new(1, 0, 0, _btnIsMobile and 38 or 60)
     container.BackgroundTransparency = 1
 
     -- Padding interior para que el boton no ocupe todo el ancho
@@ -11987,7 +11990,7 @@ function CreateButton(parent, nombre, color, callback)
     textLabel.BackgroundTransparency = 1
     textLabel.Text = convertirFuenteCursor(nombre)
     textLabel.FontFace = Font.fromEnum(Enum.Font.GothamBold)
-    textLabel.TextSize = 15
+    textLabel.TextSize = _btnIsMobile and 11 or 15
     textLabel.TextColor3 = ThemeColors.TextPrimary
     textLabel.TextXAlignment = Enum.TextXAlignment.Center
     textLabel.ZIndex = 3
@@ -19824,6 +19827,7 @@ end
 -- FIX: CreateBorderedSection definida globalmente para que CreateMainTab y otras tabs puedan usarla
 -- v2: aurora header animations -- shimmer text color + pulsing stroke glow + scan line sweep
 function CreateBorderedSection(parent, title)
+    local _bsIsMobile = (_G._isMobileHub == true) or (pcall(function() return game:GetService("UserInputService").TouchEnabled end) and game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
     local wrapper = Instance.new("Frame", parent)
     wrapper.Size = UDim2.new(1, -6, 0, 0)
     wrapper.BackgroundColor3 = ThemeColors.Background
@@ -19856,7 +19860,7 @@ function CreateBorderedSection(parent, title)
 
     if title and title ~= "" then
         local header = Instance.new("Frame", wrapper)
-        header.Size = UDim2.new(1, 0, 0, 34)
+        header.Size = UDim2.new(1, 0, 0, _bsIsMobile and 22 or 34)
         header.BackgroundColor3 = ThemeColors.Primary
         header.BackgroundTransparency = 0.82
         header.BorderSizePixel = 0
@@ -19913,7 +19917,7 @@ function CreateBorderedSection(parent, title)
         titleLbl.BackgroundTransparency = 1
         titleLbl.Text = title
         titleLbl.Font = Enum.Font.GothamBold
-        titleLbl.TextSize = 16
+        titleLbl.TextSize = _bsIsMobile and 11 or 16
         titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
         titleLbl.TextXAlignment = Enum.TextXAlignment.Left
         titleLbl.ZIndex = 14
@@ -19937,7 +19941,7 @@ function CreateBorderedSection(parent, title)
     section.AutomaticSize = Enum.AutomaticSize.Y
     section.ZIndex = 12
     if title and title ~= "" then
-        section.Position = UDim2.new(0, 0, 0, 26)
+        section.Position = UDim2.new(0, 0, 0, _bsIsMobile and 18 or 26)
     end
     local padding = Instance.new("UIPadding", section)
     padding.PaddingTop = UDim.new(0, 2)
@@ -28345,7 +28349,7 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local _knobOffL    = 4
     local _labelTxtSz  = _isMobileTog and 13 or 18
     local _labelWScale = _isMobileTog and 0.55 or 0.6
-    local _rowH        = 130  -- altura fija 130px en mobile y PC
+    local _rowH        = _isMobileTog and 58 or 130  -- mobile: compacto, PC: normal
     local _toggleRightOff = _isMobileTog and -8 or -15
 
     -- Marco principal — fondo azul translúcido con borde azul (diseño foto)
