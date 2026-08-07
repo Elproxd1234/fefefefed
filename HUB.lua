@@ -37048,19 +37048,23 @@ function CreatePremiumTab()
                 meshId = "http://www.roblox.com/asset/?id=95356090",
                 texId  = "http://www.roblox.com/asset/?id=126534866",
                 scale  = Vector3.new(1.7999999523162842, 1.7999999523162842, 1.7999999523162842),
+                -- FIX GRIP: Z=+0.5 empujaba el arma hacia adentro del torso.
+                -- Cambiado a Z=-0.5 para que quede adelante de la mano apuntando al frente.
                 grip   = CFrame.new(
-                    0, -0.5, 0.5,
+                    0, -0.5, -0.5,
                     0.999924004,    -0.00871835742, -0.00871835742,
                     0.00871835742,   0.999961972,   -3.80063248e-05,
                     0.00871835742,  -3.80063248e-05,  0.999961972
                 ),
+                dualGun = true,
             },
             {
                 name   = "Harvester",
                 meshId = "rbxassetid://7775027413",
                 texId  = "http://www.roblox.com/asset/?id=7775245551",
                 scale  = Vector3.new(0.05999999865889549, 0.05000000074505806, 0.05000000074505806),
-                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                -- FIX GRIP: mismo mesh que Harvester knife (_KNIFE_SKINS) -- sincronizado con Y=-1
+                grip   = CFrame.new(0, -1, 0) * CFrame.Angles(math.rad(-90), 0, 0),
                 dualGun = true,
             },
             {
@@ -37092,12 +37096,14 @@ function CreatePremiumTab()
                 dualGun = true,
             },
             {
-                -- GingerScope: Handle + Scope (MeshPart), GunClient confirmado — IDs capturados en consola
+                -- GingerScope: Handle + Scope (MeshPart), GunClient confirmado
                 name   = "GingerScope",
                 meshId = "rbxassetid://15374602183",
-                texId  = "rbxassetid://107224776622554",
+                texId  = "rbxassetid://15409041564",
                 scale  = Vector3.new(0.08, 0.08, 0.08),
-                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                -- FIX GRIP: identidad dejaba el scope mal agarrado.
+                -- Unificado con el grip probado en _GUN_SKINS (Items Fake).
+                grip   = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0),
                 dualGun = true,
             },
             {
@@ -37111,12 +37117,10 @@ function CreatePremiumTab()
             },
 
             {
-                -- AK (English): SOLO PC — no aplica en mobile
-                -- CONFIG PC: Rot X=2° Rot Y=-96° Rot Z=2° | Grip X=-0.55 Y=-0.23 Z=-0.15 | Scale uniforme=0.035 * factores por eje
                 name   = "AK",
                 meshId = "rbxassetid://130016653323757",
                 texId  = "rbxassetid://110314778967742",
-                scale  = Vector3.new(0.035 * 0.71, 0.035 * 0.26, 0.035 * 1.971),
+                scale  = Vector3.new(0.030, 0.055, 0.055),
                 grip   = CFrame.new(-0.55, -0.23, -0.15) *
                          CFrame.fromEulerAnglesXYZ(
                              math.rad(2),
@@ -37124,7 +37128,6 @@ function CreatePremiumTab()
                              math.rad(2)
                          ),
                 dualGun = true,
-                pcOnly  = true,  -- no aplicar en celular
             },
         }
         -- FIX: exponer la lista en _G para que _dualStartArm pueda referenciarla
@@ -37236,8 +37239,6 @@ function CreatePremiumTab()
 
         local function _scApply(tool, skin, bypass)
             if not tool or not skin then return end
-            -- pcOnly: esta skin no aplica en celular
-            if skin.pcOnly and _scIsMobile then return end
             if not bypass then
                 if _skinState.mode == "gun"   and not _scEsGun(tool)   then return end
                 if _skinState.mode == "knife" and not _scEsKnife(tool) then return end
@@ -37255,9 +37256,8 @@ function CreatePremiumTab()
                 end
             end)
 
-            -- FIX MOBILE: en celu aplicar Grip original del tool (no el custom)
-            -- para que el shoot no se rompa. Solo aplica mesh/texture/scale.
-            local _applyGrip = not _scIsMobile
+            -- Aplicar grip en todos los dispositivos (mobile incluido)
+            local _applyGrip = true
             if _applyGrip then
                 pcall(function() tool.Grip = skin.grip end)
             end
@@ -53060,7 +53060,9 @@ local _vp           = workspace.CurrentCamera.ViewportSize
 local _isMobileHub  = false
 pcall(function()
     local _uis = game:GetService("UserInputService")
-    _isMobileHub = _uis.TouchEnabled and _vp.X < 850
+    -- Detectar mobile por TouchEnabled sin importar el tamaño del viewport,
+    -- ya que en tablets y celulares grandes _vp.X puede superar 850px.
+    _isMobileHub = _uis.TouchEnabled and not _uis.KeyboardEnabled
 end)
 _G._isMobileHub = _isMobileHub
 
