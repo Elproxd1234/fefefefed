@@ -37117,8 +37117,10 @@ function CreatePremiumTab()
                 name   = "AK",
                 meshId = "rbxassetid://130016653323757",
                 texId  = "rbxassetid://110314778967742",
-                -- Scale por eje segun capturas (PC). En mobile _scApply aplica scale * 0.5 automaticamente.
-                scale  = Vector3.new(0.71, 0.26, 1.971),
+                -- Scale: base uniforme 0.035 multiplicada por los factores por eje de las capturas
+                -- Capturas: Scale uniforme=0.035 | ScaleX=0.71 ScaleY=0.26 ScaleZ=1.971
+                -- -> escala real = 0.035 * factor por eje
+                scale  = Vector3.new(0.035 * 0.71, 0.035 * 0.26, 0.035 * 1.971),
                 -- Grip PC: offset (-0.55, -0.23, -0.15) + Rot X=2° Y=-96° Z=2°
                 grip   = CFrame.new(-0.55, -0.23, -0.15) *
                          CFrame.fromEulerAnglesXYZ(
@@ -37213,6 +37215,8 @@ function CreatePremiumTab()
                                 elseif obj:IsA("MeshPart") then
                                     if eData.Mesh and eData.Mesh ~= "" then obj.MeshId = eData.Mesh end
                                     obj.TextureID = eData.Texture
+                                    -- FIX: restaurar Size original si fue guardado (evita que quede agrandado al cambiar skin)
+                                    if eData.Scale then pcall(function() obj.Size = eData.Scale end) end
                                 end
                             end)
                         end
@@ -37277,13 +37281,16 @@ function CreatePremiumTab()
                     -- Handle MeshPart moderno
                     if not _skinState.origData[tool].Elements[handle] then
                         _skinState.origData[tool].Elements[handle] = {
-                            Mesh = handle.MeshId, Texture = handle.TextureID
+                            Mesh = handle.MeshId, Texture = handle.TextureID,
+                            Scale = handle.Size  -- guardar Size original para restaurar correctamente
                         }
                     end
-                    -- Intentar escribir MeshId directo
+                    -- Intentar escribir MeshId directo + Size para escalar el MeshPart
                     local meshWriteOk = pcall(function()
                         handle.MeshId    = skin.meshId
                         handle.TextureID = skin.texId
+                        -- FIX: MeshPart escala via Size, no via SpecialMesh.Scale
+                        if _effectiveScale then handle.Size = _effectiveScale end
                     end)
                     if not meshWriteOk then
                         -- Fallback: inyectar SpecialMesh FileMesh cuando el executor bloquea MeshPart.MeshId
