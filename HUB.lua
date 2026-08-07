@@ -37111,17 +37111,12 @@ function CreatePremiumTab()
             },
 
             {
-                -- AK (English): Handle MeshPart, IDs provided by user
-                -- CONFIG PC  : Rot X=2° Rot Y=-96° Rot Z=2° | Grip X=-0.55 Y=-0.23 Z=-0.15 | Scale X=0.71 Y=0.26 Z=1.971
-                -- CONFIG CELU: scale se divide *0.5 automaticamente por _scIsMobile; grip no se aplica en mobile
+                -- AK (English): SOLO PC — no aplica en mobile
+                -- CONFIG PC: Rot X=2° Rot Y=-96° Rot Z=2° | Grip X=-0.55 Y=-0.23 Z=-0.15 | Scale uniforme=0.035 * factores por eje
                 name   = "AK",
                 meshId = "rbxassetid://130016653323757",
                 texId  = "rbxassetid://110314778967742",
-                -- Scale: base uniforme 0.035 multiplicada por los factores por eje de las capturas
-                -- Capturas: Scale uniforme=0.035 | ScaleX=0.71 ScaleY=0.26 ScaleZ=1.971
-                -- -> escala real = 0.035 * factor por eje
                 scale  = Vector3.new(0.035 * 0.71, 0.035 * 0.26, 0.035 * 1.971),
-                -- Grip PC: offset (-0.55, -0.23, -0.15) + Rot X=2° Y=-96° Z=2°
                 grip   = CFrame.new(-0.55, -0.23, -0.15) *
                          CFrame.fromEulerAnglesXYZ(
                              math.rad(2),
@@ -37129,6 +37124,7 @@ function CreatePremiumTab()
                              math.rad(2)
                          ),
                 dualGun = true,
+                pcOnly  = true,  -- no aplicar en celular
             },
         }
         -- FIX: exponer la lista en _G para que _dualStartArm pueda referenciarla
@@ -37240,6 +37236,8 @@ function CreatePremiumTab()
 
         local function _scApply(tool, skin, bypass)
             if not tool or not skin then return end
+            -- pcOnly: esta skin no aplica en celular
+            if skin.pcOnly and _scIsMobile then return end
             if not bypass then
                 if _skinState.mode == "gun"   and not _scEsGun(tool)   then return end
                 if _skinState.mode == "knife" and not _scEsKnife(tool) then return end
@@ -37247,6 +37245,15 @@ function CreatePremiumTab()
             if not _skinState.origData[tool] then
                 _skinState.origData[tool] = { Grip = tool.Grip, Elements = {} }
             end
+
+            -- Limpiar _SC_FakeSM huerfanos de ejecuciones previas (dentro de MeshPart los hace invisibles)
+            pcall(function()
+                local h = tool:FindFirstChild("Handle")
+                if h and h:IsA("MeshPart") then
+                    local old = h:FindFirstChild("_SC_FakeSM")
+                    if old then old:Destroy() end
+                end
+            end)
 
             -- FIX MOBILE: en celu aplicar Grip original del tool (no el custom)
             -- para que el shoot no se rompa. Solo aplica mesh/texture/scale.
@@ -37282,33 +37289,14 @@ function CreatePremiumTab()
                     if not _skinState.origData[tool].Elements[handle] then
                         _skinState.origData[tool].Elements[handle] = {
                             Mesh = handle.MeshId, Texture = handle.TextureID,
-                            Scale = handle.Size  -- guardar Size original para restaurar correctamente
+                            Scale = handle.Size
                         }
                     end
-                    -- Intentar escribir MeshId directo + Size para escalar el MeshPart
-                    local meshWriteOk = pcall(function()
-                        handle.MeshId    = skin.meshId
-                        handle.TextureID = skin.texId
-                        -- FIX: MeshPart escala via Size, no via SpecialMesh.Scale
-                        if _effectiveScale then handle.Size = _effectiveScale end
-                    end)
-                    if not meshWriteOk then
-                        -- Fallback: inyectar SpecialMesh FileMesh cuando el executor bloquea MeshPart.MeshId
-                        local _smFake = handle:FindFirstChild("_SC_FakeSM")
-                        if not _smFake then
-                            _smFake = Instance.new("SpecialMesh", handle)
-                            _smFake.Name     = "_SC_FakeSM"
-                            _smFake.MeshType = Enum.MeshType.FileMesh
-                            _skinState.origData[tool].Elements[_smFake] = {
-                                Mesh = "", Texture = "", Scale = Vector3.new(1,1,1), _isFakeSM = true
-                            }
-                        end
-                        pcall(function()
-                            _smFake.MeshId    = skin.meshId
-                            _smFake.TextureId = skin.texId
-                            _smFake.Scale     = _effectiveScale
-                        end)
-                    end
+                    -- Intentar escribir MeshId + TextureID directo
+                    local meshOk = pcall(function() handle.MeshId = skin.meshId end)
+                    pcall(function() handle.TextureID = skin.texId end)
+                    -- NUNCA inyectar SpecialMesh dentro de un MeshPart: lo vuelve invisible.
+                    -- Si MeshId es read-only solo se aplica la textura (skin parcial visible).
                 else
                     -- Handle BasePart sin SpecialMesh (legacy)
                     if not _skinState.origData[tool].Elements[handle] then
@@ -37444,10 +37432,10 @@ function CreatePremiumTab()
                 end)
                 -- Re-check extra con delay por si la gun tarda en cargarse en mobile
                 -- FIX MOBILE v4: más delays cubre executors lentos (Delta, Arceus X)
-                task.delay(0.5,  _scTryApplyGun)
-                task.delay(1.2,  _scTryApplyGun)
-                task.delay(2.5,  _scTryApplyGun)
-                task.delay(4.0,  _scTryApplyGun)
+                task.delay(0.5,  function() if _scTryApplyGun then _scTryApplyGun() end end)
+                task.delay(1.2,  function() if _scTryApplyGun then _scTryApplyGun() end end)
+                task.delay(2.5,  function() if _scTryApplyGun then _scTryApplyGun() end end)
+                task.delay(4.0,  function() if _scTryApplyGun then _scTryApplyGun() end end)
             end
 
             local _scChar = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -37558,15 +37546,15 @@ function CreatePremiumTab()
             -- Delays de seguridad para executors lentos / mobile
             task.delay(0.3, function()
                 if not _skinState.enabled or _skinState.mode ~= "gun" then return end
-                task.spawn(_scTryApplyGun)
+                if _scTryApplyGun then task.spawn(_scTryApplyGun) end
             end)
             task.delay(1.0, function()
                 if not _skinState.enabled or _skinState.mode ~= "gun" then return end
-                task.spawn(_scTryApplyGun)
+                if _scTryApplyGun then task.spawn(_scTryApplyGun) end
             end)
             task.delay(2.5, function()
                 if not _skinState.enabled or _skinState.mode ~= "gun" then return end
-                task.spawn(_scTryApplyGun)
+                if _scTryApplyGun then task.spawn(_scTryApplyGun) end
             end)
 
             -- FIX DUAL GUN POSE: si Dual Gun esta activo, destruir el clon actual
