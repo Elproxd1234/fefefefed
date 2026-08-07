@@ -37109,19 +37109,7 @@ function CreatePremiumTab()
                 grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
                 dualGun = true,
             },
-            {
-                name   = "New Gun",
-                meshId = "rbxassetid://95356090",
-                texId  = "rbxassetid://126534866",
-                scale  = Vector3.new(1.85, 1.85, 1.85),
-                grip   = CFrame.new(
-                    0, -0.5, 0.5,
-                    0.999924004, -0.00871835742, -0.00871835742,
-                    0.00871835742,  0.999961972,  -3.80063248e-05,
-                    0.00871835742, -3.80063248e-05,  0.999961972
-                ),
-                dualGun = true,
-            },
+
             {
                 -- AK (English): Handle MeshPart, IDs provided by user
                 name   = "AK",
@@ -37221,7 +37209,6 @@ function CreatePremiumTab()
                                 elseif obj:IsA("MeshPart") then
                                     if eData.Mesh and eData.Mesh ~= "" then obj.MeshId = eData.Mesh end
                                     obj.TextureID = eData.Texture
-                                    if eData.Size then obj.Size = eData.Size end
                                 end
                             end)
                         end
@@ -37286,17 +37273,13 @@ function CreatePremiumTab()
                     -- Handle MeshPart moderno
                     if not _skinState.origData[tool].Elements[handle] then
                         _skinState.origData[tool].Elements[handle] = {
-                            Mesh = handle.MeshId, Texture = handle.TextureID,
-                            Size = handle.Size  -- guardar Size original para resetear
+                            Mesh = handle.MeshId, Texture = handle.TextureID
                         }
                     end
-                    -- Escribir MeshId + TextureID + Size (escala via Size en MeshPart)
+                    -- Intentar escribir MeshId directo
                     local meshWriteOk = pcall(function()
                         handle.MeshId    = skin.meshId
                         handle.TextureID = skin.texId
-                        if _effectiveScale then
-                            handle.Size = _effectiveScale
-                        end
                     end)
                     if not meshWriteOk then
                         -- Fallback: inyectar SpecialMesh FileMesh cuando el executor bloquea MeshPart.MeshId
@@ -37341,14 +37324,11 @@ function CreatePremiumTab()
                     end)
                 elseif obj:IsA("MeshPart") and obj ~= handle then
                     if not _skinState.origData[tool].Elements[obj] then
-                        _skinState.origData[tool].Elements[obj] = {
-                            Mesh = obj.MeshId, Texture = obj.TextureID, Size = obj.Size
-                        }
+                        _skinState.origData[tool].Elements[obj] = { Mesh = obj.MeshId, Texture = obj.TextureID }
                     end
                     pcall(function()
                         if skin.meshId and skin.meshId ~= "" then obj.MeshId = skin.meshId end
                         obj.TextureID = skin.texId
-                        if _effectiveScale then obj.Size = _effectiveScale end
                     end)
                 end
             end
