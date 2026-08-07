@@ -37014,29 +37014,15 @@ function CreatePremiumTab()
                 dualGun = true,
             },
             {
-                -- Shotgun: modelo custom exportado desde Blender
-                name   = "Shotgun",
-                meshId = "rbxassetid://113266841572317",
-                texId  = "rbxassetid://108221897243102",
-                scale  = Vector3.new(0.05, 0.05, 0.05),
+                name   = "New Gun",
+                meshId = "rbxassetid://95356090",
+                texId  = "rbxassetid://126534866",
+                scale  = Vector3.new(1.85, 1.85, 1.85),
                 grip   = CFrame.new(
-                    0, -0.1, -0.5,
-                    1,  0,    0,
-                    0,  1,    0,
-                    0,  0,    1
-                ),
-                dualGun = true,
-            },
-            {
-                name   = "Custom Shotgun for me",
-                meshId = "rbxassetid://89500447780367",
-                texId  = "rbxassetid://112744655854803",
-                scale  = Vector3.new(0.72, 0.65, 1.55),
-                grip   = CFrame.new(
-                    2, -0.05, -0.1,
-                    -0.103749, -0.0527153, 0.993206,
-                    -0.0127388, 0.998583, 0.05167,
-                    -0.994522, -0.00729153, -0.104274
+                    0, -0.5, 0.5,
+                    0.999924004, -0.00871835742, -0.00871835742,
+                    0.00871835742,  0.999961972,  -3.80063248e-05,
+                    0.00871835742, -3.80063248e-05,  0.999961972
                 ),
                 dualGun = true,
             },
@@ -37075,12 +37061,12 @@ function CreatePremiumTab()
                 dualKnife = true,
             },
             {
-                name   = " Coming Soon...",
-                meshId = "",
-                texId  = "",
-                scale  = Vector3.new(0.05, 0.05, 0.05),
-                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
-                comingSoon = true,
+                name   = "New Knife",
+                meshId = "rbxassetid://106376139482867",
+                texId  = "rbxassetid://112744655854803",
+                scale  = Vector3.new(0.6, 0.6, 0.6),
+                grip   = CFrame.new(0, -0.55, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                dualKnife = true,
             },
         }
 
@@ -55566,6 +55552,10 @@ function CreateUpdateTab()
                         "[*] Silent Aim fixed — prediction accuracy improved, no more missed shots on moving targets.",
                         "[+] Visuals: added Tracer ThrowingKnife — draws a tracer line to the knife while it is in flight.",
                         "[+] ESP auto-hides when StucKnife is detected in workspace — prevents detection.",
+                        "[+] NEW: New Knife skin added to Fixed Weapons — custom knife model.",
+                        "[+] NEW: New Gun skin added to Fixed Weapons — custom gun model.",
+                        "[-] Removed Shotgun and Custom Shotgun from Fixed Weapons skin list.",
+                        "[-] Removed 'Coming Soon' placeholder from Knife skins.",
                     }
                 },
                 {
@@ -55576,6 +55566,10 @@ function CreateUpdateTab()
                         "[*] Silent Aim: improved target lock on fast-moving players.",
                         "[+] Tracer ThrowingKnife: toggle added in Visuals > Tracer section.",
                         "[+] ESP: all boards now hide automatically when StucKnife appears in workspace.",
+                        "[+] NEW Knife skin: custom knife model available in Fixed Weapons.",
+                        "[+] NEW Gun skin: custom gun model available in Fixed Weapons.",
+                        "[-] Shotgun and Custom Shotgun removed from Fixed Weapons skin selector.",
+                        "[-] Removed 'Coming Soon' placeholder from knife skin list.",
                     }
                 },
             },
@@ -55586,6 +55580,10 @@ function CreateUpdateTab()
                 "[*] Silent Aim fixed — better accuracy on moving targets.",
                 "[+] NEW: Tracer ThrowingKnife — tracer line to flying knife.",
                 "[+] NEW: ESP auto-hides on StucKnife detected (anti-detection).",
+                "[+] NEW: New Knife skin — custom knife model in Fixed Weapons.",
+                "[+] NEW: New Gun skin — custom gun model in Fixed Weapons.",
+                "[-] Shotgun removed from Fixed Weapons skin list.",
+                "[-] 'Coming Soon' placeholder removed from knife skins.",
             }
         },
         {
