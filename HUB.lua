@@ -37237,10 +37237,12 @@ function CreatePremiumTab()
         --                          el part completamente invisible en Roblox.
         --   2. Handle BasePart con SpecialMesh hijo  -> pisar MeshId/TextureId/Scale del SM
         --   3. Handle BasePart sin SpecialMesh (legacy)  -> pisar MeshId/TextureID directo
-        -- FIX MOBILE: detectar dispositivo para escalar correctamente
+        -- FIX MOBILE: detectar dispositivo correctamente
         local _UIS_SC = game:GetService("UserInputService")
-        local _scIsMobile = pcall(function() return _UIS_SC.TouchEnabled end)
-            and _UIS_SC.TouchEnabled and not _UIS_SC.KeyboardEnabled
+        local _scIsMobile = false
+        pcall(function()
+            _scIsMobile = _UIS_SC.TouchEnabled and not _UIS_SC.KeyboardEnabled
+        end)
 
         local function _scApply(tool, skin, bypass)
             if not tool or not skin then return end
@@ -37252,18 +37254,11 @@ function CreatePremiumTab()
                 _skinState.origData[tool] = { Grip = tool.Grip, Elements = {} }
             end
 
-            -- FIX MOBILE: en celu aplicar Grip original del tool (no el custom)
-            -- para que el shoot no se rompa. Solo aplica mesh/texture/scale.
-            local _applyGrip = not _scIsMobile
-            if _applyGrip then
-                pcall(function() tool.Grip = skin.grip end)
-            end
+            -- Aplicar Grip siempre (mobile y PC): cada skin tiene su grip calibrado
+            pcall(function() tool.Grip = skin.grip end)
 
-            -- FIX MOBILE: reducir escala a la mitad en mobile para evitar guns gigantes
+            -- Usar la escala exacta de cada skin sin modificarla
             local _effectiveScale = skin.scale
-            if _scIsMobile and skin.scale then
-                _effectiveScale = skin.scale * 0.5
-            end
 
             -- PASO 1: manejar el Handle directamente (mismo enfoque que actualizarBomba/GoldBomb)
             local handle = tool:FindFirstChild("Handle")
