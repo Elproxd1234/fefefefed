@@ -37046,9 +37046,9 @@ function CreatePremiumTab()
                 dualKnife = true,
             },
             {
-                name   = "Knife",
-                meshId = "rbxassetid://109711282082830",
-                texId  = "rbxassetid://1117556526686597",
+                name   = "Candy",
+                meshId = "http://www.roblox.com/asset/?id=19040337",
+                texId  = "rbxassetid://19040326",
                 scale  = Vector3.new(0.0560000017285347, 0.0560000017285347, 0.0560000017285347),
                 grip   = CFrame.new(0, -0.1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
                 dualKnife = true,
