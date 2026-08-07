@@ -37288,9 +37288,6 @@ function CreatePremiumTab()
         -- FIX MOBILE REBUILD: limpiar conexiones viejas siempre que el tab se reconstruya,
         -- para que el listener se vuelva a registrar correctamente (evita que el guard
         -- "if not _charConn" bloquee el re-registro tras destruir y recrear el tab Premium).
-        -- FIX NIL CALL: declarar _scTryApplyGun fuera del bloque do para que el callback
-        -- del selector de Gun pueda accederla como upvalue (evita "attempt to call a nil value").
-        local _scTryApplyGun
         do
             if _skinState._charConn then
                 pcall(function() _skinState._charConn:Disconnect() end)
@@ -37312,7 +37309,7 @@ function CreatePremiumTab()
             -- FIX MOBILE: en celu la gun llega via DescendantAdded del workspace,
             -- no necesariamente como ChildAdded del char. Usamos DescendantAdded
             -- para capturar cualquier Tool que aparezca (gun en char o en workspace).
-            _scTryApplyGun = function()
+            local function _scTryApplyGun()
                 if not _skinState.enabled or _skinState.mode ~= "gun" then return end  -- FIX: respetar modo
                 task.wait(0.15)
                 if not _skinState.enabled or _skinState.mode ~= "gun" then return end  -- re-check post-wait
