@@ -1374,10 +1374,8 @@ lastEvasionTime = 0
 -- ===================================================================
 
 function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultState)
-    local _ptIsMobile = (_G._isMobileHub == true) or (pcall(function() return game:GetService("UserInputService").TouchEnabled end) and game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
     local mainFrame = Instance.new("Frame", parent)
-    local _ptBaseH = _ptIsMobile and (subtitleText and subtitleText ~= "" and 44 or 36) or (subtitleText and subtitleText ~= "" and 68 or 50)
-    mainFrame.Size = UDim2.new(1, 0, 0, _ptBaseH)
+    mainFrame.Size = UDim2.new(1, 0, 0, subtitleText and subtitleText ~= "" and 44 or 36)
     mainFrame.BackgroundTransparency = 1   -- sin fondo
     mainFrame.BorderSizePixel = 0
 
@@ -1422,8 +1420,8 @@ function CreatePremiumToggle(parent, titleText, subtitleText, callback, defaultS
         subLabel.TextTruncate = Enum.TextTruncate.AtEnd
     end
 
-    local TRACK_W, TRACK_H = _ptIsMobile and 80 or 130, _ptIsMobile and 22 or 35
-    local THUMB_W, THUMB_H = _ptIsMobile and 30 or 50,  _ptIsMobile and 16 or 27
+    local TRACK_W, TRACK_H = 80, 22
+    local THUMB_W, THUMB_H = 30, 16
     local THUMB_PAD = 3
 
     local track = Instance.new("Frame", mainFrame)
@@ -8789,9 +8787,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     local TWEEN_OPEN  = TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
     local TWEEN_CLOSE = TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 
-    local _ns_isMobile = (_G._isMobileHub == true) or (pcall(function() return game:GetService("UserInputService").TouchEnabled end) and game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
-    local ROW_H    = _ns_isMobile and 30 or 44
-    local HEADER_H = _ns_isMobile and 40 or 56
+    local ROW_H    = 30
+    local HEADER_H = 40
     local GAP      = 4
     local MAX_ROWS = 5
 
@@ -8824,7 +8821,7 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     titleLabel.Text                   = titulo
     titleLabel.TextColor3             = C("TextPrimary")
     titleLabel.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-    titleLabel.TextSize               = _ns_isMobile and 11 or 15
+    titleLabel.TextSize               = 11
     titleLabel.TextXAlignment         = Enum.TextXAlignment.Left
     titleLabel.TextYAlignment         = Enum.TextYAlignment.Center
     titleLabel.TextTruncate           = Enum.TextTruncate.AtEnd
@@ -8833,9 +8830,9 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     -- Badge pill derecho
     local triggerBtn = Instance.new("TextButton", masterFrame)
     triggerBtn.Name                   = "TriggerBadge"
-    triggerBtn.Size                   = UDim2.new(0.44, 0, 0, _ns_isMobile and 24 or 36)
+    triggerBtn.Size                   = UDim2.new(0.44, 0, 0, 24)
     triggerBtn.AnchorPoint            = Vector2.new(1, 0)
-    triggerBtn.Position               = UDim2.new(1, -10, 0, _ns_isMobile and 8 or 10)
+    triggerBtn.Position               = UDim2.new(1, -10, 0, 8)
     triggerBtn.BackgroundColor3       = C("Primary")
     triggerBtn.BackgroundTransparency = 0.15
     triggerBtn.Text                   = ""
@@ -8856,7 +8853,7 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     selectedText.Text                   = default
     selectedText.TextColor3             = C("TextPrimary")
     selectedText.FontFace               = Font.fromEnum(Enum.Font.Gotham)
-    selectedText.TextSize               = _ns_isMobile and 10 or 13
+    selectedText.TextSize               = 10
     selectedText.BackgroundTransparency = 1
     selectedText.TextXAlignment         = Enum.TextXAlignment.Left
     selectedText.TextTruncate           = Enum.TextTruncate.AtEnd
@@ -9030,7 +9027,7 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
             lbl.Text                   = convertirFuenteCursor(name)
             lbl.TextColor3             = C("TextPrimary")
             lbl.FontFace               = Font.fromEnum(Enum.Font.GothamSemibold)
-            lbl.TextSize               = _ns_isMobile and 10 or 13
+            lbl.TextSize               = 10
             lbl.TextXAlignment         = Enum.TextXAlignment.Left
             lbl.TextYAlignment         = Enum.TextYAlignment.Center
             lbl.BackgroundTransparency = 1
@@ -11545,8 +11542,7 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     local C_TRACK_FG = Color3.fromRGB(120, 170, 255)    -- fill iluminado
     local C_THUMB    = Color3.fromRGB(255, 255, 255)    -- knob blanco
     local C_VALBG    = Color3.fromRGB(100, 150, 220)    -- fondo value box
-    local _slIsMobile = (_G._isMobileHub == true) or (pcall(function() return game:GetService("UserInputService").TouchEnabled end) and game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
-    local CONTAINER_H = _slIsMobile and 46 or 70
+    local CONTAINER_H = 46
 
     -- Marco principal azul translucido
     local container = Instance.new("Frame", actualParent)
@@ -11953,9 +11949,8 @@ end
 
 function CreateButton(parent, nombre, color, callback)
     local actualParent = _currentMainSectionFrame or parent
-    local _btnIsMobile = (_G._isMobileHub == true) or (pcall(function() return game:GetService("UserInputService").TouchEnabled end) and game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
     local container = Instance.new("Frame", actualParent)
-    container.Size = UDim2.new(1, 0, 0, _btnIsMobile and 38 or 60)
+    container.Size = UDim2.new(1, 0, 0, 38)
     container.BackgroundTransparency = 1
 
     -- Padding interior para que el boton no ocupe todo el ancho
@@ -11990,7 +11985,7 @@ function CreateButton(parent, nombre, color, callback)
     textLabel.BackgroundTransparency = 1
     textLabel.Text = convertirFuenteCursor(nombre)
     textLabel.FontFace = Font.fromEnum(Enum.Font.GothamBold)
-    textLabel.TextSize = _btnIsMobile and 11 or 15
+    textLabel.TextSize = 11
     textLabel.TextColor3 = ThemeColors.TextPrimary
     textLabel.TextXAlignment = Enum.TextXAlignment.Center
     textLabel.ZIndex = 3
@@ -19827,7 +19822,6 @@ end
 -- FIX: CreateBorderedSection definida globalmente para que CreateMainTab y otras tabs puedan usarla
 -- v2: aurora header animations -- shimmer text color + pulsing stroke glow + scan line sweep
 function CreateBorderedSection(parent, title)
-    local _bsIsMobile = (_G._isMobileHub == true) or (pcall(function() return game:GetService("UserInputService").TouchEnabled end) and game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
     local wrapper = Instance.new("Frame", parent)
     wrapper.Size = UDim2.new(1, -6, 0, 0)
     wrapper.BackgroundColor3 = ThemeColors.Background
@@ -19860,7 +19854,7 @@ function CreateBorderedSection(parent, title)
 
     if title and title ~= "" then
         local header = Instance.new("Frame", wrapper)
-        header.Size = UDim2.new(1, 0, 0, _bsIsMobile and 22 or 34)
+        header.Size = UDim2.new(1, 0, 0, 22)
         header.BackgroundColor3 = ThemeColors.Primary
         header.BackgroundTransparency = 0.82
         header.BorderSizePixel = 0
@@ -19917,7 +19911,7 @@ function CreateBorderedSection(parent, title)
         titleLbl.BackgroundTransparency = 1
         titleLbl.Text = title
         titleLbl.Font = Enum.Font.GothamBold
-        titleLbl.TextSize = _bsIsMobile and 11 or 16
+        titleLbl.TextSize = 11
         titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
         titleLbl.TextXAlignment = Enum.TextXAlignment.Left
         titleLbl.ZIndex = 14
@@ -19941,7 +19935,7 @@ function CreateBorderedSection(parent, title)
     section.AutomaticSize = Enum.AutomaticSize.Y
     section.ZIndex = 12
     if title and title ~= "" then
-        section.Position = UDim2.new(0, 0, 0, _bsIsMobile and 18 or 26)
+        section.Position = UDim2.new(0, 0, 0, 18)
     end
     local padding = Instance.new("UIPadding", section)
     padding.PaddingTop = UDim.new(0, 2)
@@ -28342,15 +28336,15 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
 
     -- Detectar móvil para ajustar tamaños
     local _isMobileTog = pcall(function() return UserInputService.TouchEnabled end) and UserInputService.TouchEnabled
-    local _toggleBgW   = _isMobileTog and 52 or 65
-    local _toggleBgH   = _isMobileTog and 26 or 32
-    local _knobSize    = _isMobileTog and 18 or 24
-    local _knobOffR    = _isMobileTog and -(_knobSize + 5) or -28
+    local _toggleBgW   = 52
+    local _toggleBgH   = 26
+    local _knobSize    = 18
+    local _knobOffR    = -(_knobSize + 5)
     local _knobOffL    = 4
-    local _labelTxtSz  = _isMobileTog and 13 or 18
-    local _labelWScale = _isMobileTog and 0.55 or 0.6
-    local _rowH        = _isMobileTog and 58 or 130  -- mobile: compacto, PC: normal
-    local _toggleRightOff = _isMobileTog and -8 or -15
+    local _labelTxtSz  = 13
+    local _labelWScale = 0.55
+    local _rowH        = 58
+    local _toggleRightOff = -8
 
     -- Marco principal — fondo azul translúcido con borde azul (diseño foto)
     local container = Instance.new("Frame", actualParent)
