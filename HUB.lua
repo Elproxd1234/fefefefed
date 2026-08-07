@@ -37173,13 +37173,22 @@ function CreatePremiumTab()
             },
             {
                 name   = "Katana",
-                meshId = "rbxassetid://106988631058775",
+                meshId = "rbxassetid://127532806202585",
                 texId  = "rbxassetid://138272175698969",
-                scale  = Vector3.new(0.05, 0.05, 0.05),
-                grip   = CFrame.new(0, -0.6, 0) * CFrame.Angles(math.rad(-90), 0, 0),
+                scale  = Vector3.new(0.0560000017285347, 0.0560000017285347, 0.0560000017285347),
+                -- GRIP v10: invertido respecto a v9 (filo mirando hacia arriba correcto)
+                grip   = CFrame.new(1.85, 0.1, -0.05) * CFrame.Angles(math.rad(-65), math.rad(0), math.rad(90)),
                 dualKnife = true,
             },
         }
+
+        -- FIX v18: re-parchear grip del Katana por si _G tenia una version vieja cacheada
+        for _, _ks in ipairs(_SC_KNIFE_SKINS) do
+            if _ks.name == "Katana" then
+                _ks.grip = CFrame.new(1.85, 0.1, -0.05) * CFrame.Angles(math.rad(-65), math.rad(0), math.rad(90))
+                break
+            end
+        end
 
         -- Exponer lista de knife skins en _G para que _dualStartArm pueda usarla
         _G._SC_KNIFE_SKINS = _SC_KNIFE_SKINS
@@ -37266,7 +37275,7 @@ function CreatePremiumTab()
 
             -- Aplicar grip en todos los dispositivos (mobile incluido)
             local _applyGrip = true
-            if _applyGrip then
+            if _applyGrip and skin.grip ~= nil then
                 pcall(function() tool.Grip = skin.grip end)
             end
 
@@ -37662,12 +37671,33 @@ function CreatePremiumTab()
             -- Funcion que intenta aplicar la skin al knife actual
             local function _scTryApplyKnife()
                 if not _skinState.enabled or _skinState.mode ~= "knife" then return end
-                -- FIX DUAL KNIFE: no pisar el grip mientras dual knife esta activo
-                if _G._dualKnifeEnabled then return end
                 task.wait(0.15)
-                if _G._dualKnifeEnabled then return end
+                if not _skinState.enabled or _skinState.mode ~= "knife" then return end
                 local knife = _findKnife()
-                if knife then _scApply(knife, _scGetSkin(), true) end
+                if not knife then return end
+                -- FIX KATANA + DUAL KNIFE: si dual esta activo aplicar SOLO el grip
+                -- (no el mesh para no romper el dual), y sincronizar el MirrorWeld del DK_Clone
+                if _G._dualKnifeEnabled then
+                    local currentSkin = _scGetSkin()
+                    if currentSkin and currentSkin.grip then
+                        pcall(function() knife.Grip = currentSkin.grip end)
+                        local char = LocalPlayer.Character
+                        if char then
+                            local dkClone = char:FindFirstChild("DK_Clone")
+                            if dkClone then
+                                local w = dkClone:FindFirstChild("MirrorWeld")
+                                if w then
+                                    local sg = currentSkin.grip
+                                    local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = sg:GetComponents()
+                                    w.C0 = CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
+                                    w.C1 = CFrame.new()
+                                end
+                            end
+                        end
+                    end
+                    return
+                end
+                _scApply(knife, _scGetSkin(), true)
             end
 
             -- Listener en el personaje para detectar cuando el knife aparece
@@ -37677,8 +37707,6 @@ function CreatePremiumTab()
                 end
                 _skinState._knifePickupConn = char.ChildAdded:Connect(function(child)
                     if child:IsA("Tool") and _scEsKnife(child) then
-                        -- FIX DUAL KNIFE: no pisar el grip mientras dual knife esta activo
-                        if _G._dualKnifeEnabled then return end
                         task.spawn(_scTryApplyKnife)
                     end
                 end)
@@ -37688,8 +37716,6 @@ function CreatePremiumTab()
                 end
                 _skinState._knifeWsConn = workspace.DescendantAdded:Connect(function(obj)
                     if not _skinState.enabled or _skinState.mode ~= "knife" then return end
-                    -- FIX DUAL KNIFE: no pisar el grip mientras dual knife esta activo
-                    if _G._dualKnifeEnabled then return end
                     if obj:IsA("Tool") and _scEsKnife(obj) then
                         task.spawn(_scTryApplyKnife)
                     end
@@ -37697,11 +37723,11 @@ function CreatePremiumTab()
                 -- FIX MURDER NEW ROUND: intentar aplicar inmediatamente + delays por si el
                 -- knife ya esta en el personaje (o llega poco despues del respawn/nueva ronda)
                 task.spawn(_scTryApplyKnife)
-                task.delay(0.5,  function() if _skinState.enabled and _skinState.mode == "knife" and not _G._dualKnifeEnabled then local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end end end)
-                task.delay(1.2,  function() if _skinState.enabled and _skinState.mode == "knife" and not _G._dualKnifeEnabled then local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end end end)
-                task.delay(2.5,  function() if _skinState.enabled and _skinState.mode == "knife" and not _G._dualKnifeEnabled then local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end end end)
-                task.delay(4.0,  function() if _skinState.enabled and _skinState.mode == "knife" and not _G._dualKnifeEnabled then local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end end end)
-                task.delay(7.0,  function() if _skinState.enabled and _skinState.mode == "knife" and not _G._dualKnifeEnabled then local k = _findKnife(); if k then _scApply(k, _scGetSkin(), true) end end end)
+                task.delay(0.5,  function() task.spawn(_scTryApplyKnife) end)
+                task.delay(1.2,  function() task.spawn(_scTryApplyKnife) end)
+                task.delay(2.5,  function() task.spawn(_scTryApplyKnife) end)
+                task.delay(4.0,  function() task.spawn(_scTryApplyKnife) end)
+                task.delay(7.0,  function() task.spawn(_scTryApplyKnife) end)
             end
 
             CreateNebulaSelector(leftColumn, "Skin -- Knife 🔪", _knifeNames, _knifeNames[1], function(sel)
