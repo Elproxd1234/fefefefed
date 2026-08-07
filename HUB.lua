@@ -37009,7 +37009,7 @@ function CreatePremiumTab()
                 name   = "XenoShot",
                 meshId = "rbxassetid://96867436912658",
                 texId  = "rbxassetid://103568875118220",
-                scale  = Vector3.new(0.055, 0.055, 0.055),
+                scale  = Vector3.new(0.035, 0.055, 0.020),
                 grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
                 dualGun = true,
             },
@@ -37024,6 +37024,20 @@ function CreatePremiumTab()
                     0.00871835742,  0.999961972,  -3.80063248e-05,
                     0.00871835742, -3.80063248e-05,  0.999961972
                 ),
+                dualGun = true,
+            },
+            {
+                -- AK (English): Handle MeshPart, IDs provided by user
+                name   = "AK",
+                meshId = "rbxassetid://130016653323757",
+                texId  = "rbxassetid://110314778967742",
+                scale  = Vector3.new(0.055, 0.055, 0.055),
+                grip   = CFrame.new(-1.12, -0.28, -0.2) *
+                         CFrame.fromEulerAnglesXYZ(
+                             math.rad(-6),
+                             math.rad(-80),
+                             math.rad(1)
+                         ),
                 dualGun = true,
             },
         }
@@ -37127,6 +37141,11 @@ function CreatePremiumTab()
         --                          el part completamente invisible en Roblox.
         --   2. Handle BasePart con SpecialMesh hijo  -> pisar MeshId/TextureId/Scale del SM
         --   3. Handle BasePart sin SpecialMesh (legacy)  -> pisar MeshId/TextureID directo
+        -- FIX MOBILE: detectar dispositivo para escalar correctamente
+        local _UIS_SC = game:GetService("UserInputService")
+        local _scIsMobile = pcall(function() return _UIS_SC.TouchEnabled end)
+            and _UIS_SC.TouchEnabled and not _UIS_SC.KeyboardEnabled
+
         local function _scApply(tool, skin, bypass)
             if not tool or not skin then return end
             if not bypass then
@@ -37136,7 +37155,19 @@ function CreatePremiumTab()
             if not _skinState.origData[tool] then
                 _skinState.origData[tool] = { Grip = tool.Grip, Elements = {} }
             end
-            pcall(function() tool.Grip = skin.grip end)
+
+            -- FIX MOBILE: en celu aplicar Grip original del tool (no el custom)
+            -- para que el shoot no se rompa. Solo aplica mesh/texture/scale.
+            local _applyGrip = not _scIsMobile
+            if _applyGrip then
+                pcall(function() tool.Grip = skin.grip end)
+            end
+
+            -- FIX MOBILE: reducir escala a la mitad en mobile para evitar guns gigantes
+            local _effectiveScale = skin.scale
+            if _scIsMobile and skin.scale then
+                _effectiveScale = skin.scale * 0.5
+            end
 
             -- PASO 1: manejar el Handle directamente (mismo enfoque que actualizarBomba/GoldBomb)
             local handle = tool:FindFirstChild("Handle")
@@ -37152,7 +37183,7 @@ function CreatePremiumTab()
                     pcall(function()
                         existingSM.MeshId    = skin.meshId
                         existingSM.TextureId = skin.texId
-                        existingSM.Scale     = skin.scale
+                        existingSM.Scale     = _effectiveScale
                     end)
                 elseif handle:IsA("MeshPart") then
                     -- Handle MeshPart moderno
@@ -37180,7 +37211,7 @@ function CreatePremiumTab()
                         pcall(function()
                             _smFake.MeshId    = skin.meshId
                             _smFake.TextureId = skin.texId
-                            _smFake.Scale     = skin.scale
+                            _smFake.Scale     = _effectiveScale
                         end)
                     end
                 else
@@ -37205,7 +37236,7 @@ function CreatePremiumTab()
                     pcall(function()
                         obj.MeshId    = skin.meshId
                         obj.TextureId = skin.texId
-                        obj.Scale     = skin.scale
+                        obj.Scale     = _effectiveScale
                     end)
                 elseif obj:IsA("MeshPart") and obj ~= handle then
                     if not _skinState.origData[tool].Elements[obj] then
@@ -37236,7 +37267,7 @@ function CreatePremiumTab()
                             pcall(function()
                                 obj.MeshId    = skin.meshId
                                 obj.TextureId = skin.texId
-                                obj.Scale     = skin.scale
+                                obj.Scale     = _effectiveScale
                             end)
                         elseif obj:IsA("MeshPart") then
                             pcall(function()
