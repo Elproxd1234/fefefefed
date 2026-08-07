@@ -47023,9 +47023,51 @@ function CreateCombatTab()
                 if char then
                     _dkAnimTracks = {}
                     _dualStartArm(ks, _dualKnifeKeywords)
-                    -- Reemplazar inputConn con el que usa animaciones nativas
+                    -- FIX TAB REBUILD: desconectar el inputConn basico de _dualStartArm
+                    -- y reconectar el que usa animaciones nativas + killNativeSlash
                     if ks.inputConn then pcall(function() ks.inputConn:Disconnect() end); ks.inputConn = nil end
                     _sp(_dkPreloadTracks)
+                    -- Reconectar inputConn con sistema de animaciones nativas
+                    ks.inputConn = UserInputService.InputBegan:Connect(function(input, gp)
+                        if gp then return end
+                        if not ks.enabled then return end
+                        local _char = LocalPlayer.Character
+                        if not _char then return end
+                        local tool = nil
+                        for _, t in ipairs(_char:GetChildren()) do
+                            if t:IsA("Tool") and _dualMatchKeywords(t, _dualKnifeKeywords) then
+                                tool = t; break
+                            end
+                        end
+                        if not tool then return end
+                        local events       = tool:FindFirstChild("Events")
+                        local knifeStabbed = events and events:FindFirstChild("KnifeStabbed")
+                        local knifeThrown  = events and events:FindFirstChild("KnifeThrown")
+                        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
+                            and not (KnifeSAState and KnifeSAState.enabled) then
+                            if ks.isAttacking then return end
+                            local now = os.clock()
+                            if now - (ks._lastStab or -999) < 0.85 then return end
+                            ks.isAttacking = true
+                            ks._lastStab   = now
+                            _dkToggle = not _dkToggle
+                            _dkPlaySlot(_dkToggle and "slotA" or "slotB", 1.0)
+                            if knifeStabbed then pcall(function() knifeStabbed:FireServer() end) end
+                            _dl(0.85, function() ks.isAttacking = false end)
+                        elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+                            if not knifeThrown then return end
+                            local now = os.clock()
+                            if now - (ks._lastThrow or -999) < 1.0 then return end
+                            ks._lastThrow = now
+                            _dkStopAll()
+                            local myHRP = _char:FindFirstChild("HumanoidRootPart")
+                            local cam   = workspace.CurrentCamera
+                            local targetCF = myHRP
+                                and CFrame.new(myHRP.Position, myHRP.Position + cam.CFrame.LookVector * 100)
+                                or cam.CFrame
+                            pcall(function() knifeThrown:FireServer(targetCF, targetCF) end)
+                        end
+                    end)
                 end
             end
             if gs and gs.enabled then
