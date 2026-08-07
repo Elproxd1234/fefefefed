@@ -37027,6 +37027,19 @@ function CreatePremiumTab()
                 ),
                 dualGun = true,
             },
+            {
+                name   = "Custom Shotgun for me",
+                meshId = "rbxassetid://89500447780367",
+                texId  = "rbxassetid://112744655854803",
+                scale  = Vector3.new(0.72, 0.65, 1.55),
+                grip   = CFrame.new(
+                    2, -0.05, -0.1,
+                    -0.103749, -0.0527153, 0.993206,
+                    -0.0127388, 0.998583, 0.05167,
+                    -0.994522, -0.00729153, -0.104274
+                ),
+                dualGun = true,
+            },
         }
         -- FIX: exponer la lista en _G para que _dualStartArm pueda referenciarla
         _G._SC_GUN_SKINS = _SC_GUN_SKINS
