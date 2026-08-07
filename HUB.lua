@@ -37112,15 +37112,19 @@ function CreatePremiumTab()
 
             {
                 -- AK (English): Handle MeshPart, IDs provided by user
+                -- CONFIG PC  : Rot X=2° Rot Y=-96° Rot Z=2° | Grip X=-0.55 Y=-0.23 Z=-0.15 | Scale X=0.71 Y=0.26 Z=1.971
+                -- CONFIG CELU: scale se divide *0.5 automaticamente por _scIsMobile; grip no se aplica en mobile
                 name   = "AK",
                 meshId = "rbxassetid://130016653323757",
                 texId  = "rbxassetid://110314778967742",
-                scale  = Vector3.new(0.055, 0.055, 0.055),
-                grip   = CFrame.new(-1.12, -0.28, -0.2) *
+                -- Scale por eje segun capturas (PC). En mobile _scApply aplica scale * 0.5 automaticamente.
+                scale  = Vector3.new(0.71, 0.26, 1.971),
+                -- Grip PC: offset (-0.55, -0.23, -0.15) + Rot X=2° Y=-96° Z=2°
+                grip   = CFrame.new(-0.55, -0.23, -0.15) *
                          CFrame.fromEulerAnglesXYZ(
-                             math.rad(-6),
-                             math.rad(-80),
-                             math.rad(1)
+                             math.rad(2),
+                             math.rad(-96),
+                             math.rad(2)
                          ),
                 dualGun = true,
             },
