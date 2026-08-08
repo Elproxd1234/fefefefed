@@ -11348,7 +11348,7 @@ function CreateBorderedSectionGlobal(parent, title)
     padding.PaddingLeft = UDim.new(0, 0)
     padding.PaddingRight = UDim.new(0, 0)
     local layout = Instance.new("UIListLayout", section)
-    layout.Padding = UDim.new(0, 4)
+    layout.Padding = UDim.new(0, 0)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     -- FIX TOGGLES INVISIBLES: setear _currentMainSectionFrame para que
@@ -11379,7 +11379,7 @@ function CreateSection(parent, icono, titulo, color)
     padding.PaddingLeft = UDim.new(0, 0)
     padding.PaddingRight = UDim.new(0, 0)
     local layout = Instance.new("UIListLayout", section)
-    layout.Padding = UDim.new(0, 4)
+    layout.Padding = UDim.new(0, 0)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     _currentMainSectionFrame = section
@@ -28312,7 +28312,7 @@ end
 function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local actualParent = _currentMainSectionFrame or parent
     local _trackedCol = (actualParent == leftColumn or (actualParent and actualParent.Parent == leftColumn)) and leftColumn or rightColumn
-    _colHeights[_trackedCol == leftColumn and "left" or "right"] = (_colHeights[_trackedCol == leftColumn and "left" or "right"] or 0) + 64
+    _colHeights[_trackedCol == leftColumn and "left" or "right"] = (_colHeights[_trackedCol == leftColumn and "left" or "right"] or 0) + 36
 
     _G._toggleStates = _G._toggleStates or {}
     local savedState = _G._toggleStates[nombre]
@@ -28343,28 +28343,19 @@ function CreateAuroraToggle(parent, nombre, callback, initialValue)
     local _knobOffL    = 4
     local _labelTxtSz  = 13
     local _labelWScale = 0.55
-    local _rowH        = 58
+    local _rowH        = 36
     local _toggleRightOff = -8
 
     -- Marco principal — fondo azul translúcido con borde azul (diseño foto)
     local container = Instance.new("Frame", actualParent)
     container.Name                   = "AuroraToggleRow_" .. nombre
-    container.Size                   = UDim2.new(1, -8, 0, _rowH)
+    container.Size                   = UDim2.new(1, 0, 0, _rowH)
     container.BackgroundColor3       = Color3.fromRGB(135, 206, 235)  -- celeste
     container.BackgroundTransparency = 0.78
     container.BorderSizePixel        = 0
     container.ZIndex                 = 20
 
-    -- Esquinas redondeadas para el marco
-    local mainCorner = Instance.new("UICorner", container)
-    mainCorner.CornerRadius = UDim.new(0, 8)
 
-    -- Borde azul visible
-    local mainStroke = Instance.new("UIStroke", container)
-    mainStroke.Color = Color3.fromRGB(40, 60, 180)
-    mainStroke.Thickness = 2
-    mainStroke.Transparency = 0
-    mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     -- Etiqueta de texto (mitad izquierda)
     local label = Instance.new("TextLabel", container)
@@ -46552,7 +46543,7 @@ function CreateCombatTab()
             if state.steppedConn then pcall(function() state.steppedConn:Disconnect() end); state.steppedConn = nil end
             if state.renderConn  then pcall(function() state.renderConn:Disconnect()  end); state.renderConn  = nil end
             if state.inputConn   then pcall(function() state.inputConn:Disconnect()   end); state.inputConn   = nil end
-            -- Stepped: levanta el brazo izquierdo
+            -- Stepped: levanta el brazo izquierdo y aplica pose configurable (GingerScope)
             state.steppedConn = _safeConnect(RunService.Stepped, function()
                 if not state.enabled then return end
                 local char = LocalPlayer.Character
@@ -46565,21 +46556,44 @@ function CreateCombatTab()
                     end
                 end
                 if not tool then return end
+
+                -- Leer pose configurable; si no existe usar defaults visuales de la imagen
+                local _gap = _G._gsArmPose or { rX=9, rY=11, rZ=-32, lX=53, lY=-121, lZ=-19 }
+                local _poseActive = _G._gsArmEnabled
+
+                -- ── BRAZO IZQUIERDO ──
                 local lUA       = char:FindFirstChild("LeftUpperArm")
                 local lShoulder = lUA and lUA:FindFirstChild("LeftShoulder")
                 local lLA       = char:FindFirstChild("LeftLowerArm")
                 local lElbow    = lLA and lLA:FindFirstChild("LeftElbow")
                 local lHandPart = char:FindFirstChild("LeftHand")
                 local lWrist    = lHandPart and lHandPart:FindFirstChild("LeftWrist")
+                local lX = _poseActive and _gap.lX or 90
+                local lY = _poseActive and _gap.lY or 0
+                local lZ = _poseActive and _gap.lZ or 0
                 if lShoulder then
-                    lShoulder.Transform = CFrame.Angles(math.rad(90), 0, 0)
+                    lShoulder.Transform = CFrame.Angles(math.rad(lX), math.rad(lY), math.rad(lZ))
                     if lElbow then lElbow.Transform = CFrame.new() end
                     if lWrist then lWrist.Transform = CFrame.new() end
-                    return
                 end
-                local torso   = char:FindFirstChild("Torso")
+                local torso    = char:FindFirstChild("Torso")
                 local lJointR6 = torso and torso:FindFirstChild("Left Shoulder")
-                if lJointR6 then lJointR6.Transform = CFrame.Angles(math.rad(90), 0, 0) end
+                if lJointR6 and not lShoulder then
+                    lJointR6.Transform = CFrame.Angles(math.rad(lX), math.rad(lY), math.rad(lZ))
+                end
+
+                -- ── BRAZO DERECHO (solo si pose activa) ──
+                if _poseActive then
+                    local rUA      = char:FindFirstChild("RightUpperArm")
+                    local rShoulder = rUA and rUA:FindFirstChild("RightShoulder")
+                    if rShoulder then
+                        rShoulder.Transform = CFrame.Angles(math.rad(_gap.rX), math.rad(_gap.rY), math.rad(_gap.rZ))
+                    end
+                    local rJointR6 = torso and torso:FindFirstChild("Right Shoulder")
+                    if rJointR6 and not rShoulder then
+                        rJointR6.Transform = CFrame.Angles(math.rad(_gap.rX), math.rad(_gap.rY), math.rad(_gap.rZ))
+                    end
+                end
             end)
 
             -- RenderStepped: clona handle y lo weldea a la mano izquierda
@@ -46631,8 +46645,9 @@ function CreateCombatTab()
                         -- Gun: rotar 180° en Y para voltear la gun al lado opuesto
                         -- sin invertir la geometria del mesh (evita el "roto")
                         local rot180Y = CFrame.Angles(0, math.rad(180), 0)
-                        local mirrored = CFrame.new(-px, py, pz) * rot180Y *
-                            CFrame.new(r00,r10,r20, r01,r11,r21, r02,r12,r22)
+                        -- FIX: CFrame.new con 12 args = (x,y,z, r00,r01,r02, r10,r11,r12, r20,r21,r22)
+                        local rotOnly = CFrame.new(0,0,0, r00,r01,r02, r10,r11,r12, r20,r21,r22)
+                        local mirrored = CFrame.new(-px, py, pz) * rot180Y * rotOnly
                         return mirrored
                     else
                         -- Knife: espejo X (comportamiento original, funciona bien)
@@ -47495,6 +47510,58 @@ function CreateCombatTab()
             end
         end)
     end
+    -- ======================================================================
+    -- SECCION: GINGERSCOPE ARM POSE - Rotacion brazo derecho e izquierdo
+    -- Valores por defecto: Derecho X=9,Y=11,Z=-32 | Izquierdo X=53,Y=-121,Z=-19
+    -- ======================================================================
+    do
+        local _gsArmSection = (CreateBorderedSection and rightColumn)
+            and CreateBorderedSection(rightColumn, "GINGERSCOPE - POSE DE BRAZOS")
+            or Instance.new("Frame")
+
+        if not _G._gsArmPose then
+            _G._gsArmPose = { rX=9, rY=11, rZ=-32, lX=53, lY=-121, lZ=-19 }
+        end
+        local _gap = _G._gsArmPose
+
+        CreatePremiumToggle(_gsArmSection, "Activar Pose Brazos (GingerScope)", function(en)
+            _G._gsArmEnabled = en
+            if not en then
+                local char = LocalPlayer and LocalPlayer.Character
+                if char then
+                    for _, nm in ipairs({"RightUpperArm","LeftUpperArm"}) do
+                        local ua = char:FindFirstChild(nm)
+                        local sh = ua and ua:FindFirstChild(nm == "RightUpperArm" and "RightShoulder" or "LeftShoulder")
+                        if sh then sh.Transform = CFrame.new() end
+                    end
+                    local torso = char:FindFirstChild("Torso")
+                    for _, nm in ipairs({"Right Shoulder","Left Shoulder"}) do
+                        local j = torso and torso:FindFirstChild(nm)
+                        if j then j.Transform = CFrame.new() end
+                    end
+                end
+            end
+        end, false)
+
+        local function _makeArmLabel(parent, txt)
+            local lb = Instance.new("TextLabel", parent)
+            lb.Size = UDim2.new(1,0,0,20); lb.BackgroundTransparency = 1
+            lb.Text = txt; lb.TextColor3 = Color3.fromRGB(100,200,255)
+            lb.Font = Enum.Font.GothamBold; lb.TextSize = 12
+            lb.TextXAlignment = Enum.TextXAlignment.Left; lb.ZIndex = 13
+        end
+
+        _makeArmLabel(_gsArmSection, "Rotacion Brazo Derecho:")
+        CreateSlider(_gsArmSection, "Arriba / Abajo (X)", -180, 180, _gap.rX, function(v) _gap.rX = v end)
+        CreateSlider(_gsArmSection, "Giro Lateral (Y)",   -180, 180, _gap.rY, function(v) _gap.rY = v end)
+        CreateSlider(_gsArmSection, "Inclinacion (Z)",    -180, 180, _gap.rZ, function(v) _gap.rZ = v end)
+
+        _makeArmLabel(_gsArmSection, "Rotacion Brazo Izquierdo:")
+        CreateSlider(_gsArmSection, "Arriba / Abajo (X)", -180, 180, _gap.lX, function(v) _gap.lX = v end)
+        CreateSlider(_gsArmSection, "Giro Lateral (Y)",   -180, 180, _gap.lY, function(v) _gap.lY = v end)
+        CreateSlider(_gsArmSection, "Inclinacion (Z)",    -180, 180, _gap.lZ, function(v) _gap.lZ = v end)
+    end
+
     -- ======================================================================
     -- SECCIN: COMBAT PREMIUM  Instant Throw  Auto Slash  Fast Slash  Fast Throw
     -- ======================================================================
