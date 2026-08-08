@@ -11535,13 +11535,13 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     --  Fill azul claro | Thumb circular blanco 18px
     -- ==============================================================
 
-    local C_BG_MAIN  = Color3.fromRGB(100, 150, 220)   -- azul claro (fondo panel)
+    local C_BG_MAIN  = Color3.fromRGB(6, 10, 30)        -- azul muy oscuro (fondo panel)
     local C_STROKE   = Color3.fromRGB(30, 50, 130)      -- azul oscuro (bordes)
     local C_TEXT     = Color3.fromRGB(255, 255, 255)
-    local C_TRACK_BG = Color3.fromRGB(80, 120, 200)     -- pista fondo
+    local C_TRACK_BG = Color3.fromRGB(20, 30, 80)        -- pista fondo oscuro
     local C_TRACK_FG = Color3.fromRGB(120, 170, 255)    -- fill iluminado
     local C_THUMB    = Color3.fromRGB(255, 255, 255)    -- knob blanco
-    local C_VALBG    = Color3.fromRGB(100, 150, 220)    -- fondo value box
+    local C_VALBG    = Color3.fromRGB(6, 10, 30)         -- fondo value box oscuro
     local CONTAINER_H = 46
 
     -- Marco principal azul translucido
@@ -11549,7 +11549,7 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     container.Name                   = "SliderWrapper_" .. nombre
     container.Size                   = UDim2.new(1, -4, 0, CONTAINER_H)
     container.BackgroundColor3       = C_BG_MAIN
-    container.BackgroundTransparency = 0.3
+    container.BackgroundTransparency = 0.05
     container.BorderSizePixel        = 0
     container.ClipsDescendants       = false
     container.ZIndex                 = 10
@@ -11587,7 +11587,7 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     valueFrame.Size                   = UDim2.new(0, 80, 0, 30)
     valueFrame.Position               = UDim2.new(0.95, -80, 0.15, 0)
     valueFrame.BackgroundColor3       = C_VALBG
-    valueFrame.BackgroundTransparency = 0.5
+    valueFrame.BackgroundTransparency = 0.05
     valueFrame.BorderSizePixel        = 0
     valueFrame.ZIndex                 = 12
     do
@@ -11617,7 +11617,7 @@ function CreateSlider(parent, nombre, minVal, maxVal, defaultVal, callback, step
     sliderTrack.Size                   = UDim2.new(0, 150, 0, 10)
     sliderTrack.Position               = UDim2.new(0.95, -150, 0.7, -5)
     sliderTrack.BackgroundColor3       = C_TRACK_BG
-    sliderTrack.BackgroundTransparency = 0.5
+    sliderTrack.BackgroundTransparency = 0.1
     sliderTrack.BorderSizePixel        = 0
     sliderTrack.ClipsDescendants       = false
     sliderTrack.ZIndex                 = 12
