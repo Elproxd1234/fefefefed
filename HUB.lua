@@ -42743,55 +42743,9 @@ function CreateCombatTab()
         -- Conectar BindableEvent a la misma funcion
         _G._ShootMurderBindable.Event:Connect(_doShootMurderOnce)
 
-        -- Boton visual en el hub
-        local _smBtn = Instance.new("TextButton", spSection)
-        _smBtn.Name                   = "ShootMurderBtn"
-        _smBtn.Size                   = UDim2.new(1, -8, 0, 38)
-        _smBtn.BackgroundColor3       = Color3.fromRGB(180, 20, 20)
-        _smBtn.BackgroundTransparency = 0.15
-        _smBtn.BorderSizePixel        = 0
-        _smBtn.Text                   = "🔫  SHOOT MURDER"
-        _smBtn.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-        _smBtn.TextSize               = 14
-        _smBtn.TextColor3             = Color3.fromRGB(255, 255, 255)
-        _smBtn.AutoButtonColor        = false
-        _smBtn.ZIndex                 = 13
-        local _smCorner = Instance.new("UICorner", _smBtn)
-        _smCorner.CornerRadius = UDim.new(0, 9)
-        local _smStroke = Instance.new("UIStroke", _smBtn)
-        _smStroke.Color = Color3.fromRGB(255, 80, 80)
-        _smStroke.Thickness = 1.8
-        _smStroke.Transparency = 0.10
-        _smStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        local _smPad = Instance.new("UIPadding", _smBtn)
-        _smPad.PaddingLeft = UDim.new(0, 4); _smPad.PaddingRight = UDim.new(0, 4)
-
-        _smBtn.MouseEnter:Connect(function()
-            TweenService:Create(_smBtn,   TweenInfo.new(0.10), {BackgroundTransparency = 0,        BackgroundColor3 = Color3.fromRGB(220, 35, 35)}):Play()
-            TweenService:Create(_smStroke, TweenInfo.new(0.10), {Transparency = 0}):Play()
-        end)
-        _smBtn.MouseLeave:Connect(function()
-            TweenService:Create(_smBtn,   TweenInfo.new(0.12), {BackgroundTransparency = 0.15,     BackgroundColor3 = Color3.fromRGB(180, 20, 20)}):Play()
-            TweenService:Create(_smStroke, TweenInfo.new(0.12), {Transparency = 0.10}):Play()
-        end)
-        _smBtn.MouseButton1Down:Connect(function()
-            TweenService:Create(_smBtn, TweenInfo.new(0.07), {BackgroundColor3 = Color3.fromRGB(140, 10, 10)}):Play()
-        end)
-        _smBtn.MouseButton1Up:Connect(function()
-            TweenService:Create(_smBtn, TweenInfo.new(0.07), {BackgroundColor3 = Color3.fromRGB(220, 35, 35)}):Play()
-        end)
-
-        _smBtn.Activated:Connect(function()
-            task.spawn(_doShootMurderOnce)
-        end)
-
         -- ================================================================
         -- BOTÓN: KILL SHERIFF
-        -- Mismo mecanismo que KillAll pero solo apunta al Sheriff
-        -- Usa FireKnifeOnTarget desde cualquier distancia (10000 studs)
-        -- También expone un BindableEvent en _G._KillSheriffBindable
         -- ================================================================
-
         if not _G._KillSheriffBindable then
             local _ksBind = Instance.new("BindableEvent")
             _ksBind.Name = "KillSheriffBindable"
@@ -42811,16 +42765,12 @@ function CreateCombatTab()
                 CreateCustomNotification("KILL SHERIFF", "Sin personaje.", 2); return
             end
 
-            -- Obtener/equipar knife
             local knife = myChar:FindFirstChild("Knife")
-            if not knife then
-                knife = EquipKnife()
-            end
+            if not knife then knife = EquipKnife() end
             if not knife then
                 CreateCustomNotification("KILL SHERIFF", "No tienes knife.", 2); return
             end
 
-            -- Encontrar al Sheriff
             local sheriff = findSheriffPlayer and findSheriffPlayer()
             if not sheriff or not sheriff.Character then
                 CreateCustomNotification("KILL SHERIFF", "Sheriff no encontrado.", 2); return
@@ -42832,16 +42782,13 @@ function CreateCombatTab()
                 CreateCustomNotification("KILL SHERIFF", "Sheriff ya muerto.", 2); return
             end
 
-            -- Guardar posicion para no mover al jugador
             local savedCF  = myHRP.CFrame
             local savedVel = myHRP.AssemblyLinearVelocity
 
-            -- Disparar FireKnifeOnTarget (igual que KillAll, distancia ilimitada)
             FireKnifeOnTarget(knife, sHRP)
             task.wait(0.05)
             FireKnifeOnTarget(knife, sHRP)
 
-            -- Restaurar posicion inmediatamente
             _sp(function()
                 pcall(function()
                     myHRP.CFrame = savedCF
@@ -42853,63 +42800,37 @@ function CreateCombatTab()
             CreateCustomNotification("KILL SHERIFF", "Cuchillo lanzado -> " .. sheriff.Name, 2)
         end
 
-        -- Conectar BindableEvent
         _G._KillSheriffBindable.Event:Connect(_doKillSheriff)
 
-        -- Espaciador visual entre los dos botones
-        local _ksSep = Instance.new("Frame", spSection)
-        _ksSep.Size = UDim2.new(1, 0, 0, 4)
-        _ksSep.BackgroundTransparency = 1
-        _ksSep.BorderSizePixel = 0
+        -- ================================================================
+        -- BOTONES FLOTANTES DEL HUB (estilo CapyBindable)
+        -- Se crean siempre al cargar el Combat tab y permanecen visibles
+        -- ================================================================
+        -- Destruir instancias previas si existian (re-ejecucion del hub)
+        DestroyCapyBind("SHOOT MURDER")
+        DestroyCapyBind("KILL SHERIFF")
 
-        -- Boton visual KILL SHERIFF
-        local _ksBtn = Instance.new("TextButton", spSection)
-        _ksBtn.Name                   = "KillSheriffBtn"
-        _ksBtn.Size                   = UDim2.new(1, -8, 0, 38)
-        _ksBtn.BackgroundColor3       = Color3.fromRGB(20, 80, 200)
-        _ksBtn.BackgroundTransparency = 0.15
-        _ksBtn.BorderSizePixel        = 0
-        _ksBtn.Text                   = "🔪  KILL SHERIFF"
-        _ksBtn.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
-        _ksBtn.TextSize               = 14
-        _ksBtn.TextColor3             = Color3.fromRGB(255, 255, 255)
-        _ksBtn.AutoButtonColor        = false
-        _ksBtn.ZIndex                 = 13
-        local _ksCorner = Instance.new("UICorner", _ksBtn)
-        _ksCorner.CornerRadius = UDim.new(0, 9)
-        local _ksStroke = Instance.new("UIStroke", _ksBtn)
-        _ksStroke.Color = Color3.fromRGB(80, 160, 255)
-        _ksStroke.Thickness = 1.8
-        _ksStroke.Transparency = 0.10
-        _ksStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        local _ksPad = Instance.new("UIPadding", _ksBtn)
-        _ksPad.PaddingLeft = UDim.new(0, 4); _ksPad.PaddingRight = UDim.new(0, 4)
-
-        _ksBtn.MouseEnter:Connect(function()
-            TweenService:Create(_ksBtn,    TweenInfo.new(0.10), {BackgroundTransparency = 0,    BackgroundColor3 = Color3.fromRGB(30, 110, 230)}):Play()
-            TweenService:Create(_ksStroke, TweenInfo.new(0.10), {Transparency = 0}):Play()
+        -- Boton 1: SHOOT MURDER
+        local _smCapy = MakeCapyBindableFrame(nil, "SHOOT\nMURDER", function()
+            task.spawn(_doShootMurderOnce)
         end)
-        _ksBtn.MouseLeave:Connect(function()
-            TweenService:Create(_ksBtn,    TweenInfo.new(0.12), {BackgroundTransparency = 0.15, BackgroundColor3 = Color3.fromRGB(20, 80, 200)}):Play()
-            TweenService:Create(_ksStroke, TweenInfo.new(0.12), {Transparency = 0.10}):Play()
-        end)
-        _ksBtn.MouseButton1Down:Connect(function()
-            TweenService:Create(_ksBtn, TweenInfo.new(0.07), {BackgroundColor3 = Color3.fromRGB(10, 50, 150)}):Play()
-        end)
-        _ksBtn.MouseButton1Up:Connect(function()
-            TweenService:Create(_ksBtn, TweenInfo.new(0.07), {BackgroundColor3 = Color3.fromRGB(30, 110, 230)}):Play()
-        end)
-
-        _ksBtn.Activated:Connect(function()
+        -- Boton 2: KILL SHERIFF (siguiente slot automatico)
+        local _ksCapy = MakeCapyBindableFrame(nil, "KILL\nSHERIFF", function()
             task.spawn(_doKillSheriff)
         end)
 
-        -- Descripcion actualizada
+        -- Registrar en _BindableButtons para que el sistema del hub los gestione
+        _BindableButtons["SHOOT MURDER"] = _smCapy and _smCapy._bindSg or nil
+        _BindableButtons["KILL SHERIFF"] = _ksCapy and _ksCapy._bindSg or nil
+        if _smCapy then _registerBindableGui("SHOOT MURDER_CapyBtn", _smCapy._bindSg or _smCapy) end
+        if _ksCapy then _registerBindableGui("KILL SHERIFF_CapyBtn", _ksCapy._bindSg or _ksCapy) end
+
+        -- Descripcion en el panel
         local _spDesc = Instance.new("TextLabel", spSection)
         _spDesc.Size = UDim2.new(1, -8, 0, 0)
         _spDesc.AutomaticSize = Enum.AutomaticSize.Y
         _spDesc.BackgroundTransparency = 1
-        _spDesc.Text = "Shoot Pick: dispara al Murder cuando agarra el GunDrop. SHOOT MURDER: TP detras del murder, dispara, vuelve. KILL SHERIFF: elimina al Sheriff con knife desde cualquier distancia. Bindables: _G._ShootMurderBindable:Fire() / _G._KillSheriffBindable:Fire()"
+        _spDesc.Text = "Shoot Pick: dispara al Murder cuando agarra el GunDrop. SHOOT MURDER / KILL SHERIFF: botones flotantes del hub (arrastrables). Bindables: _G._ShootMurderBindable:Fire() / _G._KillSheriffBindable:Fire()"
         _spDesc.TextColor3 = Color3.fromRGB(130, 170, 220)
         _spDesc.Font = Enum.Font.Montserrat
         _spDesc.TextSize = 10
@@ -47846,57 +47767,7 @@ function CreateCombatTab()
             end
         end)
     end
-    -- ======================================================================
-    -- SECCION: GINGERSCOPE ARM POSE - Rotacion brazo derecho e izquierdo
-    -- Valores por defecto: Derecho X=9,Y=11,Z=-32 | Izquierdo X=53,Y=-121,Z=-19
-    -- ======================================================================
-    do
-        local _gsArmSection = (CreateBorderedSection and rightColumn)
-            and CreateBorderedSection(rightColumn, "GINGERSCOPE - POSE DE BRAZOS")
-            or Instance.new("Frame")
-
-        if not _G._gsArmPose then
-            _G._gsArmPose = { rX=9, rY=11, rZ=-32, lX=53, lY=-121, lZ=-19 }
-        end
-        local _gap = _G._gsArmPose
-
-        CreatePremiumToggle(_gsArmSection, "Activar Pose Brazos (GingerScope)", function(en)
-            _G._gsArmEnabled = en
-            if not en then
-                local char = LocalPlayer and LocalPlayer.Character
-                if char then
-                    for _, nm in ipairs({"RightUpperArm","LeftUpperArm"}) do
-                        local ua = char:FindFirstChild(nm)
-                        local sh = ua and ua:FindFirstChild(nm == "RightUpperArm" and "RightShoulder" or "LeftShoulder")
-                        if sh then sh.Transform = CFrame.new() end
-                    end
-                    local torso = char:FindFirstChild("Torso")
-                    for _, nm in ipairs({"Right Shoulder","Left Shoulder"}) do
-                        local j = torso and torso:FindFirstChild(nm)
-                        if j then j.Transform = CFrame.new() end
-                    end
-                end
-            end
-        end, false)
-
-        local function _makeArmLabel(parent, txt)
-            local lb = Instance.new("TextLabel", parent)
-            lb.Size = UDim2.new(1,0,0,20); lb.BackgroundTransparency = 1
-            lb.Text = txt; lb.TextColor3 = Color3.fromRGB(100,200,255)
-            lb.Font = Enum.Font.GothamBold; lb.TextSize = 12
-            lb.TextXAlignment = Enum.TextXAlignment.Left; lb.ZIndex = 13
-        end
-
-        _makeArmLabel(_gsArmSection, "Rotacion Brazo Derecho:")
-        CreateSlider(_gsArmSection, "Arriba / Abajo (X)", -180, 180, _gap.rX, function(v) _gap.rX = v end)
-        CreateSlider(_gsArmSection, "Giro Lateral (Y)",   -180, 180, _gap.rY, function(v) _gap.rY = v end)
-        CreateSlider(_gsArmSection, "Inclinacion (Z)",    -180, 180, _gap.rZ, function(v) _gap.rZ = v end)
-
-        _makeArmLabel(_gsArmSection, "Rotacion Brazo Izquierdo:")
-        CreateSlider(_gsArmSection, "Arriba / Abajo (X)", -180, 180, _gap.lX, function(v) _gap.lX = v end)
-        CreateSlider(_gsArmSection, "Giro Lateral (Y)",   -180, 180, _gap.lY, function(v) _gap.lY = v end)
-        CreateSlider(_gsArmSection, "Inclinacion (Z)",    -180, 180, _gap.lZ, function(v) _gap.lZ = v end)
-    end
+    -- GINGERSCOPE ARM POSE UI: eliminado por usuario
 
     -- ======================================================================
     -- SECCIN: COMBAT PREMIUM  Instant Throw  Auto Slash  Fast Slash  Fast Throw
