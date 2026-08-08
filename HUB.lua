@@ -42803,34 +42803,21 @@ function CreateCombatTab()
         _G._KillSheriffBindable.Event:Connect(_doKillSheriff)
 
         -- ================================================================
-        -- BOTONES FLOTANTES DEL HUB (estilo CapyBindable)
-        -- Se crean siempre al cargar el Combat tab y permanecen visibles
+        -- BOTONES CLICKEABLES DEL HUB (dentro del panel)
         -- ================================================================
-        -- Destruir instancias previas si existian (re-ejecucion del hub)
-        DestroyCapyBind("SHOOT MURDER")
-        DestroyCapyBind("KILL SHERIFF")
-
-        -- Boton 1: SHOOT MURDER
-        local _smCapy = MakeCapyBindableFrame(nil, "SHOOT\nMURDER", function()
+        CreateButton(spSection, "SHOOT MURDER", ThemeColors.Primary, function()
             task.spawn(_doShootMurderOnce)
         end)
-        -- Boton 2: KILL SHERIFF (siguiente slot automatico)
-        local _ksCapy = MakeCapyBindableFrame(nil, "KILL\nSHERIFF", function()
+        CreateButton(spSection, "KILL SHERIFF", ThemeColors.Primary, function()
             task.spawn(_doKillSheriff)
         end)
-
-        -- Registrar en _BindableButtons para que el sistema del hub los gestione
-        _BindableButtons["SHOOT MURDER"] = _smCapy and _smCapy._bindSg or nil
-        _BindableButtons["KILL SHERIFF"] = _ksCapy and _ksCapy._bindSg or nil
-        if _smCapy then _registerBindableGui("SHOOT MURDER_CapyBtn", _smCapy._bindSg or _smCapy) end
-        if _ksCapy then _registerBindableGui("KILL SHERIFF_CapyBtn", _ksCapy._bindSg or _ksCapy) end
 
         -- Descripcion en el panel
         local _spDesc = Instance.new("TextLabel", spSection)
         _spDesc.Size = UDim2.new(1, -8, 0, 0)
         _spDesc.AutomaticSize = Enum.AutomaticSize.Y
         _spDesc.BackgroundTransparency = 1
-        _spDesc.Text = "Shoot Pick: dispara al Murder cuando agarra el GunDrop. SHOOT MURDER / KILL SHERIFF: botones flotantes del hub (arrastrables). Bindables: _G._ShootMurderBindable:Fire() / _G._KillSheriffBindable:Fire()"
+        _spDesc.Text = "Shoot Pick: dispara al Murder cuando agarra el GunDrop. SHOOT MURDER: TP detras del murder y dispara. KILL SHERIFF: lanza el cuchillo al sheriff. Bindables: _G._ShootMurderBindable:Fire() / _G._KillSheriffBindable:Fire()"
         _spDesc.TextColor3 = Color3.fromRGB(130, 170, 220)
         _spDesc.Font = Enum.Font.Montserrat
         _spDesc.TextSize = 10
