@@ -17798,6 +17798,329 @@ function _createOverlayLabel(name, posY, textSize, font)
 end
 
 function CreateMainUI_GameInfo()
+    -- ================================================================
+    -- PANEL CENTRAL: Timer Round / Mi Rol / Porcentaje
+    -- Se muestra grande y centrado en el tab Main, responsive mobile
+    -- ================================================================
+    do
+        local _isMobile = _G._isMobileHub or false
+
+        -- Contenedor centrado sobre el contenido (dentro del wrapper para quedar sobre las columnas)
+        local _cpWrapper = contentContainer:FindFirstChild("TwoColumnWrapper") or contentContainer
+        -- Limpiar panel previo si existe (re-open tab)
+        local _prevPanel = _cpWrapper:FindFirstChild("MainCenterPanel")
+        if _prevPanel then _prevPanel:Destroy() end
+
+        local _cpanel = Instance.new("Frame", _cpWrapper)
+        _cpanel.Name = "MainCenterPanel"
+        _cpanel.AnchorPoint = Vector2.new(0.5, 0)
+        _cpanel.Position = UDim2.new(0.5, 0, 0, 4)
+        _cpanel.BackgroundColor3 = Color3.fromRGB(5, 14, 30)
+        _cpanel.BackgroundTransparency = 0.18
+        _cpanel.BorderSizePixel = 0
+        _cpanel.ZIndex = 60
+        Instance.new("UICorner", _cpanel).CornerRadius = UDim.new(0, 14)
+
+        local _cpStroke = Instance.new("UIStroke", _cpanel)
+        _cpStroke.Color = Color3.fromRGB(0, 200, 255)
+        _cpStroke.Thickness = 1.5
+        _cpStroke.Transparency = 0.25
+        _cpStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+        -- Gradiente sutil en el panel
+        local _cpGrad = Instance.new("UIGradient", _cpanel)
+        _cpGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0,   Color3.fromRGB(10, 30, 60)),
+            ColorSequenceKeypoint.new(1,   Color3.fromRGB(5,  14, 30)),
+        })
+        _cpGrad.Rotation = 90
+
+        -- Layout: mobile = columna vertical, PC = fila horizontal
+        if _isMobile then
+            -- MOBILE: 3 filas apiladas, bien separadas
+            _cpanel.Size = UDim2.new(0.92, 0, 0, 118)
+
+            local _layout = Instance.new("UIListLayout", _cpanel)
+            _layout.FillDirection = Enum.FillDirection.Vertical
+            _layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            _layout.VerticalAlignment = Enum.VerticalAlignment.Center
+            _layout.Padding = UDim.new(0, 2)
+            _layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+            local _pad = Instance.new("UIPadding", _cpanel)
+            _pad.PaddingLeft   = UDim.new(0, 10)
+            _pad.PaddingRight  = UDim.new(0, 10)
+            _pad.PaddingTop    = UDim.new(0, 6)
+            _pad.PaddingBottom = UDim.new(0, 6)
+
+            -- Fila 1: Timer
+            local _timerBlock = Instance.new("Frame", _cpanel)
+            _timerBlock.Name = "TimerBlock"
+            _timerBlock.Size = UDim2.new(1, 0, 0, 32)
+            _timerBlock.BackgroundTransparency = 1
+            _timerBlock.LayoutOrder = 1
+
+            local _timerCaption = Instance.new("TextLabel", _timerBlock)
+            _timerCaption.Size = UDim2.new(0.42, 0, 1, 0)
+            _timerCaption.Position = UDim2.new(0, 0, 0, 0)
+            _timerCaption.BackgroundTransparency = 1
+            _timerCaption.Text = "TIMER"
+            _timerCaption.Font = Enum.Font.GothamBold
+            _timerCaption.TextSize = 11
+            _timerCaption.TextColor3 = Color3.fromRGB(0, 180, 240)
+            _timerCaption.TextXAlignment = Enum.TextXAlignment.Left
+            _timerCaption.ZIndex = 61
+
+            local _timerVal = Instance.new("TextLabel", _timerBlock)
+            _timerVal.Name = "CPTimerVal"
+            _timerVal.Size = UDim2.new(0.58, 0, 1, 0)
+            _timerVal.Position = UDim2.new(0.42, 0, 0, 0)
+            _timerVal.BackgroundTransparency = 1
+            _timerVal.Text = "--:--"
+            _timerVal.Font = Enum.Font.GothamBold
+            _timerVal.TextSize = 22
+            _timerVal.TextColor3 = Color3.fromRGB(255, 255, 255)
+            _timerVal.TextXAlignment = Enum.TextXAlignment.Right
+            _timerVal.ZIndex = 61
+
+            -- Fila 2: Rol
+            local _rolBlock = Instance.new("Frame", _cpanel)
+            _rolBlock.Name = "RolBlock"
+            _rolBlock.Size = UDim2.new(1, 0, 0, 32)
+            _rolBlock.BackgroundTransparency = 1
+            _rolBlock.LayoutOrder = 2
+
+            local _rolCaption = Instance.new("TextLabel", _rolBlock)
+            _rolCaption.Size = UDim2.new(0.42, 0, 1, 0)
+            _rolCaption.Position = UDim2.new(0, 0, 0, 0)
+            _rolCaption.BackgroundTransparency = 1
+            _rolCaption.Text = "MI ROL"
+            _rolCaption.Font = Enum.Font.GothamBold
+            _rolCaption.TextSize = 11
+            _rolCaption.TextColor3 = Color3.fromRGB(0, 180, 240)
+            _rolCaption.TextXAlignment = Enum.TextXAlignment.Left
+            _rolCaption.ZIndex = 61
+
+            local _rolVal = Instance.new("TextLabel", _rolBlock)
+            _rolVal.Name = "CPRolVal"
+            _rolVal.Size = UDim2.new(0.58, 0, 1, 0)
+            _rolVal.Position = UDim2.new(0.42, 0, 0, 0)
+            _rolVal.BackgroundTransparency = 1
+            _rolVal.Text = "..."
+            _rolVal.Font = Enum.Font.GothamBold
+            _rolVal.TextSize = 18
+            _rolVal.TextColor3 = Color3.fromRGB(0, 255, 160)
+            _rolVal.TextXAlignment = Enum.TextXAlignment.Right
+            _rolVal.ZIndex = 61
+
+            -- Fila 3: Porcentaje
+            local _pctBlock = Instance.new("Frame", _cpanel)
+            _pctBlock.Name = "PctBlock"
+            _pctBlock.Size = UDim2.new(1, 0, 0, 32)
+            _pctBlock.BackgroundTransparency = 1
+            _pctBlock.LayoutOrder = 3
+
+            local _pctCaption = Instance.new("TextLabel", _pctBlock)
+            _pctCaption.Size = UDim2.new(0.5, 0, 1, 0)
+            _pctCaption.Position = UDim2.new(0, 0, 0, 0)
+            _pctCaption.BackgroundTransparency = 1
+            _pctCaption.Text = "MURDER%"
+            _pctCaption.Font = Enum.Font.GothamBold
+            _pctCaption.TextSize = 11
+            _pctCaption.TextColor3 = Color3.fromRGB(0, 180, 240)
+            _pctCaption.TextXAlignment = Enum.TextXAlignment.Left
+            _pctCaption.ZIndex = 61
+
+            local _pctVal = Instance.new("TextLabel", _pctBlock)
+            _pctVal.Name = "CPPctVal"
+            _pctVal.Size = UDim2.new(0.5, 0, 1, 0)
+            _pctVal.Position = UDim2.new(0.5, 0, 0, 0)
+            _pctVal.BackgroundTransparency = 1
+            _pctVal.Text = "...%"
+            _pctVal.Font = Enum.Font.GothamBold
+            _pctVal.TextSize = 18
+            _pctVal.TextColor3 = Color3.fromRGB(255, 200, 60)
+            _pctVal.TextXAlignment = Enum.TextXAlignment.Right
+            _pctVal.ZIndex = 61
+
+            -- Guardar referencias globales para actualizar desde los toggles
+            _G._cpTimerVal = _timerVal
+            _G._cpRolVal   = _rolVal
+            _G._cpPctVal   = _pctVal
+
+        else
+            -- PC: 3 bloques en fila horizontal, bien centrados
+            _cpanel.Size = UDim2.new(0.88, 0, 0, 76)
+
+            local _layout = Instance.new("UIListLayout", _cpanel)
+            _layout.FillDirection = Enum.FillDirection.Horizontal
+            _layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            _layout.VerticalAlignment = Enum.VerticalAlignment.Center
+            _layout.Padding = UDim.new(0, 0)
+            _layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+            local function _makeBlock(parent, caption, defaultVal, defaultColor, order)
+                local blk = Instance.new("Frame", parent)
+                blk.Name = caption .. "Block"
+                blk.Size = UDim2.new(0.333, 0, 1, 0)
+                blk.BackgroundTransparency = 1
+                blk.LayoutOrder = order
+
+                -- Separador vertical entre bloques (excepto el primero)
+                if order > 1 then
+                    local sep = Instance.new("Frame", blk)
+                    sep.Size = UDim2.new(0, 1, 0.6, 0)
+                    sep.Position = UDim2.new(0, 0, 0.2, 0)
+                    sep.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+                    sep.BackgroundTransparency = 0.7
+                    sep.BorderSizePixel = 0
+                    sep.ZIndex = 61
+                end
+
+                local cap = Instance.new("TextLabel", blk)
+                cap.Size = UDim2.new(1, 0, 0, 20)
+                cap.Position = UDim2.new(0, 0, 0, 8)
+                cap.BackgroundTransparency = 1
+                cap.Text = caption
+                cap.Font = Enum.Font.GothamBold
+                cap.TextSize = 11
+                cap.TextColor3 = Color3.fromRGB(0, 180, 240)
+                cap.TextXAlignment = Enum.TextXAlignment.Center
+                cap.ZIndex = 61
+
+                local val = Instance.new("TextLabel", blk)
+                val.Name = "CP" .. caption .. "Val"
+                val.Size = UDim2.new(1, 0, 0, 38)
+                val.Position = UDim2.new(0, 0, 0, 28)
+                val.BackgroundTransparency = 1
+                val.Text = defaultVal
+                val.Font = Enum.Font.GothamBold
+                val.TextSize = 28
+                val.TextColor3 = defaultColor
+                val.TextXAlignment = Enum.TextXAlignment.Center
+                val.ZIndex = 61
+                -- Stroke de texto para legibilidad
+                local vs = Instance.new("UIStroke", val)
+                vs.Color = Color3.fromRGB(0, 0, 0)
+                vs.Thickness = 1.2
+                vs.Transparency = 0.5
+
+                return val
+            end
+
+            local _timerVal = _makeBlock(_cpanel, "TIMER",   "--:--", Color3.fromRGB(255, 255, 255), 1)
+            local _rolVal   = _makeBlock(_cpanel, "MI ROL",  "...",   Color3.fromRGB(0, 255, 160),   2)
+            local _pctVal   = _makeBlock(_cpanel, "MURDER%", "...%",  Color3.fromRGB(255, 200, 60),  3)
+
+            _G._cpTimerVal = _timerVal
+            _G._cpRolVal   = _rolVal
+            _G._cpPctVal   = _pctVal
+        end
+
+        -- Loop de actualización en tiempo real (lee del cache, no necesita toggles activos)
+        local _cpConn = nil
+        local _cpLastSecs = -1
+        local _cpLastRole = ""
+        local _cpLastPct  = ""
+        local _cpTick = 0
+
+        local _roleColors = {
+            Murderer = Color3.fromRGB(255, 50,  50),
+            Sheriff  = Color3.fromRGB(80,  160, 255),
+            Hero     = Color3.fromRGB(255, 220,  0),
+            Zombie   = Color3.fromRGB(40,  255,  40),
+            Survivor = Color3.fromRGB(200, 200, 200),
+            Freezer  = Color3.fromRGB(180, 220, 255),
+            Runner   = Color3.fromRGB(255, 150,  60),
+            Assassin = Color3.fromRGB(255, 140,   0),
+            Innocent = Color3.fromRGB(0,   255, 160),
+        }
+        local function _timerColor(s)
+            if s > 60 then return Color3.fromRGB(0, 230, 100)
+            elseif s > 30 then return Color3.fromRGB(255, 220, 0)
+            else return Color3.fromRGB(255, 60, 60) end
+        end
+        local function _fmt(s)
+            return string.format("%d:%02d", math.floor(s/60), s%60)
+        end
+
+        _cpConn = RunService.Heartbeat:Connect(function()
+            if not (_cpanel and _cpanel.Parent) then
+                _cpConn:Disconnect(); return
+            end
+            _cpTick = _cpTick + 1
+            if _cpTick < 6 then return end  -- ~10Hz
+            _cpTick = 0
+
+            -- Timer: leer del estado global de gameInfo
+            local tv = _G._cpTimerVal
+            if tv and tv.Parent then
+                local T = _gameInfoState and _gameInfoState._timerState
+                local secs = 0
+                local active = false
+                if T and T.active and T.value then
+                    secs = math.max(0, math.floor(T.value - (tick() - (T.syncTick or tick()))))
+                    active = true
+                end
+                local newSecs = active and secs or -1
+                if newSecs ~= _cpLastSecs then
+                    _cpLastSecs = newSecs
+                    if active and secs > 0 then
+                        tv.Text = _fmt(secs)
+                        tv.TextColor3 = _timerColor(secs)
+                    else
+                        -- Fallback: leer el display del overlay si existe
+                        local ovGui = LocalPlayer.PlayerGui:FindFirstChild("BYPAS_Timer")
+                                   or (game:GetService("CoreGui"):FindFirstChild("BYPAS_Timer"))
+                        local ovLbl = ovGui and ovGui:FindFirstChild("Display")
+                        if ovLbl and ovLbl.Text ~= "" and ovLbl.Text ~= "--:--" then
+                            tv.Text = ovLbl.Text
+                            tv.TextColor3 = ovLbl.TextColor3
+                        else
+                            tv.Text = "--:--"
+                            tv.TextColor3 = Color3.fromRGB(130, 130, 130)
+                        end
+                    end
+                end
+            end
+
+            -- Rol: leer del roleCache
+            local rv = _G._cpRolVal
+            if rv and rv.Parent then
+                local role = (_roleCache and _roleCache.localRole) or "..."
+                if role ~= _cpLastRole then
+                    _cpLastRole = role
+                    rv.Text = role:upper()
+                    rv.TextColor3 = _roleColors[role] or Color3.fromRGB(200, 200, 200)
+                end
+            end
+
+            -- Porcentaje: leer del overlay o del estado
+            local pv = _G._cpPctVal
+            if pv and pv.Parent then
+                local pctOvGui = LocalPlayer.PlayerGui:FindFirstChild("BYPAS_Pct")
+                              or (game:GetService("CoreGui"):FindFirstChild("BYPAS_Pct"))
+                local pctLbl = pctOvGui and pctOvGui:FindFirstChild("Display")
+                local rawPct = (pctLbl and pctLbl.Text) or (lastPct and ("MURDER% " .. lastPct .. "%")) or "...%"
+                -- Extraer solo el número/porcentaje
+                local numStr = rawPct:match("(%d+%.?%d*)%%") or rawPct:match("(%d+%.?%d*)")
+                local displayTxt = numStr and (numStr .. "%") or "...%"
+                if displayTxt ~= _cpLastPct then
+                    _cpLastPct = displayTxt
+                    pv.Text = displayTxt
+                    local n = tonumber(numStr)
+                    if n then
+                        if n >= 50 then pv.TextColor3 = Color3.fromRGB(255, 60, 60)
+                        elseif n >= 25 then pv.TextColor3 = Color3.fromRGB(255, 200, 60)
+                        else pv.TextColor3 = Color3.fromRGB(0, 220, 100) end
+                    else
+                        pv.TextColor3 = Color3.fromRGB(200, 200, 200)
+                    end
+                end
+            end
+        end)
+    end
+
  CreateSection(leftColumn, "", "GAME INFO", Color3.fromRGB(129, 129, 129))
 
  CreateToggle(leftColumn, "TIMER (sincronizado con el juego)", function(on)
@@ -17835,6 +18158,7 @@ function CreateMainUI_GameInfo()
             frozenAt = 0,      -- segundos al momento de congelar
             lastSecs = -1,     -- ultimo segundo mostrado (evita redibujar sin cambio)
         }
+        _gameInfoState._timerState = T  -- exponer para panel central
 
         local function _fmt(s) return string.format("%d:%02d", math.floor(s/60), s % 60) end
         local function _color(s)
@@ -54271,14 +54595,14 @@ particles = {}
     -- ================================================================
     _G._hubDragging = false  -- flag global visible por el pulso del borde
 
-    -- dragIcon: boton transparente sobre todo el header para capturar drag
-    local dragIcon = Instance.new("TextButton", header)
+    -- dragIcon: boton transparente sobre todo el mainFrame para capturar drag desde cualquier parte
+    local dragIcon = Instance.new("TextButton", mainFrame)
     dragIcon.Size = UDim2.new(1, 0, 1, 0)
     dragIcon.Position = UDim2.new(0, 0, 0, 0)
     dragIcon.BackgroundTransparency = 1
     dragIcon.Text = ""
     dragIcon.TextTransparency = 1
-    dragIcon.ZIndex = 50  -- FIX DRAG: ZIndex alto para capturar inputs por encima de elementos del header
+    dragIcon.ZIndex = 0  -- ZIndex bajo para no bloquear botones y sliders del hub
     dragIcon.AutoButtonColor = false
     dragIcon.Active = true
 
@@ -54304,15 +54628,15 @@ particles = {}
         end
 
         local function _mouseOverHeader(p2d)
-            local hPos = header.AbsolutePosition
-            local hSiz = header.AbsoluteSize
-            return p2d.X >= hPos.X and p2d.X <= hPos.X + hSiz.X
-               and p2d.Y >= hPos.Y and p2d.Y <= hPos.Y + hSiz.Y
+            -- Drag desde CUALQUIER parte del hub manteniendo presionado
+            local fPos = mainFrame.AbsolutePosition
+            local fSiz = mainFrame.AbsoluteSize
+            return p2d.X >= fPos.X and p2d.X <= fPos.X + fSiz.X
+               and p2d.Y >= fPos.Y and p2d.Y <= fPos.Y + fSiz.Y
         end
 
-        -- Drag solo desde el header — borde del frame no activa drag
+        -- Drag desde cualquier parte del frame (no solo borde)
         local function _mouseOverBorder(p2d)
-            -- Desactivado: drag solo desde header, no desde contenido del hub
             return false
         end
 
@@ -54348,7 +54672,7 @@ particles = {}
         local _holdStartPos  = nil     -- posicion al presionar
         local _holdThread    = nil     -- coroutine del delay de hold
 
-        local HOLD_THRESHOLD = 0.18    -- segundos manteniendo antes de activar drag
+        local HOLD_THRESHOLD = 0.25    -- segundos manteniendo antes de activar drag desde cualquier parte
         local MOVE_THRESHOLD = 6       -- pixeles de movimiento para activar drag inmediato
 
         -- Inicio de drag — solo desde el header, con hold o movimiento suficiente
