@@ -33721,114 +33721,194 @@ end
 -- SPIN UNIVERSAL
 -- ==============================================================
 -- ==============================================================
--- SHIFT LOCK BINDABLE
--- Toggle: activa/desactiva Shift Lock. Bindable: boton en pantalla
--- que al tocarse activa el Shift Lock (util en mobile).
+-- AUTO CLICK / AUTO TOUCH (UNIVERSAL)
+-- Funciona en PC (MouseButton1) y Mobile (TouchTap).
+-- Slider de delay compartido entre ambos modos.
 -- ==============================================================
-function CreateWorldUI_ShiftLock()
-    local sec = CreateSection(rightColumn, "", "SHIFT LOCK", ThemeColors.Aurora2)
+function CreateWorldUI_AutoClickTouch()
+    local sec = CreateSection(rightColumn, "", "AUTO CLICK / AUTO TOUCH", ThemeColors.Aurora2)
     _currentMainSectionFrame = sec
 
     local subLbl = Instance.new("TextLabel", sec)
     subLbl.Size = UDim2.new(1,-12,0,14)
     subLbl.BackgroundTransparency = 1
-    subLbl.Text = "UNIVERSAL"
+    subLbl.Text = "UNIVERSAL (PC + MOBILE)"
     subLbl.Font = Enum.Font.Montserrat
     subLbl.TextSize = 10
-    subLbl.TextColor3 = Color3.fromRGB(  0, 255, 160)
+    subLbl.TextColor3 = Color3.fromRGB(0, 255, 160)
     subLbl.TextXAlignment = Enum.TextXAlignment.Left
     subLbl.ZIndex = 13
 
-    -- Estado persistente entre visitas al tab
-    if _G._shiftLockState then
-        if _G._shiftLockState.keyConn  then pcall(function() _G._shiftLockState.keyConn:Disconnect()  end) end
-        if _G._shiftLockState.charConn then pcall(function() _G._shiftLockState.charConn:Disconnect() end) end
+    -- Estado persistente
+    if not _G._autoClickTouchState then
+        _G._autoClickTouchState = {
+            clickEnabled  = false,
+            touchEnabled  = false,
+            delay         = 0.05,
+            clickLoop     = nil,
+            touchLoop     = nil,
+        }
     end
-    _G._shiftLockState = _G._shiftLockState or {}
-    local SL = _G._shiftLockState
-    SL.enabled     = false
-    SL.bindEnabled = false
-    SL.keyConn     = nil
-    SL.charConn    = nil
+    local ACT = _G._autoClickTouchState
 
-    -- Helpers para activar/desactivar shift lock via PlayerModule o fallback
-    local function _activateShiftLock()
-        pcall(function()
-            -- Metodo 1: forzar MouseBehavior a LockCenter (funciona en la mayoria de executors)
-            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-        end)
-        pcall(function()
-            -- Metodo 2: habilitar MouseLock via PlayerModule (mas oficial)
-            local pm = require(Players.LocalPlayer.PlayerScripts:WaitForChild("PlayerModule", 3))
-            if pm and pm.controls and pm.controls.mouselock then
-                pm.controls.mouselock:Enable()
-            end
-        end)
-        pcall(function()
-            -- Metodo 3: DevEnableMouseLock en el LocalPlayer
-            LocalPlayer.DevEnableMouseLock = true
-        end)
-        SL.enabled = true
-        CreateCustomNotification("SHIFT LOCK", "Shift Lock ON", 1.5)
+    -- ---- SLIDER DE DELAY ----------------------------------------
+    -- Label de valor actual
+    local delayValLbl = Instance.new("TextLabel", sec)
+    delayValLbl.Size                = UDim2.new(1,-12,0,18)
+    delayValLbl.BackgroundTransparency = 1
+    delayValLbl.Text                = string.format("Delay: %.2f s", ACT.delay)
+    delayValLbl.Font                = Enum.Font.Montserrat
+    delayValLbl.TextSize            = 11
+    delayValLbl.TextColor3          = Color3.fromRGB(200, 200, 255)
+    delayValLbl.TextXAlignment      = Enum.TextXAlignment.Left
+    delayValLbl.ZIndex              = 13
+
+    -- Frame del slider
+    local sliderTrack = Instance.new("Frame", sec)
+    sliderTrack.Size                = UDim2.new(1,-12,0,14)
+    sliderTrack.BackgroundColor3    = Color3.fromRGB(40, 40, 60)
+    sliderTrack.BackgroundTransparency = 0.3
+    sliderTrack.BorderSizePixel     = 0
+    sliderTrack.ZIndex              = 13
+    Instance.new("UICorner", sliderTrack).CornerRadius = UDim.new(0, 7)
+
+    local sliderFill = Instance.new("Frame", sliderTrack)
+    sliderFill.Size                 = UDim2.new(ACT.delay / 1.0, 0, 1, 0)  -- 0..1 seg
+    sliderFill.BackgroundColor3     = Color3.fromRGB(80, 120, 255)
+    sliderFill.BorderSizePixel      = 0
+    sliderFill.ZIndex               = 14
+    Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(0, 7)
+
+    local sliderKnob = Instance.new("Frame", sliderTrack)
+    sliderKnob.Size                 = UDim2.new(0, 14, 0, 14)
+    sliderKnob.AnchorPoint          = Vector2.new(0.5, 0)
+    sliderKnob.Position             = UDim2.new(ACT.delay / 1.0, 0, 0, 0)
+    sliderKnob.BackgroundColor3     = Color3.fromRGB(200, 200, 255)
+    sliderKnob.BorderSizePixel      = 0
+    sliderKnob.ZIndex               = 15
+    Instance.new("UICorner", sliderKnob).CornerRadius = UDim.new(1, 0)
+
+    -- Logica de arrastre del slider (PC: MouseButton1 + drag; Mobile: TouchStarted + drag)
+    local _sliderDragging = false
+    local function _updateSlider(absX)
+        local trackAbsPos  = sliderTrack.AbsolutePosition.X
+        local trackAbsSize = sliderTrack.AbsoluteSize.X
+        local ratio = math.clamp((absX - trackAbsPos) / trackAbsSize, 0, 1)
+        ACT.delay = math.max(0.01, ratio * 1.0)   -- rango 0.01 .. 1.00 seg
+        sliderFill.Size     = UDim2.new(ratio, 0, 1, 0)
+        sliderKnob.Position = UDim2.new(ratio, 0, 0, 0)
+        delayValLbl.Text    = string.format("Delay: %.2f s", ACT.delay)
     end
 
-    local function _deactivateShiftLock()
-        pcall(function()
-            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-        end)
-        pcall(function()
-            local pm = require(Players.LocalPlayer.PlayerScripts:WaitForChild("PlayerModule", 3))
-            if pm and pm.controls and pm.controls.mouselock then
-                pm.controls.mouselock:Disable()
-            end
-        end)
-        SL.enabled = false
-        CreateCustomNotification("SHIFT LOCK", "Shift Lock OFF", 1.5)
-    end
-
-    local function _toggleShiftLock()
-        if SL.enabled then
-            _deactivateShiftLock()
-        else
-            _activateShiftLock()
+    -- PC drag
+    sliderTrack.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            _sliderDragging = true
+            _updateSlider(inp.Position.X)
         end
+    end)
+    sliderTrack.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            _sliderDragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if not _sliderDragging then return end
+        if inp.UserInputType == Enum.UserInputType.MouseMovement
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            _updateSlider(inp.Position.X)
+        end
+    end)
+
+    -- ---- Helpers internos ----------------------------------------
+    local VirtualInputManager = pcall(function()
+        return game:GetService("VirtualInputManager")
+    end) and game:GetService("VirtualInputManager") or nil
+
+    local function _doClick()
+        -- PC: simular MouseButton1 click
+        pcall(function()
+            mouse1click()
+        end)
+        pcall(function()
+            if VirtualInputManager then
+                VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,0)
+                VirtualInputManager:SendMouseButtonEvent(0,0,0,false,game,0)
+            end
+        end)
     end
 
-    -- Toggle principal: activa shift lock directamente
-    CreateAuroraToggle(sec, "Enable Shift Lock", function(on)
+    local function _doTouch()
+        -- Mobile: simular tap en el centro de la pantalla
+        pcall(function()
+            local vp = workspace.CurrentCamera.ViewportSize
+            local cx, cy = math.floor(vp.X/2), math.floor(vp.Y/2)
+            if VirtualInputManager then
+                VirtualInputManager:SendTouchEvent(0, cx, cy, true,  game)
+                task.wait(0.02)
+                VirtualInputManager:SendTouchEvent(0, cx, cy, false, game)
+            end
+        end)
+        -- Fallback: mouse1click en centro
+        pcall(function()
+            local vp = workspace.CurrentCamera.ViewportSize
+            mouse1click()
+        end)
+    end
+
+    -- ---- Funciones start/stop ------------------------------------
+    local function _startClickLoop()
+        if ACT.clickLoop then return end
+        ACT.clickLoop = task.spawn(function()
+            while ACT.clickEnabled do
+                pcall(_doClick)
+                task.wait(ACT.delay)
+            end
+            ACT.clickLoop = nil
+        end)
+    end
+    local function _stopClickLoop()
+        ACT.clickEnabled = false
+        ACT.clickLoop = nil
+    end
+
+    local function _startTouchLoop()
+        if ACT.touchLoop then return end
+        ACT.touchLoop = task.spawn(function()
+            while ACT.touchEnabled do
+                pcall(_doTouch)
+                task.wait(ACT.delay)
+            end
+            ACT.touchLoop = nil
+        end)
+    end
+    local function _stopTouchLoop()
+        ACT.touchEnabled = false
+        ACT.touchLoop = nil
+    end
+
+    -- ---- Toggles -------------------------------------------------
+    CreateAuroraToggle(sec, "Auto Click (PC + Mobile)", function(on)
+        ACT.clickEnabled = on
         if on then
-            _activateShiftLock()
+            _startClickLoop()
+            CreateCustomNotification("AUTO CLICK", "Auto Click ON  |  Delay: " .. string.format("%.2f",ACT.delay) .. "s", 1.5)
         else
-            _deactivateShiftLock()
+            _stopClickLoop()
+            CreateCustomNotification("AUTO CLICK", "Auto Click OFF", 1.5)
         end
     end, false)
 
-    -- Toggle bindable: muestra un boton en pantalla que al tocarse activa/desactiva shift lock
-    CreateAuroraToggle(sec, "Enable Shift Lock Bindable", function(on)
-        SL.bindEnabled = on
-        -- Limpiar bindable anterior
-        pcall(function() destroyBindableButton("SHIFT LOCK") end)
-        if SL.keyConn then pcall(function() SL.keyConn:Disconnect() end) SL.keyConn = nil end
-
+    CreateAuroraToggle(sec, "Auto Touch (Mobile)", function(on)
+        ACT.touchEnabled = on
         if on then
-            -- Crear boton bindable en pantalla
-            local _slBtn = createBindableButton("SHIFT LOCK", ThemeColors.Aurora2)
-
-            local function _onPress()
-                _toggleShiftLock()
-                -- Feedback visual: cambiar color del boton segun estado
-                pcall(function()
-                    local fill = _slBtn and _slBtn.Frame
-                    if fill then
-                        fill.BackgroundColor3 = SL.enabled
-                            and Color3.fromRGB(0, 200, 120)   -- verde = ON
-                            or  Color3.fromRGB(80, 40, 180)   -- violeta = OFF
-                    end
-                end)
-            end
-
-            -- FIX MOBILE v4: Activated cubre PC y touch en un solo evento
-            pcall(function() _slBtn.Frame.Activated:Connect(_onPress) end)
+            _startTouchLoop()
+            CreateCustomNotification("AUTO TOUCH", "Auto Touch ON  |  Delay: " .. string.format("%.2f",ACT.delay) .. "s", 1.5)
+        else
+            _stopTouchLoop()
+            CreateCustomNotification("AUTO TOUCH", "Auto Touch OFF", 1.5)
         end
     end, false)
 end
@@ -35384,8 +35464,8 @@ function CreateWorldTab()
     if _G._toggleStates then
         _G._toggleStates["Spin"] = false
         _G._toggleStates["Enable Spin Bindable Button"] = false
-        _G._toggleStates["Enable Shift Lock"] = false
-        _G._toggleStates["Enable Shift Lock Bindable"] = false
+        _G._toggleStates["Auto Click (PC + Mobile)"] = false
+        _G._toggleStates["Auto Touch (Mobile)"]      = false
     end
     ClearContent()
     _makeTwoColumns()  -- FIX: llamar ANTES de las funciones CreateWorldUI_
@@ -35491,11 +35571,12 @@ function CreateWorldTab()
             pcall(function() _G._freezeCharState.heartConn:Disconnect() end)
             _G._freezeCharState.heartConn = nil
         end
-        -- ShiftLock conns
-        if _G._shiftLockState then
-            if _G._shiftLockState.keyConn  then pcall(function() _G._shiftLockState.keyConn:Disconnect()  end) _G._shiftLockState.keyConn  = nil end
-            if _G._shiftLockState.charConn then pcall(function() _G._shiftLockState.charConn:Disconnect() end) _G._shiftLockState.charConn = nil end
-            _G._shiftLockState.bindEnabled = false
+        -- AutoClickTouch cleanup
+        if _G._autoClickTouchState then
+            _G._autoClickTouchState.clickEnabled = false
+            _G._autoClickTouchState.touchEnabled = false
+            _G._autoClickTouchState.clickLoop    = nil
+            _G._autoClickTouchState.touchLoop    = nil
         end
         -- TP Bindable conns -- desconectar y resetear enabled
         if _G._tpAboveMap then
@@ -35569,7 +35650,7 @@ function CreateWorldTab()
     -- CreateWorldUI_TeleportUniversal: funcion no implementada (eliminada)
     _safeCall(CreateWorldUI_ProximityPromptSection, "ProximityPromptSection")
     _safeCall(CreateWorldUI_SpinSection, "SpinSection")
-    _safeCall(CreateWorldUI_ShiftLock,   "ShiftLock")
+    _safeCall(CreateWorldUI_AutoClickTouch, "AutoClickTouch")
     -- ClutchSection y TeleportAboveMap eliminados del World tab
     _safeCall(CreateWorldUI_VoidTeleport, "VoidTeleport")
     _safeCall(CreateWorldUI_ExposeRoles, "ExposeRoles")
@@ -38068,15 +38149,86 @@ function CreateExclusiveTab()
 
 
     -- ============================================================
-    -- SECCIÓN: USUARIOS EN LÍNEA (tiempo real)
-    -- Muestra cuántos jugadores están usando el hub en el servidor actual.
-    -- Se actualiza automáticamente al entrar/salir jugadores.
+    -- SECCIÓN: DISCORD
     -- ============================================================
     do
-        local onlineSec = CreateBorderedSectionGlobal(leftColumn, "👥  USUARIOS EN EL HUB")
+        local discordSec = CreateBorderedSectionGlobal(leftColumn, "💬  DISCORD")
 
-        -- Título descriptivo
-        local onlineDesc = Instance.new("TextLabel", onlineSec)
+        local discordDesc = Instance.new("TextLabel", discordSec)
+        discordDesc.Size = UDim2.new(1, -12, 0, 20)
+        discordDesc.BackgroundTransparency = 1
+        discordDesc.Text = "Únete a la comunidad de Zerqon Hub"
+        discordDesc.TextColor3 = Color3.fromRGB(140, 180, 255)
+        discordDesc.FontFace = Font.fromEnum(Enum.Font.Gotham)
+        discordDesc.TextSize = 11
+        discordDesc.TextWrapped = true
+        discordDesc.TextXAlignment = Enum.TextXAlignment.Left
+        discordDesc.ZIndex = 13
+        local _ddPad = Instance.new("UIPadding", discordDesc)
+        _ddPad.PaddingLeft = UDim.new(0, 6)
+
+        -- Botón de Discord
+        local discordBtn = Instance.new("TextButton", discordSec)
+        discordBtn.Name = "DiscordJoinBtn"
+        discordBtn.Size = UDim2.new(1, -12, 0, 44)
+        discordBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)   -- color Discord
+        discordBtn.BackgroundTransparency = 0.05
+        discordBtn.BorderSizePixel = 0
+        discordBtn.Text = "  Join the Discord  →  discord.gg/Prsa5w5VVA"
+        discordBtn.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+        discordBtn.TextSize = 13
+        discordBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        discordBtn.AutoButtonColor = false
+        discordBtn.ZIndex = 13
+        Instance.new("UICorner", discordBtn).CornerRadius = UDim.new(0, 10)
+        local _dbStroke = Instance.new("UIStroke", discordBtn)
+        _dbStroke.Color = Color3.fromRGB(150, 160, 255)
+        _dbStroke.Thickness = 1.5
+        _dbStroke.Transparency = 0.3
+        _dbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+        -- Hover
+        discordBtn.MouseEnter:Connect(function()
+            TweenService:Create(discordBtn, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(110, 120, 255), BackgroundTransparency = 0}):Play()
+            TweenService:Create(_dbStroke, TweenInfo.new(0.12), {Transparency = 0}):Play()
+        end)
+        discordBtn.MouseLeave:Connect(function()
+            TweenService:Create(discordBtn, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(88, 101, 242), BackgroundTransparency = 0.05}):Play()
+            TweenService:Create(_dbStroke, TweenInfo.new(0.15), {Transparency = 0.3}):Play()
+        end)
+
+        -- Click: copiar link al portapapeles y notificación
+        discordBtn.Activated:Connect(function()
+            pcall(function() setclipboard("https://discord.gg/Prsa5w5VVA") end)
+            CreateCustomNotification("DISCORD", "Link copiado!  discord.gg/Prsa5w5VVA", 3)
+            -- Feedback visual momentáneo
+            discordBtn.Text = "  ✓  Link copiado al portapapeles!"
+            discordBtn.BackgroundColor3 = Color3.fromRGB(59, 165, 93)
+            task.delay(2, function()
+                pcall(function()
+                    discordBtn.Text = "  Join the Discord  →  discord.gg/Prsa5w5VVA"
+                    TweenService:Create(discordBtn, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(88, 101, 242)}):Play()
+                end)
+            end)
+        end)
+
+        -- Label de link debajo
+        local linkLbl = Instance.new("TextLabel", discordSec)
+        linkLbl.Size = UDim2.new(1, -12, 0, 16)
+        linkLbl.BackgroundTransparency = 1
+        linkLbl.Text = "discord.gg/Prsa5w5VVA  —  click para copiar el link"
+        linkLbl.FontFace = Font.fromEnum(Enum.Font.Gotham)
+        linkLbl.TextSize = 10
+        linkLbl.TextColor3 = Color3.fromRGB(100, 120, 200)
+        linkLbl.TextXAlignment = Enum.TextXAlignment.Left
+        linkLbl.ZIndex = 13
+        local _llPad = Instance.new("UIPadding", linkLbl)
+        _llPad.PaddingLeft = UDim.new(0, 6)
+    end
+
+    -- (sección "jugadores usando el hub" eliminada)
+
+    --[[  BLOQUE ELIMINADO: onlineDesc = Instance.new("TextLabel", onlineSec)
         onlineDesc.Size = UDim2.new(1, -12, 0, 20)
         onlineDesc.BackgroundTransparency = 1
         onlineDesc.Text = "Jugadores en el servidor usando el hub:"
@@ -38488,7 +38640,7 @@ function CreateExclusiveTab()
                 _charConns = {}
             end
         end)
-    end
+    end  --]]
 
     -- ============================================================
     -- COLUMNA DERECHA
