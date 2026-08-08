@@ -37041,12 +37041,7 @@ function CreatePremiumTab()
                 scale  = Vector3.new(1.7999999523162842, 1.7999999523162842, 1.7999999523162842),
                 -- FIX GRIP: Z=+0.5 empujaba el arma hacia adentro del torso.
                 -- Cambiado a Z=-0.5 para que quede adelante de la mano apuntando al frente.
-                grip   = CFrame.new(
-                    0, -0.5, -0.5,
-                    0.999924004,    -0.00871835742, -0.00871835742,
-                    0.00871835742,   0.999961972,   -3.80063248e-05,
-                    0.00871835742,  -3.80063248e-05,  0.999961972
-                ),
+                grip   = CFrame.new(0, -0.5, -0.3) * CFrame.Angles(math.rad(-90), 0, 0),
                 dualGun = true,
             },
             {
@@ -37064,12 +37059,7 @@ function CreatePremiumTab()
                 meshId = "http://www.roblox.com/asset/?id=79401392",
                 texId  = "rbxassetid://178240361",
                 scale  = Vector3.new(1.5, 1.5, 1.5),
-                grip   = CFrame.new(
-                    0, -0.759000003, -0.314999998,
-                    1, 0, 0,
-                    0, 0, -1,
-                    0, 1, 0
-                ),
+                grip   = CFrame.new(0, -0.5, -0.3) * CFrame.Angles(math.rad(-90), 0, 0),
                 dualGun = true,
             },
             {
@@ -37078,12 +37068,7 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://4210029922",
                 texId  = "rbxassetid://4210038158",
                 scale  = Vector3.new(0.035, 0.035, 0.035),
-                grip   = CFrame.new(
-                    -0.567565918, -0.124303818, -0.0424308777,
-                    -0.000212550163, 0.0230092816, -0.999735236,
-                    -0.011778634,   0.999665856,   0.0230101906,
-                     0.99993062,    0.0117804073,  5.85317612e-05
-                ),
+                grip   = CFrame.new(0, -0.5, -0.3) * CFrame.Angles(math.rad(-90), 0, 0),
                 dualGun = true,
             },
             {
@@ -37094,7 +37079,7 @@ function CreatePremiumTab()
                 scale  = Vector3.new(0.08, 0.08, 0.08),
                 -- FIX GRIP: identidad dejaba el scope mal agarrado.
                 -- Unificado con el grip probado en _GUN_SKINS (Items Fake).
-                grip   = CFrame.new(0.0154595375, -0.137249783, -0.00624334533, 1, 0, -0, 0, 0, 1, 0, -1, 0),
+                grip   = CFrame.new(0, -0.5, -0.3) * CFrame.Angles(math.rad(-90), 0, 0),
                 dualGun = true,
             },
             {
@@ -37103,7 +37088,7 @@ function CreatePremiumTab()
                 meshId = "rbxassetid://96867436912658",
                 texId  = "rbxassetid://103568875118220",
                 scale  = Vector3.new(0.035, 0.055, 0.020),
-                grip   = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+                grip   = CFrame.new(0, -0.5, -0.3) * CFrame.Angles(math.rad(-90), 0, 0),
                 dualGun = true,
             },
 
