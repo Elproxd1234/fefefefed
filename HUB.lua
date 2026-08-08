@@ -40340,8 +40340,17 @@ function CreateCombatTab()
         -- -- Encontrar target -------------------------------------------------
         local target = nil
 
-        -- Custom Target: si est activado y hay un nombre elegido, buscarlo por nombre
-        if CombatTabState.saUseCustomTarget and CombatTabState.saCustomTargetName and CombatTabState.saCustomTargetName ~= "" then
+        -- Custom Target: usar los mismos campos que el toggle "Use Custom Target"
+        -- (saUseCustomTarget/saCustomTargetName eran campos separados que nunca se sincronizaban)
+        local _ctEnabled = CombatTabState.useCustomTarget
+                        or CombatTabState.saUseCustomTarget
+        local _ctPlayer  = CombatTabState.customTargetPlayer
+
+        if _ctEnabled and _ctPlayer and _ctPlayer.Parent then
+            -- Target directo por referencia (mas fiable que buscar por nombre)
+            target = _ctPlayer
+        elseif _ctEnabled and CombatTabState.saCustomTargetName and CombatTabState.saCustomTargetName ~= "" then
+            -- Fallback: buscar por nombre (compatibilidad con saCustomTargetName)
             for _, p in ipairs(_cachedPlayers) do
                 if p.Name == CombatTabState.saCustomTargetName and p ~= LocalPlayer then
                     target = p; break
@@ -40349,7 +40358,7 @@ function CreateCombatTab()
             end
         end
 
-        -- Si no hay custom target, usar murderer normal
+        -- Si no hay custom target activo, usar murderer normal
         if not target then
             target = findMurderer()
         end
@@ -42295,7 +42304,8 @@ function CreateCombatTab()
 
         -- Toggle: Use Custom Target
         local _ctToggleRef = CreateBorderedToggle(ctSection, "Use Custom Target", function(enabled)
-            CombatTabState.useCustomTarget = enabled
+            CombatTabState.useCustomTarget   = enabled
+            CombatTabState.saUseCustomTarget = enabled   -- sincronizar campo legacy
             if enabled then
                 if CombatTabState.customTargetPlayer and CombatTabState.customTargetPlayer.Parent then
                     CreateCustomNotification("CUSTOM TARGET", "ON → " .. CombatTabState.customTargetPlayer.Name, 2)
@@ -42428,7 +42438,8 @@ function CreateCombatTab()
             Instance.new("UICorner", clearBtn).CornerRadius = UDim.new(0, 6)
             clearBtn.Activated:Connect(function()
                 CombatTabState.customTargetPlayer = nil
-                CombatTabState.saCustomTargetName = ""  -- FIX: limpiar nombre también
+                CombatTabState.saCustomTargetName = ""
+                CombatTabState.saUseCustomTarget  = false   -- sincronizar campo legacy
                 _ctLabel.Text = "Target: ninguno"
                 _closeSelector()
                 CreateCustomNotification("CUSTOM TARGET", "Target limpiado → usará Murder", 2)
@@ -42453,7 +42464,8 @@ function CreateCombatTab()
                     Instance.new("UICorner", plrBtn).CornerRadius = UDim.new(0, 6)
                     plrBtn.Activated:Connect(function()
                         CombatTabState.customTargetPlayer = plr
-                        CombatTabState.saCustomTargetName = plr.Name  -- FIX: sincronizar nombre para _saGetTargetCF
+                        CombatTabState.saCustomTargetName = plr.Name
+                        CombatTabState.saUseCustomTarget  = CombatTabState.useCustomTarget   -- sincronizar campo legacy
                         _ctLabel.Text = "Target: " .. plr.Name
                         _closeSelector()
                         CreateCustomNotification("CUSTOM TARGET", "Seleccionado: " .. plr.Name, 2)
@@ -42827,15 +42839,14 @@ function CreateCombatTab()
     local _predLastFire  = -999
     local _predHookedRemote = nil  -- remote que fue hookeado
 
-    -- Funcin auxiliar: encontrar el mejor target (murderer o ms cercano)
+    -- Funcin auxiliar: encontrar el mejor target (custom target o murderer)
     local function _predGetTarget()
         local myChar = LocalPlayer.Character
         local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
         if not myHRP then return nil end
-        -- FIX SHOOT ROTO: solo usar murderer real, nunca el jugador mas cercano.
-        -- El fallback al mas cercano redirigía disparos a inocentes cuando no
-        -- había murderer en cache, rompiendo el shoot normal.
-        local target = findMurderer and findMurderer()
+        -- Respetar custom target si está activo
+        local target = (_G._getEffectiveTarget and _G._getEffectiveTarget())
+                    or (findMurderer and findMurderer())
         return target, myHRP
     end
 
@@ -43026,10 +43037,9 @@ function CreateCombatTab()
         local myChar = LocalPlayer.Character
         local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
         if not myHRP then return nil end
-        -- FIX SHOOT ROTO: eliminar fallback al jugador mas cercano.
-        -- Solo usar murderer real (o custom target si está seleccionado).
-        -- El fallback redirigía disparos normales a inocentes cuando no había murderer.
-        local target = (CombatTabState.saTarget and Players:FindFirstChild(CombatTabState.saTarget))
+        -- Respetar custom target si está activo, luego murderer como fallback
+        local target = (_G._getEffectiveTarget and _G._getEffectiveTarget())
+                    or (CombatTabState.saTarget and Players:FindFirstChild(CombatTabState.saTarget))
                     or (findMurderer and findMurderer())
         return target
     end
