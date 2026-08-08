@@ -714,7 +714,9 @@ local function _saveConfig()
     toSave["__currentTheme"] = "Neon Green"
     local ok, json = pcall(function() return HttpService:JSONEncode(toSave) end)
     if ok and json then
-        pcall(writefile, _CONFIG_FILE, json)
+        -- FIX: usar _hubWriteFile (con fallbacks multi-executor) en lugar de llamar
+        -- writefile directo, que puede ser nil en algunos executors -> "attempt to call a nil value"
+        _hubWriteFile(_CONFIG_FILE, json)
     end
 end
 
@@ -724,8 +726,10 @@ end
 
 local function _loadConfig()
     if not (isfile and isfile(_CONFIG_FILE)) then return end
-    local ok, raw = pcall(readfile, _CONFIG_FILE)
-    if not ok or type(raw) ~= "string" or raw == "" then return end
+    -- FIX: usar _hubReadFile (con fallbacks multi-executor) en lugar de llamar
+    -- readfile directo, que puede ser nil en algunos executors -> "attempt to call a nil value"
+    local raw = _hubReadFile(_CONFIG_FILE)
+    if type(raw) ~= "string" or raw == "" then return end
     local ok2, saved = pcall(function() return HttpService:JSONDecode(raw) end)
     if not ok2 or type(saved) ~= "table" then return end
     -- Forzar siempre tema rosa antes de procesar el resto
