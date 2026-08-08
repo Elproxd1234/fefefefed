@@ -1,4 +1,4 @@
--- ================================================================
+﻿-- ================================================================
 -- == COMPAT SHIM v18 - FIX "attempt to call a nil value" (Line 1)
 -- Algunos executors mobiles (Delta, Arceus X, Fluxus) no exponen
 -- 'task' o tienen 'game' no disponible inmediatamente al cargar.
@@ -47208,15 +47208,10 @@ function CreateCombatTab()
                 local function _calcMirrorC0(gripC0)
                     local px,py,pz,r00,r01,r02,r10,r11,r12,r20,r21,r22 = gripC0:GetComponents()
                     if isDualGun then
-                        -- Gun: espejo correcto para mano izquierda.
-                        -- Invertir X en posicion y negar columnas r02/r12/r22 (espejo Z)
-                        -- luego rotar 180° en Y para que el cañon apunte hacia adelante
-                        -- y el grip quede orientado igual que en la mano derecha.
-                        local rotOnly  = CFrame.new(0,0,0, r00,r01,r02, r10,r11,r12, r20,r21,r22)
-                        local mirrorCF = CFrame.new(-px, py, pz) * rotOnly
-                                        * CFrame.Angles(0, math.rad(180), 0)
-                                        * CFrame.Angles(0, 0, math.rad(180))
-                        return mirrorCF
+                        -- Gun: espejo puro en eje X → niega posicion X y primera columna de rotacion.
+                        -- Esto voltea la gun como si fuera sostenida por la mano izquierda
+                        -- sin darla vuelta completamente ni deformar el mesh.
+                        return CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
                     else
                         -- Knife: espejo X (comportamiento original, funciona bien)
                         return CFrame.new(-px, py, pz, -r00, r01, r02, -r10, r11, r12, -r20, r21, r22)
