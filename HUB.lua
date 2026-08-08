@@ -42636,93 +42636,280 @@ function CreateCombatTab()
             _spWallCheckEnabled = en
         end, false)
 
-        -- Toggle: Auto Shoot Murder (dispara continuamente al murder mientras tenga gun)
-        CombatTabState.autoShootMurderEnabled = false
-        CreateBorderedToggle(spSection, "Auto Shoot Murder", function(enabled)
-            CombatTabState.autoShootMurderEnabled = enabled
-            if CombatTabState.autoShootMurderConn then
-                pcall(function() CombatTabState.autoShootMurderConn:Disconnect() end)
-                CombatTabState.autoShootMurderConn = nil
+        -- ================================================================
+        -- BOTÓN: SHOOT MURDER
+        -- Al presionar: TP detras del murder → dispara → TP de vuelta
+        -- También expone un BindableEvent en _G._ShootMurderBindable
+        -- ================================================================
+
+        -- BindableEvent para poder llamar la accion desde scripts externos:
+        --   _G._ShootMurderBindable:Fire()
+        if not _G._ShootMurderBindable then
+            local _smBind = Instance.new("BindableEvent")
+            _smBind.Name = "ShootMurderBindable"
+            _G._ShootMurderBindable = _smBind
+        end
+
+        -- Funcion central de un solo disparo (TP detras → shoot → TP vuelta)
+        local _smCooldown = 0
+        local function _doShootMurderOnce()
+            local now = tick()
+            if now - _smCooldown < 0.6 then return end
+            _smCooldown = now
+
+            local myChar = LocalPlayer.Character
+            local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
+            if not myHRP or not myHum or myHum.Health <= 0 then
+                CreateCustomNotification("SHOOT MURDER", "Sin personaje.", 2); return
             end
 
-            if enabled then
-                local _lastShot = 0
+            local murder = findMurderer and findMurderer()
+            if not murder or not murder.Character then
+                CreateCustomNotification("SHOOT MURDER", "Murder no encontrado.", 2); return
+            end
 
-                local function _buildCFs(originPos, targetPos)
-                    local dir = targetPos - originPos
-                    if dir.Magnitude < 0.01 then return nil, nil end
-                    local dirUnit = dir.Unit
-                    local up = math.abs(dirUnit.Y) > 0.95 and Vector3.xAxis or Vector3.yAxis
-                    local originCF = CFrame.lookAt(originPos, targetPos, up)
-                    local backU = originPos - targetPos
-                    local backDir = backU.Magnitude > 0.01 and backU.Unit or -dirUnit
-                    local bkUp = math.abs(backDir.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
-                    local targetCF = CFrame.lookAt(targetPos, targetPos + backDir, bkUp)
-                    return originCF, targetCF
+            local mHRP = murder.Character:FindFirstChild("HumanoidRootPart")
+            local mHum = murder.Character:FindFirstChildOfClass("Humanoid")
+            if not mHRP or not mHum or mHum.Health <= 0 then
+                CreateCustomNotification("SHOOT MURDER", "Murder muerto.", 2); return
+            end
+
+            -- Validar que la ronda este activa y el murder no este en lobby
+            if _G._betweenRounds or not _G._roundStartTime
+            or (tick() - (_G._roundStartTime or 0)) < 1.5
+            or mHRP.Position.Y > 70 then
+                CreateCustomNotification("SHOOT MURDER", "Ronda no activa.", 2); return
+            end
+
+            -- Obtener gun equipada
+            local gun = _findGunIn and _findGunIn(myChar)
+            if not gun then
+                CreateCustomNotification("SHOOT MURDER", "No tienes la gun equipada.", 2); return
+            end
+
+            -- Guardar posicion original para el TP de vuelta
+            local savedCF = myHRP.CFrame
+
+            -- TP detras del murder (4 studs atras de su LookVector)
+            local mCF = mHRP.CFrame
+            pcall(function()
+                myHRP.CFrame = CFrame.new(
+                    mCF.Position - mCF.LookVector * 4,
+                    mHRP.Position
+                )
+            end)
+            task.wait(0.12)
+
+            -- Disparar
+            local mHead  = murder.Character:FindFirstChild("Head") or mHRP
+            local shootRem = getShootRemote and getShootRemote(gun)
+            if shootRem and shootRem:IsA("RemoteEvent") then
+                local barrelAtt = getGunAttachment and getGunAttachment(gun, myHRP)
+                local _cam = workspace.CurrentCamera
+                local originPos = (barrelAtt and barrelAtt.WorldPosition)
+                               or (_cam and _cam.CFrame.Position)
+                               or (myHRP.Position + Vector3.new(0, 1.5, 0))
+                local aimPos = mHead.Position
+                local dir = aimPos - originPos
+                if dir.Magnitude > 0.01 then
+                    local up = math.abs(dir.Unit.Y) > 0.95 and Vector3.xAxis or Vector3.yAxis
+                    local oCF = CFrame.lookAt(originPos, aimPos, up)
+                    local bkDir = (originPos - aimPos)
+                    local bUp = math.abs(bkDir.Unit.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
+                    local tCF = CFrame.lookAt(aimPos, aimPos + bkDir.Unit, bUp)
+                    pcall(function() shootRem:FireServer(oCF, tCF) end)
+                    task.wait(0.05)
+                    pcall(function() shootRem:FireServer(oCF, tCF) end)
                 end
-
-                CombatTabState.autoShootMurderConn = _safeConnect(RunService.Heartbeat, function()
-                    if not CombatTabState.autoShootMurderEnabled then return end
-
-                    local myChar = LocalPlayer.Character
-                    local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                    if not myHRP then return end
-
-                    local gun = _findGunIn and _findGunIn(myChar)
-                    if not gun then return end
-
-                    local cooldown = (CombatState and CombatState.autoShootDelay) or 0.45
-                    local now = tick()
-                    if now - _lastShot < cooldown then return end
-
-                    local target = (_G._getEffectiveTarget and _G._getEffectiveTarget())
-                                or (findMurderer and findMurderer())
-                    if not target or not target.Character then return end
-
-                    local tHRP  = target.Character:FindFirstChild("HumanoidRootPart")
-                    local tHead = target.Character:FindFirstChild("Head") or tHRP
-                    local tHum  = target.Character:FindFirstChildOfClass("Humanoid")
-                    if not tHRP or not tHum or tHum.Health <= 0 then return end
-
-                    if CombatTabState.autoShootMurderWC then
-                        if not wallCheckRaycast(myHRP.Position, (tHead or tHRP).Position, target.Character) then return end
-                    end
-
-                    local shootRemote = getShootRemote and getShootRemote(gun)
-                    if not shootRemote then return end
-
-                    local barrelAtt = getGunAttachment and getGunAttachment(gun, myHRP)
-                    local _cam = workspace.CurrentCamera
-                    local originPos = (barrelAtt and barrelAtt.WorldPosition)
-                                   or (_cam and _cam.CFrame.Position)
-                                   or (myHRP.Position + Vector3.new(0, 1.5, 0))
-                    local aimPos = (tHead or tHRP).Position
-
-                    local oCF, tCF = _buildCFs(originPos, aimPos)
-                    if not oCF or not tCF then return end
-
-                    pcall(function() shootRemote:FireServer(oCF, tCF) end)
-                    _lastShot = now
-                end)
-
-                -- [notif removed]
             else
-                -- [notif removed]
+                -- Fallback: metodo camara
+                local cam = _Camera
+                local origCamCF = cam and cam.CFrame
+                pcall(function() if cam then cam.CFrame = CFrame.lookAt(cam.CFrame.Position, mHead.Position) end end)
+                _fireGunMM2(gun)
+                task.wait(0.05)
+                _fireGunMM2(gun)
+                pcall(function() if cam and origCamCF then cam.CFrame = origCamCF end end)
             end
-        end, false)
 
-        -- Toggle Wall Check del Auto Shoot Murder
-        CombatTabState.autoShootMurderWC = false
-        CreateBorderedToggle(spSection, "Auto Shoot Murder Wall Check", function(en)
-            CombatTabState.autoShootMurderWC = en
-        end, false)
+            CreateCustomNotification("SHOOT MURDER", "Disparado -> " .. murder.Name, 2)
+            task.wait(0.08)
 
-        -- Descripción
+            -- TP de vuelta a la posicion guardada
+            pcall(function() myHRP.CFrame = savedCF end)
+        end
+
+        -- Conectar BindableEvent a la misma funcion
+        _G._ShootMurderBindable.Event:Connect(_doShootMurderOnce)
+
+        -- Boton visual en el hub
+        local _smBtn = Instance.new("TextButton", spSection)
+        _smBtn.Name                   = "ShootMurderBtn"
+        _smBtn.Size                   = UDim2.new(1, -8, 0, 38)
+        _smBtn.BackgroundColor3       = Color3.fromRGB(180, 20, 20)
+        _smBtn.BackgroundTransparency = 0.15
+        _smBtn.BorderSizePixel        = 0
+        _smBtn.Text                   = "🔫  SHOOT MURDER"
+        _smBtn.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
+        _smBtn.TextSize               = 14
+        _smBtn.TextColor3             = Color3.fromRGB(255, 255, 255)
+        _smBtn.AutoButtonColor        = false
+        _smBtn.ZIndex                 = 13
+        local _smCorner = Instance.new("UICorner", _smBtn)
+        _smCorner.CornerRadius = UDim.new(0, 9)
+        local _smStroke = Instance.new("UIStroke", _smBtn)
+        _smStroke.Color = Color3.fromRGB(255, 80, 80)
+        _smStroke.Thickness = 1.8
+        _smStroke.Transparency = 0.10
+        _smStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        local _smPad = Instance.new("UIPadding", _smBtn)
+        _smPad.PaddingLeft = UDim.new(0, 4); _smPad.PaddingRight = UDim.new(0, 4)
+
+        _smBtn.MouseEnter:Connect(function()
+            TweenService:Create(_smBtn,   TweenInfo.new(0.10), {BackgroundTransparency = 0,        BackgroundColor3 = Color3.fromRGB(220, 35, 35)}):Play()
+            TweenService:Create(_smStroke, TweenInfo.new(0.10), {Transparency = 0}):Play()
+        end)
+        _smBtn.MouseLeave:Connect(function()
+            TweenService:Create(_smBtn,   TweenInfo.new(0.12), {BackgroundTransparency = 0.15,     BackgroundColor3 = Color3.fromRGB(180, 20, 20)}):Play()
+            TweenService:Create(_smStroke, TweenInfo.new(0.12), {Transparency = 0.10}):Play()
+        end)
+        _smBtn.MouseButton1Down:Connect(function()
+            TweenService:Create(_smBtn, TweenInfo.new(0.07), {BackgroundColor3 = Color3.fromRGB(140, 10, 10)}):Play()
+        end)
+        _smBtn.MouseButton1Up:Connect(function()
+            TweenService:Create(_smBtn, TweenInfo.new(0.07), {BackgroundColor3 = Color3.fromRGB(220, 35, 35)}):Play()
+        end)
+
+        _smBtn.Activated:Connect(function()
+            task.spawn(_doShootMurderOnce)
+        end)
+
+        -- ================================================================
+        -- BOTÓN: KILL SHERIFF
+        -- Mismo mecanismo que KillAll pero solo apunta al Sheriff
+        -- Usa FireKnifeOnTarget desde cualquier distancia (10000 studs)
+        -- También expone un BindableEvent en _G._KillSheriffBindable
+        -- ================================================================
+
+        if not _G._KillSheriffBindable then
+            local _ksBind = Instance.new("BindableEvent")
+            _ksBind.Name = "KillSheriffBindable"
+            _G._KillSheriffBindable = _ksBind
+        end
+
+        local _ksCooldown = 0
+        local function _doKillSheriff()
+            local now = tick()
+            if now - _ksCooldown < 0.5 then return end
+            _ksCooldown = now
+
+            local myChar = LocalPlayer.Character
+            local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+            local myHum  = myChar and myChar:FindFirstChildOfClass("Humanoid")
+            if not myHRP or not myHum or myHum.Health <= 0 then
+                CreateCustomNotification("KILL SHERIFF", "Sin personaje.", 2); return
+            end
+
+            -- Obtener/equipar knife
+            local knife = myChar:FindFirstChild("Knife")
+            if not knife then
+                knife = EquipKnife()
+            end
+            if not knife then
+                CreateCustomNotification("KILL SHERIFF", "No tienes knife.", 2); return
+            end
+
+            -- Encontrar al Sheriff
+            local sheriff = findSheriffPlayer and findSheriffPlayer()
+            if not sheriff or not sheriff.Character then
+                CreateCustomNotification("KILL SHERIFF", "Sheriff no encontrado.", 2); return
+            end
+
+            local sHRP = sheriff.Character:FindFirstChild("HumanoidRootPart")
+            local sHum = sheriff.Character:FindFirstChildOfClass("Humanoid")
+            if not sHRP or not sHum or sHum.Health <= 0 then
+                CreateCustomNotification("KILL SHERIFF", "Sheriff ya muerto.", 2); return
+            end
+
+            -- Guardar posicion para no mover al jugador
+            local savedCF  = myHRP.CFrame
+            local savedVel = myHRP.AssemblyLinearVelocity
+
+            -- Disparar FireKnifeOnTarget (igual que KillAll, distancia ilimitada)
+            FireKnifeOnTarget(knife, sHRP)
+            task.wait(0.05)
+            FireKnifeOnTarget(knife, sHRP)
+
+            -- Restaurar posicion inmediatamente
+            _sp(function()
+                pcall(function()
+                    myHRP.CFrame = savedCF
+                    myHRP.AssemblyLinearVelocity = savedVel or Vector3.zero
+                    myHRP.AssemblyAngularVelocity = Vector3.zero
+                end)
+            end)
+
+            CreateCustomNotification("KILL SHERIFF", "Cuchillo lanzado -> " .. sheriff.Name, 2)
+        end
+
+        -- Conectar BindableEvent
+        _G._KillSheriffBindable.Event:Connect(_doKillSheriff)
+
+        -- Espaciador visual entre los dos botones
+        local _ksSep = Instance.new("Frame", spSection)
+        _ksSep.Size = UDim2.new(1, 0, 0, 4)
+        _ksSep.BackgroundTransparency = 1
+        _ksSep.BorderSizePixel = 0
+
+        -- Boton visual KILL SHERIFF
+        local _ksBtn = Instance.new("TextButton", spSection)
+        _ksBtn.Name                   = "KillSheriffBtn"
+        _ksBtn.Size                   = UDim2.new(1, -8, 0, 38)
+        _ksBtn.BackgroundColor3       = Color3.fromRGB(20, 80, 200)
+        _ksBtn.BackgroundTransparency = 0.15
+        _ksBtn.BorderSizePixel        = 0
+        _ksBtn.Text                   = "🔪  KILL SHERIFF"
+        _ksBtn.FontFace               = Font.fromEnum(Enum.Font.GothamBold)
+        _ksBtn.TextSize               = 14
+        _ksBtn.TextColor3             = Color3.fromRGB(255, 255, 255)
+        _ksBtn.AutoButtonColor        = false
+        _ksBtn.ZIndex                 = 13
+        local _ksCorner = Instance.new("UICorner", _ksBtn)
+        _ksCorner.CornerRadius = UDim.new(0, 9)
+        local _ksStroke = Instance.new("UIStroke", _ksBtn)
+        _ksStroke.Color = Color3.fromRGB(80, 160, 255)
+        _ksStroke.Thickness = 1.8
+        _ksStroke.Transparency = 0.10
+        _ksStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        local _ksPad = Instance.new("UIPadding", _ksBtn)
+        _ksPad.PaddingLeft = UDim.new(0, 4); _ksPad.PaddingRight = UDim.new(0, 4)
+
+        _ksBtn.MouseEnter:Connect(function()
+            TweenService:Create(_ksBtn,    TweenInfo.new(0.10), {BackgroundTransparency = 0,    BackgroundColor3 = Color3.fromRGB(30, 110, 230)}):Play()
+            TweenService:Create(_ksStroke, TweenInfo.new(0.10), {Transparency = 0}):Play()
+        end)
+        _ksBtn.MouseLeave:Connect(function()
+            TweenService:Create(_ksBtn,    TweenInfo.new(0.12), {BackgroundTransparency = 0.15, BackgroundColor3 = Color3.fromRGB(20, 80, 200)}):Play()
+            TweenService:Create(_ksStroke, TweenInfo.new(0.12), {Transparency = 0.10}):Play()
+        end)
+        _ksBtn.MouseButton1Down:Connect(function()
+            TweenService:Create(_ksBtn, TweenInfo.new(0.07), {BackgroundColor3 = Color3.fromRGB(10, 50, 150)}):Play()
+        end)
+        _ksBtn.MouseButton1Up:Connect(function()
+            TweenService:Create(_ksBtn, TweenInfo.new(0.07), {BackgroundColor3 = Color3.fromRGB(30, 110, 230)}):Play()
+        end)
+
+        _ksBtn.Activated:Connect(function()
+            task.spawn(_doKillSheriff)
+        end)
+
+        -- Descripcion actualizada
         local _spDesc = Instance.new("TextLabel", spSection)
         _spDesc.Size = UDim2.new(1, -8, 0, 0)
         _spDesc.AutomaticSize = Enum.AutomaticSize.Y
         _spDesc.BackgroundTransparency = 1
-        _spDesc.Text = "Shoot Pick: shoots the Murder as soon as they grab the GunDrop (with wall check). Auto Shoot Murder: automatically shoots the Murder/Custom Target while you have the gun equipped."
+        _spDesc.Text = "Shoot Pick: dispara al Murder cuando agarra el GunDrop. SHOOT MURDER: TP detras del murder, dispara, vuelve. KILL SHERIFF: elimina al Sheriff con knife desde cualquier distancia. Bindables: _G._ShootMurderBindable:Fire() / _G._KillSheriffBindable:Fire()"
         _spDesc.TextColor3 = Color3.fromRGB(130, 170, 220)
         _spDesc.Font = Enum.Font.Montserrat
         _spDesc.TextSize = 10
