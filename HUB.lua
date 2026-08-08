@@ -8800,8 +8800,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     masterFrame.Name             = "NebulaSelector_" .. titulo
     masterFrame.Size             = UDim2.new(1, -4, 0, HEADER_H)
     masterFrame.AutomaticSize    = Enum.AutomaticSize.None
-    masterFrame.BackgroundColor3 = C("BackgroundLight")
-    masterFrame.BackgroundTransparency = 0.35
+    masterFrame.BackgroundColor3 = Color3.fromRGB(6, 10, 30)
+    masterFrame.BackgroundTransparency = 0.05
     masterFrame.BorderSizePixel  = 0
     masterFrame.ClipsDescendants = false
     masterFrame.ZIndex           = 5
@@ -8834,7 +8834,7 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     triggerBtn.AnchorPoint            = Vector2.new(1, 0)
     triggerBtn.Position               = UDim2.new(1, -10, 0, 8)
     triggerBtn.BackgroundColor3       = C("Primary")
-    triggerBtn.BackgroundTransparency = 0.15
+    triggerBtn.BackgroundTransparency = 0.0
     triggerBtn.Text                   = ""
     triggerBtn.BorderSizePixel        = 0
     triggerBtn.AutoButtonColor        = false
@@ -8878,8 +8878,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
     listFrame.Name                   = "ListContainer"
     listFrame.Size                   = UDim2.new(1, 0, 0, 0)
     listFrame.Position               = UDim2.new(0, 0, 0, HEADER_H + GAP)
-    listFrame.BackgroundColor3       = C("BackgroundLight")
-    listFrame.BackgroundTransparency = 0.25
+    listFrame.BackgroundColor3       = Color3.fromRGB(6, 10, 30)
+    listFrame.BackgroundTransparency = 0.05
     listFrame.BorderSizePixel        = 0
     listFrame.ClipsDescendants       = true
     listFrame.Visible                = false
@@ -8925,8 +8925,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
             local stroke  = row:FindFirstChildWhichIsA("UIStroke")
             local active  = (wrapper.Name == selectedValue)
             TweenService:Create(row, TweenInfo.new(0.18), {
-                BackgroundColor3       = active and C("Primary") or C("BackgroundLight"),
-                BackgroundTransparency = active and 0.10 or 0.55,
+                BackgroundColor3       = active and C("Primary") or Color3.fromRGB(6, 10, 30),
+                BackgroundTransparency = active and 0.0 or 0.0,
             }):Play()
             if stroke then
                 TweenService:Create(stroke, TweenInfo.new(0.18), {
@@ -8978,7 +8978,7 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
         TweenService:Create(triggerBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0}):Play()
     end)
     triggerBtn.MouseLeave:Connect(function()
-        TweenService:Create(triggerBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.15}):Play()
+        TweenService:Create(triggerBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.0}):Play()
     end)
 
     -- FIX MOBILE: usar Activated en vez de MouseButton1Click para que funcione en touch
@@ -9006,8 +9006,8 @@ function CreateNebulaSelector(parent, titulo, opciones, default, callback)
 
             local row = Instance.new("TextButton", wrapper)
             row.Size                   = UDim2.new(1, 0, 1, 0)
-            row.BackgroundColor3       = isActive and C("Primary") or C("BackgroundLight")
-            row.BackgroundTransparency = isActive and 0.10 or 0.55
+            row.BackgroundColor3       = isActive and C("Primary") or Color3.fromRGB(6, 10, 30)
+            row.BackgroundTransparency = isActive and 0.0 or 0.0
             row.Text                   = ""
             row.BorderSizePixel        = 0
             row.AutoButtonColor        = false
